@@ -330,7 +330,7 @@ shadow-rs = { version = "1.5.0", default-features = false }
 # --- Database ---
 rusqlite = { version = "0.32.1", features = ["backup", "functions"] }
 r2d2 = "0.8"
-r2d2_sqlite = "0.25"
+r2d2_sqlite = "0.32"
 
 # --- Web & Network ---
 url = "2.5"
