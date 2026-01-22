@@ -1,0 +1,51 @@
+[package]
+name = "wp-config"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lib]
+name = "wp_conf"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+[dependencies]
+winnow = { workspace = true }
+orion-error = { workspace = true }
+orion_conf = { workspace = true }
+orion-variate =  {workspace = true }
+derive_more = { workspace = true }
+wp_knowledge = { package = "wp-knowledge", path = "../wp-knowledge" }
+orion_exp = { path = "../orion_exp" }
+orion_overload= { path = "../orion_overload" }
+wp-model-core = { workspace =true  }
+wp_data_model = { workspace =true  }
+wp-error =  { workspace = true }
+wp-log =  { workspace = true }
+wpl = { package = "wp-lang", path = "../wp-lang" }
+wp-specs =  { workspace = true }
+wp-conf-base = { workspace = true }
+wp-connector-api ={ workspace=true }
+async-trait = { workspace = true }
+wp_parser = { package = "wp-parser", path = "../wp-parser" }
+log = { workspace = true }
+glob = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }
+educe = { workspace = true, features = [
+    "Debug",
+    "Default",
+], default-features = false }
+derive-getters = { workspace = true }
+getset = { workspace = true }
+once_cell = { workspace = true }
+wildmatch = { workspace = true }
+serde_derive = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

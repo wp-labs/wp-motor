@@ -1,0 +1,32 @@
+[package]
+name = "wp-proj"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+comfy-table = { workspace = true }
+glob = { workspace = true }
+oml = { package = "wp-oml", path = "../wp-oml" }
+orion-error = { workspace = true }
+orion_conf = { workspace = true }
+orion-variate = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+toml = { workspace = true }
+wildmatch = { workspace = true }
+wp-cli-core = { path = "../wp-cli-core" }
+wp-connector-api = { workspace = true }
+wp-knowledge = { path = "../wp-knowledge", package = "wp-knowledge" }
+wp-conf = { path = "../wp-config", package = "wp-config" }
+wp-model-core = { path = "../wp-data-utils", package = "wp-data-utils" }
+wp-engine = { path = "../..", package = "wp-engine" }
+wp-error = { workspace = true }
+wp-log = { workspace = true }
+wpl = { package = "wp-lang", path = "../wp-lang" }
+
+[dev-dependencies]
+rand = { workspace = true }
+tempfile = { workspace = true }
+serde_json = { workspace = true }

@@ -1,0 +1,13 @@
+pub mod build;
+pub mod io;
+pub mod resolved;
+pub mod types;
+pub use build::SourceFactoryRegistry;
+pub use build::build_source_instances;
+pub use build::load_source_instances_from_file;
+pub use build::load_source_instances_from_str;
+pub use build::parse_and_validate_only;
+pub use build::validate_specs_with_factory;
+pub use io::{find_connectors_dir, load_connectors_for};
+pub use resolved::{core_to_resolved, core_to_resolved_with};
+pub use types::{SourceConnector, SrcConnectorFileRec, WpSource, WpSourcesConfig};

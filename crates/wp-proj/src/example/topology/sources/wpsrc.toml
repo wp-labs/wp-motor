@@ -1,0 +1,10 @@
+[[sources]]
+key = "file_1"
+enable = true
+connect = "file_src"
+tags = []
+
+[sources.params_override]
+encode = "text"
+file = "gen.dat"
+base = "data/in_dat"

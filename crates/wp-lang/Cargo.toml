@@ -1,0 +1,88 @@
+[package]
+name = "wp-lang"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+[dependencies]
+arcstr = { workspace = true }
+smol_str = { workspace = true }
+derive_more = { workspace = true }
+ordered-float = { workspace = true }                       # 可哈希浮点
+#orion-variate = { workspace = true }
+#orion_conf = { workspace = true }
+orion_overload = { path = "../orion_overload" }
+wp-model-core= { workspace=true }
+wp-data-fmt= { workspace=true }
+wp-parse-api = { workspace=true }
+wp-connector-api= { workspace=true }
+wp-error= { workspace = true }
+wp-log = { workspace = true }
+wp-specs = { workspace = true }
+#orion-error = "0.0.7"
+orion-error = { workspace = true }
+wp_parser = { package = "wp-parser", path = "../wp-parser", default-features = false }
+derive-getters = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+anyhow = { workspace = true }
+wildmatch = { workspace = true }
+thiserror = { workspace = true }
+ipnet = { workspace = true, features = ["json"] }
+serde_json = { workspace = true }
+strfmt = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+base64 = { workspace = true }
+rand = { workspace = true }
+contracts = { workspace = true }
+getrandom = { workspace = true  }
+winnow = { workspace = true }
+derive_builder = { workspace = true }
+serde_derive = { workspace = true }
+glob = { workspace = true }
+toml = { workspace = true }
+strum = { workspace = true }
+strum_macros = { workspace = true }
+arrayvec = { workspace = true }
+unicode-segmentation = { workspace = true }
+educe = { workspace = true, features = [
+    "Debug",
+    "Default",
+], default-features = false }
+hex = { workspace = true }
+mailchecker = { workspace = true }
+url = { workspace = true }
+idcard = { workspace = true }
+phone = { workspace = true }
+ahash = { workspace = true }
+once_cell = { workspace = true }
+bytes = { workspace = true }
+memchr = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+once_cell = { workspace = true }
+mockall = { workspace = true }
+
+
+[[bench]]
+name = "wpl_pipe_bench"
+harness = false
+
+[[bench]]
+name = "nginx_10k"
+harness = false
+
+[[bench]]
+name = "wpl_bench"
+harness = false
+
+[lib]
+name = "wpl"
+# Enable the default Rust test harness so `cargo test --workspace` works.
+# This crate previously disabled the harness, which caused E0601 (no `main`)
+# during workspace tests. Keeping the lib name `wpl` for downstream imports.
+harness = true

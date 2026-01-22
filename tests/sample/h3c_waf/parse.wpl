@@ -1,0 +1,3 @@
+rule h3c_waf {
+  |base64|(digit<<,>>,time,sn,time,2*chars,12*kv,2*_,7*kv,_)
+}

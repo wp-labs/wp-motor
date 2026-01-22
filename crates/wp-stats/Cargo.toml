@@ -1,0 +1,48 @@
+[package]
+name = "wp-stats"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lib]
+name = "wp_stat"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+orion_overload = { path = "../orion_overload" }
+wp-model-core = { workspace = true }
+wp-log = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_derive = { workspace = true }
+derive-getters = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+ipnet = { workspace = true }
+contracts = { workspace = true }
+log = { workspace = true }
+strum_macros = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+mockall = { workspace = true }
+#web-time = "~0.2"
+wildmatch = { workspace = true }
+lru = { workspace = true }
+derive_builder = { workspace = true }
+
+[dev-dependencies]
+collection_literals = { workspace = true }
+criterion = { workspace = true }
+
+
+[build-dependencies]
+#protobuf-codegen = { version = "3.7", optional = true }
+#protobuf = { version = "3.7", features = ["with-bytes"] }
+
+[features]
+#pb_codegen = ["protobuf-codegen"]
+
+[[bench]]
+name = "wp_stats_bench"
+harness = false

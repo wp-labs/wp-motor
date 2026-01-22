@@ -1,0 +1,27 @@
+[package]
+name = "wp-data-utils"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+orion-error = { workspace = true }
+orion_exp = { path = "../orion_exp" }
+serde = { workspace = true }
+arcstr = { workspace = true }
+smol_str = { workspace = true }
+serde_json = { workspace = true }
+serde_derive = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+lru = { workspace = true }
+derive_builder = { workspace = true }
+wp-model-core = { workspace = true }
+
+
+[dev-dependencies]
+arbitrary = { workspace = true, features = ["derive"] }
+libfuzzer-sys = { workspace = true }
+anyhow = { workspace = true }
+mockall = { workspace = true }

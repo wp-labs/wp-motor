@@ -1,0 +1,41 @@
+version = 2
+base_dir = "."
+
+[default]
+transaction = true
+batch_size  = 2000
+on_error    = "fail"
+
+[csv]
+has_header = true
+delimiter  = ","
+encoding   = "utf-8"
+trim       = true
+
+[[tables]]
+name = "example"
+dir  = "example"
+columns.by_header = ["name", "pinying"]
+[tables.expected_rows]
+min = 5
+max = 100
+enabled = true
+
+[[tables]]
+name = "address"
+dir  = "address"
+columns.by_header = ["value"]
+[tables.expected_rows]
+min = 5
+max = 110
+enabled = true
+
+[[tables]]
+name = "zone"
+dir  = "zone"
+data_file = "data.scv"
+columns.by_header = ["start_ip", "end_ip", "zone"]
+[tables.expected_rows]
+min = 4
+max = 16
+enabled = true

@@ -1,0 +1,26 @@
+[package]
+name = "wp-parser"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lib]
+name = "wp_parser"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+[dependencies]
+orion_exp = { path = "../orion_exp" }
+winnow = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "parser_bench"
+harness = false
+
+[[bench]]
+name = "quick_bench"
+harness = false

@@ -1,0 +1,319 @@
+use crate::ast::{GenFmt, WplFmt};
+use crate::parser::utils::{quot_r_str, quot_str, take_to_end};
+use derive_getters::Getters;
+use smol_str::SmolStr;
+use std::fmt::{Display, Formatter};
+use std::marker::PhantomData;
+use winnow::combinator::{alt, opt, separated};
+use winnow::stream::Range;
+use winnow::token::{literal, take_until, take_while};
+use wp_parser::Parser;
+use wp_parser::WResult;
+use wp_parser::symbol::ctx_desc;
+
+const DEFAULT_SEP: &str = " ";
+pub trait DefaultSep {
+    fn sep_str() -> &'static str;
+}
+impl DefaultSep for () {
+    fn sep_str() -> &'static str {
+        DEFAULT_SEP
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Getters)]
+pub struct WplSepT<T> {
+    prio: usize,
+    cur_val: Option<SepEnum>,
+    ups_val: Option<SmolStr>,
+    infer: bool,
+    is_take: bool,
+    #[serde(skip)]
+    _phant: PhantomData<T>,
+}
+pub type WplSep = WplSepT<()>;
+
+impl<T> WplSepT<T> {
+    pub fn from(value: &WplSep) -> Self {
+        WplSepT {
+            prio: value.prio,
+            cur_val: value.cur_val.clone(),
+            ups_val: value.ups_val.clone(),
+            infer: value.infer,
+            is_take: value.is_take,
+            _phant: PhantomData,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum SepEnum {
+    Str(SmolStr),
+    End,
+}
+impl From<&str> for SepEnum {
+    fn from(value: &str) -> Self {
+        if value == "\\0" || value == "0" {
+            SepEnum::End
+        } else if value == "\\s" || value == "s" {
+            SepEnum::Str(" ".into())
+        } else {
+            SepEnum::Str(value.into())
+        }
+    }
+}
+
+impl From<String> for SepEnum {
+    fn from(value: String) -> Self {
+        Self::from(value.as_str())
+    }
+}
+
+impl From<SmolStr> for SepEnum {
+    fn from(value: SmolStr) -> Self {
+        Self::from(value.as_str())
+    }
+}
+impl<T> Default for WplSepT<T> {
+    fn default() -> Self {
+        Self {
+            prio: 1,
+            cur_val: None,
+            ups_val: None,
+            infer: false,
+            is_take: true,
+            _phant: PhantomData,
+        }
+    }
+}
+
+impl<T: DefaultSep + Clone> WplSepT<T> {
+    /// 字段级分隔符（优先级 3），覆盖组级与上游
+    pub fn field_sep<S: Into<SmolStr>>(val: S) -> Self {
+        Self {
+            prio: 3,
+            cur_val: Some(SepEnum::from(val.into())),
+            ups_val: None,
+            infer: false,
+            is_take: true,
+            _phant: PhantomData,
+        }
+    }
+
+    pub fn apply_default(&mut self, other: WplSep) {
+        if other.prio > self.prio || self.cur_val.is_none() {
+            self.prio = other.prio;
+            self.cur_val = other.cur_val;
+        }
+    }
+    pub fn set_current<S: Into<SmolStr>>(&mut self, sep: S) {
+        self.cur_val = Some(SepEnum::from(sep.into()))
+    }
+    pub fn is_unset(&self) -> bool {
+        self.cur_val().is_none()
+    }
+    pub fn is_to_end(&self) -> bool {
+        if let Some(x) = &self.cur_val {
+            *x == SepEnum::End
+        } else {
+            false
+        }
+    }
+    pub fn override_with(&mut self, other: &WplSep) {
+        if other.prio > self.prio {
+            self.prio = other.prio;
+            self.cur_val = other.cur_val.clone();
+        }
+    }
+    pub fn sep_str(&self) -> &str {
+        if let Some(val) = &self.cur_val {
+            match val {
+                SepEnum::Str(str) => str.as_str(),
+                SepEnum::End => "\n",
+            }
+        } else {
+            T::sep_str()
+            //DEFAULT_SEP
+        }
+    }
+    pub fn inherited_sep<S: Into<SmolStr>>(val: S) -> Self {
+        Self {
+            prio: 1,
+            cur_val: Some(SepEnum::from(val.into())),
+            ups_val: None,
+            infer: false,
+            is_take: true,
+            ..Default::default()
+        }
+    }
+    pub fn infer_inherited_sep<S: Into<SmolStr>>(val: S) -> Self {
+        Self {
+            prio: 1,
+            cur_val: Some(SepEnum::from(val.into())),
+            ups_val: None,
+            infer: true,
+            is_take: true,
+            ..Default::default()
+        }
+    }
+    pub fn infer_group_sep<S: Into<SmolStr>>(val: S) -> Self {
+        Self {
+            prio: 2,
+            cur_val: Some(SepEnum::from(val.into())),
+            ups_val: None,
+            infer: true,
+            is_take: true,
+            ..Default::default()
+        }
+    }
+    pub fn infer_clone(&self) -> Self {
+        let mut c = self.clone();
+        c.infer = true;
+        c
+    }
+    pub fn group_sep<S: Into<SmolStr>>(val: S) -> Self {
+        Self {
+            prio: 2,
+            cur_val: Some(SepEnum::from(val.into())),
+            ups_val: None,
+            infer: false,
+            is_take: true,
+            ..Default::default()
+        }
+    }
+    pub fn field_sep_until<S: Into<SmolStr>>(val: S, sec: S, is_take: bool) -> Self {
+        Self {
+            prio: 3,
+            cur_val: Some(SepEnum::from(val.into())),
+            ups_val: Some(sec.into()),
+            infer: false,
+            is_take,
+            ..Default::default()
+        }
+    }
+    pub fn infer_field_sep<S: Into<SmolStr>>(val: S) -> Self {
+        Self {
+            prio: 3,
+            cur_val: Some(SepEnum::from(val.into())),
+            ups_val: None,
+            infer: true,
+            is_take: true,
+            ..Default::default()
+        }
+    }
+
+    pub fn consume_sep(&self, input: &mut &str) -> WResult<()> {
+        if self.is_take {
+            literal(self.sep_str())
+                .context(ctx_desc("take <sep>"))
+                .parse_next(input)?;
+        }
+        Ok(())
+    }
+    pub fn try_consume_sep(&self, input: &mut &str) -> WResult<()> {
+        if self.is_take {
+            opt(literal(self.sep_str())).parse_next(input)?;
+        }
+        Ok(())
+    }
+    pub fn is_space_sep(&self) -> bool {
+        self.sep_str() == " "
+    }
+    pub fn need_take_sep(&self) -> bool {
+        !(self.is_to_end() || self.is_space_sep())
+    }
+
+    pub fn read_until_any_char<'a>(end1: &str, end2: &str, data: &mut &'a str) -> WResult<&'a str> {
+        let ends1 = end1.as_bytes();
+        let ends2 = end2.as_bytes();
+        alt((
+            quot_r_str,
+            quot_str,
+            take_while(0.., |c: char| {
+                !(ends1.contains(&(c as u8)) || ends2.contains(&(c as u8)))
+            }),
+            take_to_end,
+        ))
+        .parse_next(data)
+    }
+
+    pub fn read_until_sep(&self, data: &mut &str) -> WResult<String> {
+        // 读到当前分隔符，若存在“次级结束符”（ups_val），应以“最近结束优先”裁剪。
+        // 特殊值：\0 由 is_to_end() 覆盖；单字符对使用 read_until_any_char 快路径。
+        if self.is_to_end() {
+            let buf = take_to_end.parse_next(data)?;
+            return Ok(buf.to_string());
+        }
+        if let Some(ups) = &self.ups_val {
+            // 快路径：单字符对，使用按字符扫描，天然最近结束优先
+            if self.sep_str().len() == 1 && ups.len() == 1 {
+                let buf = Self::read_until_any_char(self.sep_str(), ups.as_str(), data)?;
+                return Ok(buf.to_string());
+            }
+            // 常规：对多字符分隔的最近结束优先实现
+            let s = *data;
+            // 若下一个是引号，优先让上层调用流按引号解析；保持与既有行为一致
+            // （复杂场景建议使用 json/kv 等协议解析器避免干扰）。
+            if s.starts_with('"') || s.starts_with("r#\"") || s.starts_with("r\"") {
+                // 引号或原始字符串优先整体解析，避免被错误切分
+                let buf = alt((quot_r_str, quot_str)).parse_next(data)?;
+                return Ok(buf.to_string());
+            }
+            let p = s.find(self.sep_str());
+            let q = s.find(ups.as_str());
+            let idx = match (p, q) {
+                (Some(i), Some(j)) => Some(i.min(j)),
+                (Some(i), None) => Some(i),
+                (None, Some(j)) => Some(j),
+                (None, None) => None,
+            };
+            if let Some(i) = idx {
+                let (left, right) = s.split_at(i);
+                *data = right; // 保持与 take_until 一致：不消费结束符本身
+                return Ok(left.to_string());
+            }
+            let buf = take_to_end.parse_next(data)?;
+            return Ok(buf.to_string());
+        }
+        // 无次级结束符：原有语义
+        let buf = alt((
+            quot_r_str,
+            quot_str,
+            take_until(0.., self.sep_str()),
+            take_to_end,
+        ))
+        .parse_next(data)?;
+        Ok(buf.to_string())
+    }
+    pub fn read_until_sep_repeat(&self, num: usize, data: &mut &str) -> WResult<String> {
+        let buffer: Vec<&str> = separated(
+            Range::from(num),
+            take_until(1.., self.sep_str()),
+            self.sep_str(),
+        )
+        .parse_next(data)?;
+
+        let msg = buffer.join(self.sep_str());
+        Ok(msg)
+    }
+}
+
+impl Display for WplFmt<&WplSep> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if !self.0.infer {
+            for c in self.0.sep_str().chars() {
+                if c != ' ' {
+                    write!(f, "\\{}", c)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Display for GenFmt<&WplSep> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.sep_str())?;
+        Ok(())
+    }
+}

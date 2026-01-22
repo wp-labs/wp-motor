@@ -1,0 +1,77 @@
+[package]
+name = "wp-oml"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+arcstr = { workspace = true }
+winnow = { workspace = true }
+orion-error = { workspace = true }
+orion_conf= { workspace = true }
+wp_knowledge = { package = "wp-knowledge", path = "../wp-knowledge" }
+wp_parser = { package = "wp-parser", path = "../wp-parser" }
+orion_exp = { path = "../orion_exp" }
+wp-model-core = { workspace = true  }
+wp_data_model= { workspace = true  }
+wp-data-fmt= { workspace=true }
+wp-error = { workspace = true }
+wp-log = { workspace = true }
+wp-specs = { workspace = true }
+wpl = { package = "wp-lang", path = "../wp-lang" }
+derive-getters = { workspace = true }
+md5 = { workspace = true }
+log = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+# encoding_rs = { workspace = true }  # TODO: Migrate from encoding (unmaintained) to encoding_rs
+ipnet = { workspace = true, features = ["json"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_derive = { workspace = true }
+strfmt = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+base64 = { workspace = true }
+contracts = { workspace = true }
+enum_dispatch = { workspace = true }
+derive_builder = { workspace = true }
+toml = { workspace = true }
+strum = { workspace = true }
+strum_macros = { workspace = true }
+wildmatch = { workspace = true, features = ["serde"] }
+html-escape = { workspace = true }
+escape8259 = { workspace = true }
+lazy_static = { workspace = true }
+async-trait = { workspace = true }
+once_cell = { workspace = true }
+parse-display = { workspace = true }
+parse-display-derive = { workspace = true }
+encoding_rs = { workspace = true }
+imap-types = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+env_logger = { workspace = true }
+mockall = { workspace = true }
+
+
+[[bench]]
+name = "oml_sql_bench"
+harness = false
+
+[[bench]]
+name = "oml_sql_bench_threadclone"
+harness = false
+
+[lib]
+name = "oml"
+# Enable the default Rust test harness so `cargo test --workspace` works.
+harness = true
+
+[features]
+# 启用运行期诊断采集（轻量，默认不启用；由上层包按需打开）
+oml-diag = []

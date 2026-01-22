@@ -1,0 +1,15 @@
+[[connectors]]
+id = "tcp_sink"
+type = "tcp"
+allow_override = [
+  "addr", "port", "framing",
+  # send-queue aware backoff (optional)
+  "max_backoff"
+]
+
+[connectors.params]
+addr = "127.0.0.1"
+port = 9000
+framing = "line"   # line|len
+# Optional: kernel send-queue aware backoff (no tuning knobs; enabled/disabled only)
+# max_backoff = true

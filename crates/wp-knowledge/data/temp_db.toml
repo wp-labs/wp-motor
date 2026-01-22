@@ -1,0 +1,39 @@
+[[lib_items]]
+table = "example"
+create = """
+CREATE TABLE IF NOT EXISTS example (
+    id   INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    pinying TEXT NOT NULL
+    )"""
+clean = "DELETE FROM example"
+insert = "INSERT INTO example(name,pinying) VALUES (?1, ?2 ) "
+data = "src/mem/dict/example.csv"
+cols = [
+    0,
+    1,
+]
+scope = [
+    5,
+    100,
+]
+
+[[lib_items]]
+table = "example_1"
+create = """
+CREATE TABLE IF NOT EXISTS example (
+    id   INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    pinying TEXT NOT NULL
+    )"""
+clean = "DELETE FROM example"
+insert = "INSERT INTO example(name,pinying) VALUES (?1, ?2 ) "
+data = "src/mem/dict/example.csv"
+cols = [
+    0,
+    1,
+]
+scope = [
+    5,
+    100,
+]

@@ -1,0 +1,13 @@
+[[connectors]]
+id = "tcp_src"
+type = "tcp"
+# 允许覆写的键，兼容 syslog 的常见命名
+allow_override = ["addr", "port", "framing", "tcp_recv_bytes", "prefer_newline", "instances"]
+
+[connectors.params]
+addr = "0.0.0.0"
+port = 9000
+framing = "auto"          # auto|line|len
+prefer_newline = false     # 当 framing=auto 时，是否优先按行
+tcp_recv_bytes = 256000 # 10 MiB
+# instances = 1             # 可选：单 connector 产出多实例（默认 1，最大 16）

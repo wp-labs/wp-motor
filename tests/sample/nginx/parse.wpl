@@ -1,0 +1,3 @@
+rule nginx  {
+  (ip,2*_,time/clf<[,]>,http/request",http/status,digit,chars",http/agent",_")
+}

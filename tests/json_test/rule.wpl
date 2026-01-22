@@ -1,0 +1,1 @@
+json_test : (json( @src-ip +geo(city_name),@dst-ip +zone(zone_name),@dev-name+device(device_val)))

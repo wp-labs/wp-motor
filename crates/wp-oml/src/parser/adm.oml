@@ -1,0 +1,22 @@
+version      :chars   = chars(1.0.0) ;
+pos_sn       :chars   = get crate () ;
+update_time  :time    = get crate () { _ :  time(2020-10-1 12:30:30) };
+
+src_ip : ip  =  get  crate ( option  : [ src_ip, s_ip, source_ip] ) { _   :  time(2020-10-1 12:30:30) }
+);
+src_domain : ip  =  query lib(geo) where crate( src_ip)) {
+    idx : xx,
+    col : ip ,
+    _ :  chars(office)
+};
+
+src_city: chars = match crate( x_type ) {
+            chars(A) => chars(bj),
+            chars(B) => chars(cs),
+            chars(*) => crate(src_city)
+};
+
+values : obj = object {
+    cpu_free, memory_free, cpu_used_by_one_min, cpu_used_by_fifty_min             : digit  = get take(),
+    process,disk_free, disk_used ,disk_used_by_fifty_min, disk_used_by_one_min    : digit  = get take(),
+};

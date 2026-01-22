@@ -1,0 +1,3 @@
+rule huawei_zhuru {
+  |base64|(digit<<,>>,time,sn,chars\:kv(@CID)\;*kv\,)
+}

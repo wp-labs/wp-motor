@@ -1,0 +1,8 @@
+[[connectors]]
+id = "file_proto_sink"
+type = "file"
+allow_override = ["base","file"]
+[connectors.params]
+fmt  = "proto-text"
+base = "./data/out_dat"
+file = "default.dat"
