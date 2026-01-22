@@ -158,8 +158,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unnecessary `provided_root` parameter removed from path resolution functions
 
 ## Version Comparison Links
-
-[Unreleased]: https://github.com/wp-labs/wp-engine/compare/v1.8.2...HEAD
-[1.8.2]: https://github.com/wp-labs/wp-engine/compare/v1.8.1-alpha...v1.8.2-alpha
-[1.8.1]: https://github.com/wp-labs/wp-engine/compare/v1.8.0-alpha...v1.8.1-alpha
-[1.8.0]: https://github.com/wp-labs/wp-engine/compare/v1.7.0-alpha...v1.8.0-alpha
