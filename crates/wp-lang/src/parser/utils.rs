@@ -107,12 +107,7 @@ pub fn duble_quot_str_impl<'a>(input: &mut &'a str) -> WResult<&'a str> {
     literal('"')
         .context(ctx_desc("<beg>\""))
         .parse_next(input)?;
-    let content = take_escaped(
-        none_of(['\\', '"']),
-        '\\',
-        any,
-    )
-    .parse_next(input)?;
+    let content = take_escaped(none_of(['\\', '"']), '\\', any).parse_next(input)?;
     literal('"')
         .context(ctx_desc("<end>\""))
         .parse_next(input)?;
@@ -123,12 +118,7 @@ pub fn single_quot_str_impl<'a>(input: &mut &'a str) -> WResult<&'a str> {
     literal('\'')
         .context(ctx_desc("<beg>'"))
         .parse_next(input)?;
-    let content = take_escaped(
-        none_of(['\\', '\'']),
-        '\\',
-        any,
-    )
-    .parse_next(input)?;
+    let content = take_escaped(none_of(['\\', '\'']), '\\', any).parse_next(input)?;
     literal('\'')
         .context(ctx_desc("<end>'"))
         .parse_next(input)?;
