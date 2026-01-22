@@ -3,7 +3,7 @@ use winnow::ascii::{multispace0, take_escaped};
 use winnow::combinator::{alt, delimited, fail, opt, peek, preceded, separated_pair};
 use winnow::error::{ContextError, ErrMode};
 use winnow::stream::Stream;
-use winnow::token::{literal, none_of, one_of, take, take_until, take_while};
+use winnow::token::{any, literal, none_of, one_of, take, take_until, take_while};
 use wp_model_core::model::Value;
 use wp_parser::Parser;
 use wp_parser::WResult;
@@ -110,7 +110,7 @@ pub fn duble_quot_str_impl<'a>(input: &mut &'a str) -> WResult<&'a str> {
     let content = take_escaped(
         none_of(['\\', '"']),
         '\\',
-        one_of(('0'..='9', ['"', 'n', 't', 'r', '\\', 'x'])),
+        any,
     )
     .parse_next(input)?;
     literal('"')
@@ -126,7 +126,7 @@ pub fn single_quot_str_impl<'a>(input: &mut &'a str) -> WResult<&'a str> {
     let content = take_escaped(
         none_of(['\\', '\'']),
         '\\',
-        one_of(('0'..='9', ['"', '\'', 'n', 't', 'r', '\\', 'x'])),
+        any,
     )
     .parse_next(input)?;
     literal('\'')
@@ -258,8 +258,7 @@ pub fn quot_r_str<'a>(input: &mut &'a str) -> WResult<&'a str> {
 pub fn quot_raw<'a>(input: &mut &'a str) -> WResult<&'a str> {
     let cp = input.checkpoint();
     literal('"').parse_next(input)?;
-    let content =
-        take_escaped(none_of(['\\', '"']), '\\', one_of(['"', 'n', '\\'])).parse_next(input)?;
+    let content = take_escaped(none_of(['\\', '"']), '\\', any).parse_next(input)?;
     literal('"').parse_next(input)?;
     let len = content.len() + 2;
     input.reset(&cp);
@@ -454,6 +453,7 @@ mod tests {
     #[test]
     fn test_quot_str() {
         assert_eq!(quot_str.parse_peek("\"123\""), Ok(("", "123")));
+        assert_eq!(quot_str.parse_peek(r#""\a123""#), Ok(("", r#"\a123"#)));
         assert_eq!(quot_str.parse_peek("'123'"), Ok(("", "123")));
         assert_eq!(quot_str.parse_peek("\"1-?#ab\""), Ok(("", "1-?#ab")));
         assert_eq!(quot_str.parse_peek(r#""12\"3""#), Ok(("", r#"12\"3"#)));
