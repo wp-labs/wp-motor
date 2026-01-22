@@ -1,0 +1,9 @@
+version = "2.0"
+[sink_group]
+name = "monitor"
+match = { oml = [], rule = [] }
+
+[[sink_group.sinks]]
+name = "mon"
+use = "file_raw_sink"
+params = { base = "./out", file = "monitor.dat" }

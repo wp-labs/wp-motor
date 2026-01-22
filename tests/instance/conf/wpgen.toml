@@ -1,0 +1,42 @@
+version = "1.0"
+
+[main_conf]
+gen_ref = "sample_gen"
+gen_speed = 1000
+gen_count = 1000
+gen_secs = 0
+gen_parallel = 1
+out_ref = "out_file"
+
+[main_conf.log_conf]
+level = "warn,ctrl=info,launch=info"
+output = "File"
+[log_conf.file]
+path = "./logs/"
+
+[out_file]
+name = "gen_file_sink"
+fmt = "raw"
+
+[out_file.target.file]
+path = "./src_dat/gen.dat"
+
+[out_kafka]
+name = "gen_kafka_sink"
+fmt = "raw"
+
+[out_kafka.target.kafka]
+brokers = "localhost:9092"
+topic = "test"
+num_partitions = 3
+replication = 1
+config = ["queue.buffering.max.messages = 50000", "queue.buffering.max.kbytes = 2147483647", "message.max.bytes = 10485760"]
+
+[out_syslog]
+name = "gen_syslog_sink"
+fmt = "raw"
+
+[out_syslog.target.syslog]
+addr = "127.0.0.1"
+port = 514
+protocol = "udp"

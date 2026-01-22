@@ -1,0 +1,19 @@
+[main_conf]
+out_fmt = "kv"
+rule = "./parse.wpl"
+
+[main_conf.log_conf]
+level = "error"
+output = "Console"
+
+[checker]
+failure = "Continue"
+
+[out_file]
+path = "./out.dat"
+
+[in_file]
+key = "file_1"
+path = "./sample.dat"
+enable = false
+encode = "text"

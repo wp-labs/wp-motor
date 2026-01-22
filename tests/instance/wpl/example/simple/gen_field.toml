@@ -1,0 +1,6 @@
+[items.sip]
+gen_type = "ip"
+
+[items.sip.scope.ip]
+beg = "10.0.10.0"
+end = "10.0.100.255"

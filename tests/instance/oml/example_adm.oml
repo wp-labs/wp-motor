@@ -1,0 +1,10 @@
+name : example/simple
+rule :
+    /example/simple/nginx
+---
+recv_time  = take() ;
+occur_time = Now::time() ;
+from_ip    = take(option:[from-ip]) ;
+src_ip     = take(option:[src-ip,sip,source-ip] );
+
+*  = take() ;

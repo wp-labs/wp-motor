@@ -1,0 +1,4 @@
+name : ignore_oml
+rule : /benchmark/benchmark_1
+---
+* = take() ;

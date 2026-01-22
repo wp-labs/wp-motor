@@ -1,0 +1,11 @@
+version = "1.0"
+
+[sink_group]
+name = "ignore"
+oml = ["ignore_oml"]
+
+[[sink_group.sinks]]
+name = "ignore_file"
+fmt = "raw"
+target = "file"
+path = "./out/ignore.dat"

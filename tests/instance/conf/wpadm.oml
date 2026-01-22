@@ -1,0 +1,4 @@
+
+name : sys_init
+---
+pos_sn : chars = chars(wpx/cs/1);

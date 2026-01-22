@@ -1,0 +1,7 @@
+[[connectors]]
+id = "file_raw_sink"
+type = "file"
+allow_override = ["base","file"]
+[connectors.params]
+base = "./out"
+file = "default.dat"

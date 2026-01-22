@@ -1,0 +1,8 @@
+version = "2.0"
+[sink_group]
+name = "error"
+
+[[sink_group.sinks]]
+name = "error"
+use = "file_raw_sink"
+params = { base = "./out", file = "error.dat" }

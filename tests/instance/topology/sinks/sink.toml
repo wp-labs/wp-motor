@@ -1,0 +1,11 @@
+version = "1.0"
+
+[sink_group]
+name = "other"
+oml = ["*"]
+
+[[sink_group.sinks]]
+name = "other_file"
+fmt = "kv"
+target = "file"
+path = "./out/other.dat"

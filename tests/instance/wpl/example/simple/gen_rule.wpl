@@ -1,0 +1,6 @@
+package /example/simple {
+     rule nginx {
+            (ip:sip,symbol(-),symbol(-),time:occur_time<[,]>,
+                    http/request",http/status,digit,ip<"http://,/">,http/agent",chars[0]<"-,">)
+     }
+ }

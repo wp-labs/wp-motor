@@ -1,0 +1,15 @@
+name : benchmark
+rule : /benchmark/*
+---
+occur_time : time = take(option[time]) ;
+sn : chars = take();
+dev_name : chars = take(option: [dev-name]);
+sip        : ip  = take(option: [ip]) ;
+from_zone  : chars = chars(work_zone) ;
+from_ip    :  ip =  ip(127.0.0.1) ;
+requ_uri   : chars = take(option: [chars]) ;
+
+requ_status : digit = take()  { _ : digit(404) } ;
+resp_len    : digit   =  take() { _ : digit(2048) } ;
+src_city    : chars   =  take() { _ : chars(changsha) } ;
+*  = take() ;
