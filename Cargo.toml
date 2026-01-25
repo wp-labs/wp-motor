@@ -21,7 +21,7 @@ version.workspace = true
 edition.workspace = true
 authors = ["Warp Parse Dev Team"]
 description = "High-performance data parsing and processing engine"
-license = "ELv2"
+license = "Apache-2.0"
 
 [lib]
 name = "wp_engine"
@@ -58,7 +58,7 @@ members = [
 [workspace.package]
 version = "1.10.3"
 edition = "2024"
-license = "SLv2"
+license = "Apache-2.0"
 
 # ============================================================================
 # Workspace Dependencies (Shared across all crates)
