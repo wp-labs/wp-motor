@@ -73,18 +73,13 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 ## Support
 
 - [Issues](https://github.com/wp-labs/wp-motor/issues)
-- [Discussions](https://github.com/wp-labs/wp-motor/discussions)
-- [Community Discord](https://discord.gg/wp-motor)
+- [Discussions](https://github.com/orgs/wp-labs/discussions)
 
 ---
 
 ## Warp Parse Engine（Warp 解析引擎）
 
 <div align="center">
-
-[![Rust](https://img.shields.io/badge/rust-1.74+-orange.svg)](https://www.rust-lang.org)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/wp-labs/wp-motor)
 
 用 Rust 构建的高性能数据解析和处理引擎
 
@@ -111,8 +106,7 @@ Warp Parse Engine（wp-motor）是一个高性能、模块化的数据解析和�
 ## 支持
 
 - [问题反馈](https://github.com/wp-labs/wp-motor/issues)
-- [讨论区](https://github.com/wp-labs/wp-motor/discussions)
-- [社区 Discord](https://discord.gg/wp-motor)
+- [讨论区](https://github.com/orgs/wp-labs/discussions)
 
 ---
 
