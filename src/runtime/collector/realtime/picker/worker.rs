@@ -225,6 +225,11 @@ impl SourceWorker {
                 }
                 self.picker.finish_burst_round();
                 total_round = total_round.merge(one_round);
+                stat_ext
+                    .send_stat(&self.mon_s)
+                    .await
+                    .owe_sys()
+                    .want("mon-stat")?;
                 if total_round.is_stop() {
                     break 'main;
                 }
@@ -235,6 +240,7 @@ impl SourceWorker {
             }
             if last_stat_tick.elapsed() >= stat_interval {
                 // 仅周期性打印 pending 水位，以降低日志噪声
+                last_stat_tick = Instant::now();
                 info_mtrc!(
                     "{} pick-pending cnt: {}",
                     rt_name,
@@ -245,7 +251,6 @@ impl SourceWorker {
                     .await
                     .owe_sys()
                     .want("mon-stat")?;
-                last_stat_tick = Instant::now();
             }
             // 外层根据“限速/等待”计算应休眠的时间，避免在数据路径处直接 sleep
             let sleep_dur = self.calc_sleep_duration(&total_round, &task_ctrl);

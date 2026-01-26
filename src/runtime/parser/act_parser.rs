@@ -73,6 +73,7 @@ impl ActParser {
         );
         let mut stat_tick = interval(Duration::from_millis(STAT_INTERVAL_MS as u64));
         stat_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        let mut has_record = false;
         loop {
             tokio::select! {
                Some(mut batch)  = dat_recv.recv() => {
@@ -91,6 +92,7 @@ impl ActParser {
                    }
                    // 正常执行解析+下发
                    self.engine.proc_batch(batch, &setting).await?;
+                    has_record=true;
                }
                Ok(cmd) =  run_ctrl.cmds_sub_mut().recv() => { run_ctrl.update_cmd(cmd); }
               _ = sleep(Duration::from_millis(50)) => {
@@ -99,7 +101,10 @@ impl ActParser {
                   if run_ctrl.is_stop() { break; }
               }
               _ = stat_tick.tick() => {
-                  self.engine.send_stat(mon_send).await?;
+                if has_record {
+                    has_record=false;
+                    self.engine.send_stat(mon_send).await?;
+                }
               }
             }
         }
