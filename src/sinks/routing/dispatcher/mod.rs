@@ -74,6 +74,9 @@ impl SinkDispatcher {
     pub fn get_dat_r_mut(&mut self) -> &mut SinkDatYReceiver {
         &mut self.dat_r
     }
+    pub fn get_sinks_mut(&mut self) -> &mut Vec<SinkRuntime> {
+        &mut self.sinks
+    }
     pub fn close_channel(&mut self) {
         self.dat_r.close();
     }
