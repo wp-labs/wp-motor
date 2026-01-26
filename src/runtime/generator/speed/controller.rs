@@ -370,7 +370,7 @@ mod tests {
     #[test]
     fn test_stepped_loop_forever() {
         let mut ctrl = DynamicSpeedController::new(SpeedProfile::Stepped {
-            steps: vec![(0.3, 1000), (0.3, 2000)],
+            steps: vec![(1.0, 1000), (1.0, 2000)],
             loop_forever: true,
         });
 
@@ -378,11 +378,11 @@ mod tests {
         assert_eq!(ctrl.current_speed(), 1000);
 
         // 等待进入第二阶段
-        sleep(Duration::from_millis(350));
+        sleep(Duration::from_millis(1000));
         assert_eq!(ctrl.current_speed(), 2000);
 
         // 循环回到第一阶段
-        sleep(Duration::from_millis(350));
+        sleep(Duration::from_millis(1000));
         assert_eq!(ctrl.current_speed(), 1000);
     }
 

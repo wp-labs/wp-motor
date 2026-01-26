@@ -2,6 +2,8 @@ use crate::facade::test_helpers::SinkTerminal;
 use crate::resources::ResManager;
 use crate::resources::SinkID;
 use crate::runtime::prelude::*;
+use tokio::time::MissedTickBehavior;
+use tokio::time::interval;
 use wp_connector_api::AsyncCtrl;
 use wp_data_model::cache::FieldQueryCache;
 
@@ -18,7 +20,7 @@ use crate::sinks::{
     SinkPackage,
 };
 use crate::sinks::{InfraSinkAgent, SinkGroupAgent};
-use crate::stat::MonSend;
+use crate::stat::{MonSend, STAT_INTERVAL_MS};
 use orion_error::ContextRecord;
 use orion_error::OperationContext;
 use orion_overload::append::Appendable;
@@ -148,6 +150,10 @@ impl SinkWork {
         let sink_name = sink.get_name().to_string();
         ctx.record("name", name);
         let mut drain_state = DrainState::new(1);
+
+        let mut stat_tick = interval(Duration::from_millis(STAT_INTERVAL_MS as u64));
+        stat_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        let mut need_send_stat = false;
         loop {
             tokio::select! {
                 pkg_opt = sink.get_dat_r_mut().recv() => {
@@ -161,6 +167,7 @@ impl SinkWork {
                             } else {
                                 run_ctrl.rec_task_idle();
                             }
+                            need_send_stat=true;
                         }
                         None => {
                             match drain_state.channel_closed_is_drained() {
@@ -203,7 +210,20 @@ impl SinkWork {
                 Some(h) = fix_sink_r.recv(), if !drain_state.is_draining() => {
                     Self::proc_fix_ex(h,&mut sink,  &mon_send).await?;
                 }
+                _ = stat_tick.tick() => {
+                    if need_send_stat {
+                        need_send_stat=false;
+                        let sinks=sink.get_sinks_mut();
+                        for s in sinks.iter_mut() {
+                            s.send_stat(&mon_send).await?;
+                        }
+                    }
+                }
             }
+        }
+        let sinks = sink.get_sinks_mut();
+        for s in sinks.iter_mut() {
+            s.send_stat(&mon_send).await?;
         }
         sink.proc_end().await?;
         info_ctrl!("{} async sinks proc end", sink_name);
@@ -458,6 +478,10 @@ impl ActSink {
     ) -> anyhow::Result<()> {
         info_data!("async sinks proc start");
         let mut run_ctrl = TaskController::new("sink", self.cmd_r.clone(), None);
+
+        let mut stat_tick = interval(Duration::from_millis(STAT_INTERVAL_MS as u64));
+        stat_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        let mut need_send_stat = false;
         loop {
             tokio::select! {
                 res = dat_r.recv() => {
@@ -470,6 +494,7 @@ impl ActSink {
                                     .await?;
                                 run_ctrl.rec_task_suc();
                             }
+                            need_send_stat=true;
                         }
                         None => {
                             info_ctrl!("sink dat channel closed; exit");
@@ -488,6 +513,12 @@ impl ActSink {
                         break;
                     }
                 }
+                _ = stat_tick.tick() => {
+                    if need_send_stat {
+                        need_send_stat=false;
+                        sink_rt.send_stat(&self.mon_s).await?;
+                    }
+                }
             }
         }
         info_data!(
@@ -495,6 +526,7 @@ impl ActSink {
             run_ctrl.total_count()
         );
         sink_rt.primary.stop().await?;
+        sink_rt.send_stat(&self.mon_s).await?;
         //let snap = sink_rt.stat.swap_snap();
         //self.mon_s.send(StatSlices::Sink(snap)).await?;
 

@@ -6,6 +6,7 @@ use orion_exp::{Expression, RustSymbol};
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Instant;
 use wp_model_core::model::{DataField, fmt_def::TextFmt};
 
 use crate::runtime::errors::err4_send_to_sink;
@@ -14,8 +15,8 @@ use crate::sinks::{
     ASinkHandle, ASinkSender, SinkBackendType, SinkDataEnum, SinkFFVPackage, SinkPackage,
     SinkStrPackage,
 };
+use crate::stat::MonSend;
 use crate::stat::metric_collect::MetricCollectors;
-use crate::stat::{MonSend, STAT_INTERVAL_MS};
 use wp_conf::structure::SinkInstanceConf;
 use wp_connector_api::{SinkReason, SinkResult};
 use wp_error::error_handling::{ErrorHandlingStrategy, sys_robust_mode};
@@ -29,8 +30,6 @@ use wp_stat::StatReq;
 use wp_stat::TimedStat;
 
 use super::stat::RuntimeStautus;
-
-const STAT_TIMER_POLL_BATCH: u8 = 10;
 
 #[derive(Getters)]
 pub struct SinkRuntime {
@@ -48,6 +47,7 @@ pub struct SinkRuntime {
     timer: TimedStat,
     backup_used: bool,
     timer_poll_ticks: u8,
+    last_stat_sent_at: Instant,
 }
 
 impl SinkRuntime {
@@ -78,6 +78,7 @@ impl SinkRuntime {
             timer: TimedStat::new(),
             backup_used: false,
             timer_poll_ticks: 0,
+            last_stat_sent_at: Instant::now(),
         }
     }
     // 将配置中的 tags 解析为去重后的字段列表（后写覆盖），以降低运行期构造开销
@@ -127,18 +128,7 @@ impl SinkRuntime {
             std::mem::replace(&mut self.primary, SinkBackendType::Proxy(Box::new(back)));
         Ok(Some(old_primary))
     }
-    pub async fn timed_stat(&mut self, mon_send: &MonSend) -> AnyResult<()> {
-        self.timer_poll_ticks = self.timer_poll_ticks.wrapping_add(1);
-        if self.timer_poll_ticks < STAT_TIMER_POLL_BATCH {
-            return Ok(());
-        }
-        self.timer_poll_ticks = 0;
-        if self.timer.over_reset_timed_millis(STAT_INTERVAL_MS as u128) {
-            self.send_stat(mon_send).await?;
-            self.timer.reset_now();
-        }
-        Ok(())
-    }
+
     pub async fn send_stat(&mut self, mon_send: &MonSend) -> SinkResult<()> {
         self.normal_stat
             .send_stat(mon_send)
@@ -181,9 +171,6 @@ impl SinkRuntime {
                 }
                 SinkDataEnum::Raw(dat) => self.primary.sink_str(dat).await,
             };
-            if let Some(mon_stat) = mon {
-                self.timed_stat(mon_stat).await.owe_res()?;
-            }
 
             //写入数据出错, 原因: sink 断连. 或 sink 失效. 处理的方案,只有重连.
             if let Err(e) = result {
@@ -248,9 +235,6 @@ impl SinkRuntime {
             match self.primary.sink_records(records).await {
                 Ok(()) => {
                     self.record_package_stats_end_rec(package);
-                    if let Some(mon_stat) = mon {
-                        self.timed_stat(mon_stat).await.owe_res()?;
-                    }
                     return Ok(());
                 }
                 Err(e) => {
@@ -305,9 +289,6 @@ impl SinkRuntime {
 
             match result {
                 Ok(()) => {
-                    if let Some(mon_stat) = mon {
-                        self.timed_stat(mon_stat).await.owe_res()?;
-                    }
                     self.record_package_stats_end_ffv(&package);
                     return Ok(());
                 }
@@ -341,9 +322,6 @@ impl SinkRuntime {
 
             match result {
                 Ok(()) => {
-                    if let Some(mon_stat) = mon {
-                        self.timed_stat(mon_stat).await.owe_res()?;
-                    }
                     self.record_package_stats_end_str(&package);
                     return Ok(());
                 }
