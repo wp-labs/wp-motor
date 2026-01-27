@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.10.0 Unreleased]
+## [1.10.4 Unreleased]
+
+### Changed
+- **Dependencies**: Updated `sysinfo` requirement from 0.37 to 0.38
+- **License**: Changed license from Elastic License 2.0 to Apache 2.0
+- **Support Links**: Updated support links to point to organization discussions
+
+### Fixed
+- **Monitoring**: Repaired monitoring statistics and examples for MetricCollectors
+
+
+## [1.10.0] - 2026-01-22
 
 ### Added
 - **KvArr Parser** (`crates/wp-lang/src/eval/value/parser/protocol/kvarr.rs`): New parser for key=value array format
