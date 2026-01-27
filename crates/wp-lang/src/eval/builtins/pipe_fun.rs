@@ -355,11 +355,27 @@ impl SplitInnerSrcFunc {
         mut field: Option<&mut DataField>,
         label: &'static str,
     ) -> WResult<()> {
-        let Some(proc) = self.processor() else {
-            return fail
-                .context(ctx_desc("split_to_src | processor not registered"))
-                .parse_next(&mut "");
-        };
+        let proc = self.processor();
+        if let Some(active) = field.as_deref_mut() {
+            let field_name = active.get_name().to_string();
+            if let Value::Chars(value) = active.get_value_mut() {
+                let separator = self.separator();
+                if !separator.is_empty() {
+                    let contents = value.to_string();
+                    for segment in contents.split(separator.as_str()) {
+                        if segment.is_empty() {
+                            continue;
+                        }
+                        let mut seg_field =
+                            DataField::from_chars(field_name.clone(), segment.to_string());
+                        if let Err(_msg) = proc.process(Some(&mut seg_field)) {
+                            return fail.context(ctx_desc(label)).parse_next(&mut "");
+                        }
+                    }
+                    return Ok(());
+                }
+            }
+        }
         if let Err(_msg) = proc.process(field.as_deref_mut()) {
             return fail.context(ctx_desc(label)).parse_next(&mut "");
         }
@@ -568,11 +584,15 @@ mod tests {
             "inner_append"
         }
 
-        fn process(&self, _field: Option<&mut DataField>) -> Result<(), String> {
-            INNER_BUFFER
-                .lock()
-                .expect("inner buffer")
-                .push("payload".to_string());
+        fn process(&self, field: Option<&mut DataField>) -> Result<(), String> {
+            let mut buf = INNER_BUFFER.lock().expect("inner buffer");
+            if let Some(field) = field {
+                if let Some(chars) = field.get_chars() {
+                    buf.push(chars.to_string());
+                    return Ok(());
+                }
+            }
+            buf.push("payload".to_string());
             Ok(())
         }
     }
@@ -606,8 +626,14 @@ mod tests {
         register_field_processor(FiledExtendType::InnerSource, InnerAppend);
         INNER_BUFFER.lock().unwrap().clear();
 
-        let func = SplitInnerSrcFunc::new("|".into());
-        FieldPipe::process(&func, None).expect("processor runs");
+        let func = SplitInnerSrcFunc::from_registry("|".into()).expect("inner processor");
+        let mut field = DataField::from_chars("msg".to_string(), "alpha|beta|".to_string());
+        FieldPipe::process(&func, Some(&mut field)).expect("processor runs");
+        let buf = INNER_BUFFER.lock().unwrap().clone();
+        assert_eq!(buf, vec!["alpha".to_string(), "beta".to_string()]);
+
+        INNER_BUFFER.lock().unwrap().clear();
+        FieldPipe::process(&func, None).expect("processor runs without field");
         let buf = INNER_BUFFER.lock().unwrap().clone();
         assert_eq!(buf, vec!["payload".to_string()]);
 

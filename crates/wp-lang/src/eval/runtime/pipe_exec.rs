@@ -155,9 +155,9 @@ mod tests {
         exec.add_pipe(PipeEnum::Fun(WplFun::VecToSrc(
             VecToSrcFunc::from_registry(FiledExtendType::InnerSource).expect("vec processor"),
         )));
-        exec.add_pipe(PipeEnum::Fun(WplFun::SplitToSrc(SplitInnerSrcFunc::new(
-            "|".into(),
-        ))));
+        exec.add_pipe(PipeEnum::Fun(WplFun::SplitToSrc(
+            SplitInnerSrcFunc::from_registry("|".into()).expect("inner processor"),
+        )));
 
         let mut fields = vec![DataField::from_chars("msg".to_string(), "body".to_string())];
         exec.execute(&mut fields).expect("executor runs");

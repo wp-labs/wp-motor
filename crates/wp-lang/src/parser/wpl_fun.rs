@@ -253,7 +253,7 @@ impl Fun1Builder for SplitInnerSrcFunc {
     }
 
     fn build(args: Self::ARG1) -> Self {
-        SplitInnerSrcFunc::new(args)
+        SplitInnerSrcFunc::from_registry(args).expect("split_to_src processor not registered")
     }
 }
 

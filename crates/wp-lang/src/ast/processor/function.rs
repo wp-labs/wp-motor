@@ -1,4 +1,3 @@
-use once_cell::sync::OnceCell;
 use smol_str::SmolStr;
 use std::{fmt, net::IpAddr, sync::Arc};
 
@@ -144,7 +143,7 @@ pub struct VecToSrcFunc {
 #[derive(Clone)]
 pub struct SplitInnerSrcFunc {
     sep_op: SmolStr,
-    processor: Arc<OnceCell<Arc<dyn FieldProcessor>>>,
+    processor: Arc<dyn FieldProcessor>,
 }
 
 impl ExtPassFunc {
@@ -174,25 +173,23 @@ impl VecToSrcFunc {
 }
 
 impl SplitInnerSrcFunc {
-    pub fn new(separator: SmolStr) -> Self {
+    pub fn new(separator: SmolStr, processor: Arc<dyn FieldProcessor>) -> Self {
         Self {
             sep_op: separator,
-            processor: Arc::new(OnceCell::new()),
+            processor,
         }
+    }
+
+    pub fn from_registry(separator: SmolStr) -> Option<Self> {
+        first_field_processor(FiledExtendType::InnerSource).map(|proc| Self::new(separator, proc))
     }
 
     pub fn separator(&self) -> &SmolStr {
         &self.sep_op
     }
 
-    pub fn processor(&self) -> Option<Arc<dyn FieldProcessor>> {
-        if let Some(proc) = self.processor.get() {
-            return Some(proc.clone());
-        }
-        first_field_processor(FiledExtendType::InnerSource).map(|proc| {
-            let _ = self.processor.set(proc.clone());
-            proc
-        })
+    pub fn processor(&self) -> Arc<dyn FieldProcessor> {
+        self.processor.clone()
     }
 }
 
