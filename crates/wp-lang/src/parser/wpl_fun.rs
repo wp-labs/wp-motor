@@ -21,12 +21,14 @@ use wp_parser::{
 use crate::ast::{
     WplFun,
     processor::{
-        CharsHas, CharsIn, CharsInArg, CharsNotHas, CharsNotHasArg, CharsValue, DigitHas,
-        DigitHasArg, DigitIn, DigitInArg, Has, HasArg, IpIn, IpInArg, SelectLast, TakeField,
-        TargetCharsHas, TargetCharsIn, TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas,
-        TargetIpIn, normalize_target,
+        Base64Decode, CharsHas, CharsIn, CharsInArg, CharsNotHas, CharsNotHasArg, CharsValue,
+        DigitHas, DigitHasArg, DigitIn, DigitInArg, ExtPassFunc, Has, HasArg, IpIn, IpInArg,
+        JsonUnescape, SelectLast, SplitInnerSrcFunc, TakeField, TargetCharsHas, TargetCharsIn,
+        TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn, VecToSrcFunc,
+        normalize_target,
     },
 };
+use crate::traits::FiledExtendType;
 
 use super::utils::take_key;
 
@@ -52,6 +54,9 @@ pub fn wpl_fun(input: &mut &str) -> WResult<WplFun> {
         call_fun_args0::<HasArg>.map(|_| WplFun::Has(Has)),
         call_fun_args0::<JsonUnescape>.map(WplFun::TransJsonUnescape),
         call_fun_args0::<Base64Decode>.map(WplFun::TransBase64Decode),
+        call_fun_args0::<VecToSrcFunc>.map(WplFun::VecToSrc),
+        call_fun_args0::<ExtPassFunc>.map(WplFun::TransExtPass),
+        call_fun_args1::<SplitInnerSrcFunc>.map(WplFun::SplitToSrc),
     ))
     .parse_next(input)?;
     Ok(fun)
@@ -196,6 +201,62 @@ impl Fun0Builder for HasArg {
         HasArg
     }
 }
+
+impl Fun0Builder for ExtPassFunc {
+    fn fun_name() -> &'static str {
+        "to_ext_pass"
+    }
+
+    fn build() -> Self {
+        ExtPassFunc::from_registry(FiledExtendType::MemChannel)
+            .expect("to_ext_pass processor not registered")
+    }
+}
+
+impl Fun0Builder for VecToSrcFunc {
+    fn fun_name() -> &'static str {
+        "vec_to_src"
+    }
+
+    fn build() -> Self {
+        VecToSrcFunc::from_registry(FiledExtendType::InnerSource)
+            .expect("vec_to_src processor not registered")
+    }
+}
+
+impl Fun1Builder for SplitInnerSrcFunc {
+    type ARG1 = SmolStr;
+
+    fn args1(data: &mut &str) -> WResult<Self::ARG1> {
+        multispace0.parse_next(data)?;
+        if let Ok(val) = take_string.parse_next(data) {
+            return Ok(val.into());
+        }
+        // 允许使用特殊符号作为分隔符，必要时剥离成对引号
+        let raw =
+            winnow::token::take_while(1.., |c: char| !c.is_whitespace() && c != ')' && c != ',')
+                .parse_next(data)?;
+        let trimmed = raw.trim();
+        let normalized = if trimmed.len() >= 2
+            && ((trimmed.starts_with('"') && trimmed.ends_with('"'))
+                || (trimmed.starts_with('\'') && trimmed.ends_with('\'')))
+        {
+            &trimmed[1..trimmed.len() - 1]
+        } else {
+            trimmed
+        };
+        Ok(normalized.into())
+    }
+
+    fn fun_name() -> &'static str {
+        "split_to_src"
+    }
+
+    fn build(args: Self::ARG1) -> Self {
+        SplitInnerSrcFunc::new(args)
+    }
+}
+
 impl Fun2Builder for TargetCharsHas {
     type ARG1 = SmolStr;
     type ARG2 = SmolStr;
@@ -347,9 +408,6 @@ impl Fun2Builder for TargetIpIn {
     }
 }
 
-// ---------------- String Mode ----------------
-use crate::ast::processor::JsonUnescape;
-
 impl Fun0Builder for JsonUnescape {
     fn fun_name() -> &'static str {
         "json_unescape"
@@ -359,8 +417,6 @@ impl Fun0Builder for JsonUnescape {
         JsonUnescape {}
     }
 }
-
-use crate::ast::processor::Base64Decode;
 impl Fun0Builder for Base64Decode {
     fn fun_name() -> &'static str {
         "base64_decode"
@@ -403,15 +459,39 @@ impl Fun0Builder for SelectLast {
 mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr};
 
+    use once_cell::sync::Lazy;
     use orion_error::TestAssert;
+    use std::sync::Mutex;
+    use wp_model_core::model::DataField;
 
     use crate::ast::processor::{Has, JsonUnescape, SelectLast, TakeField};
+    use crate::traits::{
+        FieldProcessor, FiledExtendType, clear_field_processors, register_field_processor,
+    };
 
     use super::*;
 
+    static REG_GUARD: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+    struct NoopProcessor(&'static str);
+
+    impl FieldProcessor for NoopProcessor {
+        fn name(&self) -> &'static str {
+            self.0
+        }
+
+        fn process(&self, _field: Option<&mut DataField>) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    fn parse_fun(input: &str) -> WplFun {
+        wpl_fun.parse(input).assert()
+    }
+
     #[test]
-    fn test_parse_fun() {
-        let fun = wpl_fun.parse(r#"f_has(src)"#).assert();
+    fn parse_has_and_select_functions() {
+        let fun = parse_fun("f_has(src)");
         assert_eq!(
             fun,
             WplFun::TargetHas(TargetHas {
@@ -419,29 +499,42 @@ mod tests {
             })
         );
 
-        let fun = wpl_fun.parse("has()").assert();
-        assert_eq!(fun, WplFun::Has(Has));
+        assert_eq!(parse_fun("has()"), WplFun::Has(Has));
 
-        let fun = wpl_fun.parse(r#"f_digit_in(src, [1,2,3])"#).assert();
         assert_eq!(
-            fun,
+            parse_fun("take(src)"),
+            WplFun::SelectTake(TakeField {
+                target: "src".into(),
+            })
+        );
+
+        assert_eq!(parse_fun("last()"), WplFun::SelectLast(SelectLast {}));
+    }
+
+    #[test]
+    fn parse_digit_functions() {
+        assert_eq!(
+            parse_fun(r#"f_digit_in(src, [1,2,3])"#),
             WplFun::TargetDigitIn(TargetDigitIn {
                 target: Some("src".into()),
                 value: vec![1, 2, 3]
             })
         );
 
-        let fun = wpl_fun.parse("digit_has(42)").assert();
-        assert_eq!(fun, WplFun::DigitHas(DigitHas { value: 42 }));
-
-        let fun = wpl_fun.parse("digit_in([4,5])").assert();
-        assert_eq!(fun, WplFun::DigitIn(DigitIn { value: vec![4, 5] }));
-
-        let fun = wpl_fun
-            .parse(r#"f_ip_in(src, [127.0.0.1, 127.0.0.2])"#)
-            .assert();
         assert_eq!(
-            fun,
+            parse_fun("digit_has(42)"),
+            WplFun::DigitHas(DigitHas { value: 42 })
+        );
+        assert_eq!(
+            parse_fun("digit_in([4,5])"),
+            WplFun::DigitIn(DigitIn { value: vec![4, 5] })
+        );
+    }
+
+    #[test]
+    fn parse_ip_functions() {
+        assert_eq!(
+            parse_fun(r#"f_ip_in(src, [127.0.0.1, 127.0.0.2])"#),
             WplFun::TargetIpIn(TargetIpIn {
                 target: Some("src".into()),
                 value: vec![
@@ -451,9 +544,8 @@ mod tests {
             })
         );
 
-        let fun = wpl_fun.parse(r#"ip_in([127.0.0.1,::1])"#).assert();
         assert_eq!(
-            fun,
+            parse_fun(r#"ip_in([127.0.0.1,::1])"#),
             WplFun::IpIn(IpIn {
                 value: vec![
                     IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
@@ -462,12 +554,8 @@ mod tests {
             })
         );
 
-        // IPv6 裸字面量与混合示例
-        let fun = wpl_fun
-            .parse(r#"f_ip_in(src, [::1, 2001:db8::1])"#)
-            .assert();
         assert_eq!(
-            fun,
+            parse_fun(r#"f_ip_in(src, [::1, 2001:db8::1])"#),
             WplFun::TargetIpIn(TargetIpIn {
                 target: Some("src".into()),
                 value: vec![
@@ -476,66 +564,84 @@ mod tests {
                 ]
             })
         );
+    }
 
-        let fun = wpl_fun.parse("json_unescape()").assert();
-        assert_eq!(fun, WplFun::TransJsonUnescape(JsonUnescape {}));
-
+    #[test]
+    fn parse_transform_functions() {
+        assert_eq!(
+            parse_fun("json_unescape()"),
+            WplFun::TransJsonUnescape(JsonUnescape {})
+        );
         assert!(wpl_fun.parse("json_unescape(decoded)").is_err());
 
-        let fun = wpl_fun.parse("take(src)").assert();
         assert_eq!(
-            fun,
-            WplFun::SelectTake(TakeField {
-                target: "src".into(),
-            })
+            parse_fun("base64_decode()"),
+            WplFun::TransBase64Decode(Base64Decode {})
         );
+        assert!(wpl_fun.parse("base64_decode(decoded)").is_err());
+    }
 
-        let fun = wpl_fun.parse("last()").assert();
-        assert_eq!(fun, WplFun::SelectLast(SelectLast {}));
-
-        let fun = wpl_fun.parse("f_chars_has(_, foo)").assert();
+    #[test]
+    fn parse_char_functions() {
         assert_eq!(
-            fun,
+            parse_fun("f_chars_has(_, foo)"),
             WplFun::TargetCharsHas(TargetCharsHas {
                 target: None,
                 value: "foo".into(),
             })
         );
 
-        let fun = wpl_fun.parse("chars_has(bar)").assert();
         assert_eq!(
-            fun,
+            parse_fun("chars_has(bar)"),
             WplFun::CharsHas(CharsHas {
                 value: "bar".into(),
             })
         );
 
-        let fun = wpl_fun.parse("chars_has(中文)").assert();
         assert_eq!(
-            fun,
+            parse_fun("chars_has(中文)"),
             WplFun::CharsHas(CharsHas {
                 value: "中文".into(),
             })
         );
 
-        let fun = wpl_fun.parse("chars_not_has(baz)").assert();
         assert_eq!(
-            fun,
+            parse_fun("chars_not_has(baz)"),
             WplFun::CharsNotHas(CharsNotHas {
                 value: "baz".into(),
             })
         );
 
-        let fun = wpl_fun.parse("chars_in([foo,bar])").assert();
         assert_eq!(
-            fun,
+            parse_fun("chars_in([foo,bar])"),
             WplFun::CharsIn(CharsIn {
                 value: vec!["foo".into(), "bar".into()],
             })
         );
+    }
 
-        let fun = wpl_fun.parse("base64_decode()").assert();
-        assert_eq!(fun, WplFun::TransBase64Decode(Base64Decode {}));
-        assert!(wpl_fun.parse("base64_decode(decoded)").is_err());
+    #[test]
+    fn parse_extension_functions() {
+        let _lock = REG_GUARD.lock().unwrap();
+        clear_field_processors();
+        register_field_processor(FiledExtendType::MemChannel, NoopProcessor("ext_proc"));
+        register_field_processor(FiledExtendType::InnerSource, NoopProcessor("|"));
+
+        assert!(matches!(
+            parse_fun("to_ext_pass()"),
+            WplFun::TransExtPass(_)
+        ));
+        assert!(matches!(parse_fun("vec_to_src()"), WplFun::VecToSrc(_)));
+
+        match parse_fun("split_to_src(|)") {
+            WplFun::SplitToSrc(func) => assert_eq!(func.separator(), "|"),
+            other => panic!("unexpected fun: {:?}", other),
+        }
+        match parse_fun("split_to_src('|')") {
+            WplFun::SplitToSrc(func) => assert_eq!(func.separator(), "|"),
+            other => panic!("unexpected fun: {:?}", other),
+        }
+
+        clear_field_processors();
     }
 }

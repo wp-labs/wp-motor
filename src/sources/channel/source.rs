@@ -1,34 +1,166 @@
-use super::chunk_reader::ChunkedLineReader;
 use crate::sources::event_id::next_event_id;
 use async_trait::async_trait;
-use base64::Engine;
-use base64::engine::general_purpose;
-use bytes::Bytes;
-use orion_conf::{ErrorWith, UvsConfFrom};
-use orion_error::ToStructError;
 use std::sync::Arc;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{self, Receiver, Sender, error::TryRecvError};
 use wp_connector_api::{
     DataSource, SourceBatch, SourceError, SourceEvent, SourceReason, SourceResult, Tags,
 };
 use wp_parse_api::RawData;
 
-#[derive(Debug, Clone)]
-pub enum FileEncoding {
-    Text,
-    Base64,
-    Hex,
-}
+use super::factory::unregister_channel_sender;
 
-const DEFAULT_BATCH_LINES: usize = 128;
-const DEFAULT_BATCH_BYTES: usize = 400 * 1024;
-const DEFAULT_CHUNK_BYTES: usize = 64 * 1024;
-const MIN_CHUNK_BYTES: usize = 4 * 1024;
-const MAX_CHUNK_BYTES: usize = 128 * 1024;
+pub(super) const DEFAULT_CHANNEL_BATCH: usize = 128;
 
+/// 内存 channel 数据源，允许通过 Sender 注入行数据供解析链条消费。
 pub struct ChannelSource {
     pub(super) key: String,
     pub(super) base_tags: Tags,
-    sender: Sender<String>,
+    sender: Option<Sender<String>>,
     recevr: Receiver<String>,
+    batch_limit: usize,
+}
+
+impl ChannelSource {
+    /// 使用手动提供的 sender/receiver 构造 channel source。
+    pub fn from_parts(
+        key: impl Into<String>,
+        tags: Tags,
+        sender: Sender<String>,
+        recevr: Receiver<String>,
+    ) -> Self {
+        Self {
+            key: key.into(),
+            base_tags: tags,
+            sender: Some(sender),
+            recevr,
+            batch_limit: DEFAULT_CHANNEL_BATCH,
+        }
+    }
+
+    /// 创建具备内部 channel 的 source，自动根据容量生成 Sender/Receiver。
+    pub fn with_capacity(key: impl Into<String>, tags: Tags, capacity: usize) -> Self {
+        let (sender, recevr) = mpsc::channel(capacity.max(1));
+        Self::from_parts(key, tags, sender, recevr)
+    }
+
+    /// 获取一个可写端副本，用于外部生产者推入原始字符串。
+    pub fn sender(&self) -> Sender<String> {
+        self.sender
+            .as_ref()
+            .expect("channel sender already closed")
+            .clone()
+    }
+
+    /// 主动关闭输入端，确保缓冲耗尽后 `receive` 返回 EOF。
+    pub fn close_input(&mut self) {
+        self.sender.take();
+        unregister_channel_sender(&self.key);
+    }
+
+    /// 调整单批次最大聚合行数，最小值 1。
+    pub fn set_batch_limit(&mut self, limit: usize) {
+        self.batch_limit = limit.max(1);
+    }
+
+    fn build_event(&self, payload: String) -> SourceEvent {
+        SourceEvent::new(
+            next_event_id(),
+            &self.key,
+            RawData::String(payload),
+            Arc::new(self.base_tags.clone()),
+        )
+    }
+
+    fn drain_ready(&mut self, batch: &mut SourceBatch) {
+        while batch.len() < self.batch_limit {
+            match self.recevr.try_recv() {
+                Ok(line) => batch.push(self.build_event(line)),
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => break,
+            }
+        }
+    }
+}
+
+impl Drop for ChannelSource {
+    fn drop(&mut self) {
+        unregister_channel_sender(&self.key);
+    }
+}
+
+#[async_trait]
+impl DataSource for ChannelSource {
+    async fn receive(&mut self) -> SourceResult<SourceBatch> {
+        let mut batch = SourceBatch::with_capacity(self.batch_limit);
+        let Some(line) = self.recevr.recv().await else {
+            return Err(SourceError::from(SourceReason::EOF));
+        };
+        batch.push(self.build_event(line));
+        self.drain_ready(&mut batch);
+        Ok(batch)
+    }
+
+    fn try_receive(&mut self) -> Option<SourceBatch> {
+        match self.recevr.try_recv() {
+            Ok(line) => {
+                let mut batch = SourceBatch::with_capacity(self.batch_limit);
+                batch.push(self.build_event(line));
+                self.drain_ready(&mut batch);
+                Some(batch)
+            }
+            Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => None,
+        }
+    }
+
+    fn can_try_receive(&mut self) -> bool {
+        true
+    }
+
+    fn identifier(&self) -> String {
+        self.key.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ChannelSource;
+    use tokio::time::Duration;
+    use wp_connector_api::{DataSource, SourceReason, Tags};
+
+    #[tokio::test]
+    async fn receive_batches_multiple_messages() {
+        let mut source = ChannelSource::with_capacity("chan", Tags::default(), 8);
+        let tx = source.sender();
+        tx.send("first".into()).await.unwrap();
+        tx.send("second".into()).await.unwrap();
+
+        let batch = source.receive().await.expect("batch");
+        assert_eq!(batch.len(), 2);
+        let payloads: Vec<String> = batch
+            .into_iter()
+            .map(|evt| evt.payload.to_string())
+            .collect();
+        assert_eq!(payloads, vec!["first", "second"]);
+    }
+
+    #[tokio::test]
+    async fn try_receive_is_non_blocking() {
+        let mut source = ChannelSource::with_capacity("chan", Tags::default(), 4);
+        let tx = source.sender();
+        tx.send("only".into()).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        let batch = source.try_receive().expect("batch");
+        assert_eq!(batch.len(), 1);
+        assert_eq!(batch[0].payload.to_string(), "only");
+    }
+
+    #[tokio::test]
+    async fn receive_returns_eof_after_close() {
+        let mut source = ChannelSource::with_capacity("chan", Tags::default(), 1);
+        source.close_input();
+        match source.receive().await {
+            Err(err) => assert!(matches!(err.reason(), SourceReason::EOF)),
+            Ok(_) => panic!("expected eof"),
+        }
+    }
 }

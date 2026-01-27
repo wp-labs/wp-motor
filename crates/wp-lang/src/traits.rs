@@ -1,5 +1,5 @@
 use std::sync::Arc;
-
+use wp_model_core::model::DataField;
 use wp_parse_api::{RawData, WparseResult};
 
 /// Trait for pipeline data processing operations.
@@ -28,3 +28,17 @@ pub trait PipeProcessor {
 }
 
 pub type PipeHold = Arc<dyn PipeProcessor + Send + Sync>;
+
+/// Hook interface for mutating/validating parsed WPL 字段。
+pub trait FieldProcessor: Send + Sync + 'static {
+    /// 注册名称（区分大小写）。
+    fn name(&self) -> &'static str;
+    /// 对解析完成的字段执行自定义处理；返回 Err 表示解析失败。
+    fn process(&self, field: Option<&mut DataField>) -> Result<(), String>;
+}
+#[cfg(test)]
+pub(crate) use crate::extend::field_processor::clear_field_processors;
+pub use crate::extend::field_processor::{
+    FiledExtendType, PassProcessor, first_field_processor, get_field_processor,
+    list_field_processors, register_field_processor,
+};

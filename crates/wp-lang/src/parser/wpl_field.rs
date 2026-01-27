@@ -268,7 +268,6 @@ fn wpl_field_impl(input: &mut &str) -> ModalResult<WplField> {
     conf.fmt_conf = fmt_conf;
 
     conf.setup();
-
     Ok(conf)
 }
 

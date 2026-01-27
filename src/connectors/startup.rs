@@ -17,6 +17,8 @@ pub fn init_runtime_registries() {
     crate::sources::tcp::register_tcp_factory();
     // file factory explicit path
     crate::sources::file::register_factory_only();
+    // in-memory channel factory
+    crate::sources::channel::register_channel_factory();
 
     // 3) log final kinds
     log_registered_kinds();

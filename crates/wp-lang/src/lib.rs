@@ -11,11 +11,12 @@ pub mod parser;
 #[macro_use]
 pub mod macro_def;
 //mod checker;
+mod extend;
 pub mod generator;
 mod pkg;
 pub mod precompile;
 mod setting;
-//pub mod traits;
+pub mod traits;
 pub mod types;
 pub mod util;
 //pub mod wasm;

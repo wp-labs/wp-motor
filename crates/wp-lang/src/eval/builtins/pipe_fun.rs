@@ -1,8 +1,8 @@
 use crate::ast::WplFun;
 use crate::ast::processor::{
-    Base64Decode, CharsHas, CharsIn, CharsNotHas, DigitHas, DigitIn, Has, IpIn, JsonUnescape,
-    SelectLast, TakeField, TargetCharsHas, TargetCharsIn, TargetCharsNotHas, TargetDigitHas,
-    TargetDigitIn, TargetHas, TargetIpIn,
+    Base64Decode, CharsHas, CharsIn, CharsNotHas, DigitHas, DigitIn, ExtPassFunc, Has, IpIn,
+    JsonUnescape, SelectLast, SplitInnerSrcFunc, TakeField, TargetCharsHas, TargetCharsIn,
+    TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn, VecToSrcFunc,
 };
 use crate::eval::runtime::field_pipe::{FieldIndex, FieldPipe, FieldSelector, FieldSelectorSpec};
 use base64::Engine;
@@ -313,6 +313,78 @@ impl FieldPipe for Base64Decode {
     }
 }
 
+impl ExtPassFunc {
+    fn process_with_label(
+        &self,
+        mut field: Option<&mut DataField>,
+        label: &'static str,
+    ) -> WResult<()> {
+        if let Err(_msg) = self.processor.process(field.as_deref_mut()) {
+            return fail.context(ctx_desc(label)).parse_next(&mut "");
+        }
+        Ok(())
+    }
+}
+
+impl VecToSrcFunc {
+    fn process_with_label(
+        &self,
+        mut field: Option<&mut DataField>,
+        label: &'static str,
+    ) -> WResult<()> {
+        if let Some(active) = field.as_deref_mut() {
+            if let Value::Array(items) = active.get_value_mut() {
+                for item in items.iter_mut() {
+                    if let Err(_msg) = self.processor.process(Some(item)) {
+                        return fail.context(ctx_desc(label)).parse_next(&mut "");
+                    }
+                }
+                return Ok(());
+            }
+        }
+        if let Err(_msg) = self.processor.process(field.as_deref_mut()) {
+            return fail.context(ctx_desc(label)).parse_next(&mut "");
+        }
+        Ok(())
+    }
+}
+
+impl SplitInnerSrcFunc {
+    fn process_with_label(
+        &self,
+        mut field: Option<&mut DataField>,
+        label: &'static str,
+    ) -> WResult<()> {
+        let Some(proc) = self.processor() else {
+            return fail
+                .context(ctx_desc("split_to_src | processor not registered"))
+                .parse_next(&mut "");
+        };
+        if let Err(_msg) = proc.process(field.as_deref_mut()) {
+            return fail.context(ctx_desc(label)).parse_next(&mut "");
+        }
+        Ok(())
+    }
+}
+
+impl FieldPipe for ExtPassFunc {
+    fn process(&self, field: Option<&mut DataField>) -> WResult<()> {
+        self.process_with_label(field, "to_ext_pass | processor failed")
+    }
+}
+
+impl FieldPipe for VecToSrcFunc {
+    fn process(&self, field: Option<&mut DataField>) -> WResult<()> {
+        self.process_with_label(field, "vec_to_src | processor failed")
+    }
+}
+
+impl FieldPipe for SplitInnerSrcFunc {
+    fn process(&self, field: Option<&mut DataField>) -> WResult<()> {
+        self.process_with_label(field, "split_to_src | processor failed")
+    }
+}
+
 impl WplFun {
     pub fn as_field_pipe(&self) -> Option<&dyn FieldPipe> {
         match self {
@@ -333,6 +405,9 @@ impl WplFun {
             WplFun::Has(fun) => Some(fun),
             WplFun::TransJsonUnescape(fun) => Some(fun),
             WplFun::TransBase64Decode(fun) => Some(fun),
+            WplFun::VecToSrc(fun) => Some(fun),
+            WplFun::TransExtPass(fun) => Some(fun),
+            WplFun::SplitToSrc(fun) => Some(fun),
         }
     }
 
@@ -410,6 +485,15 @@ fn value_base64_decode(v: &mut Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::eval::runtime::field_pipe::FieldPipe;
+    use crate::traits::{
+        FieldProcessor, FiledExtendType, clear_field_processors, register_field_processor,
+    };
+    use once_cell::sync::Lazy;
+    use std::sync::Mutex;
+
+    static REG_GUARD: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+    static INNER_BUFFER: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
     #[test]
     fn base64_decode_successfully_rewrites_chars_field() {
@@ -457,5 +541,130 @@ mod tests {
             r"line1\qline2".to_string(),
         )];
         assert!(JsonUnescape {}.process(fields.get_mut(0)).is_err());
+    }
+
+    struct AppendExtra;
+
+    impl FieldProcessor for AppendExtra {
+        fn name(&self) -> &'static str {
+            "append_extra"
+        }
+
+        fn process(&self, field: Option<&mut DataField>) -> Result<(), String> {
+            if let Some(field) = field {
+                if let Some(chars) = field.get_chars() {
+                    let updated = format!("{}|processed", chars);
+                    field.value = Value::from(updated.as_str());
+                }
+            }
+            Ok(())
+        }
+    }
+
+    struct InnerAppend;
+
+    impl FieldProcessor for InnerAppend {
+        fn name(&self) -> &'static str {
+            "inner_append"
+        }
+
+        fn process(&self, _field: Option<&mut DataField>) -> Result<(), String> {
+            INNER_BUFFER
+                .lock()
+                .expect("inner buffer")
+                .push("payload".to_string());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn ext_pass_executes_registered_processor_and_collects_extra_fields() {
+        let _lock = REG_GUARD.lock().unwrap();
+        clear_field_processors();
+        register_field_processor(FiledExtendType::MemChannel, AppendExtra);
+
+        let func =
+            ExtPassFunc::from_registry(FiledExtendType::MemChannel).expect("processor registered");
+        let mut field = DataField::from_chars("msg".to_string(), "body".to_string());
+        FieldPipe::process(&func, Some(&mut field)).expect("processor runs");
+        assert_eq!(field.get_chars(), Some("body|processed"));
+
+        clear_field_processors();
+    }
+
+    #[test]
+    fn ext_pass_is_none_if_processor_missing() {
+        let _lock = REG_GUARD.lock().unwrap();
+        clear_field_processors();
+        assert!(ExtPassFunc::from_registry(FiledExtendType::MemChannel).is_none());
+    }
+
+    #[test]
+    fn split_to_src_executes_registered_processor() {
+        let _lock = REG_GUARD.lock().unwrap();
+        clear_field_processors();
+        register_field_processor(FiledExtendType::InnerSource, InnerAppend);
+        INNER_BUFFER.lock().unwrap().clear();
+
+        let func = SplitInnerSrcFunc::new("|".into());
+        FieldPipe::process(&func, None).expect("processor runs");
+        let buf = INNER_BUFFER.lock().unwrap().clone();
+        assert_eq!(buf, vec!["payload".to_string()]);
+
+        clear_field_processors();
+    }
+
+    #[test]
+    fn vec_to_src_executes_registered_processor() {
+        let _lock = REG_GUARD.lock().unwrap();
+        clear_field_processors();
+        register_field_processor(FiledExtendType::InnerSource, InnerAppend);
+        INNER_BUFFER.lock().unwrap().clear();
+
+        let func = VecToSrcFunc::from_registry(FiledExtendType::InnerSource)
+            .expect("processor registered");
+        FieldPipe::process(&func, None).expect("processor runs");
+        let buf = INNER_BUFFER.lock().unwrap().clone();
+        assert_eq!(buf, vec!["payload".to_string()]);
+
+        clear_field_processors();
+    }
+
+    struct CollectChars;
+
+    impl FieldProcessor for CollectChars {
+        fn name(&self) -> &'static str {
+            "collect_chars"
+        }
+
+        fn process(&self, field: Option<&mut DataField>) -> Result<(), String> {
+            if let Some(field) = field {
+                if let Some(chars) = field.get_chars() {
+                    INNER_BUFFER.lock().unwrap().push(chars.to_string());
+                }
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn vec_to_src_processes_each_array_element() {
+        let _lock = REG_GUARD.lock().unwrap();
+        clear_field_processors();
+        register_field_processor(FiledExtendType::InnerSource, CollectChars);
+        INNER_BUFFER.lock().unwrap().clear();
+
+        let func = VecToSrcFunc::from_registry(FiledExtendType::InnerSource)
+            .expect("processor registered");
+        let sources = vec![
+            DataField::from_chars("msg", "one"),
+            DataField::from_chars("msg", "two"),
+        ];
+        let mut field = DataField::from_arr("msgs", sources);
+        FieldPipe::process(&func, Some(&mut field)).expect("processor runs");
+        let buf = INNER_BUFFER.lock().unwrap().clone();
+        assert_eq!(buf, vec!["one".to_string(), "two".to_string()]);
+
+        clear_field_processors();
     }
 }

@@ -1,6 +1,8 @@
-use std::net::IpAddr;
-
+use once_cell::sync::OnceCell;
 use smol_str::SmolStr;
+use std::{fmt, net::IpAddr, sync::Arc};
+
+use crate::traits::{FieldProcessor, FiledExtendType, first_field_processor};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CharsValue(pub(crate) SmolStr);
@@ -127,6 +129,114 @@ pub struct JsonUnescape {}
 #[derive(Clone, Debug, PartialEq)]
 pub struct Base64Decode {}
 
+#[derive(Clone)]
+pub struct ExtPassFunc {
+    pub(crate) extend_type: FiledExtendType,
+    pub(crate) processor: Arc<dyn FieldProcessor>,
+}
+
+#[derive(Clone)]
+pub struct VecToSrcFunc {
+    pub(crate) extend_type: FiledExtendType,
+    pub(crate) processor: Arc<dyn FieldProcessor>,
+}
+
+#[derive(Clone)]
+pub struct SplitInnerSrcFunc {
+    sep_op: SmolStr,
+    processor: Arc<OnceCell<Arc<dyn FieldProcessor>>>,
+}
+
+impl ExtPassFunc {
+    pub fn new(extend_type: FiledExtendType, processor: Arc<dyn FieldProcessor>) -> Self {
+        Self {
+            extend_type,
+            processor,
+        }
+    }
+
+    pub fn from_registry(extend_type: FiledExtendType) -> Option<Self> {
+        first_field_processor(extend_type).map(|proc| Self::new(extend_type, proc))
+    }
+}
+
+impl VecToSrcFunc {
+    pub fn new(extend_type: FiledExtendType, processor: Arc<dyn FieldProcessor>) -> Self {
+        Self {
+            extend_type,
+            processor,
+        }
+    }
+
+    pub fn from_registry(extend_type: FiledExtendType) -> Option<Self> {
+        first_field_processor(extend_type).map(|proc| Self::new(extend_type, proc))
+    }
+}
+
+impl SplitInnerSrcFunc {
+    pub fn new(separator: SmolStr) -> Self {
+        Self {
+            sep_op: separator,
+            processor: Arc::new(OnceCell::new()),
+        }
+    }
+
+    pub fn separator(&self) -> &SmolStr {
+        &self.sep_op
+    }
+
+    pub fn processor(&self) -> Option<Arc<dyn FieldProcessor>> {
+        if let Some(proc) = self.processor.get() {
+            return Some(proc.clone());
+        }
+        first_field_processor(FiledExtendType::InnerSource).map(|proc| {
+            let _ = self.processor.set(proc.clone());
+            proc
+        })
+    }
+}
+
+impl fmt::Debug for ExtPassFunc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExtPassFunc")
+            .field("extend_type", &self.extend_type)
+            .finish()
+    }
+}
+
+impl fmt::Debug for SplitInnerSrcFunc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SplitInnerSrcFunc")
+            .field("separator", &self.sep_op)
+            .finish()
+    }
+}
+
+impl fmt::Debug for VecToSrcFunc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("VecToSrcFunc")
+            .field("extend_type", &self.extend_type)
+            .finish()
+    }
+}
+
+impl PartialEq for ExtPassFunc {
+    fn eq(&self, other: &Self) -> bool {
+        self.extend_type == other.extend_type
+    }
+}
+
+impl PartialEq for SplitInnerSrcFunc {
+    fn eq(&self, other: &Self) -> bool {
+        self.sep_op == other.sep_op
+    }
+}
+
+impl PartialEq for VecToSrcFunc {
+    fn eq(&self, other: &Self) -> bool {
+        self.extend_type == other.extend_type
+    }
+}
 // ============ Field Selector Functions ============
 
 #[derive(Clone, Debug, PartialEq)]

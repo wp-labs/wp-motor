@@ -94,6 +94,82 @@ fn process_group_pipe(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::{
+        WplFun,
+        processor::{ExtPassFunc, SplitInnerSrcFunc, VecToSrcFunc},
+    };
+    use crate::traits::{
+        FieldProcessor, FiledExtendType, clear_field_processors, register_field_processor,
+    };
+    use once_cell::sync::Lazy;
+    use std::sync::Mutex;
+
+    static REG_GUARD: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+    static INNER_BUFFER: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
+    struct MockAppend;
+    struct MockInner;
+
+    impl FieldProcessor for MockAppend {
+        fn name(&self) -> &'static str {
+            "mock_append"
+        }
+
+        fn process(&self, field: Option<&mut DataField>) -> Result<(), String> {
+            if let Some(field) = field {
+                field.value = Value::from("modified");
+            }
+            Ok(())
+        }
+    }
+
+    impl FieldProcessor for MockInner {
+        fn name(&self) -> &'static str {
+            "mock_inner"
+        }
+
+        fn process(&self, _field: Option<&mut DataField>) -> Result<(), String> {
+            INNER_BUFFER
+                .lock()
+                .expect("inner buffer")
+                .push("next".to_string());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn execute_handles_ext_pass_function() {
+        let _lock = REG_GUARD.lock().unwrap();
+        clear_field_processors();
+        register_field_processor(FiledExtendType::MemChannel, MockAppend);
+        register_field_processor(FiledExtendType::InnerSource, MockInner);
+        INNER_BUFFER.lock().unwrap().clear();
+
+        let mut exec = PipeExecutor::new();
+        exec.add_pipe(PipeEnum::Fun(WplFun::TransExtPass(
+            ExtPassFunc::from_registry(FiledExtendType::MemChannel).expect("ext processor"),
+        )));
+        exec.add_pipe(PipeEnum::Fun(WplFun::VecToSrc(
+            VecToSrcFunc::from_registry(FiledExtendType::InnerSource).expect("vec processor"),
+        )));
+        exec.add_pipe(PipeEnum::Fun(WplFun::SplitToSrc(SplitInnerSrcFunc::new(
+            "|".into(),
+        ))));
+
+        let mut fields = vec![DataField::from_chars("msg".to_string(), "body".to_string())];
+        exec.execute(&mut fields).expect("executor runs");
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].get_chars(), Some("modified"));
+        let buf = INNER_BUFFER.lock().unwrap().clone();
+        assert_eq!(buf, vec!["next".to_string(), "next".to_string()]);
+
+        clear_field_processors();
+    }
+}
+
 struct FieldCursor {
     active_idx: Option<usize>,
     index: Option<FieldIndex>,
