@@ -63,7 +63,7 @@ impl FieldProcessor for ChannelSenderProcessor {
 }
 
 /// 为 ChannelSource 注册 FieldProcessor：
-/// - `FiledExtendType::InnerSource` 供 `vec_to_src()`/`split_to_src()` 使用
+/// - `FiledExtendType::InnerSource` 供 `send_to_src()`/`split_to_src()` 使用
 pub fn register_channel_field_processors(name: &str) {
     let channel = name.to_string();
     let inner_proc = ChannelSenderProcessor::new(CHANNEL_FIELD_PROCESSOR, channel);

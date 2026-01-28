@@ -99,13 +99,14 @@ mod tests {
     use super::*;
     use crate::ast::{
         WplFun,
-        processor::{ExtPassFunc, SplitInnerSrcFunc, VecToSrcFunc},
+        processor::{ExtPassFunc, SendtoSrcFunc, SplitInnerSrcFunc},
     };
     use crate::traits::{
         FieldProcessor, FiledExtendType, clear_field_processors, register_field_processor,
     };
     use once_cell::sync::Lazy;
     use std::sync::Mutex;
+    use wp_model_core::model::DataType;
 
     static REG_GUARD: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
     static INNER_BUFFER: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -153,7 +154,7 @@ mod tests {
             ExtPassFunc::from_registry(FiledExtendType::MemChannel).expect("ext processor"),
         )));
         exec.add_pipe(PipeEnum::Fun(WplFun::VecToSrc(
-            VecToSrcFunc::from_registry(FiledExtendType::InnerSource).expect("vec processor"),
+            SendtoSrcFunc::from_registry(FiledExtendType::InnerSource).expect("vec processor"),
         )));
         exec.add_pipe(PipeEnum::Fun(WplFun::SplitToSrc(
             SplitInnerSrcFunc::from_registry("|".into()).expect("inner processor"),
@@ -162,7 +163,8 @@ mod tests {
         let mut fields = vec![DataField::from_chars("msg".to_string(), "body".to_string())];
         exec.execute(&mut fields).expect("executor runs");
         assert_eq!(fields.len(), 1);
-        assert_eq!(fields[0].get_chars(), Some("modified"));
+        assert_eq!(fields[0].get_meta(), &DataType::Ignore);
+        assert!(matches!(fields[0].get_value(), Value::Ignore(_)));
         let buf = INNER_BUFFER.lock().unwrap().clone();
         assert_eq!(buf, vec!["next".to_string(), "next".to_string()]);
 

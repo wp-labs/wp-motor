@@ -148,7 +148,7 @@ pub mod source_builders {
             .build()
     }
 
-    /// Creates an in-memory channel source used by WPL vec_to_src / split_to_src
+    /// Creates an in-memory channel source used by WPL send_to_src / split_to_src
     pub fn channel_source(key: &str, capacity: i64) -> SourceItem {
         SourceItemBuilder::new(key, "channel_src")
             .param_int("capacity", capacity)

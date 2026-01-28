@@ -3,8 +3,8 @@ use smol_str::SmolStr;
 
 use super::function::{
     CharsHas, CharsIn, CharsNotHas, DigitHas, DigitIn, ExtPassFunc, Has, IpIn, JsonUnescape,
-    SelectLast, SplitInnerSrcFunc, TakeField, TargetCharsHas, TargetCharsIn, TargetCharsNotHas,
-    TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn, VecToSrcFunc,
+    SelectLast, SendtoSrcFunc, SplitInnerSrcFunc, TakeField, TargetCharsHas, TargetCharsIn,
+    TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn,
 };
 use crate::ast::{group::WplGroup, processor::Base64Decode};
 
@@ -34,7 +34,7 @@ pub enum WplFun {
     TransJsonUnescape(JsonUnescape),
     TransBase64Decode(Base64Decode),
     TransExtPass(ExtPassFunc),
-    VecToSrc(VecToSrcFunc),
+    VecToSrc(SendtoSrcFunc),
     SplitToSrc(SplitInnerSrcFunc),
 }
 

@@ -23,8 +23,8 @@ use crate::ast::{
     processor::{
         Base64Decode, CharsHas, CharsIn, CharsInArg, CharsNotHas, CharsNotHasArg, CharsValue,
         DigitHas, DigitHasArg, DigitIn, DigitInArg, ExtPassFunc, Has, HasArg, IpIn, IpInArg,
-        JsonUnescape, SelectLast, SplitInnerSrcFunc, TakeField, TargetCharsHas, TargetCharsIn,
-        TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn, VecToSrcFunc,
+        JsonUnescape, SelectLast, SendtoSrcFunc, SplitInnerSrcFunc, TakeField, TargetCharsHas,
+        TargetCharsIn, TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn,
         normalize_target,
     },
 };
@@ -54,7 +54,7 @@ pub fn wpl_fun(input: &mut &str) -> WResult<WplFun> {
         call_fun_args0::<HasArg>.map(|_| WplFun::Has(Has)),
         call_fun_args0::<JsonUnescape>.map(WplFun::TransJsonUnescape),
         call_fun_args0::<Base64Decode>.map(WplFun::TransBase64Decode),
-        call_fun_args0::<VecToSrcFunc>.map(WplFun::VecToSrc),
+        call_fun_args0::<SendtoSrcFunc>.map(WplFun::VecToSrc),
         call_fun_args0::<ExtPassFunc>.map(WplFun::TransExtPass),
         call_fun_args1::<SplitInnerSrcFunc>.map(WplFun::SplitToSrc),
     ))
@@ -213,14 +213,14 @@ impl Fun0Builder for ExtPassFunc {
     }
 }
 
-impl Fun0Builder for VecToSrcFunc {
+impl Fun0Builder for SendtoSrcFunc {
     fn fun_name() -> &'static str {
-        "vec_to_src"
+        "send_to_src"
     }
 
     fn build() -> Self {
-        VecToSrcFunc::from_registry(FiledExtendType::InnerSource)
-            .expect("vec_to_src processor not registered")
+        SendtoSrcFunc::from_registry(FiledExtendType::InnerSource)
+            .expect("send_to_src processor not registered")
     }
 }
 
@@ -633,7 +633,7 @@ mod tests {
             parse_fun("to_ext_pass()"),
             WplFun::TransExtPass(_)
         ));
-        assert!(matches!(parse_fun("vec_to_src()"), WplFun::VecToSrc(_)));
+        assert!(matches!(parse_fun("send_to_src()"), WplFun::VecToSrc(_)));
 
         match parse_fun("split_to_src(|)") {
             WplFun::SplitToSrc(func) => assert_eq!(func.separator(), "|"),
@@ -652,9 +652,9 @@ mod tests {
         let _lock = REG_GUARD.lock().unwrap();
         clear_field_processors();
         register_field_processor(FiledExtendType::InnerSource, NoopProcessor("|"));
-        let pipe_expect = wpl_pipe.parse(r#"| vec_to_src()"#).assert();
+        let pipe_expect = wpl_pipe.parse(r#"| send_to_src()"#).assert();
         let group = wpl_group
-            .parse(r#"( json ( array/chars@logs | vec_to_src()) )"#)
+            .parse(r#"( json ( array/chars@logs | send_to_src()) )"#)
             .assert();
         assert_eq!(group.fields.len(), 1);
         assert_eq!(

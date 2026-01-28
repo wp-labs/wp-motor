@@ -86,7 +86,7 @@ impl SourceConfigParser {
         }
         if !has_channel_cfg {
             info_ctrl!(
-                "No channel source configured: features like vec_to_src/split_to_src remain inactive"
+                "No channel source configured: features like send_to_src/split_to_src remain inactive"
             );
         }
         Ok((sources, acceptors))

@@ -14,7 +14,7 @@ use wp_cli_core::business::connectors::sources as sources_core;
 use wp_conf::sources::types::{SourceItem, WarpSources};
 use wp_conf::{engine::EngineConfig, sources::build::load_source_instances_from_file};
 use wp_engine::facade::config::WPSRC_TOML;
-use wp_engine::sources::SourceConfigParser;
+use wp_engine::sources::{SourceConfigParser, channel::register_channel_field_processors};
 use wp_error::run_error::{RunReason, RunResult};
 
 // Re-export modules and types
@@ -145,9 +145,14 @@ impl Sources {
 
     /// Builds source specifications for validation
     fn build_source_specs(&self, wpsrc_path: &Path, dict: &EnvDict) -> RunResult<()> {
-        let _specs = load_source_instances_from_file(wpsrc_path, dict).map_err(|e| {
+        let specs = load_source_instances_from_file(wpsrc_path, dict).map_err(|e| {
             RunReason::from_conf(format!("Failed to build source specs: {}", e)).to_err()
         })?;
+        for spec in specs.iter() {
+            if spec.kind().eq_ignore_ascii_case("channel") {
+                register_channel_field_processors(spec.name());
+            }
+        }
         Ok(())
     }
 
@@ -166,7 +171,7 @@ impl Sources {
         let default_sources = vec![
             // Add a default file source that reads from gen.dat
             source_builders::file_source(DEFAULT_FILE_SOURCE_KEY, DEFAULT_FILE_SOURCE_PATH),
-            // Add a default in-memory channel source for vec_to_src / split_to_src
+            // Add a default in-memory channel source for send_to_src / split_to_src
             source_builders::channel_source(DEFAULT_CHANNEL_SOURCE_KEY, DEFAULT_CHANNEL_CAPACITY),
             // Add a default syslog TCP source (disabled by default)
             source_builders::syslog_tcp_source(

@@ -135,7 +135,7 @@ pub struct ExtPassFunc {
 }
 
 #[derive(Clone)]
-pub struct VecToSrcFunc {
+pub struct SendtoSrcFunc {
     pub(crate) extend_type: FiledExtendType,
     pub(crate) processor: Arc<dyn FieldProcessor>,
 }
@@ -159,7 +159,7 @@ impl ExtPassFunc {
     }
 }
 
-impl VecToSrcFunc {
+impl SendtoSrcFunc {
     pub fn new(extend_type: FiledExtendType, processor: Arc<dyn FieldProcessor>) -> Self {
         Self {
             extend_type,
@@ -209,7 +209,7 @@ impl fmt::Debug for SplitInnerSrcFunc {
     }
 }
 
-impl fmt::Debug for VecToSrcFunc {
+impl fmt::Debug for SendtoSrcFunc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("VecToSrcFunc")
             .field("extend_type", &self.extend_type)
@@ -229,7 +229,7 @@ impl PartialEq for SplitInnerSrcFunc {
     }
 }
 
-impl PartialEq for VecToSrcFunc {
+impl PartialEq for SendtoSrcFunc {
     fn eq(&self, other: &Self) -> bool {
         self.extend_type == other.extend_type
     }
