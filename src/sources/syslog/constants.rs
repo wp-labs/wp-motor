@@ -5,6 +5,9 @@ use wp_connector_api::Tags;
 
 pub use crate::sources::tcp::framing::{DEFAULT_TCP_RECV_BYTES, Message, STOP_CHANNEL_CAPACITY};
 
+/// Default UDP receive buffer size (8 MB)
+pub const DEFAULT_UDP_RECV_BUFFER: usize = 8 * 1024 * 1024;
+
 /// Extract tags from `Vec<String>` items (k:v / k=v / flag)
 #[allow(dead_code)]
 pub fn tags_from_vec(items: &[String]) -> Tags {

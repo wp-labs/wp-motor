@@ -65,6 +65,12 @@ impl SourceFactory for SyslogSourceFactory {
 
             let svc = match config.protocol {
                 Protocol::Udp => {
+                    info_ctrl!(
+                        "syslog UDP factory build: strip_header={}, attach_meta_tags={}, udp_recv_buffer={}",
+                        config.strip_header,
+                        config.attach_meta_tags,
+                        config.udp_recv_buffer
+                    );
                     let meta = meta_builder(&tags);
                     let source = UdpSyslogSource::new(
                         spec.name.clone(),
@@ -72,7 +78,7 @@ impl SourceFactory for SyslogSourceFactory {
                         tags,
                         config.strip_header,
                         config.attach_meta_tags,
-                        config.fast_strip,
+                        config.udp_recv_buffer,
                     )
                     .await?;
                     SourceSvcIns::new()
@@ -132,7 +138,9 @@ impl SourceDefProvider for SyslogSourceFactory {
         params.insert("port".into(), json!(514));
         params.insert("protocol".into(), json!("udp"));
         params.insert("tcp_recv_bytes".into(), json!(10_485_760));
-        params.insert("header_mode".into(), json!("strip"));
+        params.insert("udp_recv_buffer".into(), json!(8_388_608)); // 8 MB
+        params.insert("header_mode".into(), json!("skip"));
+        params.insert("fast_strip".into(), json!(false));
         ConnectorDef {
             id: "syslog_src".into(),
             kind: self.kind().into(),
@@ -142,7 +150,9 @@ impl SourceDefProvider for SyslogSourceFactory {
                 "port".into(),
                 "protocol".into(),
                 "tcp_recv_bytes".into(),
+                "udp_recv_buffer".into(),
                 "header_mode".into(),
+                "fast_strip".into(),
             ],
             default_params: params,
             origin: Some("builtin:syslog_source".into()),

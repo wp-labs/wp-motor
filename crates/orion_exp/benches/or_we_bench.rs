@@ -1,6 +1,7 @@
-use criterion::{BatchSize, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use orion_exp::{CmpOperator, Comparison, ConditionEvaluator, RustSymbol};
 use std::collections::HashMap;
+use std::hint::black_box;
 
 // Local newtype wrapper to satisfy orphan rules
 struct Map<'a> {

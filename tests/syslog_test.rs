@@ -96,7 +96,7 @@ async fn udp_source_builds_and_identifies() {
         tags,
         true,
         true,
-        false,
+        0, // use default buffer
     )
     .await
     .unwrap();
@@ -237,7 +237,7 @@ async fn multiple_udp_sources_bind_distinct_ports() {
             tags1,
             true,
             true,
-            false,
+            0,
         )
         .await
         .unwrap();
@@ -247,7 +247,7 @@ async fn multiple_udp_sources_bind_distinct_ports() {
             tags2,
             true,
             true,
-            false,
+            0,
         )
         .await
         .unwrap();
@@ -270,7 +270,7 @@ async fn udp_source_preserves_multiple_tags() {
             tags,
             true,
             true,
-            false,
+            0,
         )
         .await
         .unwrap();
@@ -293,7 +293,7 @@ async fn udp_source_fails_on_port_conflict() {
         tags,
         true,
         true,
-        false,
+        0,
     )
     .await;
     assert!(res.is_err(), "should fail when port is already bound");

@@ -1,9 +1,10 @@
 use criterion::{
-    BenchmarkId, Criterion, SamplingMode, Throughput, black_box, criterion_group, criterion_main,
+    BenchmarkId, Criterion, SamplingMode, Throughput, criterion_group, criterion_main,
 };
 use rand::Rng;
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::seq::SliceRandom;
+use std::hint::black_box;
 use std::sync::Arc;
 use std::thread;
 use std::time::Instant;

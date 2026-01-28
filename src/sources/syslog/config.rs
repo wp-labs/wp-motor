@@ -1,6 +1,6 @@
 //! Configuration structures for syslog sources
 
-use super::constants::DEFAULT_TCP_RECV_BYTES;
+use super::constants::{DEFAULT_TCP_RECV_BYTES, DEFAULT_UDP_RECV_BUFFER};
 use anyhow::ensure;
 
 /// Configuration for syslog sources
@@ -10,8 +10,11 @@ pub struct SyslogSourceSpec {
     pub port: u16,
     pub protocol: Protocol,
     pub tcp_recv_bytes: usize,
+    /// UDP socket receive buffer size (bytes)
+    pub udp_recv_buffer: usize,
     pub strip_header: bool,
     pub attach_meta_tags: bool,
+    /// Fast strip mode (TCP only, ignored for UDP)
     pub fast_strip: bool,
 }
 
@@ -34,6 +37,9 @@ impl SyslogSourceSpec {
         }
         if let Some(v) = params.get("tcp_recv_bytes").and_then(|v| v.as_i64()) {
             ensure!(v > 0, "tcp_recv_bytes must be > 0 (got {})", v);
+        }
+        if let Some(v) = params.get("udp_recv_buffer").and_then(|v| v.as_i64()) {
+            ensure!(v > 0, "udp_recv_buffer must be > 0 (got {})", v);
         }
         if let Some(v) = params.get("port").and_then(|v| v.as_i64()) {
             ensure!(
@@ -62,28 +68,40 @@ impl SyslogSourceSpec {
             .and_then(|v| v.as_i64())
             .filter(|&v| v > 0)
             .unwrap_or(DEFAULT_TCP_RECV_BYTES as i64) as usize;
-        // Tri-state external flag: `header_mode` controls strip/attach
-        // - keep  => strip=false, attach=false
-        // - strip => strip=true,  attach=false
-        // - parse => strip=true,  attach=true
+        let udp_recv_buffer = params
+            .get("udp_recv_buffer")
+            .and_then(|v| v.as_i64())
+            .filter(|&v| v > 0)
+            .unwrap_or(DEFAULT_UDP_RECV_BUFFER as i64) as usize;
+        // header_mode: controls how syslog header is handled
+        //   New names (preferred):
+        //     raw  => keep original message untouched
+        //     skip => strip header, keep message body only
+        //     tag  => strip header + extract syslog.pri/facility/severity tags
+        //   Legacy aliases (backward-compatible):
+        //     keep  => raw
+        //     strip => skip
+        //     parse => tag
         let header_mode = params
             .get("header_mode")
             .and_then(|v| v.as_str())
-            .unwrap_or("parse")
+            .unwrap_or("skip")
             .to_ascii_lowercase();
         let (strip_header, attach_meta_tags) = match header_mode.as_str() {
-            "keep" => (false, false),
-            "strip" => (true, false),
-            "parse" => (true, true),
+            "raw" | "keep" => (false, false),
+            "skip" | "strip" => (true, false),
+            "tag" | "parse" => (true, true),
             other => {
-                // Fallback to parse, but make error obvious in logs
-                log::warn!(
-                    "syslog.header_mode invalid: '{}', fallback to 'parse'",
-                    other
-                );
+                log::warn!("syslog.header_mode invalid: '{}', fallback to 'tag'", other);
                 (true, true)
             }
         };
+        log::info!(
+            "syslog config: header_mode='{}' => strip_header={}, attach_meta_tags={}",
+            header_mode,
+            strip_header,
+            attach_meta_tags
+        );
         let fast_strip = params
             .get("fast_strip")
             .and_then(|v| v.as_bool())
@@ -93,6 +111,7 @@ impl SyslogSourceSpec {
             port,
             protocol,
             tcp_recv_bytes,
+            udp_recv_buffer,
             strip_header,
             attach_meta_tags,
             fast_strip,

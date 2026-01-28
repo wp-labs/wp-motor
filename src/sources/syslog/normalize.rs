@@ -205,11 +205,13 @@ fn parse_rfc5424_slice(input: &str) -> Option<NormalizedSlice> {
 }
 
 fn parse_rfc3164(input: &str) -> Option<Normalized> {
-    // <PRI>MMM SP DD SP HH:MM:SS SP HOST SP TAG ':' SP MSG
+    // RFC3164: <PRI>MMM DD HH:MM:SS HOSTNAME TAG: MSG
     let bytes = input.as_bytes();
     if bytes.is_empty() || bytes[0] != b'<' {
         return None;
     }
+
+    // Parse PRI
     let mut i = 1usize;
     while i < bytes.len() && bytes[i].is_ascii_digit() {
         i += 1;
@@ -219,43 +221,78 @@ fn parse_rfc3164(input: &str) -> Option<Normalized> {
     }
     let pri_str = &input[1..i];
     i += 1; // after '>'
-    // Month (3) + space
-    if i + 4 > bytes.len() {
+
+    // Parse month (must be valid 3-letter abbreviation)
+    if i + 3 >= bytes.len() {
+        return None;
+    }
+    let month = &input[i..i + 3];
+    if !is_valid_month(month) {
         return None;
     }
     i += 3;
-    if bytes.get(i) != Some(&b' ') {
-        return None;
-    }
-    i += 1;
-    // Day digits + space
-    if i >= bytes.len() || !bytes[i].is_ascii_digit() {
-        return None;
-    }
-    while i < bytes.len() && bytes[i].is_ascii_digit() {
-        i += 1;
-    }
+
+    // Must have space after month
     if i >= bytes.len() || bytes[i] != b' ' {
         return None;
     }
     i += 1;
-    // Time HH:MM:SS + space
-    if i + 9 > bytes.len() {
-        return None;
+
+    // RFC3164 allows leading space for single-digit day: " 1" to " 9" or "10" to "31"
+    // Skip optional leading space
+    if i < bytes.len() && bytes[i] == b' ' {
+        i += 1;
     }
-    i += 8;
-    if bytes.get(i) != Some(&b' ') {
+
+    // Parse day (1 or 2 digits)
+    if i >= bytes.len() || !bytes[i].is_ascii_digit() {
         return None;
     }
     i += 1;
-    // Hostname token + space
+    if i < bytes.len() && bytes[i].is_ascii_digit() {
+        i += 1;
+    }
+
+    // Must have space after day
+    if i >= bytes.len() || bytes[i] != b' ' {
+        return None;
+    }
+    i += 1;
+
+    // Parse time HH:MM:SS (exactly 8 characters)
+    if i + 8 > bytes.len() {
+        return None;
+    }
+    // Verify HH:MM:SS format (digits and colons at correct positions)
+    if !bytes[i].is_ascii_digit()
+        || !bytes[i + 1].is_ascii_digit()
+        || bytes[i + 2] != b':'
+        || !bytes[i + 3].is_ascii_digit()
+        || !bytes[i + 4].is_ascii_digit()
+        || bytes[i + 5] != b':'
+        || !bytes[i + 6].is_ascii_digit()
+        || !bytes[i + 7].is_ascii_digit()
+    {
+        return None;
+    }
+    i += 8;
+
+    // Must have space after time
+    if i >= bytes.len() || bytes[i] != b' ' {
+        return None;
+    }
+    i += 1;
+
+    // Parse hostname (must contain at least one valid character)
+    let hostname_start = i;
     while i < bytes.len() && bytes[i] != b' ' {
         i += 1;
     }
-    if i >= bytes.len() {
+    if i == hostname_start || i >= bytes.len() {
         return None;
     }
-    i += 1; // skip space
+    i += 1; // skip space after hostname
+
     // Find ": " after tag
     if let Some(col) = input[i..].find(": ") {
         let msg_start = i + col + 2;
@@ -272,10 +309,13 @@ fn parse_rfc3164(input: &str) -> Option<Normalized> {
 }
 
 fn parse_rfc3164_slice(input: &str) -> Option<NormalizedSlice> {
+    // RFC3164: <PRI>MMM DD HH:MM:SS HOSTNAME TAG: MSG
     let bytes = input.as_bytes();
     if bytes.is_empty() || bytes[0] != b'<' {
         return None;
     }
+
+    // Parse PRI
     let mut i = 1usize;
     while i < bytes.len() && bytes[i].is_ascii_digit() {
         i += 1;
@@ -285,41 +325,79 @@ fn parse_rfc3164_slice(input: &str) -> Option<NormalizedSlice> {
     }
     let pri_str = &input[1..i];
     i += 1; // after '>'
-    if i + 4 > bytes.len() {
+
+    // Parse month (must be valid 3-letter abbreviation)
+    if i + 3 >= bytes.len() {
         return None;
     }
-    i += 4; // Mon + space
-    if i >= bytes.len() {
+    let month = &input[i..i + 3];
+    if !is_valid_month(month) {
         return None;
     }
-    if !bytes[i - 1].is_ascii() {
-        return None;
-    }
-    if i >= bytes.len() || !bytes[i].is_ascii_digit() {
-        return None;
-    }
-    while i < bytes.len() && bytes[i].is_ascii_digit() {
-        i += 1;
-    }
+    i += 3;
+
+    // Must have space after month
     if i >= bytes.len() || bytes[i] != b' ' {
         return None;
     }
     i += 1;
-    if i + 9 > bytes.len() {
-        return None;
+
+    // RFC3164 allows leading space for single-digit day: " 1" to " 9" or "10" to "31"
+    // Skip optional leading space
+    if i < bytes.len() && bytes[i] == b' ' {
+        i += 1;
     }
-    i += 8;
-    if bytes.get(i) != Some(&b' ') {
+
+    // Parse day (1 or 2 digits)
+    if i >= bytes.len() || !bytes[i].is_ascii_digit() {
         return None;
     }
     i += 1;
+    if i < bytes.len() && bytes[i].is_ascii_digit() {
+        i += 1;
+    }
+
+    // Must have space after day
+    if i >= bytes.len() || bytes[i] != b' ' {
+        return None;
+    }
+    i += 1;
+
+    // Parse time HH:MM:SS (exactly 8 characters)
+    if i + 8 > bytes.len() {
+        return None;
+    }
+    // Verify HH:MM:SS format (digits and colons at correct positions)
+    if !bytes[i].is_ascii_digit()
+        || !bytes[i + 1].is_ascii_digit()
+        || bytes[i + 2] != b':'
+        || !bytes[i + 3].is_ascii_digit()
+        || !bytes[i + 4].is_ascii_digit()
+        || bytes[i + 5] != b':'
+        || !bytes[i + 6].is_ascii_digit()
+        || !bytes[i + 7].is_ascii_digit()
+    {
+        return None;
+    }
+    i += 8;
+
+    // Must have space after time
+    if i >= bytes.len() || bytes[i] != b' ' {
+        return None;
+    }
+    i += 1;
+
+    // Parse hostname (must contain at least one valid character)
+    let hostname_start = i;
     while i < bytes.len() && bytes[i] != b' ' {
         i += 1;
     }
-    if i >= bytes.len() {
+    if i == hostname_start || i >= bytes.len() {
         return None;
     }
-    i += 1; // skip space
+    i += 1; // skip space after hostname
+
+    // Find ": " after tag
     if let Some(col) = input[i..].find(": ") {
         let msg_start = i + col + 2;
         let meta = parse_pri_from_header(&format!("<{}>", pri_str));
@@ -330,6 +408,25 @@ fn parse_rfc3164_slice(input: &str) -> Option<NormalizedSlice> {
         });
     }
     None
+}
+
+/// Check if a 3-character string is a valid month abbreviation
+fn is_valid_month(month: &str) -> bool {
+    matches!(
+        month,
+        "Jan"
+            | "Feb"
+            | "Mar"
+            | "Apr"
+            | "May"
+            | "Jun"
+            | "Jul"
+            | "Aug"
+            | "Sep"
+            | "Oct"
+            | "Nov"
+            | "Dec"
+    )
 }
 
 fn parse_pri_from_header(header: &str) -> SyslogMeta {
@@ -425,5 +522,49 @@ mod tests {
         assert_eq!(n.message, input);
         assert!(n.header.is_none());
         assert!(n.meta.pri.is_none());
+    }
+
+    #[test]
+    fn test_non_standard_format_should_not_strip() {
+        // 非标准格式 1: ISO时间戳格式（不是RFC3164）
+        let input1 = "<11>2025-07-07 09:42:43,132 sentinel - info message";
+        let ns1 = normalize_slice(input1);
+        assert_eq!(
+            ns1.msg_start, 0,
+            "ISO format should not be parsed as RFC3164"
+        );
+
+        // 非标准格式 2: 月份后缺少空格
+        let input2 = "<158>Jul23 17:18:36 skyeye SyslogClient[1]: message";
+        let ns2 = normalize_slice(input2);
+        assert_eq!(ns2.msg_start, 0, "Missing space after month should fail");
+
+        // 非标准格式 3: 无效月份
+        let input3 = "<34>Xyz 11 22:14:15 mymachine su: test";
+        let ns3 = normalize_slice(input3);
+        assert_eq!(ns3.msg_start, 0, "Invalid month should fail");
+
+        // 非标准格式 4: 时间格式错误（缺少冒号）
+        let input4 = "<34>Oct 11 22-14-15 mymachine su: test";
+        let ns4 = normalize_slice(input4);
+        assert_eq!(ns4.msg_start, 0, "Invalid time format should fail");
+
+        // 标准 RFC3164 格式（应该成功）
+        let input5 = "<158>Jul 23 17:18:36 skyeye SyslogClient[1]: message";
+        let ns5 = normalize_slice(input5);
+        assert!(
+            ns5.msg_start > 0,
+            "Standard RFC3164 should parse successfully"
+        );
+        assert_eq!(&input5[ns5.msg_start..ns5.msg_end], "message");
+
+        // 标准 RFC3164 格式，单位数日期（应该成功）
+        let input6 = "<34>Oct  1 22:14:15 mymachine su: test message";
+        let ns6 = normalize_slice(input6);
+        assert!(
+            ns6.msg_start > 0,
+            "RFC3164 with single digit day should parse"
+        );
+        assert_eq!(&input6[ns6.msg_start..ns6.msg_end], "test message");
     }
 }

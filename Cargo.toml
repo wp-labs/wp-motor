@@ -56,7 +56,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.10.3"
+version = "1.11.0"
 edition = "2024"
 license = "Apache-2.0"
 
@@ -311,7 +311,7 @@ socket2 = "0.6"
 async-signal = "0.2"
 signal-hook-registry = "1.4"
 getrandom = { version = "0.3" }
-sysinfo = "0.37"
+sysinfo = "0.38"
 
 # --- Async Runtime & Concurrency ---
 tokio-util = { version = "0.7", features = ["full"] }

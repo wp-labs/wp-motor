@@ -42,6 +42,8 @@ pub struct SyslogSourceConf {
     pub protocol: Protocol,
     #[serde(default = "SyslogSourceConf::tcp_read_bytes_default")]
     pub tcp_recv_bytes: usize,
+    #[serde(default = "SyslogSourceConf::udp_recv_buffer_default")]
+    pub udp_recv_buffer: usize,
     pub enable: bool,
     #[serde(default)]
     pub tags: Vec<String>,
@@ -55,6 +57,7 @@ impl Default for SyslogSourceConf {
             port: 514,
             protocol: Protocol::UDP,
             tcp_recv_bytes: 10_485_760, // 10 MiB default read bytes per cycle
+            udp_recv_buffer: 8_388_608, // 8 MiB default UDP socket buffer
             enable: false,
             tags: Vec::new(),
         }
@@ -68,6 +71,10 @@ impl SyslogSourceConf {
     fn tcp_read_bytes_default() -> usize {
         10_485_760
     }
+
+    fn udp_recv_buffer_default() -> usize {
+        8_388_608
+    }
 }
 
 impl crate::structure::Validate for SyslogSourceConf {
@@ -80,6 +87,10 @@ impl crate::structure::Validate for SyslogSourceConf {
         }
         if matches!(self.protocol, Protocol::TCP) && self.tcp_recv_bytes == 0 {
             return ConfIOReason::from_validation("syslog.tcp_recv_bytes must be > 0 for TCP")
+                .err_result();
+        }
+        if matches!(self.protocol, Protocol::UDP) && self.udp_recv_buffer == 0 {
+            return ConfIOReason::from_validation("syslog.udp_recv_buffer must be > 0 for UDP")
                 .err_result();
         }
         Ok(())
@@ -186,6 +197,10 @@ enable = true
         assert_eq!(conf.key, "syslog_test");
         assert_eq!(conf.port, 514);
         assert!(conf.enable);
+        assert_eq!(
+            conf.udp_recv_buffer,
+            SyslogSourceConf::udp_recv_buffer_default()
+        );
     }
 
     #[test]
@@ -209,5 +224,29 @@ enable = true
         let result = SyslogSourceConf::load_from_path(file.path(), &EnvDict::test_default());
 
         assert!(result.is_err(), "无效配置应该验证失败");
+    }
+
+    #[test]
+    fn config_loader_syslog_source_udp_buffer_validation() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(
+            file,
+            r#"
+key = "udp"
+addr = "127.0.0.1"
+port = 514
+protocol = "udp"
+enable = true
+udp_recv_buffer = 0
+"#
+        )
+        .unwrap();
+
+        let result = SyslogSourceConf::load_from_path(file.path(), &EnvDict::test_default());
+
+        assert!(result.is_err(), "udp_recv_buffer=0 应触发验证失败");
     }
 }

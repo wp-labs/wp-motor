@@ -1,6 +1,7 @@
 use chrono::DateTime;
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use orion_error::TestAssert;
+use std::hint::black_box;
 use wp_parse_api::RawData;
 use wp_parser::Parser;
 use wpl::{WplEvaluator, wpl_express};
