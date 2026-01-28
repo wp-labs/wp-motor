@@ -1,4 +1,7 @@
-use super::source::{ChannelSource, DEFAULT_CHANNEL_BATCH};
+use super::{
+    register_channel_field_processors,
+    source::{ChannelSource, DEFAULT_CHANNEL_BATCH},
+};
 use anyhow::{bail, ensure};
 use async_trait::async_trait;
 use once_cell::sync::OnceCell;
@@ -14,7 +17,7 @@ use wp_connector_api::{
     SourceResult, SourceSpec as ResolvedSourceSpec, SourceSvcIns, Tags,
 };
 
-const DEFAULT_CHANNEL_CAPACITY: usize = 1024;
+const DEFAULT_CHANNEL_CAPACITY: usize = 1000;
 
 #[derive(Debug, Clone)]
 struct ChannelSourceSpec {
@@ -110,7 +113,8 @@ impl SourceFactory for ChannelSourceFactory {
             ChannelSource::with_capacity(resolved.name.clone(), tags.clone(), spec.capacity);
         source.set_batch_limit(spec.batch_limit);
         let sender = source.sender();
-        store_sender(&resolved.name, sender);
+        store_sender(&resolved.name, sender.clone());
+        register_channel_field_processors(&resolved.name, sender);
 
         let mut meta = SourceMeta::new(resolved.name.clone(), resolved.kind.clone());
         for (k, v) in tags.iter() {

@@ -55,6 +55,9 @@ impl SourceConfigParser {
         let ctx = SourceBuildCtx::new(self.work_dir.clone());
         let mut sources = Vec::new();
         let mut acceptors = Vec::new();
+        let has_channel_cfg = specs
+            .iter()
+            .any(|conf| conf.kind().eq_ignore_ascii_case("channel"));
         for item in specs {
             let core: wp_specs::CoreSourceSpec = (&item).into();
             let connector_id = item.connector_id.clone().unwrap_or_default();
@@ -76,6 +79,11 @@ impl SourceConfigParser {
             if let Some(acc) = svc.acceptor {
                 acceptors.push(acc);
             }
+        }
+        if !has_channel_cfg {
+            info_ctrl!(
+                "No channel source configured: features like vec_to_src/split_to_src remain inactive"
+            );
         }
         Ok((sources, acceptors))
     }

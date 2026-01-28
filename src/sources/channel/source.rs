@@ -2,8 +2,10 @@ use crate::sources::event_id::next_event_id;
 use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::mpsc::{self, Receiver, Sender, error::TryRecvError};
+use tokio::task::JoinHandle;
 use wp_connector_api::{
-    DataSource, SourceBatch, SourceError, SourceEvent, SourceReason, SourceResult, Tags,
+    ControlEvent, CtrlRx, DataSource, SourceBatch, SourceError, SourceEvent, SourceReason,
+    SourceResult, Tags,
 };
 use wp_parse_api::RawData;
 
@@ -18,6 +20,7 @@ pub struct ChannelSource {
     sender: Option<Sender<String>>,
     recevr: Receiver<String>,
     batch_limit: usize,
+    stop_task: Option<JoinHandle<()>>,
 }
 
 impl ChannelSource {
@@ -34,6 +37,7 @@ impl ChannelSource {
             sender: Some(sender),
             recevr,
             batch_limit: DEFAULT_CHANNEL_BATCH,
+            stop_task: None,
         }
     }
 
@@ -118,6 +122,34 @@ impl DataSource for ChannelSource {
 
     fn identifier(&self) -> String {
         self.key.clone()
+    }
+
+    async fn start(&mut self, mut ctrl_rx: CtrlRx) -> SourceResult<()> {
+        if self.stop_task.is_some() {
+            return Err(
+                SourceReason::SupplierError("channel source already started".into()).into(),
+            );
+        }
+
+        let key = self.key.clone();
+        let handle = tokio::spawn(async move {
+            while let Ok(event) = ctrl_rx.recv().await {
+                if matches!(event, ControlEvent::Stop | ControlEvent::Isolate(true)) {
+                    log::info!("channel source '{}' received stop signal", key);
+                    break;
+                }
+            }
+        });
+        self.stop_task = Some(handle);
+        Ok(())
+    }
+
+    async fn close(&mut self) -> SourceResult<()> {
+        self.close_input();
+        if let Some(handle) = self.stop_task.take() {
+            handle.abort();
+        }
+        Ok(())
     }
 }
 

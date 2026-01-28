@@ -29,6 +29,8 @@ pub const DEFAULT_FILE_SOURCE_PATH: &str = "gen.dat";
 pub const DEFAULT_SYSLOG_SOURCE_ID: &str = "syslog_1";
 pub const DEFAULT_SYSLOG_HOST: &str = "0.0.0.0";
 pub const DEFAULT_SYSLOG_PORT: i64 = 1514;
+pub const DEFAULT_CHANNEL_SOURCE_KEY: &str = "channel_mem";
+pub const DEFAULT_CHANNEL_CAPACITY: i64 = 1000;
 
 /// Sources management system for data source operations
 ///
@@ -164,6 +166,8 @@ impl Sources {
         let default_sources = vec![
             // Add a default file source that reads from gen.dat
             source_builders::file_source(DEFAULT_FILE_SOURCE_KEY, DEFAULT_FILE_SOURCE_PATH),
+            // Add a default in-memory channel source for vec_to_src / split_to_src
+            source_builders::channel_source(DEFAULT_CHANNEL_SOURCE_KEY, DEFAULT_CHANNEL_CAPACITY),
             // Add a default syslog TCP source (disabled by default)
             source_builders::syslog_tcp_source(
                 DEFAULT_SYSLOG_SOURCE_ID,
@@ -301,6 +305,8 @@ mod tests {
         assert_eq!(DEFAULT_SYSLOG_SOURCE_ID, "syslog_1");
         assert_eq!(DEFAULT_SYSLOG_HOST, "0.0.0.0");
         assert_eq!(DEFAULT_SYSLOG_PORT, 1514);
+        assert_eq!(DEFAULT_CHANNEL_SOURCE_KEY, "channel_mem");
+        assert_eq!(DEFAULT_CHANNEL_CAPACITY, 1000);
     }
 
     #[test]

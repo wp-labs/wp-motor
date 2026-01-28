@@ -148,6 +148,13 @@ pub mod source_builders {
             .build()
     }
 
+    /// Creates an in-memory channel source used by WPL vec_to_src / split_to_src
+    pub fn channel_source(key: &str, capacity: i64) -> SourceItem {
+        SourceItemBuilder::new(key, "channel_src")
+            .param_int("capacity", capacity)
+            .build()
+    }
+
     /// Creates a UDP syslog receiver source
     ///
     /// Creates a source that listens for syslog messages over UDP.
