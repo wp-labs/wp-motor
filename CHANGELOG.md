@@ -5,15 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.10.5 Unreleased]
+## [1.11.0 Unreleased]
 
 ### Added
 - **Syslog UDP Source**: Added `udp_recv_buffer` configuration parameter to control UDP socket receive buffer size (default 8MB)
   - Helps prevent packet loss under high throughput conditions
   - Uses `socket2` crate for buffer configuration before socket binding
+- **Syslog UDP Source**: Added batch receiving (up to 32 packets per `receive()` call) for better throughput
 
 ### Changed
-- **Syslog UDP Source**: Removed `fast_strip` parameter from UDP sources (UDP now always uses full `normalize_slice` parsing)
+- **Syslog Architecture**: Major refactoring to eliminate duplicate parsing and unify UDP/TCP processing
+  - Removed `SyslogDecoder` dependency from UDP source (now uses raw UDP socket)
+  - UDP source passes raw bytes to `SourceEvent`, syslog processing happens in preprocessing hook
+  - Unified preprocessing logic between UDP and TCP sources
+  - `header_mode = "raw"` now correctly preserves full syslog message including header
+  - Eliminated redundant `normalize_slice()` calls (was parsing twice: in decoder + preproc hook)
 - **Syslog UDP Source**: Optimized preprocessing hook to be created once and reused via `Arc::clone()` instead of per-message allocation
 - **Syslog header_mode**: Renamed configuration values for clarity with backward compatibility
   - `raw` (保留原样) - previously `keep`
@@ -21,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `tag` (提取标签) - previously `parse`
   - Legacy values (`keep`/`strip`/`parse`) remain supported as aliases
   - Default changed from `strip` to `skip`
+
+### Removed
+- **Syslog Protocol**: Removed `SyslogDecoder` and `SyslogFrame` from `protocol::syslog` module
+  - No longer needed after UDP source refactoring
+  - Syslog encoding (`SyslogEncoder`, `EmitMessage`) retained for sink usage
 - **Benchmarks**: Replaced deprecated `criterion::black_box` with `std::hint::black_box` across all benchmark files
   - `crates/wp-stats/benches/wp_stats_bench.rs`
   - `crates/orion_exp/benches/or_we_bench.rs`

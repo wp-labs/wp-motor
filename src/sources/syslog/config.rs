@@ -96,6 +96,12 @@ impl SyslogSourceSpec {
                 (true, true)
             }
         };
+        log::info!(
+            "syslog config: header_mode='{}' => strip_header={}, attach_meta_tags={}",
+            header_mode,
+            strip_header,
+            attach_meta_tags
+        );
         let fast_strip = params
             .get("fast_strip")
             .and_then(|v| v.as_bool())

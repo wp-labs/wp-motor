@@ -65,6 +65,12 @@ impl SourceFactory for SyslogSourceFactory {
 
             let svc = match config.protocol {
                 Protocol::Udp => {
+                    info_ctrl!(
+                        "syslog UDP factory build: strip_header={}, attach_meta_tags={}, udp_recv_buffer={}",
+                        config.strip_header,
+                        config.attach_meta_tags,
+                        config.udp_recv_buffer
+                    );
                     let meta = meta_builder(&tags);
                     let source = UdpSyslogSource::new(
                         spec.name.clone(),
