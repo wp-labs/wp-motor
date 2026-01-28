@@ -1,4 +1,5 @@
 use crate::connectors::registry;
+use crate::sources::channel::register_channel_field_processors;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
 use orion_conf::{EnvTomlLoad, ErrorOwe, ErrorWith};
 use orion_error::{ToStructError, UvsValidationFrom};
@@ -62,6 +63,9 @@ impl SourceConfigParser {
             let core: wp_specs::CoreSourceSpec = (&item).into();
             let connector_id = item.connector_id.clone().unwrap_or_default();
             let resolved = core_to_resolved_with(&core, connector_id);
+            if resolved.kind.eq_ignore_ascii_case("channel") {
+                register_channel_field_processors(&resolved.name);
+            }
             let fac = registry::get_source_factory(&resolved.kind).ok_or_else(|| {
                 ConfIOReason::from_validation(format!(
                     "No factory registered for source kind '{}' (source '{}')",

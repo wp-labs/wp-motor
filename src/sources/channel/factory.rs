@@ -55,7 +55,7 @@ fn registry() -> &'static RwLock<HashMap<String, Sender<String>>> {
     REG.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
-fn store_sender(name: &str, sender: Sender<String>) {
+pub(super) fn store_sender(name: &str, sender: Sender<String>) {
     if let Ok(mut guard) = registry().write() {
         guard.insert(name.to_string(), sender);
     }
@@ -114,7 +114,7 @@ impl SourceFactory for ChannelSourceFactory {
         source.set_batch_limit(spec.batch_limit);
         let sender = source.sender();
         store_sender(&resolved.name, sender.clone());
-        register_channel_field_processors(&resolved.name, sender);
+        register_channel_field_processors(&resolved.name);
 
         let mut meta = SourceMeta::new(resolved.name.clone(), resolved.kind.clone());
         for (k, v) in tags.iter() {

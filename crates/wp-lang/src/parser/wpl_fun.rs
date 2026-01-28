@@ -465,13 +465,15 @@ mod tests {
     use wp_model_core::model::DataField;
 
     use crate::ast::processor::{Has, JsonUnescape, SelectLast, TakeField};
+    use crate::parser::wpl_field::wpl_pipe;
+    use crate::parser::wpl_group::wpl_group;
     use crate::traits::{
         FieldProcessor, FiledExtendType, clear_field_processors, register_field_processor,
     };
 
     use super::*;
 
-    static REG_GUARD: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+    pub static REG_GUARD: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
     struct NoopProcessor(&'static str);
 
@@ -642,6 +644,29 @@ mod tests {
             other => panic!("unexpected fun: {:?}", other),
         }
 
+        clear_field_processors();
+    }
+
+    #[test]
+    fn test_parse_fun_pipe_1() {
+        let _lock = REG_GUARD.lock().unwrap();
+        clear_field_processors();
+        register_field_processor(FiledExtendType::InnerSource, NoopProcessor("|"));
+        let pipe_expect = wpl_pipe.parse(r#"| vec_to_src()"#).assert();
+        let group = wpl_group
+            .parse(r#"( json ( array/chars@logs | vec_to_src()) )"#)
+            .assert();
+        assert_eq!(group.fields.len(), 1);
+        assert_eq!(
+            group.fields[0]
+                .clone()
+                .sub_fields
+                .assert()
+                .get("logs")
+                .assert()
+                .pipe[0],
+            pipe_expect.clone()
+        );
         clear_field_processors();
     }
 }
