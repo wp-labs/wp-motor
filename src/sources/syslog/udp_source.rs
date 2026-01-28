@@ -113,8 +113,8 @@ pub struct UdpSyslogSource {
     key: String,
     tags: Tags,
     frame: UdpFramed<DatagramDecoder>,
-    strip_header: bool,
-    attach_meta_tags: bool,
+    /// Cached preprocessing hook (created once, reused for all messages)
+    preproc_hook: Option<EventPreHook>,
     // Log first received packet once to help diagnose delivery
     first_seen_logged: bool,
 }
@@ -128,35 +128,68 @@ impl UdpSyslogSource {
     /// * `tags` - Tags to attach to received messages
     /// * `strip_header` - Whether to strip syslog header
     /// * `attach_meta_tags` - Whether to attach syslog metadata as tags
+    /// * `recv_buffer` - UDP socket receive buffer size (bytes)
     pub async fn new(
         key: String,
         addr: String,
         tags: Tags,
         strip_header: bool,
         attach_meta_tags: bool,
+        recv_buffer: usize,
     ) -> anyhow::Result<Self> {
-        // Parse address and create socket
+        use socket2::{Domain, Protocol, Socket, Type};
+
+        // Parse address
         let target: SocketAddr = addr.parse()?;
-        let socket = UdpSocket::bind(&target).await?;
+
+        // Create socket with socket2 to set buffer size before binding
+        let domain = if target.is_ipv4() {
+            Domain::IPV4
+        } else {
+            Domain::IPV6
+        };
+        let socket2 = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+
+        // Set receive buffer size before binding
+        if recv_buffer > 0 {
+            socket2.set_recv_buffer_size(recv_buffer)?;
+        }
+
+        // Bind the socket
+        socket2.bind(&target.into())?;
+        socket2.set_nonblocking(true)?;
+
+        let actual_size = socket2.recv_buffer_size().unwrap_or(0);
+
+        // Convert to tokio UdpSocket
+        let std_socket: std::net::UdpSocket = socket2.into();
+        let socket = UdpSocket::from_std(std_socket)?;
+
         let local = socket
             .local_addr()
             .map(|a| a.to_string())
             .unwrap_or_else(|_| addr.clone());
 
-        // 控制面与数据面双日志，记录监听地址与实际本地地址（包含端口）
-        info_ctrl!("UDP syslog listen '{}' addr={} local={}", key, addr, local);
+        info_ctrl!(
+            "UDP syslog listen '{}' addr={} local={} recv_buffer={}->{}",
+            key,
+            addr,
+            local,
+            recv_buffer,
+            actual_size
+        );
 
-        // Create compatible decoder for UdpFramed
         let decoder = DatagramDecoder::default();
-
         let frame = UdpFramed::new(socket, decoder);
+
+        // Create preprocessing hook once, reuse for all messages
+        let preproc_hook = build_preproc_hook(strip_header, attach_meta_tags);
 
         Ok(Self {
             key,
             frame,
             tags,
-            strip_header,
-            attach_meta_tags,
+            preproc_hook,
             first_seen_logged: false,
         })
     }
@@ -180,8 +213,8 @@ impl UdpSyslogSource {
                     let mut stags = self.tags.clone();
                     stags.set("access_ip", addr.ip().to_string());
 
-                    // 使用统一的预处理逻辑（UDP 始终走完整解析）
-                    let pre = build_preproc_hook(self.strip_header, self.attach_meta_tags);
+                    // 使用缓存的预处理逻辑（避免每次创建新闭包）
+                    let pre = self.preproc_hook.clone();
 
                     let mut frame = SourceEvent::new(
                         next_event_id(),
@@ -205,8 +238,23 @@ impl UdpSyslogSource {
 #[async_trait::async_trait]
 impl DataSource for UdpSyslogSource {
     async fn receive(&mut self) -> SourceResult<SourceBatch> {
+        // Batch receive: collect multiple packets at once for better throughput
+        const BATCH_SIZE: usize = 32;
+        let mut batch = Vec::with_capacity(BATCH_SIZE);
+
+        // First packet (blocking)
         let event = self.recv_event().await?;
-        Ok(vec![event])
+        batch.push(event);
+
+        // Try to collect more packets without blocking
+        while batch.len() < BATCH_SIZE {
+            match self.try_receive() {
+                Some(mut events) => batch.append(&mut events),
+                None => break,
+            }
+        }
+
+        Ok(batch)
     }
 
     fn try_receive(&mut self) -> Option<SourceBatch> {
@@ -218,8 +266,8 @@ impl DataSource for UdpSyslogSource {
                 let mut stags = self.tags.clone();
                 stags.set("access_ip", addr.ip().to_string());
 
-                // 使用统一的预处理逻辑（UDP 始终走完整解析）
-                let pre = build_preproc_hook(self.strip_header, self.attach_meta_tags);
+                // 使用缓存的预处理逻辑（避免每次创建新闭包）
+                let pre = self.preproc_hook.clone();
 
                 let mut frame = SourceEvent::new(
                     next_event_id(),

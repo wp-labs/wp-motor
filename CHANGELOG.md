@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.10.5 Unreleased]
 
+### Added
+- **Syslog UDP Source**: Added `udp_recv_buffer` configuration parameter to control UDP socket receive buffer size (default 8MB)
+  - Helps prevent packet loss under high throughput conditions
+  - Uses `socket2` crate for buffer configuration before socket binding
+
 ### Changed
 - **Syslog UDP Source**: Removed `fast_strip` parameter from UDP sources (UDP now always uses full `normalize_slice` parsing)
+- **Syslog UDP Source**: Optimized preprocessing hook to be created once and reused via `Arc::clone()` instead of per-message allocation
 - **Syslog header_mode**: Renamed configuration values for clarity with backward compatibility
   - `raw` (保留原样) - previously `keep`
   - `skip` (跳过头部) - previously `strip`

@@ -98,6 +98,7 @@ pub struct SyslogSourceBuilder {
     protocol: String,
     tags: Vec<String>,
     tcp_recv_bytes: Option<i64>,
+    udp_recv_buffer: Option<i64>,
     strip_header: bool,
     attach_meta_tags: bool,
 }
@@ -111,6 +112,7 @@ impl SyslogSourceBuilder {
             protocol: protocol.to_string(),
             tags: Vec::new(),
             tcp_recv_bytes: None,
+            udp_recv_buffer: None,
             strip_header: true,
             attach_meta_tags: true,
         }
@@ -133,6 +135,11 @@ impl SyslogSourceBuilder {
 
     pub fn with_tcp_buffer(mut self, size: i64) -> Self {
         self.tcp_recv_bytes = Some(size);
+        self
+    }
+
+    pub fn with_udp_buffer(mut self, size: i64) -> Self {
+        self.udp_recv_buffer = Some(size);
         self
     }
 
@@ -163,6 +170,12 @@ impl SyslogSourceBuilder {
             params.insert(
                 "tcp_recv_bytes".to_string(),
                 toml::Value::Integer(tcp_bytes),
+            );
+        }
+        if let Some(udp_bytes) = self.udp_recv_buffer {
+            params.insert(
+                "udp_recv_buffer".to_string(),
+                toml::Value::Integer(udp_bytes),
             );
         }
         ResolvedSourceSpec {

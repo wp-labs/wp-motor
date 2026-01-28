@@ -96,6 +96,7 @@ async fn udp_source_builds_and_identifies() {
         tags,
         true,
         true,
+        0, // use default buffer
     )
     .await
     .unwrap();
@@ -236,6 +237,7 @@ async fn multiple_udp_sources_bind_distinct_ports() {
             tags1,
             true,
             true,
+            0,
         )
         .await
         .unwrap();
@@ -245,6 +247,7 @@ async fn multiple_udp_sources_bind_distinct_ports() {
             tags2,
             true,
             true,
+            0,
         )
         .await
         .unwrap();
@@ -267,6 +270,7 @@ async fn udp_source_preserves_multiple_tags() {
             tags,
             true,
             true,
+            0,
         )
         .await
         .unwrap();
@@ -283,7 +287,14 @@ async fn udp_source_fails_on_port_conflict() {
     let sock = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
     let addr = sock.local_addr().unwrap();
     let tags = Tags::default();
-    let res =
-        UdpSyslogSource::new("conflict".to_string(), addr.to_string(), tags, true, true).await;
+    let res = UdpSyslogSource::new(
+        "conflict".to_string(),
+        addr.to_string(),
+        tags,
+        true,
+        true,
+        0,
+    )
+    .await;
     assert!(res.is_err(), "should fail when port is already bound");
 }

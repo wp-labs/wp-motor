@@ -72,6 +72,7 @@ impl SourceFactory for SyslogSourceFactory {
                         tags,
                         config.strip_header,
                         config.attach_meta_tags,
+                        config.udp_recv_buffer,
                     )
                     .await?;
                     SourceSvcIns::new()
@@ -131,6 +132,7 @@ impl SourceDefProvider for SyslogSourceFactory {
         params.insert("port".into(), json!(514));
         params.insert("protocol".into(), json!("udp"));
         params.insert("tcp_recv_bytes".into(), json!(10_485_760));
+        params.insert("udp_recv_buffer".into(), json!(8_388_608)); // 8 MB
         params.insert("header_mode".into(), json!("skip"));
         params.insert("fast_strip".into(), json!(false));
         ConnectorDef {
@@ -142,6 +144,7 @@ impl SourceDefProvider for SyslogSourceFactory {
                 "port".into(),
                 "protocol".into(),
                 "tcp_recv_bytes".into(),
+                "udp_recv_buffer".into(),
                 "header_mode".into(),
                 "fast_strip".into(),
             ],

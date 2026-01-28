@@ -25,6 +25,7 @@
 //!     #   tag  => extract tags + strip header (alias: parse)
 //!     header_mode = "skip",
 //!     tcp_recv_bytes = 10485760  # TCP receive buffer size (bytes)
+//!     udp_recv_buffer = 8388608  # UDP socket buffer size (bytes)
 //! }
 //! ```
 
@@ -97,6 +98,7 @@ mod tests {
         assert_eq!(config.port, 514);
         assert_eq!(config.protocol, Protocol::Udp);
         assert_eq!(config.tcp_recv_bytes, 10_485_760);
+        assert_eq!(config.udp_recv_buffer, constants::DEFAULT_UDP_RECV_BUFFER);
         assert_eq!(config.address(), "0.0.0.0:514");
     }
 
@@ -216,6 +218,7 @@ mod tests {
             tags,
             true,
             true,
+            constants::DEFAULT_UDP_RECV_BUFFER,
         )
         .await;
         assert!(result.is_ok());

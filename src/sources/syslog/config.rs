@@ -1,6 +1,6 @@
 //! Configuration structures for syslog sources
 
-use super::constants::DEFAULT_TCP_RECV_BYTES;
+use super::constants::{DEFAULT_TCP_RECV_BYTES, DEFAULT_UDP_RECV_BUFFER};
 use anyhow::ensure;
 
 /// Configuration for syslog sources
@@ -10,6 +10,8 @@ pub struct SyslogSourceSpec {
     pub port: u16,
     pub protocol: Protocol,
     pub tcp_recv_bytes: usize,
+    /// UDP socket receive buffer size (bytes)
+    pub udp_recv_buffer: usize,
     pub strip_header: bool,
     pub attach_meta_tags: bool,
     /// Fast strip mode (TCP only, ignored for UDP)
@@ -35,6 +37,9 @@ impl SyslogSourceSpec {
         }
         if let Some(v) = params.get("tcp_recv_bytes").and_then(|v| v.as_i64()) {
             ensure!(v > 0, "tcp_recv_bytes must be > 0 (got {})", v);
+        }
+        if let Some(v) = params.get("udp_recv_buffer").and_then(|v| v.as_i64()) {
+            ensure!(v > 0, "udp_recv_buffer must be > 0 (got {})", v);
         }
         if let Some(v) = params.get("port").and_then(|v| v.as_i64()) {
             ensure!(
@@ -63,6 +68,11 @@ impl SyslogSourceSpec {
             .and_then(|v| v.as_i64())
             .filter(|&v| v > 0)
             .unwrap_or(DEFAULT_TCP_RECV_BYTES as i64) as usize;
+        let udp_recv_buffer = params
+            .get("udp_recv_buffer")
+            .and_then(|v| v.as_i64())
+            .filter(|&v| v > 0)
+            .unwrap_or(DEFAULT_UDP_RECV_BUFFER as i64) as usize;
         // header_mode: controls how syslog header is handled
         //   New names (preferred):
         //     raw  => keep original message untouched
@@ -95,6 +105,7 @@ impl SyslogSourceSpec {
             port,
             protocol,
             tcp_recv_bytes,
+            udp_recv_buffer,
             strip_header,
             attach_meta_tags,
             fast_strip,

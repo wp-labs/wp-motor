@@ -1,10 +1,19 @@
 [[connectors]]
 id = "syslog_tcp_src"
 type = "syslog"
-allow_override = ["addr", "port", "protocol", "tcp_recv_bytes", "header_mode", "prefer_newline"]
+allow_override = [
+  "addr",
+  "port",
+  "protocol",
+  "tcp_recv_bytes",
+  "udp_recv_buffer",
+  "header_mode",
+  "prefer_newline"
+]
 [connectors.params]
 addr = "127.0.0.1"
 port = 1514
 protocol = "tcp"
 header_mode = "strip"
 tcp_recv_bytes = 256000
+udp_recv_buffer = 8388608
