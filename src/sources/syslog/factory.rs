@@ -72,7 +72,6 @@ impl SourceFactory for SyslogSourceFactory {
                         tags,
                         config.strip_header,
                         config.attach_meta_tags,
-                        config.fast_strip,
                     )
                     .await?;
                     SourceSvcIns::new()
@@ -132,7 +131,8 @@ impl SourceDefProvider for SyslogSourceFactory {
         params.insert("port".into(), json!(514));
         params.insert("protocol".into(), json!("udp"));
         params.insert("tcp_recv_bytes".into(), json!(10_485_760));
-        params.insert("header_mode".into(), json!("strip"));
+        params.insert("header_mode".into(), json!("skip"));
+        params.insert("fast_strip".into(), json!(false));
         ConnectorDef {
             id: "syslog_src".into(),
             kind: self.kind().into(),
@@ -143,6 +143,7 @@ impl SourceDefProvider for SyslogSourceFactory {
                 "protocol".into(),
                 "tcp_recv_bytes".into(),
                 "header_mode".into(),
+                "fast_strip".into(),
             ],
             default_params: params,
             origin: Some("builtin:syslog_source".into()),

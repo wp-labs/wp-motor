@@ -1,4 +1,5 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
+use std::hint::black_box;
 use oml::core::DataTransformer;
 use oml::language::ObjModel;
 use oml::parser::oml_parse_raw;

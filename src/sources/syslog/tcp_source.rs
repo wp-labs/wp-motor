@@ -129,7 +129,14 @@ impl TcpSyslogSource {
                                                     *st = st[start..].to_string();
                                                 }
                                             }
-                                            RawData::ArcBytes(_) => {}
+                                            RawData::ArcBytes(arc_b) => {
+                                                // Convert ArcBytes to Bytes for modification
+                                                if start <= arc_b.len() {
+                                                    let new_bytes =
+                                                        bytes::Bytes::copy_from_slice(&arc_b[start..]);
+                                                    f.payload = RawData::Bytes(new_bytes);
+                                                }
+                                            }
                                         }
                                         return;
                                     }
@@ -151,7 +158,14 @@ impl TcpSyslogSource {
                                                         *st = st[start..].to_string();
                                                     }
                                                 }
-                                                RawData::ArcBytes(_) => {}
+                                                RawData::ArcBytes(arc_b) => {
+                                                    // Convert ArcBytes to Bytes for modification
+                                                    if start <= arc_b.len() {
+                                                        let new_bytes =
+                                                            bytes::Bytes::copy_from_slice(&arc_b[start..]);
+                                                        f.payload = RawData::Bytes(new_bytes);
+                                                    }
+                                                }
                                             }
                                             return;
                                         }
@@ -177,8 +191,13 @@ impl TcpSyslogSource {
                                         *st = st[start..].to_string();
                                     }
                                 }
-                                RawData::ArcBytes(_) => {
-                                    // ArcBytes 不可变，跳过快剪
+                                RawData::ArcBytes(arc_b) => {
+                                    // Convert ArcBytes to Bytes for modification
+                                    let len = arc_b.len();
+                                    if start <= len {
+                                        let new_bytes = bytes::Bytes::copy_from_slice(&arc_b[start..]);
+                                        f.payload = RawData::Bytes(new_bytes);
+                                    }
                                 }
                             }
                             return;
@@ -198,8 +217,13 @@ impl TcpSyslogSource {
                                         *st = st[start..].to_string();
                                     }
                                 }
-                                RawData::ArcBytes(_) => {
-                                    // ArcBytes 不可变，跳过快剪
+                                RawData::ArcBytes(arc_b) => {
+                                    // Convert ArcBytes to Bytes for modification
+                                    let len = arc_b.len();
+                                    if start <= len {
+                                        let new_bytes = bytes::Bytes::copy_from_slice(&arc_b[start..]);
+                                        f.payload = RawData::Bytes(new_bytes);
+                                    }
                                 }
                             }
                             return;
@@ -246,9 +270,14 @@ impl TcpSyslogSource {
                                 let end = ns.msg_end.min(st.len());
                                 *st = st[start..end].to_string();
                             }
-                            RawData::ArcBytes(_) => {
-                                // ArcBytes 是不可变的，不能进行 in-place 修改
-                                // 保持原数据不变
+                            RawData::ArcBytes(arc_b) => {
+                                // Convert ArcBytes to Bytes for modification
+                                let start = ns.msg_start.min(arc_b.len());
+                                let end = ns.msg_end.min(arc_b.len());
+                                if start <= end {
+                                    let new_bytes = bytes::Bytes::copy_from_slice(&arc_b[start..end]);
+                                    f.payload = RawData::Bytes(new_bytes);
+                                }
                             }
                         }
                     }

@@ -1,6 +1,7 @@
 use criterion::{
-    BenchmarkId, Criterion, SamplingMode, Throughput, black_box, criterion_group, criterion_main,
+    BenchmarkId, Criterion, SamplingMode, Throughput, criterion_group, criterion_main,
 };
+use std::hint::black_box;
 use rand::Rng;
 use rand::distributions::{Distribution, WeightedIndex};
 use rand::seq::SliceRandom;

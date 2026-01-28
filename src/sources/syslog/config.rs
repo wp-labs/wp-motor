@@ -12,6 +12,7 @@ pub struct SyslogSourceSpec {
     pub tcp_recv_bytes: usize,
     pub strip_header: bool,
     pub attach_meta_tags: bool,
+    /// Fast strip mode (TCP only, ignored for UDP)
     pub fast_strip: bool,
 }
 
@@ -62,23 +63,27 @@ impl SyslogSourceSpec {
             .and_then(|v| v.as_i64())
             .filter(|&v| v > 0)
             .unwrap_or(DEFAULT_TCP_RECV_BYTES as i64) as usize;
-        // Tri-state external flag: `header_mode` controls strip/attach
-        // - keep  => strip=false, attach=false
-        // - strip => strip=true,  attach=false
-        // - parse => strip=true,  attach=true
+        // header_mode: controls how syslog header is handled
+        //   New names (preferred):
+        //     raw  => keep original message untouched
+        //     skip => strip header, keep message body only
+        //     tag  => strip header + extract syslog.pri/facility/severity tags
+        //   Legacy aliases (backward-compatible):
+        //     keep  => raw
+        //     strip => skip
+        //     parse => tag
         let header_mode = params
             .get("header_mode")
             .and_then(|v| v.as_str())
-            .unwrap_or("parse")
+            .unwrap_or("skip")
             .to_ascii_lowercase();
         let (strip_header, attach_meta_tags) = match header_mode.as_str() {
-            "keep" => (false, false),
-            "strip" => (true, false),
-            "parse" => (true, true),
+            "raw" | "keep" => (false, false),
+            "skip" | "strip" => (true, false),
+            "tag" | "parse" => (true, true),
             other => {
-                // Fallback to parse, but make error obvious in logs
                 log::warn!(
-                    "syslog.header_mode invalid: '{}', fallback to 'parse'",
+                    "syslog.header_mode invalid: '{}', fallback to 'tag'",
                     other
                 );
                 (true, true)

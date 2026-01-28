@@ -19,8 +19,11 @@
 //!     addr = "0.0.0.0",
 //!     port = 514,
 //!     protocol = "udp",          # or "tcp"
-//!     # 头部处理模式：keep(保留头)、strip(去掉头)、parse(解析并注入标签，且去掉头)
-//!     header_mode = "parse",
+//!     # Header processing mode (default: skip):
+//!     #   raw  => keep original message (alias: keep)
+//!     #   skip => strip header, keep body only (alias: strip)
+//!     #   tag  => extract tags + strip header (alias: parse)
+//!     header_mode = "skip",
 //!     tcp_recv_bytes = 10485760  # TCP receive buffer size (bytes)
 //! }
 //! ```
@@ -126,6 +129,59 @@ mod tests {
         assert_eq!(config.protocol, Protocol::Tcp);
     }
 
+    #[test]
+    fn test_syslog_header_mode_new_names() {
+        // Test new names
+        let mut params = toml::map::Map::new();
+        params.insert("header_mode".to_string(), toml::Value::String("raw".to_string()));
+        let config =
+            SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(params.clone()))
+                .expect("raw mode");
+        assert_eq!(config.strip_header, false);
+        assert_eq!(config.attach_meta_tags, false);
+
+        params.insert("header_mode".to_string(), toml::Value::String("skip".to_string()));
+        let config =
+            SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(params.clone()))
+                .expect("skip mode");
+        assert_eq!(config.strip_header, true);
+        assert_eq!(config.attach_meta_tags, false);
+
+        params.insert("header_mode".to_string(), toml::Value::String("tag".to_string()));
+        let config =
+            SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(params))
+                .expect("tag mode");
+        assert_eq!(config.strip_header, true);
+        assert_eq!(config.attach_meta_tags, true);
+    }
+
+    #[test]
+    fn test_syslog_header_mode_legacy_aliases() {
+        // Test legacy aliases still work
+        let mut params = toml::map::Map::new();
+        params.insert("header_mode".to_string(), toml::Value::String("keep".to_string()));
+        let config =
+            SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(params.clone()))
+                .expect("keep mode");
+        assert_eq!(config.strip_header, false);
+        assert_eq!(config.attach_meta_tags, false);
+
+        params.insert("header_mode".to_string(), toml::Value::String("strip".to_string()));
+        let config =
+            SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(params.clone()))
+                .expect("strip mode");
+        assert_eq!(config.strip_header, true);
+        assert_eq!(config.attach_meta_tags, false);
+
+        params.insert("header_mode".to_string(), toml::Value::String("parse".to_string()));
+        let config =
+            SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(params))
+                .expect("parse mode");
+        assert_eq!(config.strip_header, true);
+        assert_eq!(config.attach_meta_tags, true);
+    }
+
+
     #[tokio::test]
     async fn test_udp_source_creation() {
         if std::net::UdpSocket::bind("127.0.0.1:0").is_err() {
@@ -139,7 +195,6 @@ mod tests {
             tags,
             true,
             true,
-            false,
         )
         .await;
         assert!(result.is_ok());

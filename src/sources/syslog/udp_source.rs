@@ -18,6 +18,73 @@ use wp_parse_api::RawData;
 
 use super::normalize;
 
+/// Build syslog preprocessing hook based on configuration
+///
+/// # Arguments
+/// * `strip` - Whether to strip syslog header
+/// * `attach` - Whether to attach metadata tags
+fn build_preproc_hook(strip: bool, attach: bool) -> Option<EventPreHook> {
+    if !strip && !attach {
+        return None;
+    }
+
+    Some(Arc::new(move |f: &mut SourceEvent| {
+        // Get text representation from payload
+        let s_opt = match &f.payload {
+            RawData::String(s) => Some(s.as_str()),
+            RawData::Bytes(b) => std::str::from_utf8(b).ok(),
+            RawData::ArcBytes(b) => std::str::from_utf8(b).ok(),
+        };
+
+        let Some(s) = s_opt else { return };
+
+        // Full syslog normalization
+        let ns = normalize::normalize_slice(s);
+
+        // Attach metadata tags if requested
+        if attach {
+            let tags = Arc::make_mut(&mut f.tags);
+            if let Some(pri) = ns.meta.pri {
+                tags.set("syslog.pri", pri.to_string());
+            }
+            if let Some(ref fac) = ns.meta.facility {
+                tags.set("syslog.facility", fac.clone());
+            }
+            if let Some(ref sev) = ns.meta.severity {
+                tags.set("syslog.severity", sev.clone());
+            }
+        }
+
+        // Strip header if requested
+        if strip {
+            match &mut f.payload {
+                RawData::Bytes(b) => {
+                    let start = ns.msg_start.min(b.len());
+                    let end = ns.msg_end.min(b.len());
+                    if start <= end {
+                        *b = b.slice(start..end);
+                    }
+                }
+                RawData::String(st) => {
+                    let start = ns.msg_start.min(st.len());
+                    let end = ns.msg_end.min(st.len());
+                    *st = st[start..end].to_string();
+                }
+                RawData::ArcBytes(arc_b) => {
+                    // Convert ArcBytes to Bytes for modification
+                    let start = ns.msg_start.min(arc_b.len());
+                    let end = ns.msg_end.min(arc_b.len());
+                    if start <= end {
+                        let new_bytes = Bytes::copy_from_slice(&arc_b[start..end]);
+                        f.payload = RawData::Bytes(new_bytes);
+                    }
+                }
+            }
+        }
+    }))
+}
+
+
 #[derive(Debug, Default, Clone)]
 struct DatagramDecoder {
     inner: crate::protocol::syslog::SyslogDecoder,
@@ -49,7 +116,6 @@ pub struct UdpSyslogSource {
     frame: UdpFramed<DatagramDecoder>,
     strip_header: bool,
     attach_meta_tags: bool,
-    fast_strip: bool,
     // Log first received packet once to help diagnose delivery
     first_seen_logged: bool,
 }
@@ -61,13 +127,14 @@ impl UdpSyslogSource {
     /// * `key` - Unique identifier for this source
     /// * `addr` - Address to bind to (e.g., "0.0.0.0:514")
     /// * `tags` - Tags to attach to received messages
+    /// * `strip_header` - Whether to strip syslog header
+    /// * `attach_meta_tags` - Whether to attach syslog metadata as tags
     pub async fn new(
         key: String,
         addr: String,
         tags: Tags,
         strip_header: bool,
         attach_meta_tags: bool,
-        fast_strip: bool,
     ) -> anyhow::Result<Self> {
         // Parse address and create socket
         let target: SocketAddr = addr.parse()?;
@@ -91,7 +158,6 @@ impl UdpSyslogSource {
             tags,
             strip_header,
             attach_meta_tags,
-            fast_strip,
             first_seen_logged: false,
         })
     }
@@ -115,82 +181,11 @@ impl UdpSyslogSource {
                     let mut stags = self.tags.clone();
                     stags.set("access_ip", addr.ip().to_string());
 
-                    // 预处理闭包：在 parse 侧决定是否 strip/注入 syslog 元信息
-                    let strip = self.strip_header;
-                    let attach = self.attach_meta_tags;
-                    let fast = self.fast_strip;
-                    let pre: Option<EventPreHook> = if strip || attach {
-                        Some(std::sync::Arc::new(move |f: &mut SourceEvent| {
-                            // 仅对可视文本做 syslog 规范化
-                            let s_opt = match &f.payload {
-                                RawData::String(s) => Some(s.as_str()),
-                                RawData::Bytes(b) => std::str::from_utf8(b).ok(),
-                                RawData::ArcBytes(b) => std::str::from_utf8(b).ok(),
-                            };
-                            if let Some(s) = s_opt {
-                                if fast
-                                    && strip
-                                    && !attach
-                                    && let Some(pos) = s.find(" wpgen: ")
-                                {
-                                    let start = pos + 8;
-                                    match &mut f.payload {
-                                        RawData::Bytes(b) => {
-                                            let len = b.len();
-                                            if start <= len {
-                                                *b = b.slice(start..len);
-                                            }
-                                        }
-                                        RawData::String(st) => {
-                                            if start <= st.len() {
-                                                *st = st[start..].to_string();
-                                            }
-                                        }
-                                        RawData::ArcBytes(_) => {
-                                            // ArcBytes 是不可变的，不能进行 in-place 修改
-                                            // 暂时跳过 fast strip，保持原数据
-                                        }
-                                    }
-                                    return;
-                                }
-                                let ns = normalize::normalize_slice(s);
-                                if attach {
-                                    let tags = Arc::make_mut(&mut f.tags);
-                                    if let Some(pri) = ns.meta.pri {
-                                        tags.set("syslog.pri", pri.to_string());
-                                    }
-                                    if let Some(ref fac) = ns.meta.facility {
-                                        tags.set("syslog.facility", fac.clone());
-                                    }
-                                    if let Some(ref sev) = ns.meta.severity {
-                                        tags.set("syslog.severity", sev.clone());
-                                    }
-                                }
-                                if strip {
-                                    match &mut f.payload {
-                                        RawData::Bytes(b) => {
-                                            let start = ns.msg_start.min(b.len());
-                                            let end = ns.msg_end.min(b.len());
-                                            if start <= end {
-                                                *b = b.slice(start..end);
-                                            }
-                                        }
-                                        RawData::String(st) => {
-                                            let start = ns.msg_start.min(st.len());
-                                            let end = ns.msg_end.min(st.len());
-                                            *st = st[start..end].to_string();
-                                        }
-                                        RawData::ArcBytes(_) => {
-                                            // ArcBytes 是不可变的，不能进行 in-place 修改
-                                            // 保持原数据不变
-                                        }
-                                    }
-                                }
-                            }
-                        }) as EventPreHook)
-                    } else {
-                        None
-                    };
+                    // 使用统一的预处理逻辑（UDP 始终走完整解析）
+                    let pre = build_preproc_hook(
+                        self.strip_header,
+                        self.attach_meta_tags,
+                    );
 
                     let mut frame = SourceEvent::new(
                         next_event_id(),
@@ -227,74 +222,11 @@ impl DataSource for UdpSyslogSource {
                 let mut stags = self.tags.clone();
                 stags.set("access_ip", addr.ip().to_string());
 
-                let strip = self.strip_header;
-                let attach = self.attach_meta_tags;
-                let fast = self.fast_strip;
-                let pre: Option<EventPreHook> = if strip || attach {
-                    Some(std::sync::Arc::new(move |f: &mut SourceEvent| {
-                        let s_opt = match &f.payload {
-                            RawData::String(s) => Some(s.as_str()),
-                            RawData::Bytes(b) => std::str::from_utf8(b).ok(),
-                            RawData::ArcBytes(b) => std::str::from_utf8(b).ok(),
-                        };
-                        if let Some(s) = s_opt {
-                            if fast
-                                && strip
-                                && !attach
-                                && let Some(pos) = s.find(" wpgen: ")
-                            {
-                                let start = pos + 8;
-                                match &mut f.payload {
-                                    RawData::Bytes(b) => {
-                                        let len = b.len();
-                                        if start <= len {
-                                            *b = b.slice(start..len);
-                                        }
-                                    }
-                                    RawData::String(st) => {
-                                        if start <= st.len() {
-                                            *st = st[start..].to_string();
-                                        }
-                                    }
-                                    RawData::ArcBytes(_) => {}
-                                }
-                                return;
-                            }
-                            let ns = normalize::normalize_slice(s);
-                            if attach {
-                                let tags = Arc::make_mut(&mut f.tags);
-                                if let Some(pri) = ns.meta.pri {
-                                    tags.set("syslog.pri", pri.to_string());
-                                }
-                                if let Some(ref fac) = ns.meta.facility {
-                                    tags.set("syslog.facility", fac.clone());
-                                }
-                                if let Some(ref sev) = ns.meta.severity {
-                                    tags.set("syslog.severity", sev.clone());
-                                }
-                            }
-                            if strip {
-                                match &mut f.payload {
-                                    RawData::Bytes(b) => {
-                                        let start = ns.msg_start.min(b.len());
-                                        let end = ns.msg_end.min(b.len());
-                                        if start <= end {
-                                            *b = b.slice(start..end);
-                                        }
-                                    }
-                                    RawData::String(st) => {
-                                        let start = ns.msg_start.min(st.len());
-                                        let end = ns.msg_end.min(st.len());
-                                        *st = st[start..end].to_string();
-                                    }
-                                    RawData::ArcBytes(_) => {}
-                                }
-                            }
-                        }
-                    }) as EventPreHook)
-                } else {
-                    None
-                };
+                // 使用统一的预处理逻辑（UDP 始终走完整解析）
+                let pre = build_preproc_hook(
+                    self.strip_header,
+                    self.attach_meta_tags,
+                );
 
                 let mut frame = SourceEvent::new(
                     next_event_id(),
