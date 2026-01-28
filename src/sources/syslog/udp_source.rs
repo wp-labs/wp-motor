@@ -84,7 +84,6 @@ fn build_preproc_hook(strip: bool, attach: bool) -> Option<EventPreHook> {
     }))
 }
 
-
 #[derive(Debug, Default, Clone)]
 struct DatagramDecoder {
     inner: crate::protocol::syslog::SyslogDecoder,
@@ -182,10 +181,7 @@ impl UdpSyslogSource {
                     stags.set("access_ip", addr.ip().to_string());
 
                     // 使用统一的预处理逻辑（UDP 始终走完整解析）
-                    let pre = build_preproc_hook(
-                        self.strip_header,
-                        self.attach_meta_tags,
-                    );
+                    let pre = build_preproc_hook(self.strip_header, self.attach_meta_tags);
 
                     let mut frame = SourceEvent::new(
                         next_event_id(),
@@ -223,10 +219,7 @@ impl DataSource for UdpSyslogSource {
                 stags.set("access_ip", addr.ip().to_string());
 
                 // 使用统一的预处理逻辑（UDP 始终走完整解析）
-                let pre = build_preproc_hook(
-                    self.strip_header,
-                    self.attach_meta_tags,
-                );
+                let pre = build_preproc_hook(self.strip_header, self.attach_meta_tags);
 
                 let mut frame = SourceEvent::new(
                     next_event_id(),

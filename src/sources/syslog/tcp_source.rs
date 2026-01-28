@@ -132,8 +132,9 @@ impl TcpSyslogSource {
                                             RawData::ArcBytes(arc_b) => {
                                                 // Convert ArcBytes to Bytes for modification
                                                 if start <= arc_b.len() {
-                                                    let new_bytes =
-                                                        bytes::Bytes::copy_from_slice(&arc_b[start..]);
+                                                    let new_bytes = bytes::Bytes::copy_from_slice(
+                                                        &arc_b[start..],
+                                                    );
                                                     f.payload = RawData::Bytes(new_bytes);
                                                 }
                                             }
@@ -162,7 +163,9 @@ impl TcpSyslogSource {
                                                     // Convert ArcBytes to Bytes for modification
                                                     if start <= arc_b.len() {
                                                         let new_bytes =
-                                                            bytes::Bytes::copy_from_slice(&arc_b[start..]);
+                                                            bytes::Bytes::copy_from_slice(
+                                                                &arc_b[start..],
+                                                            );
                                                         f.payload = RawData::Bytes(new_bytes);
                                                     }
                                                 }
@@ -195,7 +198,8 @@ impl TcpSyslogSource {
                                     // Convert ArcBytes to Bytes for modification
                                     let len = arc_b.len();
                                     if start <= len {
-                                        let new_bytes = bytes::Bytes::copy_from_slice(&arc_b[start..]);
+                                        let new_bytes =
+                                            bytes::Bytes::copy_from_slice(&arc_b[start..]);
                                         f.payload = RawData::Bytes(new_bytes);
                                     }
                                 }
@@ -221,7 +225,8 @@ impl TcpSyslogSource {
                                     // Convert ArcBytes to Bytes for modification
                                     let len = arc_b.len();
                                     if start <= len {
-                                        let new_bytes = bytes::Bytes::copy_from_slice(&arc_b[start..]);
+                                        let new_bytes =
+                                            bytes::Bytes::copy_from_slice(&arc_b[start..]);
                                         f.payload = RawData::Bytes(new_bytes);
                                     }
                                 }
@@ -275,7 +280,8 @@ impl TcpSyslogSource {
                                 let start = ns.msg_start.min(arc_b.len());
                                 let end = ns.msg_end.min(arc_b.len());
                                 if start <= end {
-                                    let new_bytes = bytes::Bytes::copy_from_slice(&arc_b[start..end]);
+                                    let new_bytes =
+                                        bytes::Bytes::copy_from_slice(&arc_b[start..end]);
                                     f.payload = RawData::Bytes(new_bytes);
                                 }
                             }

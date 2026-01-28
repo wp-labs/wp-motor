@@ -1,10 +1,10 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use std::hint::black_box;
 use oml::core::DataTransformer;
 use oml::language::ObjModel;
 use oml::parser::oml_parse_raw;
 use orion_variate::EnvDict;
 use std::fs;
+use std::hint::black_box;
 use std::path::PathBuf;
 use wp_conf::test_support::ForTest;
 use wp_knowledge::facade as kdb;

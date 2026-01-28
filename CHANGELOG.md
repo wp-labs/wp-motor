@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `<11>2025-07-07 09:42:43,132 sentinel - ...` (ISO format)
     - `<158>Jul23 17:18:36 skyeye ...` (missing space after month)
     - `<34>Xyz 11 22:14:15 host ...` (invalid month)
+- **Clippy**: Fixed `bool_assert_comparison` warnings in syslog tests (`src/sources/syslog/mod.rs`)
 
 
 ## [1.10.4] - 2026-01-27

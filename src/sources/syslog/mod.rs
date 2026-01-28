@@ -133,54 +133,75 @@ mod tests {
     fn test_syslog_header_mode_new_names() {
         // Test new names
         let mut params = toml::map::Map::new();
-        params.insert("header_mode".to_string(), toml::Value::String("raw".to_string()));
-        let config =
-            SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(params.clone()))
-                .expect("raw mode");
-        assert_eq!(config.strip_header, false);
-        assert_eq!(config.attach_meta_tags, false);
+        params.insert(
+            "header_mode".to_string(),
+            toml::Value::String("raw".to_string()),
+        );
+        let config = SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(
+            params.clone(),
+        ))
+        .expect("raw mode");
+        assert!(!config.strip_header);
+        assert!(!config.attach_meta_tags);
 
-        params.insert("header_mode".to_string(), toml::Value::String("skip".to_string()));
-        let config =
-            SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(params.clone()))
-                .expect("skip mode");
-        assert_eq!(config.strip_header, true);
-        assert_eq!(config.attach_meta_tags, false);
+        params.insert(
+            "header_mode".to_string(),
+            toml::Value::String("skip".to_string()),
+        );
+        let config = SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(
+            params.clone(),
+        ))
+        .expect("skip mode");
+        assert!(config.strip_header);
+        assert!(!config.attach_meta_tags);
 
-        params.insert("header_mode".to_string(), toml::Value::String("tag".to_string()));
+        params.insert(
+            "header_mode".to_string(),
+            toml::Value::String("tag".to_string()),
+        );
         let config =
             SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(params))
                 .expect("tag mode");
-        assert_eq!(config.strip_header, true);
-        assert_eq!(config.attach_meta_tags, true);
+        assert!(config.strip_header);
+        assert!(config.attach_meta_tags);
     }
 
     #[test]
     fn test_syslog_header_mode_legacy_aliases() {
         // Test legacy aliases still work
         let mut params = toml::map::Map::new();
-        params.insert("header_mode".to_string(), toml::Value::String("keep".to_string()));
-        let config =
-            SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(params.clone()))
-                .expect("keep mode");
-        assert_eq!(config.strip_header, false);
-        assert_eq!(config.attach_meta_tags, false);
+        params.insert(
+            "header_mode".to_string(),
+            toml::Value::String("keep".to_string()),
+        );
+        let config = SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(
+            params.clone(),
+        ))
+        .expect("keep mode");
+        assert!(!config.strip_header);
+        assert!(!config.attach_meta_tags);
 
-        params.insert("header_mode".to_string(), toml::Value::String("strip".to_string()));
-        let config =
-            SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(params.clone()))
-                .expect("strip mode");
-        assert_eq!(config.strip_header, true);
-        assert_eq!(config.attach_meta_tags, false);
+        params.insert(
+            "header_mode".to_string(),
+            toml::Value::String("strip".to_string()),
+        );
+        let config = SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(
+            params.clone(),
+        ))
+        .expect("strip mode");
+        assert!(config.strip_header);
+        assert!(!config.attach_meta_tags);
 
-        params.insert("header_mode".to_string(), toml::Value::String("parse".to_string()));
+        params.insert(
+            "header_mode".to_string(),
+            toml::Value::String("parse".to_string()),
+        );
         let config =
             SyslogSourceSpec::from_params(&wp_connector_api::parammap_from_toml_map(params))
                 .expect("parse mode");
-        assert_eq!(config.strip_header, true);
-        assert_eq!(config.attach_meta_tags, true);
+        assert!(config.strip_header);
+        assert!(config.attach_meta_tags);
     }
-
 
     #[tokio::test]
     async fn test_udp_source_creation() {

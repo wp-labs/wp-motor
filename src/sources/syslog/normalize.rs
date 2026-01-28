@@ -226,7 +226,7 @@ fn parse_rfc3164(input: &str) -> Option<Normalized> {
     if i + 3 >= bytes.len() {
         return None;
     }
-    let month = &input[i..i+3];
+    let month = &input[i..i + 3];
     if !is_valid_month(month) {
         return None;
     }
@@ -264,11 +264,15 @@ fn parse_rfc3164(input: &str) -> Option<Normalized> {
         return None;
     }
     // Verify HH:MM:SS format (digits and colons at correct positions)
-    if !bytes[i].is_ascii_digit() || !bytes[i+1].is_ascii_digit() ||
-       bytes[i+2] != b':' ||
-       !bytes[i+3].is_ascii_digit() || !bytes[i+4].is_ascii_digit() ||
-       bytes[i+5] != b':' ||
-       !bytes[i+6].is_ascii_digit() || !bytes[i+7].is_ascii_digit() {
+    if !bytes[i].is_ascii_digit()
+        || !bytes[i + 1].is_ascii_digit()
+        || bytes[i + 2] != b':'
+        || !bytes[i + 3].is_ascii_digit()
+        || !bytes[i + 4].is_ascii_digit()
+        || bytes[i + 5] != b':'
+        || !bytes[i + 6].is_ascii_digit()
+        || !bytes[i + 7].is_ascii_digit()
+    {
         return None;
     }
     i += 8;
@@ -326,7 +330,7 @@ fn parse_rfc3164_slice(input: &str) -> Option<NormalizedSlice> {
     if i + 3 >= bytes.len() {
         return None;
     }
-    let month = &input[i..i+3];
+    let month = &input[i..i + 3];
     if !is_valid_month(month) {
         return None;
     }
@@ -364,11 +368,15 @@ fn parse_rfc3164_slice(input: &str) -> Option<NormalizedSlice> {
         return None;
     }
     // Verify HH:MM:SS format (digits and colons at correct positions)
-    if !bytes[i].is_ascii_digit() || !bytes[i+1].is_ascii_digit() ||
-       bytes[i+2] != b':' ||
-       !bytes[i+3].is_ascii_digit() || !bytes[i+4].is_ascii_digit() ||
-       bytes[i+5] != b':' ||
-       !bytes[i+6].is_ascii_digit() || !bytes[i+7].is_ascii_digit() {
+    if !bytes[i].is_ascii_digit()
+        || !bytes[i + 1].is_ascii_digit()
+        || bytes[i + 2] != b':'
+        || !bytes[i + 3].is_ascii_digit()
+        || !bytes[i + 4].is_ascii_digit()
+        || bytes[i + 5] != b':'
+        || !bytes[i + 6].is_ascii_digit()
+        || !bytes[i + 7].is_ascii_digit()
+    {
         return None;
     }
     i += 8;
@@ -406,8 +414,18 @@ fn parse_rfc3164_slice(input: &str) -> Option<NormalizedSlice> {
 fn is_valid_month(month: &str) -> bool {
     matches!(
         month,
-        "Jan" | "Feb" | "Mar" | "Apr" | "May" | "Jun" |
-        "Jul" | "Aug" | "Sep" | "Oct" | "Nov" | "Dec"
+        "Jan"
+            | "Feb"
+            | "Mar"
+            | "Apr"
+            | "May"
+            | "Jun"
+            | "Jul"
+            | "Aug"
+            | "Sep"
+            | "Oct"
+            | "Nov"
+            | "Dec"
     )
 }
 
@@ -511,7 +529,10 @@ mod tests {
         // 非标准格式 1: ISO时间戳格式（不是RFC3164）
         let input1 = "<11>2025-07-07 09:42:43,132 sentinel - info message";
         let ns1 = normalize_slice(input1);
-        assert_eq!(ns1.msg_start, 0, "ISO format should not be parsed as RFC3164");
+        assert_eq!(
+            ns1.msg_start, 0,
+            "ISO format should not be parsed as RFC3164"
+        );
 
         // 非标准格式 2: 月份后缺少空格
         let input2 = "<158>Jul23 17:18:36 skyeye SyslogClient[1]: message";
@@ -531,13 +552,19 @@ mod tests {
         // 标准 RFC3164 格式（应该成功）
         let input5 = "<158>Jul 23 17:18:36 skyeye SyslogClient[1]: message";
         let ns5 = normalize_slice(input5);
-        assert!(ns5.msg_start > 0, "Standard RFC3164 should parse successfully");
+        assert!(
+            ns5.msg_start > 0,
+            "Standard RFC3164 should parse successfully"
+        );
         assert_eq!(&input5[ns5.msg_start..ns5.msg_end], "message");
 
         // 标准 RFC3164 格式，单位数日期（应该成功）
         let input6 = "<34>Oct  1 22:14:15 mymachine su: test message";
         let ns6 = normalize_slice(input6);
-        assert!(ns6.msg_start > 0, "RFC3164 with single digit day should parse");
+        assert!(
+            ns6.msg_start > 0,
+            "RFC3164 with single digit day should parse"
+        );
         assert_eq!(&input6[ns6.msg_start..ns6.msg_end], "test message");
     }
 }

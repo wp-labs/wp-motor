@@ -82,10 +82,7 @@ impl SyslogSourceSpec {
             "skip" | "strip" => (true, false),
             "tag" | "parse" => (true, true),
             other => {
-                log::warn!(
-                    "syslog.header_mode invalid: '{}', fallback to 'tag'",
-                    other
-                );
+                log::warn!("syslog.header_mode invalid: '{}', fallback to 'tag'", other);
                 (true, true)
             }
         };
