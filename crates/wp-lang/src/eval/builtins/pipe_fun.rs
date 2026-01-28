@@ -316,10 +316,10 @@ impl FieldPipe for Base64Decode {
 impl ExtPassFunc {
     fn process_with_label(
         &self,
-        mut field: Option<&mut DataField>,
+        field: Option<&mut DataField>,
         label: &'static str,
     ) -> WResult<()> {
-        if let Err(_msg) = self.processor.process(field.as_deref_mut()) {
+        if let Err(_msg) = self.processor.process(field) {
             return fail.context(ctx_desc(label)).parse_next(&mut "");
         }
         Ok(())
@@ -332,17 +332,17 @@ impl VecToSrcFunc {
         mut field: Option<&mut DataField>,
         label: &'static str,
     ) -> WResult<()> {
-        if let Some(active) = field.as_deref_mut() {
-            if let Value::Array(items) = active.get_value_mut() {
-                for item in items.iter_mut() {
-                    if let Err(_msg) = self.processor.process(Some(item)) {
-                        return fail.context(ctx_desc(label)).parse_next(&mut "");
-                    }
+        if let Some(active) = field.as_deref_mut()
+            && let Value::Array(items) = active.get_value_mut()
+        {
+            for item in items.iter_mut() {
+                if let Err(_msg) = self.processor.process(Some(item)) {
+                    return fail.context(ctx_desc(label)).parse_next(&mut "");
                 }
-                return Ok(());
             }
+            return Ok(());
         }
-        if let Err(_msg) = self.processor.process(field.as_deref_mut()) {
+        if let Err(_msg) = self.processor.process(field) {
             return fail.context(ctx_desc(label)).parse_next(&mut "");
         }
         Ok(())
@@ -376,7 +376,7 @@ impl SplitInnerSrcFunc {
                 }
             }
         }
-        if let Err(_msg) = proc.process(field.as_deref_mut()) {
+        if let Err(_msg) = proc.process(field) {
             return fail.context(ctx_desc(label)).parse_next(&mut "");
         }
         Ok(())
