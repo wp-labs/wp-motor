@@ -14,7 +14,8 @@ pub struct SyslogSourceSpec {
     pub udp_recv_buffer: usize,
     pub strip_header: bool,
     pub attach_meta_tags: bool,
-    /// Fast strip mode (TCP only, ignored for UDP)
+    /// Fast strip mode (works for both UDP and TCP when header_mode=skip)
+    /// Enables fast path that skips full syslog parsing when only stripping header
     pub fast_strip: bool,
 }
 

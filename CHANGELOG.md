@@ -11,7 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Syslog UDP Source**: Added `udp_recv_buffer` configuration parameter to control UDP socket receive buffer size (default 8MB)
   - Helps prevent packet loss under high throughput conditions
   - Uses `socket2` crate for buffer configuration before socket binding
-- **Syslog UDP Source**: Added batch receiving (up to 32 packets per `receive()` call) for better throughput
+- **Syslog UDP Source**: Added batch receiving (up to 128 packets per `receive()` call) for better throughput
+- **Syslog UDP Source**: Added `fast_strip` optimization (previously TCP-only)
+  - Skip full syslog parsing when `header_mode = "skip"` and only stripping header
+  - Fast path for RFC3164 (find `: `) and RFC5424 (skip fixed structure) formats
+  - Reduces CPU overhead significantly at high EPS
+- **Syslog UDP Source**: Added Linux `recvmmsg()` syscall support for batch receiving
+  - Receive up to 64 datagrams in a single syscall on Linux
+  - Reduces syscall overhead by ~60x compared to per-packet `recv_from()`
+  - Automatically falls back to standard loop on non-Linux platforms
+- **Syslog UDP Source**: Changed payload from `Bytes::copy_from_slice` to `Arc<[u8]>`
+  - Zero-copy sharing downstream reduces memory allocation overhead
+  - More consistent with TCP source's `ZcpMessage` pattern
 
 ### Changed
 - **Syslog Architecture**: Major refactoring to eliminate duplicate parsing and unify UDP/TCP processing

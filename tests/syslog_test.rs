@@ -96,6 +96,7 @@ async fn udp_source_builds_and_identifies() {
         tags,
         true,
         true,
+        false, // fast_strip
         0, // use default buffer
     )
     .await
@@ -237,6 +238,7 @@ async fn multiple_udp_sources_bind_distinct_ports() {
             tags1,
             true,
             true,
+            false, // fast_strip
             0,
         )
         .await
@@ -247,6 +249,7 @@ async fn multiple_udp_sources_bind_distinct_ports() {
             tags2,
             true,
             true,
+            false, // fast_strip
             0,
         )
         .await
@@ -270,6 +273,7 @@ async fn udp_source_preserves_multiple_tags() {
             tags,
             true,
             true,
+            false, // fast_strip
             0,
         )
         .await
@@ -293,6 +297,7 @@ async fn udp_source_fails_on_port_conflict() {
         tags,
         true,
         true,
+        false, // fast_strip
         0,
     )
     .await;

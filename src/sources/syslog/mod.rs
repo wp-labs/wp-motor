@@ -218,6 +218,7 @@ mod tests {
             tags,
             true,
             true,
+            false, // fast_strip
             constants::DEFAULT_UDP_RECV_BUFFER,
         )
         .await;
