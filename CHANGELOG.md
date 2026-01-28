@@ -5,7 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.10.4 Unreleased]
+## [1.10.5 Unreleased]
+
+### Changed
+- **Syslog UDP Source**: Removed `fast_strip` parameter from UDP sources (UDP now always uses full `normalize_slice` parsing)
+- **Syslog header_mode**: Renamed configuration values for clarity with backward compatibility
+  - `raw` (保留原样) - previously `keep`
+  - `skip` (跳过头部) - previously `strip`
+  - `tag` (提取标签) - previously `parse`
+  - Legacy values (`keep`/`strip`/`parse`) remain supported as aliases
+  - Default changed from `strip` to `skip`
+- **Benchmarks**: Replaced deprecated `criterion::black_box` with `std::hint::black_box` across all benchmark files
+  - `crates/wp-stats/benches/wp_stats_bench.rs`
+  - `crates/orion_exp/benches/or_we_bench.rs`
+  - `crates/wp-oml/benches/oml_sql_bench*.rs`
+  - `crates/wp-parser/benches/*.rs`
+  - `crates/wp-lang/benches/nginx_10k.rs`
+  - `crates/wp-knowledge/benches/read_bench.rs`
+  - `src/sources/benches/normalize_bench.rs`
+- **Documentation**: Updated Syslog source documentation with comprehensive configuration guide
+  - Added UDP vs TCP protocol selection guide
+  - Added performance tuning recommendations
+  - Updated `wp-docs/10-user/02-config/02-sources.md`
+  - Updated `wp-docs/10-user/05-connectors/01-sources/04-syslog_source.md`
+
+### Fixed
+- **Syslog RFC3164 Parser**: Implemented strict validation to prevent misidentification of non-standard formats
+  - Added month name validation (Jan-Dec only)
+  - Added strict timestamp format validation (HH:MM:SS with colons)
+  - Added mandatory space validation after month, day, and time fields
+  - Non-standard formats (e.g., ISO timestamps, invalid month names) now correctly fallback to passthrough
+  - Examples that now correctly reject:
+    - `<11>2025-07-07 09:42:43,132 sentinel - ...` (ISO format)
+    - `<158>Jul23 17:18:36 skyeye ...` (missing space after month)
+    - `<34>Xyz 11 22:14:15 host ...` (invalid month)
+
+
+## [1.10.4] - 2026-01-27
 
 ### Changed
 - **Dependencies**: Updated `sysinfo` requirement from 0.37 to 0.38
