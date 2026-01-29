@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.11.0 Unreleased]
+## [1.12.0 Unreleased]
 
 ### Added
 - **Syslog UDP Source**: Added `udp_recv_buffer` configuration parameter to control UDP socket receive buffer size (default 8MB)
@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `tag` (提取标签) - previously `parse`
   - Legacy values (`keep`/`strip`/`parse`) remain supported as aliases
   - Default changed from `strip` to `skip`
+- **Channel / TCP Sources**: Introduced `wp.role=derived` 标签并在采集器中拆分主/派生任务组
+  - 派生源（如 `channel_src`、`tcp_src`）在 batch 模式中会在真实源完成后自动收到 Stop/Close，保证处理结束可安全退出
+  - `start_picker_tasks` 返回 `PickerGroups`，TaskManager 会先停主组再广播停止到派生组
+- **WPL / Sink 路由**: 对 WPL 包名、`oml`/`rule` 路由进行路径归一化，自动压缩多余 `/`
+  - `normalize_rule_path`、`normalize_match_input` 统一在 sink 路由加载与解析资源索引时使用
+  - sink 配置中即便写成 `/nginx//pkg` 也能正确匹配业务规则
 
 ### Removed
 - **Syslog Protocol**: Removed `SyslogDecoder` and `SyslogFrame` from `protocol::syslog` module
@@ -53,11 +59,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added mandatory space validation after month, day, and time fields
   - Non-standard formats (e.g., ISO timestamps, invalid month names) now correctly fallback to passthrough
   - Examples that now correctly reject:
-    - `<11>2025-07-07 09:42:43,132 sentinel - ...` (ISO format)
-    - `<158>Jul23 17:18:36 skyeye ...` (missing space after month)
-    - `<34>Xyz 11 22:14:15 host ...` (invalid month)
+  - `<11>2025-07-07 09:42:43,132 sentinel - ...` (ISO format)
+  - `<158>Jul23 17:18:36 skyeye ...` (missing space after month)
+  - `<34>Xyz 11 22:14:15 host ...` (invalid month)
 - **Clippy**: Fixed `bool_assert_comparison` warnings in syslog tests (`src/sources/syslog/mod.rs`)
+- **Docs**: Added `docs/log_split_channel.md` 记录数据包拆分、Channel 派生源使用方式与业务 sink 配置示例
 
+## [1.12.0-alpha.1] - 2026-01-28
+- Alpha build cut from commit tagged `v1.12.0-alpha.1`。
+
+## [1.12.0-alpha] - 2026-01-28
+- Initial 1.12.0 alpha release snapshot。
+
+## [1.11.0-alpha] - 2026-01-28
+- Alpha release for 1.11.0；subsequent improvements tracked under 1.12.0。
 
 ## [1.10.4] - 2026-01-27
 
