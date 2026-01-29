@@ -2,9 +2,9 @@ use derive_getters::Getters;
 use smol_str::SmolStr;
 
 use super::function::{
-    CharsHas, CharsIn, CharsNotHas, DigitHas, DigitIn, Has, IpIn, JsonUnescape, SelectLast,
-    TakeField, TargetCharsHas, TargetCharsIn, TargetCharsNotHas, TargetDigitHas, TargetDigitIn,
-    TargetHas, TargetIpIn,
+    CharsHas, CharsIn, CharsNotHas, DigitHas, DigitIn, Has, IpIn, JsonUnescape, ReplaceFunc,
+    SelectLast, TakeField, TargetCharsHas, TargetCharsIn, TargetCharsNotHas, TargetDigitHas,
+    TargetDigitIn, TargetHas, TargetIpIn,
 };
 use crate::ast::{group::WplGroup, processor::Base64Decode};
 
@@ -33,6 +33,7 @@ pub enum WplFun {
     // Transformation functions
     TransJsonUnescape(JsonUnescape),
     TransBase64Decode(Base64Decode),
+    TransCharsReplace(ReplaceFunc),
 }
 
 #[derive(Debug, Clone, PartialEq, Getters)]

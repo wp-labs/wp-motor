@@ -288,8 +288,18 @@ fn try_fast_rfc3164(s: &str) -> Option<(usize, Option<u8>)> {
 fn is_valid_month(month: &str) -> bool {
     matches!(
         month,
-        "Jan" | "Feb" | "Mar" | "Apr" | "May" | "Jun"
-            | "Jul" | "Aug" | "Sep" | "Oct" | "Nov" | "Dec"
+        "Jan"
+            | "Feb"
+            | "Mar"
+            | "Apr"
+            | "May"
+            | "Jun"
+            | "Jul"
+            | "Aug"
+            | "Sep"
+            | "Oct"
+            | "Nov"
+            | "Dec"
     )
 }
 
@@ -415,7 +425,13 @@ impl UdpSyslogSource {
 
         let mode = match (strip_header, attach_meta_tags) {
             (false, false) => "raw",
-            (true, false) => if fast_strip { "skip+fast" } else { "skip" },
+            (true, false) => {
+                if fast_strip {
+                    "skip+fast"
+                } else {
+                    "skip"
+                }
+            }
             (true, true) => "tag",
             (false, true) => "tag-only", // unusual but possible
         };
@@ -675,7 +691,10 @@ impl UdpSyslogSource {
     /// Linux-specific: convert batch receive results to SourceEvents
     /// Skips truncated packets with warning
     #[cfg(target_os = "linux")]
-    fn batch_to_events(&mut self, batch_results: Vec<(usize, std::net::SocketAddr, bool)>) -> Vec<SourceEvent> {
+    fn batch_to_events(
+        &mut self,
+        batch_results: Vec<(usize, std::net::SocketAddr, bool)>,
+    ) -> Vec<SourceEvent> {
         let mut events = Vec::with_capacity(batch_results.len());
 
         for (i, (len, addr, truncated)) in batch_results.into_iter().enumerate() {
