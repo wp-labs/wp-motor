@@ -64,19 +64,19 @@ pub fn build_preproc_hook(strip: bool, attach: bool, fast: bool) -> Option<Event
         // Uses the same validation logic as normalize module to ensure consistency
         if fast && strip && !attach {
             // Try strict RFC5424 fast path
-            if let Some((msg_start, _meta)) = try_fast_rfc5424(s) {
-                if let Some(new_payload) = slice_payload(&f.payload, msg_start, s.len()) {
-                    f.payload = new_payload;
-                    return;
-                }
+            if let Some((msg_start, _meta)) = try_fast_rfc5424(s)
+                && let Some(new_payload) = slice_payload(&f.payload, msg_start, s.len())
+            {
+                f.payload = new_payload;
+                return;
             }
 
             // Try strict RFC3164 fast path
-            if let Some((msg_start, _meta)) = try_fast_rfc3164(s) {
-                if let Some(new_payload) = slice_payload(&f.payload, msg_start, s.len()) {
-                    f.payload = new_payload;
-                    return;
-                }
+            if let Some((msg_start, _meta)) = try_fast_rfc3164(s)
+                && let Some(new_payload) = slice_payload(&f.payload, msg_start, s.len())
+            {
+                f.payload = new_payload;
+                return;
             }
 
             // Format doesn't match strict RFC3164/5424 - fall through to full parsing
