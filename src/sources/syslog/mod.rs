@@ -88,33 +88,6 @@ mod tests {
         assert_eq!(init.sources[0].source.identifier(), "syslog_u1");
     }
 
-    #[tokio::test]
-    async fn test_factory_udp_multiple_instances() {
-        if std::net::UdpSocket::bind("127.0.0.1:0").is_err() {
-            return;
-        }
-        let mut params = toml::map::Map::new();
-        params.insert("protocol".into(), toml::Value::String("UDP".into()));
-        params.insert("port".into(), toml::Value::Integer(0));
-        params.insert("instances".into(), toml::Value::Integer(2));
-        let spec = ResolvedSourceSpec {
-            name: "syslog_multi".into(),
-            kind: "syslog".into(),
-            connector_id: String::new(),
-            params: wp_connector_api::parammap_from_toml_map(params),
-            tags: vec![],
-        };
-        let fac = factory::SyslogSourceFactory::new();
-        let init = fac
-            .build(&spec, &ctx())
-            .await
-            .expect("factory build failed");
-        assert_eq!(init.sources.len(), 2);
-        let mut names: Vec<_> = init.sources.iter().map(|h| h.source.identifier()).collect();
-        names.sort();
-        assert_eq!(names, vec!["syslog_multi#1", "syslog_multi#2"]);
-    }
-
     #[test]
     fn test_syslog_config_defaults() {
         let params = toml::map::Map::new();
@@ -127,7 +100,6 @@ mod tests {
         assert_eq!(config.tcp_recv_bytes, 10_485_760);
         assert_eq!(config.udp_recv_buffer, constants::DEFAULT_UDP_RECV_BUFFER);
         assert_eq!(config.address(), "0.0.0.0:514");
-        assert_eq!(config.instances, 1);
     }
 
     #[test]

@@ -419,16 +419,6 @@ impl UdpSyslogSource {
         };
         let socket2 = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
 
-        // Reuse addr/port so multiple instances can bind the same endpoint
-        socket2.set_reuse_address(true)?;
-        if let Err(e) = socket2.set_reuse_port(true) {
-            debug_ctrl!(
-                "UDP syslog '{}' failed to enable SO_REUSEPORT ({}); continuing without it",
-                key,
-                e
-            );
-        }
-
         // Set receive buffer size before binding
         if recv_buffer > 0 {
             socket2.set_recv_buffer_size(recv_buffer)?;
@@ -566,6 +556,12 @@ impl UdpSyslogSource {
                     event.ups_ip = Some(addr.ip());
                     // Attach preprocessing hook (will strip header / extract tags based on config)
                     event.preproc = self.preproc_hook.clone();
+                    info_data!(
+                        "UDP syslog '{}' recv_event produced event {} (src_key={})",
+                        self.key,
+                        event.event_id,
+                        event.src_key
+                    );
 
                     return Ok(event);
                 }
@@ -612,6 +608,12 @@ impl UdpSyslogSource {
                         SourceEvent::new(next_event_id(), &self.key, payload, Arc::new(stags));
                     event.ups_ip = Some(addr.ip());
                     event.preproc = self.preproc_hook.clone();
+                    info_data!(
+                        "UDP syslog '{}' try_recv_event produced event {} (src_key={})",
+                        self.key,
+                        event.event_id,
+                        event.src_key
+                    );
 
                     return Some(event);
                 }
@@ -771,6 +773,12 @@ impl UdpSyslogSource {
             let mut event = SourceEvent::new(next_event_id(), &self.key, payload, Arc::new(stags));
             event.ups_ip = Some(addr.ip());
             event.preproc = self.preproc_hook.clone();
+            info_data!(
+                "UDP syslog '{}' batch_to_events produced event {} (src_key={})",
+                self.key,
+                event.event_id,
+                event.src_key
+            );
 
             events.push(event);
         }
