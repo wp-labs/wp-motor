@@ -5,7 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.11.0 Unreleased]
+## [1.12.0 Unreleased]
+
+### Added
+- **WPL Parser**: Add support for `\t` (tab) and `\S` (non-whitespace) separators in parsing expressions
+- **WPL Parser**: Add support for quoted field names with special characters (e.g., `"field.name"`, `"field-name"`) #16
+- **WPL Functions**: Add `chars_replace` function for character-level string replacement #13
+
+### Changed
+- **Logging**: Optimize high-frequency log paths with `log_enabled!` guard to eliminate loop overhead when log level is filtered
+- **Logging**: Add `event_id` to debug messages for better traceability
+
+### Removed
+- **Syslog UDP Source**: Remove `SO_REUSEPORT` multi-instance support
+  - Security risk: allows same-UID processes to intercept traffic
+  - Cross-platform inconsistency: macOS/BSD doesn't provide kernel-level load balancing
+  - See `docs/dar/udp_reuseport.md` for detailed design rationale
+
+
+## [1.11.0] - 2026-01-28
 
 ### Added
 - **Syslog UDP Source**: Added `udp_recv_buffer` configuration parameter to control UDP socket receive buffer size (default 8MB)
