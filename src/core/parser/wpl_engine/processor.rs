@@ -30,6 +30,11 @@ impl WplEngine {
                     // 完全成功解析
                     let record = enrich_record_with_tags(record, &data.tags);
                     let rec_unit = SinkRecUnit::new(data.event_id, ProcMeta::Null, record);
+                    info_data!(
+                        "wpl parse suc! wpl:{} , event_id:{} ",
+                        wpl_key,
+                        data.event_id
+                    );
                     sink_groups.entry(wpl_key).or_default().push(rec_unit);
                 }
                 ProcessResult::Partial {
@@ -53,7 +58,11 @@ impl WplEngine {
                         continue;
                     }
                     // 完全失败，记录深度最高的错误信息
-                    warn_data!("wpls miss data: {}\n data:{}", fail_info, data.payload);
+                    warn_data!(
+                        "wpls miss event_id :{} data:\n{}",
+                        data.event_id,
+                        data.payload
+                    );
                     miss_packets.push((data, fail_info));
                 }
             }

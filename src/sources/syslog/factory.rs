@@ -84,7 +84,8 @@ impl SourceFactory for SyslogSourceFactory {
                     )
                     .await?;
                     let meta = meta_builder(&spec.name, &tagset);
-                    SourceSvcIns::new().with_sources(vec![SourceHandle::new(Box::new(source), meta)])
+                    SourceSvcIns::new()
+                        .with_sources(vec![SourceHandle::new(Box::new(source), meta)])
                 }
                 Protocol::Tcp => {
                     let tags = base_tags.clone();

@@ -78,18 +78,19 @@ impl MultiParser {
                     }
                 }
                 Err(e) => {
-                    info_data!(
-                        "wpl parse fail: {}\n data:{}\n{}",
-                        wpl_line.wpl_key(),
-                        event.payload,
-                        e
-                    );
                     // 记录解析深度最高的错误
                     if let WparseReason::Uvs(UvsReason::DataError(_, Some(pos))) = e.reason() {
                         if *pos > max_depth {
                             max_depth = *pos;
                             best_wpl = wpl_line.wpl_key().clone();
                             best_error = Some(e.clone());
+                            //single wpl fail!
+                            debug_data!(
+                                "wpl parse fail: {}\n data:{}\n{}",
+                                wpl_line.wpl_key(),
+                                event.payload,
+                                e
+                            );
                         }
                     } else if best_error.is_none() {
                         // 如果不是 DataError，作为备选记录第一个错误

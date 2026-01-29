@@ -201,7 +201,7 @@ impl SinkRuntime {
                 }
             } else {
                 self.stat_end(&data);
-                debug_data!("sink {} send suc!", self.name);
+                info_data!("sink {} send suc!", self.name);
             }
             if !redo {
                 break;

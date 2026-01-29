@@ -88,6 +88,16 @@ impl JMActPicker {
             // 非阻塞读取：若返回 None 或空批，则视为 Miss（本轮到此为止）
             match source.try_receive() {
                 Some(batch) if !batch.is_empty() => {
+                    if log::log_enabled!(log::Level::Info) {
+                        for v in &batch {
+                            info_data!(
+                                "[{}] => received eventid:{}: data:\n{}",
+                                source.identifier(),
+                                v.event_id,
+                                v.payload
+                            );
+                        }
+                    }
                     self.extend_pending(batch);
                 }
                 Some(_) | None => {
@@ -156,10 +166,12 @@ impl JMActPicker {
                 res = source.receive() => {
                     match res {
                         Ok(batch) => {
-                            for v in &batch {
-                                trace_data!(
-                                    "[{}] => received data : {}",source.identifier(),v.payload
-                                );
+                            if log::log_enabled!(log::Level::Info) {
+                                for v in &batch {
+                                    info_data!(
+                                        "[{}] => received eventid:{}: data:\n{}",source.identifier(), v.event_id,v.payload
+                                    );
+                                }
                             }
                             self.extend_pending(batch);
                             total += 1;
