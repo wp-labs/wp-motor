@@ -51,12 +51,12 @@ impl SourceFactory for SyslogSourceFactory {
     ) -> SourceResult<SourceSvcIns> {
         let fut = async {
             let config = SyslogSourceSpec::from_params(&spec.params)?;
-            let mut tags = Tags::from_parse(&spec.tags);
-            tags.set("access_source", "syslog".to_string());
-            tags.set("syslog_protocol", format!("{:?}", config.protocol));
+            let mut base_tags = Tags::from_parse(&spec.tags);
+            base_tags.set("access_source", "syslog".to_string());
+            base_tags.set("syslog_protocol", format!("{:?}", config.protocol));
 
-            let meta_builder = |tagset: &Tags| -> SourceMeta {
-                let mut meta = SourceMeta::new(spec.name.clone(), spec.kind.clone());
+            let meta_builder = |name: &str, tagset: &Tags| -> SourceMeta {
+                let mut meta = SourceMeta::new(name.to_string(), spec.kind.clone());
                 for (k, v) in tagset.iter() {
                     meta.tags.set(k, v);
                 }
@@ -72,21 +72,32 @@ impl SourceFactory for SyslogSourceFactory {
                         config.fast_strip,
                         config.udp_recv_buffer
                     );
-                    let meta = meta_builder(&tags);
-                    let source = UdpSyslogSource::new(
-                        spec.name.clone(),
-                        config.address(),
-                        tags,
-                        config.strip_header,
-                        config.attach_meta_tags,
-                        config.fast_strip,
-                        config.udp_recv_buffer,
-                    )
-                    .await?;
-                    SourceSvcIns::new()
-                        .with_sources(vec![SourceHandle::new(Box::new(source), meta)])
+                    let multi = config.instances > 1;
+                    let mut handles = Vec::with_capacity(config.instances);
+                    for idx in 0..config.instances {
+                        let key = if multi {
+                            format!("{}#{}", spec.name, idx + 1)
+                        } else {
+                            spec.name.clone()
+                        };
+                        let tagset = base_tags.clone();
+                        let source = UdpSyslogSource::new(
+                            key.clone(),
+                            config.address(),
+                            tagset.clone(),
+                            config.strip_header,
+                            config.attach_meta_tags,
+                            config.fast_strip,
+                            config.udp_recv_buffer,
+                        )
+                        .await?;
+                        let meta = meta_builder(&key, &tagset);
+                        handles.push(SourceHandle::new(Box::new(source), meta));
+                    }
+                    SourceSvcIns::new().with_sources(handles)
                 }
                 Protocol::Tcp => {
+                    let tags = base_tags.clone();
                     let pool = Arc::new(Mutex::new(HashSet::<u64>::new()));
                     let (reg_tx, reg_rx) = mpsc::channel(tcp_reader_batch_channel_cap());
                     let framing = FramingMode::Auto;
@@ -108,7 +119,7 @@ impl SourceFactory for SyslogSourceFactory {
                         vec![reg_tx],
                     );
 
-                    let meta = meta_builder(&tags);
+                    let meta = meta_builder(&spec.name, &tags);
                     let syslog = TcpSyslogSource::new(
                         spec.name.clone(),
                         tags,
@@ -143,6 +154,7 @@ impl SourceDefProvider for SyslogSourceFactory {
         params.insert("udp_recv_buffer".into(), json!(8_388_608)); // 8 MB
         params.insert("header_mode".into(), json!("skip"));
         params.insert("fast_strip".into(), json!(false));
+        params.insert("instances".into(), json!(1));
         ConnectorDef {
             id: "syslog_src".into(),
             kind: self.kind().into(),
@@ -155,6 +167,7 @@ impl SourceDefProvider for SyslogSourceFactory {
                 "udp_recv_buffer".into(),
                 "header_mode".into(),
                 "fast_strip".into(),
+                "instances".into(),
             ],
             default_params: params,
             origin: Some("builtin:syslog_source".into()),

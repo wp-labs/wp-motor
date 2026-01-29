@@ -17,7 +17,12 @@ pub struct SyslogSourceSpec {
     /// Fast strip mode (works for both UDP and TCP when header_mode=skip)
     /// Enables fast path that skips full syslog parsing when only stripping header
     pub fast_strip: bool,
+    /// Number of UDP instances to spawn (ignored for TCP)
+    pub instances: usize,
 }
+
+pub const DEFAULT_SYSLOG_INSTANCES: usize = 1;
+pub const MAX_SYSLOG_UDP_INSTANCES: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Protocol {
@@ -107,6 +112,30 @@ impl SyslogSourceSpec {
             .get("fast_strip")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let requested_instances = params
+            .get("instances")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(DEFAULT_SYSLOG_INSTANCES as i64);
+        ensure!(requested_instances >= 1, "syslog.instances must be >= 1");
+        let instances = match protocol {
+            Protocol::Udp => {
+                ensure!(
+                    requested_instances <= MAX_SYSLOG_UDP_INSTANCES as i64,
+                    "syslog.instances must be between 1 and {} for UDP",
+                    MAX_SYSLOG_UDP_INSTANCES
+                );
+                requested_instances as usize
+            }
+            Protocol::Tcp => {
+                if requested_instances > 1 {
+                    log::warn!(
+                        "syslog TCP source does not support 'instances'; received {} and falling back to 1",
+                        requested_instances
+                    );
+                }
+                1
+            }
+        };
         Ok(Self {
             addr,
             port,
@@ -116,6 +145,7 @@ impl SyslogSourceSpec {
             strip_header,
             attach_meta_tags,
             fast_strip,
+            instances,
         })
     }
 

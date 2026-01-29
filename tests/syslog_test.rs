@@ -97,7 +97,7 @@ async fn udp_source_builds_and_identifies() {
         true,
         true,
         false, // fast_strip
-        0, // use default buffer
+        0,     // use default buffer
     )
     .await
     .unwrap();
