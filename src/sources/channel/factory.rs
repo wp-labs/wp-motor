@@ -117,6 +117,7 @@ impl SourceFactory for ChannelSourceFactory {
         register_channel_field_processors(&resolved.name);
 
         let mut meta = SourceMeta::new(resolved.name.clone(), resolved.kind.clone());
+        meta.tags.set("wp.role", "derived");
         for (k, v) in tags.iter() {
             meta.tags.set(k, v);
         }

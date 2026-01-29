@@ -4,7 +4,7 @@ use crate::runtime::actor::signal::ShutdownCmd;
 use crate::runtime::actor::{TaskGroup, TaskManager};
 use crate::runtime::supervisor::maintenance::ActMaintainer;
 use crate::runtime::tasks::{
-    add_acceptor_tasks, start_data_sinks, start_infra_working, start_moni_tasks,
+    PickerGroups, add_acceptor_tasks, start_data_sinks, start_infra_working, start_moni_tasks,
     start_parser_tasks_frames, start_picker_tasks,
 };
 use tokio::time::sleep;
@@ -98,7 +98,7 @@ pub async fn start_warp_service(
 
     sleep(Duration::from_millis(100)).await;
     // 启动采集器（pickers）
-    let mut picker_group = start_picker_tasks(
+    let mut picker_groups = start_picker_tasks(
         &args,
         all_sources,
         moni_send.clone(),
@@ -108,7 +108,7 @@ pub async fn start_warp_service(
 
     // 启动接受器（acceptors）并纳入主组
     if let Some(all_acceptors) = acceptors_prepared {
-        add_acceptor_tasks(&mut picker_group, all_acceptors);
+        add_acceptor_tasks(&mut picker_groups.primary, all_acceptors);
     } else {
         info_ctrl!("run-mode=batch: 跳过启动接受器任务，以避免阻塞主组完成");
     }
@@ -120,7 +120,10 @@ pub async fn start_warp_service(
     task_manager.append_group(maint_group);
     task_manager.append_group(parser_group);
     // 将采集任务组设为主组（主流程），用于整体生命周期与退出判断
-    task_manager.set_main(picker_group);
+    if let Some(derived_group) = picker_groups.derived.take() {
+        task_manager.append_group(derived_group);
+    }
+    task_manager.set_main(picker_groups.primary);
 
     Ok(task_manager)
 }

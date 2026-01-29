@@ -12,5 +12,5 @@ pub use accept::add_acceptor_tasks;
 pub use monitor::start_moni_tasks;
 #[allow(unused_imports)]
 pub use parse::start_parser_tasks_frames;
-pub use pick::start_picker_tasks;
+pub use pick::{PickerGroups, start_picker_tasks};
 pub use sink::{start_data_sinks, start_infra_working};

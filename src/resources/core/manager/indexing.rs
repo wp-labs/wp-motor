@@ -2,6 +2,7 @@ use crate::core::parser::SpaceIndex;
 use crate::resources::SinkID;
 use wp_conf::structure::SinkRouteConf;
 
+use super::normalize_rule_path;
 use super::res_manager::ResManager;
 
 impl ResManager {
@@ -46,10 +47,11 @@ impl ResManager {
 
         for wpl_matcher in group_conf.rule.as_ref() {
             for rule_key in wpl_index.rule_key() {
-                if wpl_matcher.matches(rule_key) {
+                let normalized_rule = normalize_rule_path(rule_key);
+                if wpl_matcher.matches(normalized_rule.as_str()) {
                     self.rule_sink_db.update(
                         &sink_name,
-                        rule_key,
+                        normalized_rule.as_str(),
                         wpl_matcher.to_string().as_str(),
                     );
                 }
@@ -57,12 +59,15 @@ impl ResManager {
         }
         for mdl_matcher in group_conf.oml().as_ref() {
             for rule_key in wpl_index.rule_key() {
+                let normalized_rule = normalize_rule_path(rule_key);
                 for (name, mdl) in &name_mdl_res {
-                    if mdl_matcher.matches(name.0.as_str()) && mdl.is_match(rule_key) {
+                    if mdl_matcher.matches(name.0.as_str())
+                        && mdl.is_match(normalized_rule.as_str())
+                    {
                         debug_ctrl!("{} match oml {}", rule_key, name.0.as_str());
                         self.rule_sink_db.update(
                             &sink_name,
-                            rule_key,
+                            normalized_rule.as_str(),
                             mdl_matcher.to_string().as_str(),
                         )
                     }

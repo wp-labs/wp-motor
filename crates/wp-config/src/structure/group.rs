@@ -359,11 +359,29 @@ impl FlexGroup {
     }
 }
 
+fn normalize_match_input(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut prev_slash = false;
+    for ch in raw.chars() {
+        if ch == '/' {
+            if !prev_slash {
+                out.push('/');
+                prev_slash = true;
+            }
+        } else {
+            prev_slash = false;
+            out.push(ch);
+        }
+    }
+    if out.is_empty() { raw.to_string() } else { out }
+}
+
 pub fn extend_matches<S: Into<String>>(rule: Vec<S>) -> WildArray {
     let mut out = Vec::new();
     for item in rule {
         let x: String = item.into();
-        out.push(WildMatch::new(&x));
+        let normalized = normalize_match_input(&x);
+        out.push(WildMatch::new(&normalized));
     }
     WildArray(out)
 }
@@ -374,6 +392,14 @@ mod tests {
     use orion_variate::{EnvDict, ValueType};
     use serde_json::json;
     use wp_connector_api::ParamMap;
+
+    #[test]
+    fn normalize_match_input_collapse_slashes() {
+        assert_eq!(normalize_match_input("/a//b///c"), "/a/b/c");
+        assert_eq!(normalize_match_input("///"), "/");
+        assert_eq!(normalize_match_input(""), "");
+        assert_eq!(normalize_match_input("/"), "/");
+    }
 
     #[test]
     fn flex_group_env_eval_updates_members_and_sinks() {

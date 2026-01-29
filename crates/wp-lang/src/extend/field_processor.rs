@@ -3,6 +3,8 @@ use crate::traits::FieldProcessor;
 use once_cell::sync::Lazy;
 use orion_error::ToStructError;
 use std::collections::HashMap;
+#[cfg(test)]
+use std::sync::Mutex;
 use std::sync::{Arc, RwLock};
 use wp_model_core::model::DataField;
 #[cfg(test)]
@@ -121,6 +123,9 @@ impl FieldProcessor for PassProcessor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use once_cell::sync::Lazy;
+
+    static REG_GUARD: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
     struct TagProcessor(&'static str);
     impl FieldProcessor for TagProcessor {
@@ -142,6 +147,7 @@ mod tests {
 
     #[test]
     fn pass_processor_is_noop() {
+        let _lock = REG_GUARD.lock().unwrap();
         clear_field_processors();
         register_field_processor(FiledExtendType::MemChannel, PassProcessor::new());
         let mut field = DataField::from_chars("key", "value");
@@ -154,6 +160,7 @@ mod tests {
 
     #[test]
     fn registry_replaces_same_name() {
+        let _lock = REG_GUARD.lock().unwrap();
         clear_field_processors();
         register_field_processor(FiledExtendType::MemChannel, PassProcessor::new());
         register_field_processor(FiledExtendType::MemChannel, TagProcessor("first"));
@@ -175,6 +182,7 @@ mod tests {
 
     #[test]
     fn lookup_returns_latest_clone() {
+        let _lock = REG_GUARD.lock().unwrap();
         clear_field_processors();
         register_field_processor(FiledExtendType::MemChannel, TagProcessor("one"));
         let first = get_field_processor(FiledExtendType::MemChannel, "tag").expect("first");

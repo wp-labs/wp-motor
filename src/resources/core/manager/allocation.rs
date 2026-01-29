@@ -10,18 +10,22 @@ use wp_error::run_error::RunResult;
 use wp_log::info_ctrl;
 use wp_stat::StatReq;
 
+use super::normalize_rule_path;
 use super::res_manager::ResManager;
 
 impl ParserResAlloc for ResManager {
     fn alloc_parse_res(&self, rule_key: &RuleKey) -> RunResult<Vec<SinkGroupAgent>> {
-        info_ctrl!("alloc parse res : wpl rule {}  ", rule_key);
+        info_ctrl!("alloc parse res : wpl rule {}", rule_key);
         let mut res = Vec::new();
         let route_agent = self
             .route_agent
             .clone()
             .ok_or(RunReason::from_logic("not init route agent"))?;
 
-        if let Some((idx, _)) = self.rule_sink_db.rule_sink_idx().get(rule_key) {
+        let normalized_key = normalize_rule_path(rule_key.0.as_str());
+        let lookup_key = RuleKey::from(normalized_key.as_str());
+
+        if let Some((idx, _)) = self.rule_sink_db.rule_sink_idx().get(&lookup_key) {
             for item in &route_agent.items {
                 if *idx == SinkID::from(item.conf().name()) {
                     info_ctrl!(
