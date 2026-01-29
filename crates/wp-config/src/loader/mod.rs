@@ -6,8 +6,8 @@
 //! ## 示例
 //!
 //! ```no_run
-//! use wp_conf::loader::traits::ConfigLoader;
-//! use wp_conf::structure::SourceInstanceConf;
+//! use wp_config::loader::traits::ConfigLoader;
+//! use wp_config::structure::SourceInstanceConf;
 //! use orion_variate::EnvDict;
 //! use std::path::Path;
 //!

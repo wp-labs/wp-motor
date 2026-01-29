@@ -21,7 +21,7 @@ use serde::Serialize;
 ///
 /// # 示例
 /// ```no_run
-/// use wp_conf::loader::validate_vars::check_unresolved_variables;
+/// use wp_config::loader::validate_vars::check_unresolved_variables;
 /// use serde::Serialize;
 ///
 /// #[derive(Serialize)]

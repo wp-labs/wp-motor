@@ -8,7 +8,8 @@ allow_override = [
   "tcp_recv_bytes",
   "udp_recv_buffer",
   "header_mode",
-  "prefer_newline"
+  "prefer_newline",
+  "instances"
 ]
 [connectors.params]
 addr = "127.0.0.1"
@@ -17,3 +18,4 @@ protocol = "tcp"
 header_mode = "strip"
 tcp_recv_bytes = 256000
 udp_recv_buffer = 8388608
+instances = 1

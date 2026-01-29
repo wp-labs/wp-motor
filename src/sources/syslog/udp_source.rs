@@ -8,14 +8,14 @@
 //!
 //! - **Batch size**: Up to 128 packets per `receive()` call (matching TCP)
 //! - **fast_strip**: Skip full syslog parsing when only stripping header (no tags)
-//! - **Arc payload**: Use `RawData::ArcBytes` for zero-copy sharing downstream
+//! - **Bytes payload**: Convert recv buffers directly into `RawData::Bytes` for zero-copy sharing downstream
 //! - **recvmmsg()**: On Linux, use `recvmmsg()` to receive multiple datagrams in one syscall
 
 use crate::sources::event_id::next_event_id;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use tokio::net::UdpSocket;
 use wp_connector_api::{DataSource, EventPreHook, SourceBatch, SourceEvent, Tags};
 use wp_connector_api::{SourceError, SourceReason, SourceResult};
@@ -25,6 +25,37 @@ use super::normalize;
 
 /// Maximum batch size for UDP receive (matches TCP for fairness)
 const UDP_BATCH_SIZE: usize = 128;
+/// Maximum datagram size (syslog payload over UDP cannot exceed this)
+const UDP_MAX_DATAGRAM: usize = 65536;
+
+/// Allocate a packet buffer with pre-set length so it can be handed directly to recv APIs.
+fn allocate_packet_buffer() -> BytesMut {
+    let mut buf = BytesMut::with_capacity(UDP_MAX_DATAGRAM);
+    unsafe {
+        buf.set_len(UDP_MAX_DATAGRAM);
+    }
+    buf
+}
+
+/// Reset an existing packet buffer, ensuring it is ready for the next recv call.
+#[cfg(target_os = "linux")]
+fn reset_packet_buffer(buf: &mut BytesMut) {
+    buf.clear();
+    if buf.capacity() < UDP_MAX_DATAGRAM {
+        buf.reserve(UDP_MAX_DATAGRAM - buf.capacity());
+    }
+    unsafe {
+        buf.set_len(UDP_MAX_DATAGRAM);
+    }
+}
+
+/// Freeze the current packet (taking ownership) and replace the working buffer with a fresh one.
+fn freeze_packet_buffer(buf: &mut BytesMut, len: usize) -> Bytes {
+    let mut owned = allocate_packet_buffer();
+    std::mem::swap(&mut owned, buf);
+    owned.truncate(len);
+    owned.freeze()
+}
 
 /// Build syslog preprocessing hook based on configuration
 ///
@@ -338,21 +369,21 @@ fn slice_payload(payload: &RawData, start: usize, end: usize) -> Option<RawData>
 /// ## Performance Features
 /// - Batch receiving up to 128 packets per call
 /// - fast_strip optimization for skip mode
-/// - Arc-based payload for zero-copy downstream
+/// - Bytes-based payload for zero-copy downstream
 /// - recvmmsg() on Linux for batch syscalls
 pub struct UdpSyslogSource {
     key: String,
     tags: Tags,
     socket: UdpSocket,
-    /// Receive buffer for UDP datagrams
-    recv_buf: Vec<u8>,
+    /// Receive buffer for UDP datagrams (copy-on-write to hand ownership to payload)
+    recv_buf: BytesMut,
     /// Cached preprocessing hook (created once, reused for all messages)
     preproc_hook: Option<EventPreHook>,
     /// Log first received packet once to help diagnose delivery
     first_seen_logged: bool,
     /// Linux-specific: batch receive buffers for recvmmsg()
     #[cfg(target_os = "linux")]
-    batch_buffers: Vec<Vec<u8>>,
+    batch_buffers: Vec<BytesMut>,
 }
 
 impl UdpSyslogSource {
@@ -387,6 +418,16 @@ impl UdpSyslogSource {
             Domain::IPV6
         };
         let socket2 = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+
+        // Reuse addr/port so multiple instances can bind the same endpoint
+        socket2.set_reuse_address(true)?;
+        if let Err(e) = socket2.set_reuse_port(true) {
+            debug_ctrl!(
+                "UDP syslog '{}' failed to enable SO_REUSEPORT ({}); continuing without it",
+                key,
+                e
+            );
+        }
 
         // Set receive buffer size before binding
         if recv_buffer > 0 {
@@ -449,12 +490,12 @@ impl UdpSyslogSource {
         );
 
         // 64KB receive buffer for individual datagrams (max UDP payload)
-        let recv_buf = vec![0u8; 65536];
+        let recv_buf = allocate_packet_buffer();
 
         // Linux: pre-allocate batch buffers for recvmmsg()
         #[cfg(target_os = "linux")]
         let batch_buffers = (0..UDP_BATCH_SIZE)
-            .map(|_| vec![0u8; 65536])
+            .map(|_| allocate_packet_buffer())
             .collect::<Vec<_>>();
 
         #[cfg(target_os = "linux")]
@@ -491,7 +532,7 @@ impl UdpSyslogSource {
                 Ok((len, addr)) => {
                     // Check for potential truncation: if len equals buffer size,
                     // the datagram was likely truncated
-                    if len == self.recv_buf.len() {
+                    if len == UDP_MAX_DATAGRAM {
                         warn_data!(
                             "UDP syslog '{}' discarding truncated packet from {} (len={}, likely exceeded 64KB)",
                             self.key,
@@ -512,10 +553,8 @@ impl UdpSyslogSource {
                         self.first_seen_logged = true;
                     }
 
-                    // Use Arc-based payload for zero-copy sharing downstream
-                    // This avoids per-event memory allocation when events are cloned/shared
-                    // Vec<u8> -> Arc<[u8]> via From trait
-                    let payload = RawData::ArcBytes(self.recv_buf[..len].to_vec().into());
+                    // Convert the mutable buffer into an owned Bytes payload (no extra copy)
+                    let payload = RawData::Bytes(freeze_packet_buffer(&mut self.recv_buf, len));
 
                     // Create tags with access_ip
                     let mut stags = self.tags.clone();
@@ -553,7 +592,7 @@ impl UdpSyslogSource {
             match self.socket.try_recv_from(&mut self.recv_buf) {
                 Ok((len, addr)) => {
                     // Check for potential truncation
-                    if len == self.recv_buf.len() {
+                    if len == UDP_MAX_DATAGRAM {
                         warn_data!(
                             "UDP syslog '{}' discarding truncated packet from {} (len={}, likely exceeded 64KB)",
                             self.key,
@@ -563,9 +602,8 @@ impl UdpSyslogSource {
                         continue; // discard and try next packet
                     }
 
-                    // Use Arc-based payload for zero-copy sharing
-                    // Vec<u8> -> Arc<[u8]> via From trait
-                    let payload = RawData::ArcBytes(self.recv_buf[..len].to_vec().into());
+                    // Use Bytes payload for zero-copy sharing
+                    let payload = RawData::Bytes(freeze_packet_buffer(&mut self.recv_buf, len));
 
                     let mut stags = self.tags.clone();
                     stags.set("access_ip", addr.ip().to_string());
@@ -617,9 +655,10 @@ impl UdpSyslogSource {
 
         for i in 0..batch_count {
             let buf = &mut self.batch_buffers[i];
+            reset_packet_buffer(buf);
             iovecs[i].write(libc::iovec {
                 iov_base: buf.as_mut_ptr() as *mut libc::c_void,
-                iov_len: buf.len(),
+                iov_len: UDP_MAX_DATAGRAM,
             });
 
             addrs[i] = MaybeUninit::zeroed();
@@ -724,7 +763,7 @@ impl UdpSyslogSource {
                 self.first_seen_logged = true;
             }
 
-            let payload = RawData::ArcBytes(self.batch_buffers[i][..len].to_vec().into());
+            let payload = RawData::Bytes(freeze_packet_buffer(&mut self.batch_buffers[i], len));
 
             let mut stags = self.tags.clone();
             stags.set("access_ip", addr.ip().to_string());
@@ -804,12 +843,60 @@ impl DataSource for UdpSyslogSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::net::UdpSocket;
 
     #[test]
     fn test_preproc_hook_raw_mode() {
         // raw mode: strip=false, attach=false => no hook
         let hook = build_preproc_hook(false, false, false);
         assert!(hook.is_none());
+    }
+
+    #[test]
+    fn packet_buffer_helpers_roundtrip() {
+        let mut buf = allocate_packet_buffer();
+        // Write predictable payload at the beginning of the buffer
+        let payload = b"hello-bytes";
+        buf[..payload.len()].copy_from_slice(payload);
+
+        let bytes = freeze_packet_buffer(&mut buf, payload.len());
+        assert_eq!(bytes.as_ref(), payload);
+        assert_eq!(buf.len(), UDP_MAX_DATAGRAM);
+        assert!(buf.capacity() >= UDP_MAX_DATAGRAM);
+    }
+
+    #[tokio::test]
+    async fn recv_event_uses_bytes_payload() {
+        if UdpSocket::bind("127.0.0.1:0").await.is_err() {
+            return;
+        }
+        let mut source = UdpSyslogSource::new(
+            "test-src".to_string(),
+            "127.0.0.1:0".to_string(),
+            Tags::new(),
+            false,
+            false,
+            false,
+            1024,
+        )
+        .await
+        .unwrap();
+
+        let listen_addr = source.socket.local_addr().unwrap();
+
+        let sender = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        sender
+            .send_to(b"<13>Aug 11 22:14:15 host app: body", listen_addr)
+            .await
+            .unwrap();
+
+        let event = source.recv_event().await.unwrap();
+        match event.payload {
+            RawData::Bytes(bytes) => {
+                assert_eq!(bytes.as_ref(), b"<13>Aug 11 22:14:15 host app: body");
+            }
+            other => panic!("expected RawData::Bytes, got {:?}", other),
+        }
     }
 
     #[test]

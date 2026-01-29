@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use wp_connector_api::SourceEvent;
 use wp_model_core::model::{DataField, DataRecord};
+use wp_parse_api::RawData;
 use wpl::WparseError;
 
 impl WplEngine {
@@ -47,6 +48,10 @@ impl WplEngine {
                     residue_data.push((data.event_id, residue_event));
                 }
                 ProcessResult::Miss(fail_info) => {
+                    if payload_is_whitespace(&data.payload) {
+                        trace_data!("drop whitespace event {} without miss", data.event_id);
+                        continue;
+                    }
                     // 完全失败，记录深度最高的错误信息
                     warn_data!("wpls miss data: {}\n data:{}", fail_info, data.payload);
                     miss_packets.push((data, fail_info));
@@ -110,6 +115,18 @@ fn materialize_tags(tags: &wp_connector_api::Tags) -> Vec<(String, String)> {
         Some(snapshot) => snapshot.item,
         None => Vec::new(),
     }
+}
+
+fn payload_is_whitespace(payload: &RawData) -> bool {
+    match payload {
+        RawData::String(s) => s.trim().is_empty(),
+        RawData::Bytes(bytes) => bytes_are_whitespace(bytes.as_ref()),
+        RawData::ArcBytes(buffer) => bytes_are_whitespace(buffer.as_slice()),
+    }
+}
+
+fn bytes_are_whitespace(bytes: &[u8]) -> bool {
+    bytes.is_empty() || bytes.iter().all(|b| b.is_ascii_whitespace())
 }
 
 #[cfg(test)]
@@ -372,5 +389,16 @@ rule deep_fail {
         assert_eq!(event.event_id, miss_id);
         assert_eq!(fail.best_wpl, "deep_fail");
         assert!(fail.depth > 0, "expected recorded depth from parser");
+    }
+
+    #[test]
+    fn batch_parse_package_skips_whitespace_miss() {
+        let mut engine = build_real_engine(&[("nginx_access", NGINX_RULE)]);
+        let blank_event = build_event("   \n\t");
+        let parsed = engine
+            .batch_parse_package(vec![blank_event], &ParseOption::default())
+            .expect("parse blank");
+        assert!(parsed.sink_groups.is_empty());
+        assert!(parsed.missed_packets.is_empty());
     }
 }

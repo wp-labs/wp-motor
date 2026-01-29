@@ -42,8 +42,8 @@ pub trait ConfigLoader: Sized {
     ///
     /// # 示例
     /// ```no_run
-    /// # use wp_conf::loader::traits::ConfigLoader;
-    /// # use wp_conf::structure::SourceInstanceConf;
+    /// # use wp_config::loader::traits::ConfigLoader;
+    /// # use wp_config::structure::SourceInstanceConf;
     /// # use orion_variate::EnvDict;
     /// # use std::path::Path;
     /// let sources = Vec::<SourceInstanceConf>::load_from_path(
@@ -107,7 +107,7 @@ pub trait ConfigLoader: Sized {
     ///
     /// # 示例
     /// ```no_run
-    /// # use wp_conf::loader::traits::ConfigLoader;
+    /// # use wp_config::loader::traits::ConfigLoader;
     /// # use orion_conf::error::OrionConfResult;
     /// # struct MyConfig;
     /// impl ConfigLoader for MyConfig {
