@@ -50,6 +50,7 @@ impl<T> WplSepT<T> {
 pub enum SepEnum {
     Str(SmolStr),
     End,
+    Whitespace, // Matches space or tab
 }
 impl From<&str> for SepEnum {
     fn from(value: &str) -> Self {
@@ -57,6 +58,10 @@ impl From<&str> for SepEnum {
             SepEnum::End
         } else if value == "\\s" || value == "s" {
             SepEnum::Str(" ".into())
+        } else if value == "\\t" || value == "t" {
+            SepEnum::Str("\t".into())
+        } else if value == "\\S" || value == "S" {
+            SepEnum::Whitespace
         } else {
             SepEnum::Str(value.into())
         }
@@ -130,6 +135,7 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
             match val {
                 SepEnum::Str(str) => str.as_str(),
                 SepEnum::End => "\n",
+                SepEnum::Whitespace => " ", // Default to space for display
             }
         } else {
             T::sep_str()
@@ -204,21 +210,34 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
 
     pub fn consume_sep(&self, input: &mut &str) -> WResult<()> {
         if self.is_take {
-            literal(self.sep_str())
-                .context(ctx_desc("take <sep>"))
-                .parse_next(input)?;
+            if let Some(SepEnum::Whitespace) = &self.cur_val {
+                // For Whitespace, accept either space or tab
+                alt((literal(" "), literal("\t")))
+                    .context(ctx_desc("take <whitespace>"))
+                    .parse_next(input)?;
+            } else {
+                literal(self.sep_str())
+                    .context(ctx_desc("take <sep>"))
+                    .parse_next(input)?;
+            }
         }
         Ok(())
     }
     pub fn try_consume_sep(&self, input: &mut &str) -> WResult<()> {
         if self.is_take {
-            opt(literal(self.sep_str())).parse_next(input)?;
+            if let Some(SepEnum::Whitespace) = &self.cur_val {
+                // For Whitespace, optionally accept either space or tab
+                opt(alt((literal(" "), literal("\t")))).parse_next(input)?;
+            } else {
+                opt(literal(self.sep_str())).parse_next(input)?;
+            }
         }
         Ok(())
     }
     pub fn is_space_sep(&self) -> bool {
         self.sep_str() == " "
     }
+
     pub fn need_take_sep(&self) -> bool {
         !(self.is_to_end() || self.is_space_sep())
     }
@@ -238,12 +257,20 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
     }
 
     pub fn read_until_sep(&self, data: &mut &str) -> WResult<String> {
-        // 读到当前分隔符，若存在“次级结束符”（ups_val），应以“最近结束优先”裁剪。
+        // 读到当前分隔符，若存在"次级结束符"（ups_val），应以"最近结束优先"裁剪。
         // 特殊值：\0 由 is_to_end() 覆盖；单字符对使用 read_until_any_char 快路径。
         if self.is_to_end() {
             let buf = take_to_end.parse_next(data)?;
             return Ok(buf.to_string());
         }
+
+        // Handle Whitespace separator specially
+        if let Some(SepEnum::Whitespace) = &self.cur_val {
+            // Take until space or tab
+            let buf = take_while(0.., |c: char| c != ' ' && c != '\t').parse_next(data)?;
+            return Ok(buf.to_string());
+        }
+
         if let Some(ups) = &self.ups_val {
             // 快路径：单字符对，使用按字符扫描，天然最近结束优先
             if self.sep_str().len() == 1 && ups.len() == 1 {
@@ -315,5 +342,83 @@ impl Display for GenFmt<&WplSep> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.sep_str())?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sep_enum_from_str() {
+        // Test \s -> space
+        assert_eq!(SepEnum::from("\\s"), SepEnum::Str(" ".into()));
+        assert_eq!(SepEnum::from("s"), SepEnum::Str(" ".into()));
+
+        // Test \t -> tab
+        assert_eq!(SepEnum::from("\\t"), SepEnum::Str("\t".into()));
+        assert_eq!(SepEnum::from("t"), SepEnum::Str("\t".into()));
+
+        // Test \S -> Whitespace
+        assert_eq!(SepEnum::from("\\S"), SepEnum::Whitespace);
+        assert_eq!(SepEnum::from("S"), SepEnum::Whitespace);
+
+        // Test \0 -> End
+        assert_eq!(SepEnum::from("\\0"), SepEnum::End);
+        assert_eq!(SepEnum::from("0"), SepEnum::End);
+
+        // Test regular string
+        assert_eq!(SepEnum::from(","), SepEnum::Str(",".into()));
+    }
+
+    #[test]
+    fn test_whitespace_sep_read_until() {
+        // Test reading until space
+        let mut data = "hello world";
+        let sep = WplSep::field_sep("\\S");
+        let result = sep.read_until_sep(&mut data).unwrap();
+        assert_eq!(result, "hello");
+        assert_eq!(data, " world");
+
+        // Test reading until tab
+        let mut data = "hello\tworld";
+        let sep = WplSep::field_sep("\\S");
+        let result = sep.read_until_sep(&mut data).unwrap();
+        assert_eq!(result, "hello");
+        assert_eq!(data, "\tworld");
+    }
+
+    #[test]
+    fn test_tab_sep_read_until() {
+        // Test reading until tab
+        let mut data = "field1\tfield2\tfield3";
+        let sep = WplSep::field_sep("\\t");
+        let result = sep.read_until_sep(&mut data).unwrap();
+        assert_eq!(result, "field1");
+        assert_eq!(data, "\tfield2\tfield3");
+    }
+
+    #[test]
+    fn test_whitespace_consume_sep() {
+        // Test consuming space with Whitespace separator
+        let mut data = " world";
+        let sep = WplSep::field_sep("\\S");
+        sep.consume_sep(&mut data).unwrap();
+        assert_eq!(data, "world");
+
+        // Test consuming tab with Whitespace separator
+        let mut data = "\tworld";
+        let sep = WplSep::field_sep("\\S");
+        sep.consume_sep(&mut data).unwrap();
+        assert_eq!(data, "world");
+    }
+
+    #[test]
+    fn test_tab_consume_sep() {
+        // Test consuming tab
+        let mut data = "\tfield2";
+        let sep = WplSep::field_sep("\\t");
+        sep.consume_sep(&mut data).unwrap();
+        assert_eq!(data, "field2");
     }
 }

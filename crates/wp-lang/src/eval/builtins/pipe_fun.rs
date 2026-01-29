@@ -1,8 +1,8 @@
 use crate::ast::WplFun;
 use crate::ast::processor::{
     Base64Decode, CharsHas, CharsIn, CharsNotHas, DigitHas, DigitIn, Has, IpIn, JsonUnescape,
-    SelectLast, TakeField, TargetCharsHas, TargetCharsIn, TargetCharsNotHas, TargetDigitHas,
-    TargetDigitIn, TargetHas, TargetIpIn,
+    ReplaceFunc, SelectLast, TakeField, TargetCharsHas, TargetCharsIn, TargetCharsNotHas,
+    TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn,
 };
 use crate::eval::runtime::field_pipe::{FieldIndex, FieldPipe, FieldSelector, FieldSelectorSpec};
 use base64::Engine;
@@ -313,6 +313,23 @@ impl FieldPipe for Base64Decode {
     }
 }
 
+impl FieldPipe for ReplaceFunc {
+    #[inline]
+    fn process(&self, field: Option<&mut DataField>) -> WResult<()> {
+        let Some(field) = field else {
+            return fail
+                .context(ctx_desc("chars_replace | no active field"))
+                .parse_next(&mut "");
+        };
+        let value = field.get_value_mut();
+        if value_chars_replace(value, &self.target, &self.value) {
+            Ok(())
+        } else {
+            fail.context(ctx_desc("chars_replace")).parse_next(&mut "")
+        }
+    }
+}
+
 impl WplFun {
     pub fn as_field_pipe(&self) -> Option<&dyn FieldPipe> {
         match self {
@@ -333,6 +350,7 @@ impl WplFun {
             WplFun::Has(fun) => Some(fun),
             WplFun::TransJsonUnescape(fun) => Some(fun),
             WplFun::TransBase64Decode(fun) => Some(fun),
+            WplFun::TransCharsReplace(fun) => Some(fun),
         }
     }
 
@@ -407,6 +425,18 @@ fn value_base64_decode(v: &mut Value) -> bool {
     }
 }
 
+#[inline]
+fn value_chars_replace(v: &mut Value, target: &str, replacement: &str) -> bool {
+    match v {
+        Value::Chars(s) => {
+            let replaced = s.replace(target, replacement);
+            *s = replaced.into();
+            true
+        }
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -457,5 +487,57 @@ mod tests {
             r"line1\qline2".to_string(),
         )];
         assert!(JsonUnescape {}.process(fields.get_mut(0)).is_err());
+    }
+
+    #[test]
+    fn chars_replace_successfully_replaces_substring() {
+        let mut fields = vec![DataField::from_chars(
+            "message".to_string(),
+            "hello world, hello rust".to_string(),
+        )];
+        ReplaceFunc {
+            target: "hello".into(),
+            value: "hi".into(),
+        }
+        .process(fields.get_mut(0))
+        .expect("replace ok");
+        if let Value::Chars(s) = fields[0].get_value() {
+            assert_eq!(s.as_str(), "hi world, hi rust");
+        } else {
+            panic!("message should remain chars");
+        }
+    }
+
+    #[test]
+    fn chars_replace_handles_empty_target() {
+        let mut fields = vec![DataField::from_chars(
+            "message".to_string(),
+            "test".to_string(),
+        )];
+        ReplaceFunc {
+            target: "".into(),
+            value: "_".into(),
+        }
+        .process(fields.get_mut(0))
+        .expect("replace ok");
+        if let Value::Chars(s) = fields[0].get_value() {
+            // Empty target should insert replacement between each character
+            assert_eq!(s.as_str(), "_t_e_s_t_");
+        } else {
+            panic!("message should remain chars");
+        }
+    }
+
+    #[test]
+    fn chars_replace_returns_err_on_non_chars_field() {
+        let mut fields = vec![DataField::from_digit("num".to_string(), 123)];
+        assert!(
+            ReplaceFunc {
+                target: "old".into(),
+                value: "new".into(),
+            }
+            .process(fields.get_mut(0))
+            .is_err()
+        );
     }
 }

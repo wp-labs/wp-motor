@@ -4,7 +4,8 @@ use smol_str::SmolStr;
 use winnow::{
     Parser,
     ascii::{digit1, multispace0},
-    combinator::alt,
+    combinator::{alt, fail},
+    token::literal,
 };
 use wp_parser::{
     WResult,
@@ -22,13 +23,55 @@ use crate::ast::{
     WplFun,
     processor::{
         CharsHas, CharsIn, CharsInArg, CharsNotHas, CharsNotHasArg, CharsValue, DigitHas,
-        DigitHasArg, DigitIn, DigitInArg, Has, HasArg, IpIn, IpInArg, SelectLast, TakeField,
-        TargetCharsHas, TargetCharsIn, TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas,
-        TargetIpIn, normalize_target,
+        DigitHasArg, DigitIn, DigitInArg, Has, HasArg, IpIn, IpInArg, ReplaceFunc, SelectLast,
+        TakeField, TargetCharsHas, TargetCharsIn, TargetCharsNotHas, TargetDigitHas, TargetDigitIn,
+        TargetHas, TargetIpIn, normalize_target,
     },
 };
 
 use super::utils::take_key;
+
+/// 解析带引号的字符串："any string, with special chars"
+/// 支持转义字符：\" \\ \n \t
+fn take_quoted_string(input: &mut &str) -> WResult<String> {
+    literal("\"").parse_next(input)?;
+
+    let mut result = String::new();
+    let mut chars = input.chars();
+
+    loop {
+        match chars.next() {
+            None => {
+                return fail.parse_next(input);
+            }
+            Some('\\') => {
+                // 处理转义字符
+                match chars.next() {
+                    Some('"') => result.push('"'),
+                    Some('\\') => result.push('\\'),
+                    Some('n') => result.push('\n'),
+                    Some('t') => result.push('\t'),
+                    _ => {
+                        return fail.parse_next(input);
+                    }
+                }
+            }
+            Some('"') => {
+                // 结束引号
+                let consumed = input.len() - chars.as_str().len();
+                *input = &input[consumed..];
+                return Ok(result);
+            }
+            Some(ch) => result.push(ch),
+        }
+    }
+}
+
+/// 解析字符串：支持带引号（可包含逗号、空格等特殊字符）和不带引号
+fn take_string_or_quoted(input: &mut &str) -> WResult<String> {
+    multispace0.parse_next(input)?;
+    alt((take_quoted_string, take_string.map(|s: &str| s.to_string()))).parse_next(input)
+}
 
 pub fn wpl_fun(input: &mut &str) -> WResult<WplFun> {
     multispace0.parse_next(input)?;
@@ -52,6 +95,7 @@ pub fn wpl_fun(input: &mut &str) -> WResult<WplFun> {
         call_fun_args0::<HasArg>.map(|_| WplFun::Has(Has)),
         call_fun_args0::<JsonUnescape>.map(WplFun::TransJsonUnescape),
         call_fun_args0::<Base64Decode>.map(WplFun::TransBase64Decode),
+        call_fun_args2::<ReplaceFunc>.map(WplFun::TransCharsReplace),
     ))
     .parse_next(input)?;
     Ok(fun)
@@ -371,6 +415,34 @@ impl Fun0Builder for Base64Decode {
     }
 }
 
+impl Fun2Builder for ReplaceFunc {
+    type ARG1 = SmolStr;
+    type ARG2 = SmolStr;
+
+    fn args1(data: &mut &str) -> WResult<Self::ARG1> {
+        multispace0.parse_next(data)?;
+        let val = take_string_or_quoted.parse_next(data)?;
+        Ok(val.into())
+    }
+
+    fn args2(data: &mut &str) -> WResult<Self::ARG2> {
+        multispace0.parse_next(data)?;
+        let val = take_string_or_quoted.parse_next(data)?;
+        Ok(val.into())
+    }
+
+    fn fun_name() -> &'static str {
+        "chars_replace"
+    }
+
+    fn build(args: (Self::ARG1, Self::ARG2)) -> Self {
+        Self {
+            target: args.0,
+            value: args.1,
+        }
+    }
+}
+
 impl Fun1Builder for TakeField {
     type ARG1 = SmolStr;
 
@@ -405,7 +477,7 @@ mod tests {
 
     use orion_error::TestAssert;
 
-    use crate::ast::processor::{Has, JsonUnescape, SelectLast, TakeField};
+    use crate::ast::processor::{Has, JsonUnescape, ReplaceFunc, SelectLast, TakeField};
 
     use super::*;
 
@@ -537,5 +609,142 @@ mod tests {
         let fun = wpl_fun.parse("base64_decode()").assert();
         assert_eq!(fun, WplFun::TransBase64Decode(Base64Decode {}));
         assert!(wpl_fun.parse("base64_decode(decoded)").is_err());
+
+        // chars_replace tests
+        let fun = wpl_fun.parse(r#"chars_replace(hello, hi)"#).assert();
+        assert_eq!(
+            fun,
+            WplFun::TransCharsReplace(ReplaceFunc {
+                target: "hello".into(),
+                value: "hi".into(),
+            })
+        );
+
+        let fun = wpl_fun
+            .parse(r#"chars_replace(old_value, new_value)"#)
+            .assert();
+        assert_eq!(
+            fun,
+            WplFun::TransCharsReplace(ReplaceFunc {
+                target: "old_value".into(),
+                value: "new_value".into(),
+            })
+        );
+
+        // chars_replace with Chinese characters
+        let fun = wpl_fun.parse(r#"chars_replace(旧值, 新值)"#).assert();
+        assert_eq!(
+            fun,
+            WplFun::TransCharsReplace(ReplaceFunc {
+                target: "旧值".into(),
+                value: "新值".into(),
+            })
+        );
+
+        // chars_replace with special characters
+        let fun = wpl_fun
+            .parse(r#"chars_replace(test-old, test-new)"#)
+            .assert();
+        assert_eq!(
+            fun,
+            WplFun::TransCharsReplace(ReplaceFunc {
+                target: "test-old".into(),
+                value: "test-new".into(),
+            })
+        );
+
+        // chars_replace with underscores
+        let fun = wpl_fun
+            .parse(r#"chars_replace(error_code, status_code)"#)
+            .assert();
+        assert_eq!(
+            fun,
+            WplFun::TransCharsReplace(ReplaceFunc {
+                target: "error_code".into(),
+                value: "status_code".into(),
+            })
+        );
+
+        // chars_replace with quoted strings (supports commas and spaces)
+        let fun = wpl_fun
+            .parse(r#"chars_replace("test,old", "test,new")"#)
+            .assert();
+        assert_eq!(
+            fun,
+            WplFun::TransCharsReplace(ReplaceFunc {
+                target: "test,old".into(),
+                value: "test,new".into(),
+            })
+        );
+
+        // chars_replace with quoted strings containing spaces
+        let fun = wpl_fun
+            .parse(r#"chars_replace("hello world", "goodbye world")"#)
+            .assert();
+        assert_eq!(
+            fun,
+            WplFun::TransCharsReplace(ReplaceFunc {
+                target: "hello world".into(),
+                value: "goodbye world".into(),
+            })
+        );
+
+        // chars_replace mixing quoted and unquoted
+        let fun = wpl_fun
+            .parse(r#"chars_replace("test,old", new_value)"#)
+            .assert();
+        assert_eq!(
+            fun,
+            WplFun::TransCharsReplace(ReplaceFunc {
+                target: "test,old".into(),
+                value: "new_value".into(),
+            })
+        );
+
+        // chars_replace with empty quoted string
+        let fun = wpl_fun.parse(r#"chars_replace(test, "")"#).assert();
+        assert_eq!(
+            fun,
+            WplFun::TransCharsReplace(ReplaceFunc {
+                target: "test".into(),
+                value: "".into(),
+            })
+        );
+
+        // chars_replace with escaped quotes
+        let fun = wpl_fun
+            .parse(r#"chars_replace("test,old", "\"test,new\"")"#)
+            .assert();
+        assert_eq!(
+            fun,
+            WplFun::TransCharsReplace(ReplaceFunc {
+                target: "test,old".into(),
+                value: "\"test,new\"".into(),
+            })
+        );
+
+        // chars_replace with escaped backslash
+        let fun = wpl_fun
+            .parse(r#"chars_replace("path\\to\\file", "new\\path")"#)
+            .assert();
+        assert_eq!(
+            fun,
+            WplFun::TransCharsReplace(ReplaceFunc {
+                target: "path\\to\\file".into(),
+                value: "new\\path".into(),
+            })
+        );
+
+        // chars_replace with newline and tab
+        let fun = wpl_fun
+            .parse(r#"chars_replace("line1\nline2", "tab\there")"#)
+            .assert();
+        assert_eq!(
+            fun,
+            WplFun::TransCharsReplace(ReplaceFunc {
+                target: "line1\nline2".into(),
+                value: "tab\there".into(),
+            })
+        );
     }
 }

@@ -4,7 +4,8 @@ use crate::ast::fld_fmt::WplFieldFmt;
 use crate::ast::{DEFAULT_FIELD_KEY, WplField, WplFieldSet, WplPipe};
 use crate::parser::datatype::take_datatype;
 use crate::parser::utils::{
-    peek_next, peek_str, take_key, take_parentheses, take_ref_path, take_to_end, take_var_name,
+    peek_next, peek_str, take_key, take_parentheses, take_ref_path_or_quoted, take_to_end,
+    take_var_name,
 };
 use crate::parser::wpl_group::wpl_group;
 use crate::types::WildMap;
@@ -137,7 +138,7 @@ fn wpl_opt_meta(input: &mut &str) -> ModalResult<(DataType, bool)> {
 }
 
 #[allow(clippy::bind_instead_of_map)]
-fn wpl_id_field<'a>(input: &mut &'a str) -> ModalResult<(&'a str, WplField)> {
+fn wpl_id_field(input: &mut &str) -> ModalResult<(String, WplField)> {
     let before_len = input.len();
     let mut content = None;
     let (meta_type, is_opt) = wpl_opt_meta.parse_next(input)?;
@@ -148,8 +149,8 @@ fn wpl_id_field<'a>(input: &mut &'a str) -> ModalResult<(&'a str, WplField)> {
             .and_then(|x| Some(x.to_string()));
     }
 
-    let k = opt((multispace0, literal('@'), take_ref_path).map(|x| x.2))
-        .map(|x| x.unwrap_or(DEFAULT_FIELD_KEY))
+    let k = opt((multispace0, literal('@'), take_ref_path_or_quoted).map(|x| x.2))
+        .map(|x| x.unwrap_or(DEFAULT_FIELD_KEY.to_string()))
         .parse_next(input)?;
 
     let f_key = opt((multispace0, literal(':'), multispace0, take_key).map(|x| x.3))
@@ -189,7 +190,7 @@ fn wpl_field_subs(input: &mut &str) -> ModalResult<WplFieldSet> {
         .parse_next(input)?;
     while peek_next((multispace0, literal(')')), input).is_err() {
         let (key, field) = wpl_id_field.parse_next(input)?;
-        set.insert(key.to_string(), field);
+        set.insert(key, field);
         opt(literal(',')).parse_next(input)?;
     }
     (multispace0, literal(')'))
@@ -468,6 +469,40 @@ mod tests {
         assert_eq!(key, "process[0]/path");
         assert_eq!(conf.meta_name, "chars".to_string());
     }
+
+    #[test]
+    fn test_quoted_field_name() {
+        // Test single-quoted field names with special characters
+        let (key, conf) = wpl_id_field.parse("@'@abc'").assert();
+        assert_eq!(key, "@abc");
+        assert_eq!(conf.meta_name, "chars".to_string());
+
+        // Test single-quoted field name with spaces
+        let (key, conf) = wpl_id_field.parse("@'field with spaces'").assert();
+        assert_eq!(key, "field with spaces");
+        assert_eq!(conf.meta_name, "chars".to_string());
+
+        // Test single-quoted field name with special characters
+        let (key, conf) = wpl_id_field.parse("@'special-@field#123'").assert();
+        assert_eq!(key, "special-@field#123");
+        assert_eq!(conf.meta_name, "chars".to_string());
+
+        // Test with type prefix
+        let (key, conf) = wpl_id_field.parse("digit@'@special':field-name").assert();
+        assert_eq!(key, "@special");
+        assert_eq!(conf.meta_name, "digit".to_string());
+        assert_eq!(conf.name, Some("field-name".into()));
+
+        // Test in field set
+        let set = wpl_field_subs
+            .parse("(@'@field1':name1, @'field 2':name2)")
+            .assert();
+        let conf = set.get("@field1").assert();
+        assert_eq!(conf.name, Some("name1".into()));
+        let conf = set.get("field 2").assert();
+        assert_eq!(conf.name, Some("name2".into()));
+    }
+
     #[test]
     fn test_ext_obj() {
         let set = wpl_field_subs.parse("(digit@src_ip: src-ip )").assert();

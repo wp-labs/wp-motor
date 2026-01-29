@@ -174,6 +174,11 @@ pub struct IpInArg {
 #[derive(Clone, Debug, PartialEq)]
 pub struct HasArg;
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReplaceFunc {
+    pub(crate) target: SmolStr,
+    pub(crate) value: SmolStr,
+}
 /// Normalizes the target field name: converts "_" to None
 pub(crate) fn normalize_target(target: SmolStr) -> Option<SmolStr> {
     if target == "_" { None } else { Some(target) }
