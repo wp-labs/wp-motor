@@ -24,6 +24,16 @@ pub fn take_ref_path<'a>(input: &mut &'a str) -> WResult<&'a str> {
     })
     .parse_next(input)
 }
+
+/// Parse field reference path: supports either bare identifiers or single-quoted strings
+/// Examples: `@field_name`, `@'@special-field'`
+pub fn take_ref_path_or_quoted(input: &mut &str) -> WResult<String> {
+    alt((
+        single_quot_str_impl.map(|s: &str| decode_escapes(s)),
+        take_ref_path.map(|s: &str| s.to_string()),
+    ))
+    .parse_next(input)
+}
 pub fn take_exact_path<'a>(input: &mut &'a str) -> WResult<&'a str> {
     take_while(1.., |c: char| {
         c.is_alphanumeric() || c == '_' || c == '/' || c == '-' || c == '.'
@@ -272,6 +282,10 @@ pub fn decode_escapes(s: &str) -> String {
             match it.peek().copied() {
                 Some('"') => {
                     out.push(b'"');
+                    it.next();
+                }
+                Some('\'') => {
+                    out.push(b'\'');
                     it.next();
                 }
                 Some('\\') => {
@@ -579,5 +593,52 @@ mod tests {
     fn test_interval_missing_closer() {
         let mut input = "[1,2";
         assert!(interval_data(&mut input).is_err());
+    }
+
+    #[test]
+    fn test_take_ref_path_or_quoted() {
+        // Test bare identifier
+        assert_eq!(
+            take_ref_path_or_quoted.parse_peek("field_name"),
+            Ok(("", "field_name".to_string()))
+        );
+
+        // Test single-quoted with @ prefix
+        assert_eq!(
+            take_ref_path_or_quoted.parse_peek("'@abc'"),
+            Ok(("", "@abc".to_string()))
+        );
+
+        // Test single-quoted with spaces
+        assert_eq!(
+            take_ref_path_or_quoted.parse_peek("'field with spaces'"),
+            Ok(("", "field with spaces".to_string()))
+        );
+
+        // Test single-quoted with special characters
+        assert_eq!(
+            take_ref_path_or_quoted.parse_peek("'@special-field#123'"),
+            Ok(("", "@special-field#123".to_string()))
+        );
+
+        // Test escaped quote inside single-quoted string
+        let input = "'field\\'s name'";
+        assert_eq!(
+            take_ref_path_or_quoted.parse_peek(input),
+            Ok(("", "field's name".to_string()))
+        );
+
+        // Test path-like identifier
+        assert_eq!(
+            take_ref_path_or_quoted.parse_peek("process/path[0]"),
+            Ok(("", "process/path[0]".to_string()))
+        );
+
+        // Test escaped backslash
+        let input = "'path\\\\with\\\\backslash'";
+        assert_eq!(
+            take_ref_path_or_quoted.parse_peek(input),
+            Ok(("", "path\\with\\backslash".to_string()))
+        );
     }
 }
