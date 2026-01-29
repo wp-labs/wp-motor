@@ -7,7 +7,7 @@ use wpl::{WplEvaluator, wpl_express};
 
 fn wpl_parse(lpp: &WplEvaluator, data: &RawData) {
     for _ in 0..1000 {
-        let _ = lpp.proc(data.clone(), 0);
+        let _ = lpp.proc(0, data.clone(), 0);
     }
 }
 

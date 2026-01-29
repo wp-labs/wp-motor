@@ -50,14 +50,19 @@ impl MultiParser {
                     // 根据是否有残留数据返回不同的结果
                     if un_parsed.is_empty() || un_parsed.is_empty() {
                         let record = Arc::new(tdo_crate);
+                        info_data!(
+                            "wpl parse suc! wpl:{} , event_id:{} ",
+                            wpl_key,
+                            event.event_id
+                        );
                         return ProcessResult::Success { wpl_key, record };
                     } else {
                         let parsed_len = event.payload.len() - un_parsed.len();
                         if un_parsed.len() as f64 / event.payload.len() as f64 > 0.2 {
                             info_data!(
-                                "wpl parse not complete: {}\n data:{}",
+                                "wpl parse not complete: {}\n id:{}",
                                 wpl_line.wpl_key(),
-                                event.payload,
+                                event.event_id,
                             );
                             if parsed_len > max_depth {
                                 max_depth = parsed_len;
@@ -86,10 +91,9 @@ impl MultiParser {
                             best_error = Some(e.clone());
                             //single wpl fail!
                             debug_data!(
-                                "wpl parse fail: {}\n data:{}\n{}",
+                                "wpl parse fail: {}\n id:{}",
                                 wpl_line.wpl_key(),
-                                event.payload,
-                                e
+                                event.event_id,
                             );
                         }
                     } else if best_error.is_none() {

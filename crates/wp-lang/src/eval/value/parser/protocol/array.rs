@@ -167,7 +167,7 @@ mod tests {
         let data = r#"[1, 2, 3]"#;
         let rule = r#" rule x { (array/digit:array_val)}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         println!("{}", tdc);
         let expected = vec![
             DataField::new_opt(DataType::Digit, Some("array_val/[0]".into()), 1.into()),
@@ -180,7 +180,7 @@ mod tests {
         let data = r#"["hello", "_F]fe", "!@#$*&^\"123"]"#;
         let rule = r#" rule x { (array/chars:array)}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         println!("{}", tdc);
         let expected = vec![
             DataField::new_opt(DataType::Chars, Some("array/[0]".into()), "hello".into()),
@@ -198,7 +198,7 @@ mod tests {
         let data = r#"[1,2,3,]"#;
         let rule = r#" rule x { (array/digit:nums)}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         let expected = vec![
             DataField::new_opt(DataType::Digit, Some("nums/[0]".into()), 1.into()),
             DataField::new_opt(DataType::Digit, Some("nums/[1]".into()), 2.into()),
@@ -211,7 +211,7 @@ mod tests {
         let data = r#"[]"#;
         let rule = r#" rule x { (array/digit:empty)}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         let expected: Vec<DataField> = vec![];
         let expected = DataField::from_arr("empty".to_string(), expected);
         assert_eq!(tdc.field("empty"), Some(&expected));
@@ -223,7 +223,7 @@ mod tests {
         let data = r#"["1.1.1.1","2.2.2.2"]"#;
         let rule = r#" rule x { (array/ip:ips)}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         let expected = vec![
             DataField::from_ip("ips/[0]", IpAddr::from_str("1.1.1.1")?),
             DataField::from_ip("ips/[1]", IpAddr::from_str("2.2.2.2")?),
@@ -238,7 +238,7 @@ mod tests {
         let data = "[[1,2],[3,4]]";
         let rule = r#" rule x { (array/array/digit:array)}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         println!("{}", tdc);
 
         let obj = DataField::from_arr(
@@ -267,7 +267,7 @@ mod tests {
 
         let rule = r#" rule x { (array/json:array)}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         println!("{}", tdc);
         let obj = vec![
             DataField::new_opt(DataType::Chars, Some("array/[0]/name".into()), "xxx".into()),
@@ -294,7 +294,7 @@ mod tests {
         let rule = r#" rule x { (array/ip:block_ips)}"#;
         let pipe = WplEvaluator::from_code(rule)?;
 
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         println!("{}", tdc);
         assert!(tdc.field("block_ips").is_some());
         Ok(())
@@ -305,7 +305,7 @@ mod tests {
         let rule = r#" rule x { (array/ip:block_ips)}"#;
         let pipe = WplEvaluator::from_code(rule)?;
 
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         println!("{}", tdc);
         assert!(tdc.field("block_ips").is_some());
         Ok(())
@@ -317,7 +317,7 @@ mod tests {
         let rule = r#" rule x { (array/chars:block_ips)}"#;
         let pipe = WplEvaluator::from_code(rule)?;
 
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         println!("{}", tdc);
         assert!(tdc.field("block_ips").is_some());
         Ok(())

@@ -67,10 +67,52 @@ fn take_quoted_string(input: &mut &str) -> WResult<String> {
     }
 }
 
-/// 解析字符串：支持带引号（可包含逗号、空格等特殊字符）和不带引号
+/// 解析单引号字符串：'any string, with special chars'
+/// 单引号为原始字符串，只支持 \' 转义单引号本身，其他字符按字面意思处理
+fn take_single_quoted_string(input: &mut &str) -> WResult<String> {
+    literal("'").parse_next(input)?;
+
+    let mut result = String::new();
+    let mut chars = input.chars();
+
+    loop {
+        match chars.next() {
+            None => {
+                return fail.parse_next(input);
+            }
+            Some('\\') => {
+                // 单引号字符串只处理 \' 转义
+                match chars.as_str().chars().next() {
+                    Some('\'') => {
+                        result.push('\'');
+                        chars.next(); // 消费 '
+                    }
+                    _ => {
+                        // 其他情况，\ 按字面意思处理
+                        result.push('\\');
+                    }
+                }
+            }
+            Some('\'') => {
+                // 结束引号
+                let consumed = input.len() - chars.as_str().len();
+                *input = &input[consumed..];
+                return Ok(result);
+            }
+            Some(ch) => result.push(ch),
+        }
+    }
+}
+
+/// 解析字符串：支持单引号、双引号（可包含逗号、空格等特殊字符）和不带引号
 fn take_string_or_quoted(input: &mut &str) -> WResult<String> {
     multispace0.parse_next(input)?;
-    alt((take_quoted_string, take_string.map(|s: &str| s.to_string()))).parse_next(input)
+    alt((
+        take_quoted_string,
+        take_single_quoted_string,
+        take_string.map(|s: &str| s.to_string()),
+    ))
+    .parse_next(input)
 }
 
 pub fn wpl_fun(input: &mut &str) -> WResult<WplFun> {
@@ -448,8 +490,13 @@ impl Fun1Builder for TakeField {
 
     fn args1(data: &mut &str) -> WResult<Self::ARG1> {
         multispace0.parse_next(data)?;
-        let val = take_key.parse_next(data)?;
-        Ok(val.into())
+        let val = alt((
+            take_quoted_string.map(SmolStr::from),
+            take_single_quoted_string.map(SmolStr::from),
+            take_key.map(SmolStr::from),
+        ))
+        .parse_next(data)?;
+        Ok(val)
     }
 
     fn fun_name() -> &'static str {
@@ -559,6 +606,86 @@ mod tests {
             fun,
             WplFun::SelectTake(TakeField {
                 target: "src".into(),
+            })
+        );
+
+        // Test take with double quotes
+        let fun = wpl_fun.parse(r#"take("@key")"#).assert();
+        assert_eq!(
+            fun,
+            WplFun::SelectTake(TakeField {
+                target: "@key".into(),
+            })
+        );
+
+        // Test take with single quotes
+        let fun = wpl_fun.parse("take('@field')").assert();
+        assert_eq!(
+            fun,
+            WplFun::SelectTake(TakeField {
+                target: "@field".into(),
+            })
+        );
+
+        // Test take with special characters in double quotes
+        let fun = wpl_fun.parse(r#"take("field with spaces")"#).assert();
+        assert_eq!(
+            fun,
+            WplFun::SelectTake(TakeField {
+                target: "field with spaces".into(),
+            })
+        );
+
+        // Test take with special characters in single quotes
+        let fun = wpl_fun.parse("take('field,with,commas')").assert();
+        assert_eq!(
+            fun,
+            WplFun::SelectTake(TakeField {
+                target: "field,with,commas".into(),
+            })
+        );
+
+        // Test take with escaped quote in double quotes
+        let fun = wpl_fun.parse(r#"take("field\"name")"#).assert();
+        assert_eq!(
+            fun,
+            WplFun::SelectTake(TakeField {
+                target: "field\"name".into(),
+            })
+        );
+
+        // Test take with escaped quote in single quotes
+        let fun = wpl_fun.parse("take('field\\'name')").assert();
+        assert_eq!(
+            fun,
+            WplFun::SelectTake(TakeField {
+                target: "field'name".into(),
+            })
+        );
+
+        // Test single quotes are raw strings - no escape for \n, \t, etc
+        let fun = wpl_fun.parse(r"take('raw\nstring')").assert();
+        assert_eq!(
+            fun,
+            WplFun::SelectTake(TakeField {
+                target: r"raw\nstring".into(),
+            })
+        );
+
+        let fun = wpl_fun.parse(r"take('path\to\file')").assert();
+        assert_eq!(
+            fun,
+            WplFun::SelectTake(TakeField {
+                target: r"path\to\file".into(),
+            })
+        );
+
+        // Test double quotes still support escapes
+        let fun = wpl_fun.parse(r#"take("line\nbreak")"#).assert();
+        assert_eq!(
+            fun,
+            WplFun::SelectTake(TakeField {
+                target: "line\nbreak".into(),
             })
         );
 

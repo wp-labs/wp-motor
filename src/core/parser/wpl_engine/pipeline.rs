@@ -60,7 +60,10 @@ impl WplPipeline {
     }
     pub fn proc(&mut self, data: &SourceEvent, oth_suc_len: usize) -> DataResult {
         self.access_cnt += 1;
-        match self.parser.proc(data.payload.clone(), oth_suc_len) {
+        match self
+            .parser
+            .proc(data.event_id, data.payload.clone(), oth_suc_len)
+        {
             Ok((mut record, left)) => {
                 self.stat_ext.record_begin(self.wpl_key.as_str(), None);
                 for func in self.fun_vec.iter() {

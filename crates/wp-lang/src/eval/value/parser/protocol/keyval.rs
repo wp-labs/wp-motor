@@ -205,7 +205,7 @@ mod tests {
         let rule = r#" rule x { (kv(array/chars@dip))}"#;
         let pipe = WplEvaluator::from_code(rule)?;
 
-        let (tdc, _) = pipe.proc(RawData::from_string(data.to_string()), 0)?;
+        let (tdc, _) = pipe.proc(0, RawData::from_string(data.to_string()), 0)?;
         println!("{}", tdc);
 
         Ok(())
@@ -216,7 +216,7 @@ mod tests {
         let rule = r#" rule x { (kv(array/ip@dip))}"#;
         let pipe = WplEvaluator::from_code(rule)?;
 
-        let (tdc, _) = pipe.proc(RawData::from_string(data.to_string()), 0)?;
+        let (tdc, _) = pipe.proc(0, RawData::from_string(data.to_string()), 0)?;
         println!("{}", tdc);
         Ok(())
     }
@@ -226,13 +226,13 @@ mod tests {
         let data = r#"dip=[]"#;
         let rule = r#" rule x { (kv(array/ip@dip))}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(RawData::from_string(data.to_string()), 0)?;
+        let (tdc, _) = pipe.proc(0, RawData::from_string(data.to_string()), 0)?;
         println!("{}", tdc);
         assert!(tdc.field("dip").is_some());
 
         let rule = r#" rule x { (kv(array/ip@dip))}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(RawData::from_string(data.to_string()), 0)?;
+        let (tdc, _) = pipe.proc(0, RawData::from_string(data.to_string()), 0)?;
         println!("{}", tdc);
         assert!(tdc.field("dip").is_some());
         Ok(())
@@ -243,7 +243,7 @@ mod tests {
         let data = r#"d=["1","1"]|e=["2","2"]|a= []|b=["3","3"]"#;
         let rule = r#" rule x { some_of(kv(array/chars))\| }"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(RawData::from_string(data.to_string()), 0)?;
+        let (tdc, _) = pipe.proc(0, RawData::from_string(data.to_string()), 0)?;
         println!("{}", tdc);
         Ok(())
     }
@@ -291,7 +291,7 @@ mod tests {
         let rule = r#" rule x { (kv(chars@x.a:y.a),kv(chars@x.b),kv(digit@x.c))\!\|} "#;
         let pipe = WplEvaluator::from_code(rule)?;
 
-        let (tdc, _) = pipe.proc(RawData::from_string(data.to_string()), 0)?;
+        let (tdc, _) = pipe.proc(0, RawData::from_string(data.to_string()), 0)?;
         assert_eq!(
             tdc.items,
             vec![
@@ -308,7 +308,7 @@ mod tests {
         let data = r#""主机172.16.12.20存在可疑进程参数问题，进程fscan_amd64的启动参数为./fscan_amd64 -h 172.16.12.0/24，符合可疑进程参数的特性。" event_content="主机172.16.12.20存在可疑进程参数问题，进程fscan_amd64的启动参数为./fscan_amd64 -h 172.16.12.0/24，符合可疑进程参数的特性。"
 "#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(RawData::from_string(data.to_string()), 0)?;
+        let (tdc, _) = pipe.proc(0, RawData::from_string(data.to_string()), 0)?;
         println!("{}", tdc);
         assert_eq!(
             tdc.field("content"),
@@ -335,7 +335,7 @@ mod tests {
         //let rule = r#" rule x {(chars:a, kv,  json) } "#;
         let data = r#"sddD:\招标项目\6-MSS\mss日志映射表 b="sddD:\招标项目\6-MSS\mss日志映射表" {"c":"sddD:\\招标项目\\6-MSS\\mss日志映射表"}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(RawData::from_string(data.to_string()), 0)?;
+        let (tdc, _) = pipe.proc(0, RawData::from_string(data.to_string()), 0)?;
         println!("{}", tdc);
         assert_eq!(
             tdc.field("b"),
@@ -360,10 +360,10 @@ mod tests {
         let data = r#"x.a="hello"!|x.b=18!|x.c=20"#;
         let pipe = WplEvaluator::from_code(rule)?;
 
-        let (tdc, _) = pipe.proc(RawData::from_string(data.to_string()), 0)?;
+        let (tdc, _) = pipe.proc(0, RawData::from_string(data.to_string()), 0)?;
         asert_kv_x_obj(tdc);
         let data = r#"x.a="hello"!|x.b=18!|x.c1=20"#;
-        let (tdc, _) = pipe.proc(RawData::from_string(data.to_string()), 0)?;
+        let (tdc, _) = pipe.proc(0, RawData::from_string(data.to_string()), 0)?;
         asert_kv_x_obj(tdc);
         Ok(())
     }

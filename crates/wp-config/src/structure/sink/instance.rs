@@ -12,7 +12,7 @@ use std::fs;
 use std::path::Path;
 use wp_conf_base::ConfParser;
 use wp_connector_api::{ParamMap, Tags};
-use wp_log::{debug_data, info_data};
+use wp_log::{debug_ctrl, info_ctrl};
 use wp_model_core::model::fmt_def::TextFmt;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Getters)]
@@ -125,15 +125,15 @@ impl SinkInstanceConf {
 
     pub fn read_filter_content(&self) -> Option<String> {
         if let Some(path) = &self.core.filter {
-            debug_data!("filter path: {}", path);
+            debug_ctrl!("filter path: {}", path);
             if Path::new(path.as_str()).exists()
                 && let Ok(conf) = fs::read_to_string(path.as_str())
                 && !conf.is_empty()
             {
-                info_data!("found path : {}", path);
+                info_ctrl!("found path : {}", path);
                 return Some(conf);
             }
-            info_data!("not found filter : {}", path);
+            info_ctrl!("not found filter : {}", path);
         }
         None
     }
@@ -159,10 +159,10 @@ impl SinkInstanceConf {
         if let Some(path) = self.resolve_file_path() {
             if std::path::Path::new(path.as_str()).exists() {
                 std::fs::remove_file(path.as_str())?;
-                info_data!("clean file: {}", path)
+                info_ctrl!("clean file: {}", path)
             }
         } else {
-            info_data!("skip clean sink (non-file): {}", self.core.name);
+            info_ctrl!("skip clean sink (non-file): {}", self.core.name);
         }
         Ok(())
     }

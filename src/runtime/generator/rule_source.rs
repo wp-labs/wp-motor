@@ -86,7 +86,7 @@ mod tests {
     fn parse_line(rule_code: &str, line: &str) -> wp_model_core::model::DataRecord {
         let eval = WplEvaluator::from_code(rule_code).expect("build evaluator");
         let raw = RawData::from_string(line.to_string());
-        let (rec, _remain) = eval.proc(raw, 0).expect("parse generated line");
+        let (rec, _remain) = eval.proc(0, raw, 0).expect("parse generated line");
         rec
     }
 

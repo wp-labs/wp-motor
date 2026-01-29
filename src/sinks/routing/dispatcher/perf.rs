@@ -219,7 +219,7 @@ fn parse_nginx_template(line: &str) -> NginxTemplate {
         WplEvaluator::from(&express, None).expect("build nginx evaluator")
     });
 
-    if let Ok((record, _)) = NGX_EVAL.proc(RawData::from_string(line.to_string()), 0)
+    if let Ok((record, _)) = NGX_EVAL.proc(0, RawData::from_string(line.to_string()), 0)
         && let Some(template) = template_from_record(&record)
     {
         return template;

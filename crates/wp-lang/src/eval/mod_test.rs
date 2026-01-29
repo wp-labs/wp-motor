@@ -105,7 +105,7 @@ mod tests {
         let express = wpl_express.parse(rule).assert();
         let ppl = WplEvaluator::from(&express, None).assert();
         let raw = RawData::from_string(data.to_string());
-        let result = ppl.proc(raw, 0);
+        let result = ppl.proc(0, raw, 0);
 
         if let Err(e) = result {
             println!("-----");
@@ -117,7 +117,7 @@ mod tests {
         let express = wpl_express.parse(rule).assert();
         let ppl = WplEvaluator::from(&express, None).assert();
         let raw = RawData::from_string(data.to_string());
-        let result = ppl.proc(raw, 0);
+        let result = ppl.proc(0, raw, 0);
 
         match result {
             Ok((o, _)) => {

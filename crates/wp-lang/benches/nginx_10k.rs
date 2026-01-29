@@ -43,7 +43,7 @@ fn to_epoch_lines(lines: &[String]) -> Vec<String> {
 fn run_parse_all(evaluator: &WplEvaluator, lines: &[String]) {
     for s in lines {
         let raw = RawData::from_string(s.clone());
-        let _ = black_box(evaluator.proc(raw, 0));
+        let _ = black_box(evaluator.proc(0, raw, 0));
     }
 }
 

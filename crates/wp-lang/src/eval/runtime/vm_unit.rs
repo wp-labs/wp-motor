@@ -14,7 +14,7 @@ use crate::parser::wpl_rule::wpl_rule;
 use anyhow::Result;
 use orion_error::{ErrorWith, ToStructError, UvsDataFrom};
 use orion_overload::new::New3;
-use wp_log::{debug_data, trace_data};
+use wp_log::debug_data;
 use wp_model_core::model::DataRecord;
 use wp_parser::Parser;
 use wp_parser::WResult as ModalResult;
@@ -73,16 +73,18 @@ impl WplEvaluator {
         Ok(pipe_obj)
     }
 
-    fn pipe_proc(&self, data: RawData) -> Result<RawData, WparseError> {
+    fn pipe_proc(&self, id: u64, data: RawData) -> Result<RawData, WparseError> {
         let mut target = data;
         for proc_unit in &self.preorder {
-            trace_data!("{}", target);
             target = proc_unit
                 .process(target)
                 .want("pipe convert")
+                .with(id.to_string())
                 .with(proc_unit.name())?;
+
             debug_data!(
-                "pipe  {} out:{}",
+                "pipe  {} id: {} out:{}",
+                id,
                 proc_unit.name(),
                 raw_to_utf8_string(&target)
             );
@@ -90,13 +92,13 @@ impl WplEvaluator {
         Ok(target)
     }
 
-    pub fn proc<D>(&self, data: D, oth_suc_len: usize) -> DataResult
+    pub fn proc<D>(&self, id: u64, data: D, oth_suc_len: usize) -> DataResult
     where
         D: IntoRawData,
     {
         let mut working_raw: RawData = data.into_raw();
         if !self.preorder.is_empty() {
-            working_raw = self.pipe_proc(working_raw)?;
+            working_raw = self.pipe_proc(id, working_raw)?;
         }
 
         let input_holder: Cow<'_, str> = match &working_raw {

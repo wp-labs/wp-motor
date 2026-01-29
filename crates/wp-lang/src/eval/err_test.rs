@@ -98,7 +98,7 @@ mod tests {
         let express = wpl_express.parse(wpl).assert();
         let lpp = WplEvaluator::from(&express, None).assert();
         let raw = RawData::from_string(data.to_string());
-        let (tdc, _) = lpp.proc(raw, 0)?;
+        let (tdc, _) = lpp.proc(0, raw, 0)?;
         println!("{}", tdc);
         Ok(())
     }
@@ -109,7 +109,7 @@ mod tests {
         let express = wpl_express.parse(wpl).assert();
         let lpp = WplEvaluator::from(&express, None).assert();
         let raw = RawData::from_string(data.to_string());
-        let (tdc, _) = lpp.proc(raw, 0)?;
+        let (tdc, _) = lpp.proc(0, raw, 0)?;
         println!("{}", tdc);
         Ok(())
     }
@@ -118,7 +118,7 @@ mod tests {
         let ppl = WplEvaluator::from(&express, None).assert();
 
         let raw = RawData::from_string(data.to_string());
-        let result = ppl.proc(raw, 0);
+        let result = ppl.proc(0, raw, 0);
 
         match result {
             Err(e) => {

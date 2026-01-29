@@ -103,40 +103,40 @@ rule parse_json_special {
 
 ### 转义字符
 
-单引号字符串内支持以下转义序列：
+**双引号字符串**支持以下转义序列：
 
 | 转义序列 | 含义 | 示例 |
 |---------|------|------|
-| `\'` | 单引号 | `@'user\'s name'` |
-| `\\` | 反斜杠 | `@'path\\to\\file'` |
-| `\n` | 换行符 | `@'multi\nline'` |
-| `\t` | 制表符 | `@'tab\tseparated'` |
-| `\r` | 回车符 | `@'carriage\rreturn'` |
-| `\xHH` | 十六进制字节 | `@'hex\x41value'` |
+| `\"` | 双引号 | `@"field\"name"` |
+| `\\` | 反斜杠 | `@"path\\to\\file"` |
+| `\n` | 换行符 | `@"multi\nline"` |
+| `\t` | 制表符 | `@"tab\tseparated"` |
+| `\r` | 回车符 | `@"carriage\rreturn"` |
+| `\xHH` | 十六进制字节 | `@"hex\x41value"` |
+
+**单引号字符串**是**原始字符串**（raw string）：
+- **只支持** `\'` 转义单引号本身
+- 其他所有反斜杠 `\` 都按字面意思处理
+- `\n`、`\t`、`\\` 等不会被转义
 
 ### 示例
 
 ```wpl
-# 字段名包含 @ 符号
-@'@timestamp'
-@'@client-ip'
-@'@user.email'
+# 双引号 - 支持完整转义
+@"field\"name"      # 结果: field"name
+@"path\\file"       # 结果: path\file
+@"line\nbreak"      # 结果: line换行break
 
-# 字段名包含空格
-@'user name'
-@'event message'
-@'log level'
-
-# 字段名包含特殊字符
-@'event#type'
-@'log/error=true'
-@'field(nested)'
-
-# 转义字符
-@'user\'s profile'
-@'windows\\path\\name'
-@'field\twith\ttabs'
+# 单引号 - 原始字符串，只转义 \'
+@'field\'s name'    # 结果: field's name
+@'path\to\file'     # 结果: path\to\file (字面反斜杠)
+@'raw\nstring'      # 结果: raw\nstring (字面 \n)
+@'C:\Users\test'    # 结果: C:\Users\test (Windows 路径)
 ```
+
+**推荐使用场景**：
+- **单引号**：Windows 路径、Unix 路径、正则表达式、包含反斜杠的字符串
+- **双引号**：需要换行符、制表符等转义字符的场景
 
 ## 实际应用场景
 
@@ -241,6 +241,111 @@ rule kv_special_keys {
         @'session#id': session
     )
 }
+```
+
+## take() 函数引号支持
+
+`take()` 函数用于选择当前字段，同样支持单引号和双引号来处理包含特殊字符的字段名。
+
+### 基本语法
+
+```wpl
+# 普通字段名
+| take(field_name)
+
+# 双引号字段名
+| take("@special-field")
+
+# 单引号字段名
+| take('@special-field')
+```
+
+### 使用场景
+
+#### 1. 选择带特殊字符的字段
+
+```wpl
+rule select_special_fields {
+    # 双引号
+    | take("@timestamp")
+    | take("field with spaces")
+    | take("field,with,commas")
+
+    # 单引号
+    | take('@client-ip')
+    | take('event.type')
+    | take('log/level')
+}
+```
+
+#### 2. 转义字符支持
+
+```wpl
+rule escaped_fields {
+    # 双引号内转义
+    | take("field\"name")
+    | take("path\\with\\backslash")
+
+    # 单引号内转义
+    | take('field\'s name')
+    | take('path\\to\\file')
+}
+```
+
+#### 3. 实际应用
+
+```wpl
+# Elasticsearch 日志处理
+rule elasticsearch {
+    | take("@timestamp")
+    | take("@version")
+    | take("log.level")
+}
+
+# CSV 数据处理
+rule csv_processing {
+    | take('First Name')
+    | take('Last Name')
+    | take('Email Address')
+}
+
+# 混合使用
+rule mixed_usage {
+    | take(user_id)          # 普通字段
+    | take("@timestamp")     # 双引号
+    | take('event.type')     # 单引号
+}
+```
+
+### 支持的转义字符
+
+| 转义序列 | 含义 | 双引号 | 单引号 |
+|---------|------|--------|--------|
+| `\"` | 双引号 | ✅ | ❌ (字面 `\"`) |
+| `\'` | 单引号 | ❌ (字面 `\'`) | ✅ |
+| `\\` | 反斜杠 | ✅ | ❌ (字面 `\\`) |
+| `\n` | 换行符 | ✅ | ❌ (字面 `\n`) |
+| `\t` | 制表符 | ✅ | ❌ (字面 `\t`) |
+
+**说明**：
+- **双引号**：支持完整转义，类似 C/Java/JavaScript 字符串
+- **单引号**：原始字符串（raw string），只支持 `\'` 转义单引号本身，其他反斜杠都是字面字符
+
+### 最佳实践
+
+```wpl
+# ✅ 推荐 - 优先使用不带引号
+| take(field_name)
+
+# ✅ 推荐 - 特殊字符使用引号
+| take("@timestamp")
+| take('@client-ip')
+
+# ✅ 推荐 - 根据内容选择引号类型
+| take("field with spaces")         # 双引号，适合简单字符串
+| take('it\'s a field')              # 单引号，只需转义 \'
+| take('C:\Windows\System32')       # 单引号，Windows 路径
+| take("line\nbreak")                # 双引号，需要换行符转义
 ```
 
 ## 字段类型指定
@@ -606,11 +711,12 @@ WPL 只支持单引号 `'` 用于字段名引用。双引号 `"` 用于其他语
 ## 版本历史
 
 - **1.11.0** (2026-01-29)
-  - 新增单引号字段名支持
-  - 支持 `@'@special-field'` 语法
-  - 添加转义字符支持（`\'`, `\\`, `\n`, `\t`, `\r`, `\xHH`）
+  - 新增单引号字段名支持（`@'@special-field'`）
+  - 新增 `take()` 函数单引号和双引号支持
+  - 支持 `take("@field")` 和 `take('@field')` 语法
+  - 添加转义字符支持（`\"`, `\'`, `\\`, `\n`, `\t`）
   - 添加完整的测试覆盖
 
 ---
 
-**提示**: 优先使用普通字段名以获得最佳性能，仅在字段名包含特殊字符时使用单引号。
+**提示**: 优先使用普通字段名以获得最佳性能，仅在字段名包含特殊字符时使用引号。

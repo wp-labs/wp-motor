@@ -1,0 +1,105 @@
+# WPL take() 函数引号支持示例
+
+# 示例 1: 普通字段名（无引号）
+rule normal_take {
+    | take(field_name)
+    | take(user_id)
+    | take(ip_address)
+}
+
+# 示例 2: 双引号字段名（支持转义字符）
+rule double_quoted_take {
+    | take("@timestamp")
+    | take("field with spaces")
+    | take("field,with,commas")
+    | take("field=with=equals")
+    | take("line\nbreak")        # 支持换行符转义
+    | take("tab\tseparated")     # 支持制表符转义
+}
+
+# 示例 3: 单引号字段名（原始字符串）
+rule single_quoted_take {
+    | take('@client-ip')
+    | take('event.type')
+    | take('log/level')
+    | take('field with spaces')
+    | take('raw\nstring')        # \n 按字面意思，不转义
+    | take('path\to\file')       # \t 按字面意思，不转义
+}
+
+# 示例 4: 转义字符对比
+rule escaped_take {
+    # 双引号 - 支持完整转义
+    | take("field\"name")        # 转义双引号
+    | take("path\\file")         # 转义反斜杠，结果: path\file
+    | take("line\nbreak")        # 转义换行符
+
+    # 单引号 - 原始字符串，只转义 \'
+    | take('field\'s name')      # 转义单引号
+    | take('path\\to\\file')     # \\ 按字面意思，结果: path\\to\\file
+    | take('raw\nstring')        # \n 按字面意思，结果: raw\nstring
+}
+
+# 示例 5: Windows 路径（推荐单引号）
+rule windows_paths {
+    | take('C:\Windows\System32')
+    | take('C:\Program Files\App')
+    | take('D:\Data\Logs\app.log')
+    | take('\\server\share\folder')
+}
+
+# 示例 6: Unix 路径
+rule unix_paths {
+    | take('/usr/local/bin')
+    | take('/var/log/syslog')
+    | take('/home/user/.config')
+}
+
+# 示例 7: 实际应用 - Elasticsearch 日志
+rule elasticsearch_log {
+    | take("@timestamp")
+    | take("@version")
+    | take("log.level")
+    | take("event.action")
+}
+
+# 示例 8: 实际应用 - CSV 数据
+rule csv_data {
+    | take('First Name')
+    | take('Last Name')
+    | take('Email Address')
+    | take('Phone Number')
+}
+
+# 示例 9: 实际应用 - 混合字段
+rule mixed_fields {
+    | take(user_id)              # 普通字段
+    | take("@timestamp")         # 双引号特殊字段
+    | take('event.type')         # 单引号特殊字段
+    | take(ip_address)           # 普通字段
+}
+
+# 示例 10: 链式操作
+rule chained_operations {
+    | take("@message")
+    | chars_replace(error, warning)
+    | take('log.level')
+}
+
+# 示例 11: 引号选择建议
+rule quote_selection {
+    # 优先使用不带引号
+    | take(simple_field)
+
+    # Windows 路径用单引号（避免双重转义）
+    | take('C:\Users\test\file.txt')
+
+    # 需要换行符等转义时用双引号
+    | take("multi\nline\nfield")
+
+    # 包含单引号用双引号
+    | take("it's a field")
+
+    # 包含双引号用单引号
+    | take('field "name" here')
+}

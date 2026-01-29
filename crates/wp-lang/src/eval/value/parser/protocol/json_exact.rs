@@ -107,7 +107,7 @@ mod tests {
         let rule = r#"rule test { (exact_json(auto@name,auto@value,auto@key))\, }"#;
         let data = r#"{"name": "中国", "value": 96, "key" : ["a","b","c"] }"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("key[0]") {
             println!("{}", i);
             //assert_eq!(*i, TDOEnum::from_digit("cpu", 96));

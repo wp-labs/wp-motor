@@ -37,7 +37,7 @@ pub fn alt_proc(
                 return Ok(());
             }
             Err(e) => {
-                trace_data!("{}", fpu.conf());
+                trace_data!("fpu parse error {} {} \n{}", fpu.conf(), e, data);
                 let cur_pos = data.len();
                 if cur_pos < min_left_len || last_err.is_none() {
                     last_err = Some(e);

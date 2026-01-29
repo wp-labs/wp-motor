@@ -27,9 +27,10 @@ pub fn take_ref_path<'a>(input: &mut &'a str) -> WResult<&'a str> {
 
 /// Parse field reference path: supports either bare identifiers or single-quoted strings
 /// Examples: `@field_name`, `@'@special-field'`
+/// Single quotes are raw strings - only \' is escaped
 pub fn take_ref_path_or_quoted(input: &mut &str) -> WResult<String> {
     alt((
-        single_quot_str_impl.map(|s: &str| decode_escapes(s)),
+        single_quot_raw_str,
         take_ref_path.map(|s: &str| s.to_string()),
     ))
     .parse_next(input)
@@ -133,6 +134,48 @@ pub fn single_quot_str_impl<'a>(input: &mut &'a str) -> WResult<&'a str> {
         .context(ctx_desc("<end>'"))
         .parse_next(input)?;
     Ok(content)
+}
+
+/// Parse single-quoted raw string: only \' is escaped, others are literal
+/// Used for field references where single quotes represent raw strings
+#[inline]
+pub fn single_quot_raw_str(input: &mut &str) -> WResult<String> {
+    literal('\'')
+        .context(ctx_desc("<beg>'"))
+        .parse_next(input)?;
+
+    let mut result = String::new();
+    let mut chars = input.chars();
+
+    loop {
+        match chars.next() {
+            None => {
+                return fail
+                    .context(ctx_desc("unclosed single quote"))
+                    .parse_next(input);
+            }
+            Some('\\') => {
+                // Only handle \' escape, others are literal
+                match chars.as_str().chars().next() {
+                    Some('\'') => {
+                        result.push('\'');
+                        chars.next(); // consume '
+                    }
+                    _ => {
+                        // Other cases, \ is literal
+                        result.push('\\');
+                    }
+                }
+            }
+            Some('\'') => {
+                // Closing quote
+                let consumed = input.len() - chars.as_str().len();
+                *input = &input[consumed..];
+                return Ok(result);
+            }
+            Some(ch) => result.push(ch),
+        }
+    }
 }
 
 #[inline]
@@ -634,11 +677,21 @@ mod tests {
             Ok(("", "process/path[0]".to_string()))
         );
 
-        // Test escaped backslash
-        let input = "'path\\\\with\\\\backslash'";
+        // Test single quotes are raw strings - \n, \t are literal
         assert_eq!(
-            take_ref_path_or_quoted.parse_peek(input),
-            Ok(("", "path\\with\\backslash".to_string()))
+            take_ref_path_or_quoted.parse_peek(r"'raw\nstring'"),
+            Ok(("", r"raw\nstring".to_string()))
+        );
+
+        assert_eq!(
+            take_ref_path_or_quoted.parse_peek(r"'path\to\file'"),
+            Ok(("", r"path\to\file".to_string()))
+        );
+
+        // Only \' is escaped in single quotes
+        assert_eq!(
+            take_ref_path_or_quoted.parse_peek(r"'it\'s here'"),
+            Ok(("", "it's here".to_string()))
         );
     }
 }

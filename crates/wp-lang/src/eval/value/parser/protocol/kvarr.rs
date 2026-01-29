@@ -342,11 +342,11 @@ mod tests {
         let rule = r#"rule test { (kvarr(chars@a, chars@b, digit@c)\s | f_chars_has(a,foo) ) }"#;
         let data = "a=\"foo\" b=bar c=1";
         let pipe = WplEvaluator::from_code(rule)?;
-        let (record, _) = pipe.proc(data, 0)?;
+        let (record, _) = pipe.proc(0, data, 0)?;
         assert_eq!(record.field("a"), Some(&DataField::from_chars("a", "foo")));
         let rule = r#"rule test { (kvarr(chars@a, chars@b, digit@c)\s | f_chars_has(a,foox) ) }"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        assert!(pipe.proc(data, 0).is_err());
+        assert!(pipe.proc(0, data, 0).is_err());
         Ok(())
     }
 

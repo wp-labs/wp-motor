@@ -282,7 +282,7 @@ mod tests {
         let data =
             r#"{"name": "空闲CPU百分比", "value": 96}, {"name": "空闲内存(kB)", "value": 10243}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("cpu") {
             assert_eq!(*i, DataField::from_digit("cpu", 96));
         }
@@ -295,7 +295,7 @@ mod tests {
         let rule = r#"rule test { (json(symbol(CPU)@name,digit@value:cpu),json)\, }"#;
         let data = r#"{"name": "CPU", "value": 96}, {"name": "空闲内存(kB)", "value": 10243}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("cpu") {
             assert_eq!(*i, DataField::from_digit("cpu", 96));
         }
@@ -306,7 +306,7 @@ mod tests {
         let rule = r#"rule test { (json(symbol(中国)@name,digit@value:cpu),json)\, }"#;
         let data = r#"{"name": "中国", "value": 96}, {"name": "空闲内存(kB)", "value": 10243}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("cpu") {
             assert_eq!(*i, DataField::from_digit("cpu", 96));
         }
@@ -318,7 +318,7 @@ mod tests {
         let rule = r#"rule test { (json)\, }"#;
         let data = r#"{"name": "中国", "value": 96, "key" : ["a","b","c"] }"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("key[0]") {
             println!("{}", i);
             //assert_eq!(*i, TDOEnum::from_digit("cpu", 96));
@@ -364,7 +364,7 @@ mod tests {
         let rule = r#"rule test { (json(time_timestamp@access_time)) }"#;
         let data = r#"{ "access_time": 1652174567000 }"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         println!("{}", tdc);
         if let Some(i) = tdc.field("access_time") {
             assert_eq!(RAW_FMT.format_field(i), "2022-05-10 09:22:47".to_string());
@@ -379,7 +379,7 @@ mod tests {
         let rule = r#"rule nginx { (json( chars@logs | json_unescape() )) }"#;
         let data = r#"{"age": 10, "logs": "[10]:\"sys\""}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(field) = tdc.field("logs") {
             assert_eq!(
                 field,
@@ -397,7 +397,7 @@ mod tests {
         let rule = r#"rule nginx { (json(chars@a, chars@b) | json_unescape()) }"#;
         let data = r#"{"a":"noop","b":"line1\nline2"}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         assert_eq!(
             tdc.field("b"),
             Some(&DataField::from_chars(
@@ -410,11 +410,11 @@ mod tests {
         let rule = r#"rule nginx { (json(chars@name, chars@code) | take(name) | chars_has( -99) | take(code) | chars_has( aaa)) }"#;
         let data = r#"{"name": -99, "code": "aaa"}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        assert!(pipe.proc(data, 0).is_ok());
+        assert!(pipe.proc(0, data, 0).is_ok());
 
         let rule = r#"rule nginx { (json(chars@code) | take(code) | chars_has(aaa)) }"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        assert!(pipe.proc(data, 0).is_ok());
+        assert!(pipe.proc(0, data, 0).is_ok());
         Ok(())
     }
 
@@ -484,7 +484,7 @@ mod tests {
         let rule = r#"rule test { (json) }"#;
         let data = r#"{ "age": 18}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("age") {
             assert_eq!(RAW_FMT.format_field(i), "18".to_string());
         } else {
@@ -497,7 +497,7 @@ mod tests {
         let rule = r#"rule test { (json | f_has( age ) ) }"#;
         let data = r#"{ "age": 18}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("age") {
             assert_eq!(RAW_FMT.format_field(i), "18".to_string());
         } else {
@@ -507,7 +507,7 @@ mod tests {
         let rule = r#"rule test { (json | f_has( age1 ) ) }"#;
         let data = r#"{ "age": 18}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        assert!(pipe.proc(data, 0).is_err());
+        assert!(pipe.proc(0, data, 0).is_err());
         Ok(())
     }
     #[test]
@@ -515,7 +515,7 @@ mod tests {
         let rule = r#"rule test { (json | f_digit_has( age,18 ) ) }"#;
         let data = r#"{  "name": "china","age": 18}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("age") {
             assert_eq!(RAW_FMT.format_field(i), "18".to_string());
         } else {
@@ -525,7 +525,7 @@ mod tests {
         let rule = r#"rule test { (json | f_digit_has( age,19) ) }"#;
         let data = r#"{ "name": "china", "age": 18}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        assert!(pipe.proc(data, 0).is_err());
+        assert!(pipe.proc(0, data, 0).is_err());
         Ok(())
     }
     #[test]
@@ -533,7 +533,7 @@ mod tests {
         let rule = r#"rule test { (json | f_digit_in( age, [18,19] ) ) }"#;
         let data = r#"{  "name": "china","age": 18}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("age") {
             assert_eq!(RAW_FMT.format_field(i), "18".to_string());
         } else {
@@ -543,7 +543,7 @@ mod tests {
         let rule = r#"rule test { (json | f_digit_in( age, [18,19] ) ) }"#;
         let data = r#"{ "name": "china", "age": 17}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        assert!(pipe.proc(data, 0).is_err());
+        assert!(pipe.proc(0, data, 0).is_err());
         Ok(())
     }
     #[test]
@@ -551,7 +551,7 @@ mod tests {
         let rule = r#"rule test { (json | f_chars_has( name,china ) ) }"#;
         let data = r#"{ "name": "china"}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("name") {
             assert_eq!(RAW_FMT.format_field(i), "china".to_string());
         } else {
@@ -561,12 +561,12 @@ mod tests {
         let rule = r#"rule test { (json | f_chars_has( name,chinx) ) }"#;
         let data = r#"{ "name": "china"}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        assert!(pipe.proc(data, 0).is_err());
+        assert!(pipe.proc(0, data, 0).is_err());
 
         let rule = r#"rule test { (json(chars@name) | f_chars_has(name, -99) | f_chars_has(code, aaa) ) }"#;
         let data = r#"{ "name": -99, "code": "aaa"}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        assert!(pipe.proc(data, 0).is_ok());
+        assert!(pipe.proc(0, data, 0).is_ok());
         Ok(())
     }
     #[test]
@@ -574,7 +574,7 @@ mod tests {
         let rule = r#"rule test { (json | f_chars_in( name, [china,japan]) ) }"#;
         let data = r#"{ "name": "china"}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        assert!(pipe.proc(data, 0).is_ok());
+        assert!(pipe.proc(0, data, 0).is_ok());
         Ok(())
     }
     #[test]
@@ -582,12 +582,12 @@ mod tests {
         let rule = r#"rule test { (json | f_chars_not_has(name, chinx) ) }"#;
         let data = r#"{ "name": "china"}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        assert!(pipe.proc(data, 0).is_ok());
+        assert!(pipe.proc(0, data, 0).is_ok());
 
         let rule = r#"rule test { (json(chars@name, chars@code) | f_chars_not_has(name, 1) | f_chars_has(code, aaa) ) }"#;
         let data = r#"{ "name": -99, "code": "aaa"}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        assert!(pipe.proc(data, 0).is_ok());
+        assert!(pipe.proc(0, data, 0).is_ok());
         Ok(())
     }
     #[test]
@@ -595,7 +595,7 @@ mod tests {
         let rule = r#"rule test { (json(ip@addr) | f_ip_in(addr, [1.1.1.1,2.2.2.2]) ) }"#;
         let data = r#"{ "addr": "1.1.1.1"}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        assert!(pipe.proc(data, 0).is_ok());
+        assert!(pipe.proc(0, data, 0).is_ok());
         Ok(())
     }
     #[test]
@@ -603,7 +603,7 @@ mod tests {
         let rule = r#"rule test { (json(time_timestamp@found_time:occur_time,@virus_name:alert_name,@virus_type:origin_alert_cat_name,@risk_level:severity,@iplist:terminal_ip,@host_name:terminal_name,@virus_name:malware_name,@file_md5,chars@file_path,@file_size:file_bytes,@state:protect_action,@agent_id,_@*)) }"#;
         let data = r#"{"_id":"6C941E33DDA773F19AEF2F21203863542E053D94","file_md5":"7e5432f32a3b6f25666e0cc9acff00bf","virus_name":"Suspicious.Win32.Save.a","risk_level":0,"create_time":1671693072,"state":"已处理","time":1671695066,"found_time":1671695066,"agent_id":"3358992609","file_path":"c:\\users\\fc\\desktop\\tr-shopbot\\7e5432f32a3b6f25666e0cc9acff00bf","virus_type":"其他病毒","threat_file":"Suspicious.Win32.Save.a","host_name":"DESKTOP-ARRA948","iplist":"10.122.163.99"}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("file_path") {
             assert_eq!(
                 *i,
@@ -624,7 +624,7 @@ mod tests {
         //let rule = r#"rule test { (json(@details:event_detail)) }"#;
         let data = r#"{"details":[{"relation":1,"alert_id":"94882787-9505-49d4-9024-20DC93AF579B","action_time":1676304603062,"rule_name":"访问 lemonduck 挖矿的通信域名","rule_desc":"进程 powershell.exe 访问 lemonduck 挖矿的通信域名","attck_id":"TA0011.T1071.004","process_mame":"powershell.exe","process_path":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe","command":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE -ep bypass -eSQuAGIAZQA="}]}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
 
         println!("{}", tdc);
 
@@ -691,7 +691,7 @@ mod tests {
         let rule = r#"rule test { (json(@details:event_detail)) }"#;
         let data = r#"{"details":[{"relation":1,"alert_id":"94882787-9505-49d4-9024-20DC93AF579B","action_time":1676304603062,"rule_name":"访问 lemonduck 挖矿的通信域名","rule_desc":"进程 powershell.exe 访问 lemonduck 挖矿的通信域名","attck_id":"TA0011.T1071.004","process_mame":"powershell.exe","process_path":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe","command":"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE -ep bypass -eSQuAGIAZQA="}]}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
 
         let _expected = vec![
             DataField::from_digit("event_detail/relation".to_string(), 1),
@@ -747,7 +747,7 @@ mod tests {
         let data = r#"{"http_req_header":"GET /?n=%0A&cmd=ipconfig+/all&search=%25xxx%25url%25:%password%}{.exec|{.?cmd.}|timeout=15|out=abc.}{.?n.}{.?n.}RESULT:{.?n.}{.^abc.}===={.?n.} HTTP/1.1\r\nAccept-Encoding: identity\r\nHost: 221.182.184.6:8081\r\nUser-Agent: Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.106 Safari/537.36\r\nConnection: close\r\n\r\n"}"#;
         let rule = r#"rule test { (json(chars@http_req_header)) }"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         println!("{}", tdc);
         Ok(())
     }
@@ -757,7 +757,7 @@ mod tests {
         let rule = r#"rule test { (json(chars@key)) }"#;
         let data = r#"{"key":  "hello boy"}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("key") {
             assert_eq!(*i, DataField::from_chars("key", "hello boy"));
         } else {
@@ -771,7 +771,7 @@ mod tests {
         let rule = r#"rule test { (json(@action,_@*))}"#;
         let data = r#"{"action": "{\"text\": \"10.91.7.38(局域网) 访问 已知Webshell 10.48.116.32:8080/newShell/hello.jsp（物理路径：/usr/local/apache-tomcat-8.0.23/webapps/newShell/hello.jsp）。来源：网页浏览实时防护\", \"html\": \"<span class='ip'>10.91.7.38</span><span class='ipAddr'>(局域网)</span> 访问 <span class='type'>已知Webshell</span> <span class='url'>10.48.116.32:8080/newShell/hello.jsp</span><span class='webPagePhysicalPath'>（物理路径：/usr/local/apache-tomcat-8.0.23/webapps/newShell/hello.jsp）</span>。来源：<span class='source'> 网页浏览实时防护</span>\"}"}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("action") {
             assert_eq!(
                 *i,
@@ -790,7 +790,7 @@ mod tests {
         let rule = r#"rule test { (json(symbol(boy)@key)) }"#;
         let data = r#"{"key":  "boy"}"#;
         let pipe = WplEvaluator::from_code(rule)?;
-        let (tdc, _) = pipe.proc(data, 0)?;
+        let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("key") {
             assert_eq!(*i, DataField::from_symbol("key", "boy"));
         } else {

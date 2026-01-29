@@ -26,9 +26,9 @@ impl LogicProc for GroupSomeOf {
                         all_failed = false;
                         break;
                     }
-                    Err(_e) => {
+                    Err(e) => {
                         data.reset(&ck_point);
-                        trace_data!("{}", fpu.conf());
+                        trace_data!("fpt parse error :{},{}", fpu.conf(), e);
                         continue;
                     }
                 }

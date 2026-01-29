@@ -30,11 +30,6 @@ impl WplEngine {
                     // 完全成功解析
                     let record = enrich_record_with_tags(record, &data.tags);
                     let rec_unit = SinkRecUnit::new(data.event_id, ProcMeta::Null, record);
-                    info_data!(
-                        "wpl parse suc! wpl:{} , event_id:{} ",
-                        wpl_key,
-                        data.event_id
-                    );
                     sink_groups.entry(wpl_key).or_default().push(rec_unit);
                 }
                 ProcessResult::Partial {
