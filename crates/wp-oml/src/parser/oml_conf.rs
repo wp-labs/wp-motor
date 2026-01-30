@@ -26,14 +26,14 @@ pub fn oml_parse(data: &mut &str, tag: &str) -> OMLCodeResult<ObjModel> {
 
 pub fn oml_conf_code(data: &mut &str) -> WResult<ObjModel> {
     let name = oml_conf_head.parse_next(data)?;
-    debug_data!("obj model: {} begin ", name);
+    debug_rule!("obj model: {} begin ", name);
     let mut a_items = ObjModel::new(name);
     let rules = opt(oml_conf_rules).parse_next(data)?;
-    debug_data!("obj model: rules loaded!");
+    debug_rule!("obj model: rules loaded!");
     a_items.bind_rules(rules);
     kw_head_sep_line.parse_next(data)?;
     let mut items: Vec<EvalExp> = repeat(1.., oml_aggregate).parse_next(data)?;
-    debug_data!("obj model: aggregate item  loaded!");
+    debug_rule!("obj model: aggregate item  loaded!");
     //repeat(1.., terminated(oml_aggregate, symbol_semicolon)).parse_next(data)?;
     a_items.items.append(&mut items);
     multispace0.parse_next(data)?;

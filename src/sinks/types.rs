@@ -140,6 +140,16 @@ pub enum ProcMeta {
     Rule(String),
     Null,
 }
+impl Display for ProcMeta {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProcMeta::Rule(rule) => write!(f, "ProcMeta rule:{}", rule),
+            ProcMeta::Null => {
+                write!(f, "ProMeta Null")
+            }
+        }
+    }
+}
 
 impl ProcMeta {
     pub fn abstract_info(&self) -> String {

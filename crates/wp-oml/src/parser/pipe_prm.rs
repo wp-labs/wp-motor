@@ -99,7 +99,7 @@ impl Fun1Builder for Base64Decode {
             Ok(EncodeType::Utf8)
         } else {
             Ok(EncodeType::from_str(val).map_err(|e| {
-                warn_data!("unimplemented format {} base64 decode: {}", val, e);
+                warn_rule!("unimplemented format {} base64 decode: {}", val, e);
                 ErrMode::<ContextError>::from_input(data)
             })?)
         }
@@ -125,7 +125,7 @@ impl Fun1Builder for PathGet {
             Ok(PathType::Default)
         } else {
             Ok(PathType::from_str(val).map_err(|e| {
-                warn_data!("invalid path arg '{}': {}", val, e);
+                warn_rule!("invalid path arg '{}': {}", val, e);
                 ErrMode::<ContextError>::from_input(data)
             })?)
         }
@@ -151,7 +151,7 @@ impl Fun1Builder for UrlGet {
             Ok(UrlType::Default)
         } else {
             Ok(UrlType::from_str(val).map_err(|e| {
-                warn_data!("invalid url arg '{}': {}", val, e);
+                warn_rule!("invalid url arg '{}': {}", val, e);
                 ErrMode::<ContextError>::from_input(data)
             })?)
         }

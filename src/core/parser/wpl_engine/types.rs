@@ -1,6 +1,7 @@
 //! Workshop 处理结果相关类型
 
 use crate::sinks::SinkPackage;
+use chrono::{DateTime, Utc};
 use std::{collections::HashMap, fmt::Display};
 use wp_connector_api::SourceEvent;
 use wp_model_core::model::DataRecord;
@@ -15,6 +16,8 @@ pub struct ParseFailInfo {
     pub best_error: WparseError,
     /// 解析深度（字符位置）
     pub depth: usize,
+    /// 发生时间
+    pub timestamp: DateTime<Utc>,
 }
 
 impl ParseFailInfo {
@@ -23,14 +26,18 @@ impl ParseFailInfo {
             best_wpl,
             best_error,
             depth,
+            timestamp: Utc::now(),
         }
     }
 
     /// 格式化错误信息
     pub fn format_error(&self) -> String {
         format!(
-            "target wpl: {} (depth: {})\nError: {}",
-            self.best_wpl, self.depth, self.best_error
+            "[{}] target wpl: {} (depth: {})\nError: {}",
+            self.timestamp.format("%Y-%m-%d %H:%M:%S%.3f UTC"),
+            self.best_wpl,
+            self.depth,
+            self.best_error
         )
     }
 }
@@ -38,8 +45,11 @@ impl Display for ParseFailInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "target wpl: {} (depth: {})\nError: {}",
-            self.best_wpl, self.depth, self.best_error
+            "[{}] target wpl: {} (depth: {})\nError: {}",
+            self.timestamp.format("%Y-%m-%d %H:%M:%S%.3f UTC"),
+            self.best_wpl,
+            self.depth,
+            self.best_error
         )
     }
 }

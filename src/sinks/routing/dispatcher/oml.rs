@@ -134,12 +134,14 @@ impl SinkDispatcher {
                     original_len,
                     output.items.len(),
                 );
+                warn_data!("oml proc fail!{},{}", pkg_id, failed.to_string());
                 failures.push(SinkRecUnit::with_record(
                     pkg_id,
                     meta.clone(),
                     Arc::new(failed),
                 ));
             } else {
+                info_data!("oml proc suc!{},{}", pkg_id, meta);
                 successes.push(TransformedRecUnit::new(pkg_id, meta, output));
             }
         }

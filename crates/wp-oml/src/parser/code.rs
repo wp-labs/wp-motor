@@ -39,11 +39,11 @@ impl OMLCode {
     }
 
     pub fn load(path: &str) -> OMLCodeResult<DataModel> {
-        debug_data!("{} will load", path);
+        debug_rule!("{} will load", path);
         if std::path::Path::new(path).exists() && path.ends_with(".oml") {
             Ok(DataModel::Object(ObjModel::load(path)?))
         } else {
-            warn_data!("{} not exists !", path);
+            warn_rule!("{} not exists !", path);
             Ok(DataModel::use_null())
         }
     }
