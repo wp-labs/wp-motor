@@ -223,11 +223,17 @@ impl SinkRuntime {
         if package.is_empty() {
             return Ok(());
         }
+        let mut ids: Vec<u64> = Vec::with_capacity(package.len());
 
         self.record_package_stats_begin_rec(package);
         loop {
-            let records: Vec<Arc<DataRecord>> =
-                package.iter().map(|unit| unit.data().clone()).collect();
+            let records: Vec<Arc<DataRecord>> = package
+                .iter()
+                .map(|unit| {
+                    ids.push(*unit.id());
+                    unit.data().clone()
+                })
+                .collect();
             if records.is_empty() {
                 self.record_package_stats_end_rec(package);
                 return Ok(());
@@ -238,6 +244,9 @@ impl SinkRuntime {
                     return Ok(());
                 }
                 Err(e) => {
+                    for e_id in &ids {
+                        error_data!("sink data failed! {}:{}", e_id, e);
+                    }
                     if self.handle_send_error(&e, bad_s, mon).await? {
                         continue;
                     } else {

@@ -49,6 +49,14 @@ pub struct InfraGroups {
     pub monitor: SinkDispatcher,
     pub error: SinkDispatcher,
 }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InfraSinkType {
+    Default,
+    Miss,
+    Residue,
+    Monitor,
+    Error,
+}
 
 struct InfraChannel {
     dispatcher: SinkDispatcher,
@@ -81,6 +89,7 @@ impl InfraChannel {
 
     async fn handle_pkg(
         &mut self,
+        groups: InfraSinkType,
         pkg_opt: Option<SinkPackage>,
         drain_state: &mut DrainState,
         run_ctrl: &mut TaskController,
@@ -88,6 +97,9 @@ impl InfraChannel {
         if let Some(pkg) = pkg_opt {
             let mut processed = 0usize;
             for unit in pkg.iter() {
+                if InfraSinkType::Default == groups {
+                    debug_data!("sink to default! {}, proc-meta:{}", unit.id(), unit.meta());
+                }
                 processed += self
                     .dispatcher
                     .group_sink_one(
@@ -255,7 +267,7 @@ impl SinkWork {
         mut fix_sink_r: ASinkReceiver,
     ) -> SinkResult<()> {
         // 基础组固定 5 个：default/miss/residue/monitor/error
-        let mut c0 = InfraChannel::new(groups.default, &bad_sink_s, &mon_send);
+        let mut default_sink = InfraChannel::new(groups.default, &bad_sink_s, &mon_send);
         let mut c1 = InfraChannel::new(groups.miss, &bad_sink_s, &mon_send);
         let mut c2 = InfraChannel::new(groups.residue, &bad_sink_s, &mon_send);
         let mut c3 = InfraChannel::new(groups.monitor, &bad_sink_s, &mon_send);
@@ -265,28 +277,28 @@ impl SinkWork {
         let mut drain_state = DrainState::new(5);
         loop {
             tokio::select! {
-                pkg_opt = c0.get_dat_r_mut().recv(), if !c0.is_closed() => {
-                    if c0.handle_pkg(pkg_opt, &mut drain_state, &mut run_ctrl).await? {
+                pkg_opt = default_sink.get_dat_r_mut().recv(), if !default_sink.is_closed() => {
+                    if default_sink.handle_pkg(InfraSinkType::Default,pkg_opt, &mut drain_state, &mut run_ctrl).await? {
                         break;
                     }
                 }
                 pkg_opt = c1.get_dat_r_mut().recv(), if !c1.is_closed() => {
-                    if c1.handle_pkg(pkg_opt, &mut drain_state, &mut run_ctrl).await? {
+                    if c1.handle_pkg(InfraSinkType::Miss,pkg_opt, &mut drain_state, &mut run_ctrl).await? {
                         break;
                     }
                 }
                 pkg_opt = c2.get_dat_r_mut().recv(), if !c2.is_closed() => {
-                    if c2.handle_pkg(pkg_opt, &mut drain_state, &mut run_ctrl).await? {
+                    if c2.handle_pkg(InfraSinkType::Residue,pkg_opt, &mut drain_state, &mut run_ctrl).await? {
                         break;
                     }
                 }
                 pkg_opt = c3.get_dat_r_mut().recv(), if !c3.is_closed() => {
-                    if c3.handle_pkg(pkg_opt, &mut drain_state, &mut run_ctrl).await? {
+                    if c3.handle_pkg(InfraSinkType::Monitor,pkg_opt, &mut drain_state, &mut run_ctrl).await? {
                         break;
                     }
                 }
                 pkg_opt = c4.get_dat_r_mut().recv(), if !c4.is_closed() => {
-                    if c4.handle_pkg(pkg_opt, &mut drain_state, &mut run_ctrl).await? {
+                    if c4.handle_pkg(InfraSinkType::Error,pkg_opt, &mut drain_state, &mut run_ctrl).await? {
                         break;
                     }
                 }
@@ -294,8 +306,8 @@ impl SinkWork {
                     match cmd_res {
                         Ok(cmd) => {
                             if let ActorCtrlCmd::Execute(TaskScope::One(sink_name)) = cmd.clone() {
-                                for ch in [&mut c0, &mut c1, &mut c2, &mut c3, &mut c4] { ch.freeze_all(); }
-                                for ch in [&mut c0, &mut c1, &mut c2, &mut c3, &mut c4] { ch.active_one(sink_name.as_str()); }
+                                for ch in [&mut default_sink, &mut c1, &mut c2, &mut c3, &mut c4] { ch.freeze_all(); }
+                                for ch in [&mut default_sink, &mut c1, &mut c2, &mut c3, &mut c4] { ch.active_one(sink_name.as_str()); }
                             }
                             run_ctrl.update_cmd(cmd);
                             if run_ctrl.is_stop() {
@@ -303,7 +315,7 @@ impl SinkWork {
                                     info_ctrl!("infra sinks enter draining state");
                                 }
                                 drain_state.start_draining();
-                                for ch in [&mut c0, &mut c1, &mut c2, &mut c3, &mut c4] { ch.close_channel(); }
+                                for ch in [&mut default_sink, &mut c1, &mut c2, &mut c3, &mut c4] { ch.close_channel(); }
                             }
                         }
                         Err(err) => {
@@ -312,13 +324,13 @@ impl SinkWork {
                                 info_ctrl!("infra sinks enter draining state");
                             }
                             drain_state.start_draining();
-                            for ch in [&mut c0, &mut c1, &mut c2, &mut c3, &mut c4] { ch.close_channel(); }
+                            for ch in [&mut default_sink, &mut c1, &mut c2, &mut c3, &mut c4] { ch.close_channel(); }
                         }
                     }
                 }
                 Some(h) = fix_sink_r.recv(), if !drain_state.is_draining() => {
                     let mut hold = Some(h);
-                    for ch in [&mut c0, &mut c1, &mut c2, &mut c3, &mut c4] {
+                    for ch in [&mut default_sink, &mut c1, &mut c2, &mut c3, &mut c4] {
                         let Some(handle) = hold.take() else { break; };
                         if let Some(unmatch) = Self::proc_fix_ex(handle, &mut ch.dispatcher, &mon_send).await? {
                             hold = Some(unmatch);
@@ -329,7 +341,7 @@ impl SinkWork {
                 }
             }
         }
-        for ch in [&mut c0, &mut c1, &mut c2, &mut c3, &mut c4] {
+        for ch in [&mut default_sink, &mut c1, &mut c2, &mut c3, &mut c4] {
             let sink_name = ch.proc_end().await?;
             info_ctrl!("infra:{} async sinks proc end", sink_name);
         }
