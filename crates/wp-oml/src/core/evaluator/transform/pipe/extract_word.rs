@@ -461,14 +461,14 @@ impl ValueProcessor for ExtractMainWord {
                     }
 
                     // 规则2：核心词性 + 非停用词
-                    if CORE_POS.contains(&*pos) && !LOG_STOP.contains(word_lower.as_str()) {
+                    if CORE_POS.contains(pos) && !LOG_STOP.contains(word_lower.as_str()) {
                         return DataField::from_chars(
                             in_val.get_name().to_string(),
                             word.to_string(),
                         );
                     }
                 }
-                return DataField::from_chars(in_val.get_name().to_string(), String::new());
+                DataField::from_chars(in_val.get_name().to_string(), String::new())
             }
             _ => in_val,
         }
@@ -725,11 +725,26 @@ mod tests {
     fn print_saso(target: &DataRecord, name: &str) {
         if let Some(field) = target.field(name) {
             if let Value::Obj(obj) = field.get_value() {
-                let subject = obj.get("subject").map(|f| f.get_value().to_string()).unwrap_or_default();
-                let action = obj.get("action").map(|f| f.get_value().to_string()).unwrap_or_default();
-                let object = obj.get("object").map(|f| f.get_value().to_string()).unwrap_or_default();
-                let status = obj.get("status").map(|f| f.get_value().to_string()).unwrap_or_default();
-                println!("{}: subject={}, action={}, object={}, status={}", name, subject, action, object, status);
+                let subject = obj
+                    .get("subject")
+                    .map(|f| f.get_value().to_string())
+                    .unwrap_or_default();
+                let action = obj
+                    .get("action")
+                    .map(|f| f.get_value().to_string())
+                    .unwrap_or_default();
+                let object = obj
+                    .get("object")
+                    .map(|f| f.get_value().to_string())
+                    .unwrap_or_default();
+                let status = obj
+                    .get("status")
+                    .map(|f| f.get_value().to_string())
+                    .unwrap_or_default();
+                println!(
+                    "{}: subject={}, action={}, object={}, status={}",
+                    name, subject, action, object, status
+                );
             }
         }
     }
@@ -739,7 +754,13 @@ mod tests {
             if let Value::Obj(obj) = field.get_value() {
                 let get = |key: &str| -> String {
                     obj.get(key)
-                        .and_then(|f| if let Value::Chars(s) = f.get_value() { Some(s.to_string()) } else { None })
+                        .and_then(|f| {
+                            if let Value::Chars(s) = f.get_value() {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or_default()
                 };
                 return (get("subject"), get("action"), get("object"), get("status"));

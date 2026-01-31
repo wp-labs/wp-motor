@@ -19,8 +19,7 @@ fn build_model(code: &str) -> ObjModel {
 // ---------------------------------------------------------------------------
 const EN_SHORT: &str = "database connection failed";
 const EN_MEDIUM: &str = "Server failed to connect database after retry";
-const EN_LONG: &str =
-    "The application server failed to establish a persistent connection to the primary database \
+const EN_LONG: &str = "The application server failed to establish a persistent connection to the primary database \
      after 3 retry attempts, request processing timeout occurred";
 
 const CN_SHORT: &str = "数据库连接失败";
