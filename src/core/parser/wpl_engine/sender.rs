@@ -8,8 +8,6 @@ use crate::facade::test_helpers::SinkTerminal;
 use crate::runtime::actor::constants::ACTOR_IDLE_TICK_MS;
 use crate::runtime::errors::err4_send_to_sink;
 use crate::sinks::{SinkDataEnum, SinkGroupAgent, SinkInfraAble, SinkPackage, SinkRecUnit};
-use base64::Engine;
-use base64::engine::general_purpose;
 use orion_error::UvsReason;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -172,14 +170,16 @@ impl WplEngine {
         };
 
         // 如果是字节数据，需要编码
+        /*
         let display_str = match &event.payload {
             RawData::Bytes(_) => general_purpose::STANDARD.encode(raw_str.as_bytes()),
             _ => raw_str,
         };
+        */
 
         let raw_data = format!(
             "src_key: {}  | data:\n{}\n{}\n\n",
-            event.src_key, display_str, err_msg
+            event.src_key, raw_str, err_msg
         );
         self.forward_raw_to_infra(|| self.miss(), event.event_id, raw_data)
             .await
