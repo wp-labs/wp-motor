@@ -2,14 +2,17 @@ use std::str::FromStr;
 
 use crate::language::{
     Base64Decode, EncodeType, Get, HtmlEscape, HtmlUnescape, JsonEscape, JsonUnescape, Nth,
-    PIPE_BASE64_DECODE, PIPE_GET, PIPE_HTML_ESCAPE, PIPE_HTML_UNESCAPE, PIPE_JSON_ESCAPE,
-    PIPE_JSON_UNESCAPE, PIPE_NTH, PIPE_PATH, PIPE_SKIP_EMPTY, PIPE_STR_ESCAPE, PIPE_TIME_TO_TS,
-    PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US, PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON, PIPE_URL, PathGet,
-    PathType, PreciseEvaluator, SkipEmpty, StrEscape, TimeStampUnit, TimeToTs, TimeToTsMs,
-    TimeToTsUs, TimeToTsZone, ToJson, UrlGet, UrlType,
+    PIPE_BASE64_DECODE, PIPE_EXTRACT_MAIN_WORD, PIPE_GET, PIPE_HTML_ESCAPE, PIPE_HTML_UNESCAPE,
+    PIPE_JSON_ESCAPE, PIPE_JSON_UNESCAPE, PIPE_NTH, PIPE_PATH, PIPE_SKIP_EMPTY, PIPE_STR_ESCAPE,
+    PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US, PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON,
+    PIPE_URL, PathGet, PathType, PreciseEvaluator, SkipEmpty, StrEscape, TimeStampUnit, TimeToTs,
+    TimeToTsMs, TimeToTsUs, TimeToTsZone, ToJson, UrlGet, UrlType,
 };
-use crate::language::{Base64Encode, PIPE_BASE64_ENCODE, PIPE_TO_STR, ToStr};
-use crate::language::{Ip4ToInt, PIPE_IP4_TO_INT, PiPeOperation, PipeFun};
+use crate::language::{Base64Encode, ExtractMainWord, PIPE_BASE64_ENCODE, PIPE_TO_STR, ToStr};
+use crate::language::{
+    ExtractSubjectObject, Ip4ToInt, PIPE_EXTRACT_SUBJECT_OBJECT, PIPE_IP4_TO_INT, PiPeOperation,
+    PipeFun,
+};
 use crate::parser::keyword::kw_gw_pipe;
 use crate::parser::oml_aggregate::oml_var_get;
 use crate::winnow::error::ParserError;
@@ -208,6 +211,9 @@ pub fn oml_pipe(data: &mut &str) -> WResult<PipeFun> {
         PIPE_TO_STR.map(|_| PipeFun::ToStr(ToStr::default())),
         PIPE_SKIP_EMPTY.map(|_| PipeFun::SkipEmpty(SkipEmpty::default())),
         PIPE_IP4_TO_INT.map(|_| PipeFun::Ip4ToInt(Ip4ToInt::default())),
+        PIPE_EXTRACT_MAIN_WORD.map(|_| PipeFun::ExtractMainWord(ExtractMainWord::default())),
+        PIPE_EXTRACT_SUBJECT_OBJECT
+            .map(|_| PipeFun::ExtractSubjectObject(ExtractSubjectObject::default())),
     ))
     .context(StrContext::Label("pipe fun"))
     .context(ctx_desc("fun not found!"))
@@ -246,6 +252,10 @@ mod tests {
 
         let mut code = r#" pipe take(ip) | url(host)"#;
         assert_oml_parse(&mut code, oml_aga_pipe);
+
+        let mut code = r#" pipe take(message) | extract_main_word"#;
+        assert_oml_parse(&mut code, oml_aga_pipe);
+
         Ok(())
     }
     #[test]

@@ -2,10 +2,13 @@ use wp_model_core::model::DataField;
 
 use crate::{core::ValueProcessor, language::PipeFun};
 
+mod array_obj;
 mod base64;
 mod escape;
+mod extract_word;
 mod net;
-pub mod other;
+mod path_url;
+mod pipe_operation;
 mod time;
 
 impl ValueProcessor for PipeFun {
@@ -31,6 +34,8 @@ impl ValueProcessor for PipeFun {
             PipeFun::PathGet(o) => o.value_cacu(in_val),
             PipeFun::UrlGet(o) => o.value_cacu(in_val),
             PipeFun::Ip4ToInt(o) => o.value_cacu(in_val),
+            PipeFun::ExtractMainWord(o) => o.value_cacu(in_val),
+            PipeFun::ExtractSubjectObject(o) => o.value_cacu(in_val),
         }
     }
 }

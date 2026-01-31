@@ -89,6 +89,28 @@ impl Display for UrlGet {
     }
 }
 
+pub const PIPE_EXTRACT_MAIN_WORD: &str = "extract_main_word";
+/// 提取主要单词（第一个非空单词）
+#[derive(Clone, Debug, Default)]
+pub struct ExtractMainWord {}
+
+impl Display for ExtractMainWord {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", PIPE_EXTRACT_MAIN_WORD)
+    }
+}
+
+pub const PIPE_EXTRACT_SUBJECT_OBJECT: &str = "extract_subject_object";
+/// 提取日志主客体结构：subject, action, object, status
+#[derive(Clone, Debug, Default)]
+pub struct ExtractSubjectObject {}
+
+impl Display for ExtractSubjectObject {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", PIPE_EXTRACT_SUBJECT_OBJECT)
+    }
+}
+
 #[derive(Default, Builder, Debug, Clone, Getters, Serialize, Deserialize)]
 pub struct Dumb {}
 impl Display for Dumb {

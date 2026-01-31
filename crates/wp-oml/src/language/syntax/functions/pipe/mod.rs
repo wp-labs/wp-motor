@@ -36,6 +36,8 @@ pub enum PipeFun {
     PathGet(PathGet),
     UrlGet(UrlGet),
     Ip4ToInt(Ip4ToInt),
+    ExtractMainWord(ExtractMainWord),
+    ExtractSubjectObject(ExtractSubjectObject),
 }
 
 impl Display for PipeFun {
@@ -61,6 +63,8 @@ impl Display for PipeFun {
             PipeFun::PathGet(v) => write!(f, "{}", v),
             PipeFun::UrlGet(v) => write!(f, "{}", v),
             PipeFun::Ip4ToInt(v) => write!(f, "{}", v),
+            PipeFun::ExtractMainWord(v) => write!(f, "{}", v),
+            PipeFun::ExtractSubjectObject(v) => write!(f, "{}", v),
         }
     }
 }
