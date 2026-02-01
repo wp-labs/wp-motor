@@ -103,7 +103,16 @@ impl Display for ExtractMainWord {
 pub const PIPE_EXTRACT_SUBJECT_OBJECT: &str = "extract_subject_object";
 /// 提取日志主客体结构：subject, action, object, status
 #[derive(Clone, Debug, Default)]
-pub struct ExtractSubjectObject {}
+pub struct ExtractSubjectObject {
+    /// 是否启用debug模式（输出分词、词性、匹配规则等调试信息）
+    pub debug: bool,
+}
+
+impl ExtractSubjectObject {
+    pub fn with_debug(debug: bool) -> Self {
+        Self { debug }
+    }
+}
 
 impl Display for ExtractSubjectObject {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

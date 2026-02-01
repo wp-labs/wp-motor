@@ -2,6 +2,7 @@ use crate::core::prelude::*;
 use crate::language::{ExtractMainWord, ExtractSubjectObject};
 use jieba_rs::Jieba;
 use lazy_static::lazy_static;
+use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use wp_model_core::model::types::value::ObjectValue;
 use wp_model_core::model::{DataField, Value};
@@ -179,9 +180,9 @@ lazy_static! {
         set.insert("stopped");
         set.insert("completed");
         set.insert("pending");
-        set.insert("running");
-        set.insert("started");
-        set.insert("connected");
+        // set.insert("running");  // 移除：-ing后缀自动处理
+        // set.insert("started");  // 移除：-ed后缀自动处理
+        // set.insert("connected");  // 移除：-ed后缀自动处理
         set.insert("refused");
         set.insert("dropped");
         set.insert("rejected");
@@ -258,6 +259,28 @@ lazy_static! {
         set.insert("重试");
         set
     };
+
+    // 实体名词集合（虽然是 -tion 结尾但在日志中常作为实体的词）
+    static ref ENTITY_NOUNS: HashSet<&'static str> = {
+        let mut set = HashSet::new();
+        // 英文实体名词
+        set.insert("connection");     // 连接（作为实体：数据库连接、网络连接）
+        set.insert("transaction");    // 事务
+        set.insert("session");        // 会话
+        set.insert("application");    // 应用程序
+        set.insert("configuration");  // 配置
+        set.insert("permission");     // 权限
+        set.insert("operation");      // 操作（作为实体时）
+        set.insert("exception");      // 异常（作为实体时）
+        // 中文实体名词
+        set.insert("连接");
+        set.insert("会话");
+        set.insert("事务");
+        set.insert("应用");
+        set.insert("配置");
+        set.insert("权限");
+        set
+    };
 }
 
 /// 词角色分类
@@ -270,23 +293,91 @@ enum WordRole {
     Status,
 }
 
+/// Debug信息收集器
+struct DebugInfo {
+    tokens: Vec<String>,
+    pos_tags: Vec<(String, String)>,
+    subject_rule: String,
+    action_rule: String,
+    object_rule: String,
+    status_rule: String,
+    subject_confidence: f32,
+    action_confidence: f32,
+    object_confidence: f32,
+    status_confidence: f32,
+}
+
+impl Default for DebugInfo {
+    fn default() -> Self {
+        Self {
+            tokens: Vec::new(),
+            pos_tags: Vec::new(),
+            subject_rule: String::new(),
+            action_rule: String::new(),
+            object_rule: String::new(),
+            status_rule: String::new(),
+            subject_confidence: 0.0,
+            action_confidence: 0.0,
+            object_confidence: 0.0,
+            status_confidence: 0.0,
+        }
+    }
+}
+
+impl DebugInfo {
+    fn to_json(&self) -> String {
+        json!({
+            "tokenization": self.tokens,
+            "pos_tags": self.pos_tags,
+            "rules_matched": {
+                "subject": self.subject_rule,
+                "action": self.action_rule,
+                "object": self.object_rule,
+                "status": self.status_rule
+            },
+            "confidence": {
+                "subject": self.subject_confidence,
+                "action": self.action_confidence,
+                "object": self.object_confidence,
+                "status": self.status_confidence
+            }
+        })
+        .to_string()
+    }
+}
+
 /// 英文词角色判断
 fn classify_eng(word: &str) -> WordRole {
     let lower = word.to_lowercase();
+
+    // 优先级1：领域词典明确匹配
     if STATUS_WORDS.contains(lower.as_str()) {
         return WordRole::Status;
     }
     if ACTION_VERBS.contains(lower.as_str()) {
         return WordRole::Action;
     }
-    // "-ing" 结尾 → 动作
+
+    // 优先级2：实体名词白名单（覆盖词缀规则）
+    if ENTITY_NOUNS.contains(lower.as_str()) {
+        return WordRole::Entity;
+    }
+
+    // 优先级3：词缀规则（动态识别）
+    // "-ing" 结尾 → 动作（进行时）
     if lower.ends_with("ing") && lower.len() > 4 {
         return WordRole::Action;
     }
-    // "-ed" 结尾且不在 STATUS_WORDS → 动作（过去式动词）
+    // "-ed" 结尾 → 动作（过去式/完成时）
     if lower.ends_with("ed") && lower.len() > 3 {
         return WordRole::Action;
     }
+    // "-tion"/"-sion" 结尾 → 动作（名词化动词：authentication, connection）
+    if (lower.ends_with("tion") || lower.ends_with("sion")) && lower.len() > 5 {
+        return WordRole::Action;
+    }
+
+    // 默认：实体
     WordRole::Entity
 }
 
@@ -312,14 +403,17 @@ fn classify_cn(pos: &str, word: &str) -> Option<WordRole> {
     }
 }
 
-/// 日志主客体分析
+/// 日志主客体分析（带debug信息）
 ///
 /// 对日志文本进行分词+词性标注，将词按角色分配到：
 /// - subject：主体（第一个实体词，或 action 之前的实体）
 /// - action：动作词（动词）
 /// - object：对象（action 之后的第一个实体词）
 /// - status：状态词（终态标记）
-fn analyze_subject_object(text: &str) -> (String, String, String, String) {
+fn analyze_subject_object_with_debug(
+    text: &str,
+    enable_debug: bool,
+) -> (String, String, String, String, Option<DebugInfo>) {
     let tags = JIEBA.tag(text, true);
 
     let mut subject = String::new();
@@ -327,6 +421,21 @@ fn analyze_subject_object(text: &str) -> (String, String, String, String) {
     let mut object = String::new();
     let mut status = String::new();
     let mut action_seen = false;
+
+    let mut debug = if enable_debug {
+        Some(DebugInfo::default())
+    } else {
+        None
+    };
+
+    // 收集debug信息：分词和词性
+    if let Some(ref mut d) = debug {
+        for tag in &tags {
+            d.tokens.push(tag.word.to_string());
+            d.pos_tags
+                .push((tag.word.to_string(), tag.tag.to_string()));
+        }
+    }
 
     for tag in &tags {
         let word = tag.word.trim();
@@ -350,26 +459,78 @@ fn analyze_subject_object(text: &str) -> (String, String, String, String) {
                 WordRole::Status => {
                     if status.is_empty() {
                         status = word.to_string();
+                        if let Some(ref mut d) = debug {
+                            d.status_rule = if STATUS_WORDS.contains(word_lower.as_str()) {
+                                "rule1: status_word_match".to_string()
+                            } else {
+                                "rule2: cn_pos_match".to_string()
+                            };
+                            d.status_confidence = if STATUS_WORDS.contains(word_lower.as_str()) {
+                                1.0
+                            } else {
+                                0.7
+                            };
+                        }
                     }
                 }
                 WordRole::Action => {
                     if action.is_empty() {
                         action = word.to_string();
                         action_seen = true;
+                        if let Some(ref mut d) = debug {
+                            d.action_rule = if ACTION_VERBS.contains(word_lower.as_str()) {
+                                "rule1: action_verb_match".to_string()
+                            } else if pos == "eng" && word_lower.ends_with("ing") {
+                                "rule2: eng_ing_suffix".to_string()
+                            } else if pos == "eng" && word_lower.ends_with("ed") {
+                                "rule2: eng_ed_suffix".to_string()
+                            } else {
+                                format!("rule3: cn_pos({})", pos)
+                            };
+                            d.action_confidence = if ACTION_VERBS.contains(word_lower.as_str()) {
+                                1.0
+                            } else {
+                                0.7
+                            };
+                        }
                     }
                 }
                 WordRole::Entity => {
                     if subject.is_empty() {
                         subject = word.to_string();
+                        if let Some(ref mut d) = debug {
+                            d.subject_rule = if LOG_DOMAIN.contains(word_lower.as_str()) {
+                                "rule1: domain_entity_match".to_string()
+                            } else {
+                                format!("rule2: core_pos({}) + non_stopword", pos)
+                            };
+                            d.subject_confidence = if LOG_DOMAIN.contains(word_lower.as_str()) {
+                                1.0
+                            } else {
+                                0.8
+                            };
+                        }
                     } else if action_seen && object.is_empty() {
                         object = word.to_string();
+                        if let Some(ref mut d) = debug {
+                            d.object_rule = if LOG_DOMAIN.contains(word_lower.as_str()) {
+                                "rule1: domain_entity_match (after_action)".to_string()
+                            } else {
+                                format!("rule2: core_pos({}) + after_action", pos)
+                            };
+                            d.object_confidence = if LOG_DOMAIN.contains(word_lower.as_str()) {
+                                1.0
+                            } else {
+                                0.8
+                            };
+                        }
                     }
                 }
             }
         }
     }
 
-    (subject, action, object, status)
+    (subject, action, object, status, debug)
 }
 
 /// 提取日志主客体结构 - extract_subject_object
@@ -379,6 +540,7 @@ fn analyze_subject_object(text: &str) -> (String, String, String, String) {
 /// - action：动作（做什么）
 /// - object：对象（作用于谁/什么）
 /// - status：状态（结果如何）
+/// - debug：调试信息（仅在debug模式下）
 impl ValueProcessor for ExtractSubjectObject {
     fn value_cacu(&self, in_val: DataField) -> DataField {
         match in_val.get_value() {
@@ -391,7 +553,8 @@ impl ValueProcessor for ExtractSubjectObject {
                     );
                 }
 
-                let (subject, action, object, status) = analyze_subject_object(cleaned);
+                let (subject, action, object, status, debug) =
+                    analyze_subject_object_with_debug(cleaned, self.debug);
 
                 let mut obj = ObjectValue::default();
                 obj.insert(
@@ -410,6 +573,14 @@ impl ValueProcessor for ExtractSubjectObject {
                     "status".to_string(),
                     DataField::from_chars("status", status),
                 );
+
+                // 如果启用debug，添加debug字段
+                if let Some(d) = debug {
+                    obj.insert(
+                        "debug".to_string(),
+                        DataField::from_chars("debug", d.to_json()),
+                    );
+                }
 
                 DataField::from_obj(in_val.get_name().to_string(), obj)
             }
@@ -870,4 +1041,335 @@ mod tests {
         assert!(!subject.is_empty());
         assert!(!status.is_empty());
     }
+
+    // -----------------------------------------------------------------------
+    // 准确率测试框架
+    // -----------------------------------------------------------------------
+
+    /// 标注的期望结果
+    #[derive(Debug, Clone, PartialEq)]
+    struct Expected {
+        subject: &'static str,
+        action: &'static str,
+        object: &'static str,
+        status: &'static str,
+    }
+
+    /// 测试用例
+    struct TestCase {
+        text: &'static str,
+        expected: Expected,
+        description: &'static str,
+    }
+
+    /// 准确率测试数据集
+    const ACCURACY_TEST_CASES: &[TestCase] = &[
+        // 英文：主体 + 状态
+        TestCase {
+            text: "database connection failed",
+            expected: Expected {
+                subject: "database",
+                action: "",
+                object: "",
+                status: "failed",
+            },
+            description: "EN: entity + status",
+        },
+        // 英文：主体 + 动作 + 状态
+        TestCase {
+            text: "User authentication failed",
+            expected: Expected {
+                subject: "User",
+                action: "authentication",
+                object: "",
+                status: "failed",
+            },
+            description: "EN: entity + action + status",
+        },
+        // 英文：状态 + 动作 + 对象
+        TestCase {
+            text: "Failed to connect database",
+            expected: Expected {
+                subject: "database",
+                action: "connect",
+                object: "",
+                status: "Failed",
+            },
+            description: "EN: status + action + object",
+        },
+        // 英文：主体 + 状态 + 动作 + 对象 + 状态
+        TestCase {
+            text: "Server failed to connect database",
+            expected: Expected {
+                subject: "Server",
+                action: "connect",
+                object: "database",
+                status: "failed",
+            },
+            description: "EN: full structure",
+        },
+        // 英文：主体 + 动作 + 状态
+        TestCase {
+            text: "Request processing timeout",
+            expected: Expected {
+                subject: "Request",
+                action: "processing",
+                object: "",
+                status: "timeout",
+            },
+            description: "EN: entity + action + status",
+        },
+        // 中文：主体 + 动作 + 状态
+        TestCase {
+            text: "数据库连接失败",
+            expected: Expected {
+                subject: "数据库",
+                action: "连接",
+                object: "",
+                status: "失败",
+            },
+            description: "CN: entity + action + status",
+        },
+        // 中文：主体 + 动作 + 状态
+        TestCase {
+            text: "用户登录失败",
+            expected: Expected {
+                subject: "用户",
+                action: "登录",
+                object: "",
+                status: "失败",
+            },
+            description: "CN: entity + action + status",
+        },
+        // 中文：主体 + 动作 + 对象 + 状态
+        TestCase {
+            text: "服务器连接数据库超时",
+            expected: Expected {
+                subject: "服务器",
+                action: "连接",
+                object: "数据库",
+                status: "超时",
+            },
+            description: "CN: full structure",
+        },
+        // 混合
+        TestCase {
+            text: "HTTP请求超时",
+            expected: Expected {
+                subject: "HTTP",
+                action: "请求",
+                object: "",
+                status: "超时",
+            },
+            description: "Mixed: entity + action + status",
+        },
+        // 复杂英文
+        TestCase {
+            text: "The server is running",
+            expected: Expected {
+                subject: "server",
+                action: "running",
+                object: "",
+                status: "",
+            },
+            description: "EN: entity + progressive verb",
+        },
+        // 领域词优先
+        TestCase {
+            text: "error: connection timeout",
+            expected: Expected {
+                subject: "error",
+                action: "",
+                object: "",
+                status: "timeout",
+            },
+            description: "EN: domain word priority",
+        },
+        // 中文复杂场景
+        TestCase {
+            text: "应用程序启动失败",
+            expected: Expected {
+                subject: "应用程序",
+                action: "启动",
+                object: "",
+                status: "失败",
+            },
+            description: "CN: compound entity + action + status",
+        },
+    ];
+
+    #[test]
+    fn test_accuracy() {
+        let cache = &mut FieldQueryCache::default();
+
+        let mut total = 0;
+        let mut correct_subject = 0;
+        let mut correct_action = 0;
+        let mut correct_object = 0;
+        let mut correct_status = 0;
+        let mut fully_correct = 0;
+
+        println!("\n======= Accuracy Test Report =======");
+        println!(
+            "{:<50} {:<10} {:<10} {:<10} {:<10} {:<10}",
+            "Test Case", "Subject", "Action", "Object", "Status", "Full"
+        );
+        println!("{}", "-".repeat(100));
+
+        for test_case in ACCURACY_TEST_CASES {
+            total += 1;
+
+            let data = vec![DataField::from_chars("msg", test_case.text)];
+            let src = DataRecord { items: data };
+
+            let mut conf = r#"
+                name : accuracy_test
+                ---
+                result = pipe read(msg) | extract_subject_object ;
+                "#;
+
+            let model = oml_parse_raw(&mut conf).assert();
+            let target = model.transform(src, cache);
+
+            let (subject, action, object, status) = get_saso(&target, "result");
+
+            let subj_ok = subject == test_case.expected.subject;
+            let act_ok = action == test_case.expected.action;
+            let obj_ok = object == test_case.expected.object;
+            let stat_ok = status == test_case.expected.status;
+            let full_ok = subj_ok && act_ok && obj_ok && stat_ok;
+
+            if subj_ok {
+                correct_subject += 1;
+            }
+            if act_ok {
+                correct_action += 1;
+            }
+            if obj_ok {
+                correct_object += 1;
+            }
+            if stat_ok {
+                correct_status += 1;
+            }
+            if full_ok {
+                fully_correct += 1;
+            }
+
+            println!(
+                "{:<50} {:<10} {:<10} {:<10} {:<10} {:<10}",
+                test_case.description,
+                if subj_ok { "✓" } else { "✗" },
+                if act_ok { "✓" } else { "✗" },
+                if obj_ok { "✓" } else { "✗" },
+                if stat_ok { "✓" } else { "✗" },
+                if full_ok { "✓" } else { "✗" }
+            );
+
+            if !full_ok {
+                println!(
+                    "  Expected: sub={}, act={}, obj={}, stat={}",
+                    test_case.expected.subject,
+                    test_case.expected.action,
+                    test_case.expected.object,
+                    test_case.expected.status
+                );
+                println!(
+                    "  Got:      sub={}, act={}, obj={}, stat={}",
+                    subject, action, object, status
+                );
+            }
+        }
+
+        println!("{}", "=".repeat(100));
+        println!("\n===== Accuracy Statistics =====");
+        println!(
+            "Subject Accuracy: {}/{} = {:.1}%",
+            correct_subject,
+            total,
+            (correct_subject as f32 / total as f32) * 100.0
+        );
+        println!(
+            "Action Accuracy:  {}/{} = {:.1}%",
+            correct_action,
+            total,
+            (correct_action as f32 / total as f32) * 100.0
+        );
+        println!(
+            "Object Accuracy:  {}/{} = {:.1}%",
+            correct_object,
+            total,
+            (correct_object as f32 / total as f32) * 100.0
+        );
+        println!(
+            "Status Accuracy:  {}/{} = {:.1}%",
+            correct_status,
+            total,
+            (correct_status as f32 / total as f32) * 100.0
+        );
+        println!(
+            "Full Match Rate:  {}/{} = {:.1}%",
+            fully_correct,
+            total,
+            (fully_correct as f32 / total as f32) * 100.0
+        );
+        println!("================================\n");
+
+        // 设定准确率阈值
+        let subject_acc = (correct_subject as f32 / total as f32) * 100.0;
+        let action_acc = (correct_action as f32 / total as f32) * 100.0;
+        let status_acc = (correct_status as f32 / total as f32) * 100.0;
+
+        assert!(
+            subject_acc >= 70.0,
+            "Subject accuracy too low: {:.1}%",
+            subject_acc
+        );
+        assert!(
+            action_acc >= 70.0,
+            "Action accuracy too low: {:.1}%",
+            action_acc
+        );
+        assert!(
+            status_acc >= 80.0,
+            "Status accuracy too low: {:.1}%",
+            status_acc
+        );
+    }
+
+    #[test]
+    fn test_debug_mode() {
+        use super::analyze_subject_object_with_debug;
+
+        // 测试debug信息输出
+        println!("\n===== Debug Mode Test =====\n");
+
+        let test_cases = [
+            "User authentication failed",
+            "The server is running",
+            "database connection failed",
+        ];
+
+        for text in &test_cases {
+            println!("Text: {}", text);
+            let (subject, action, object, status, debug) =
+                analyze_subject_object_with_debug(text, true);
+
+            if let Some(ref d) = debug {
+                println!("Results:");
+                println!("  subject: {} (confidence: {:.2}, rule: {})", subject, d.subject_confidence, d.subject_rule);
+                println!("  action:  {} (confidence: {:.2}, rule: {})", action, d.action_confidence, d.action_rule);
+                println!("  object:  {} (confidence: {:.2}, rule: {})", object, d.object_confidence, d.object_rule);
+                println!("  status:  {} (confidence: {:.2}, rule: {})", status, d.status_confidence, d.status_rule);
+
+                println!("Debug Info:");
+                println!("  Tokens: {:?}", d.tokens);
+                println!("  POS Tags:");
+                for (word, pos) in &d.pos_tags {
+                    println!("    {} / {}", word, pos);
+                }
+            }
+            println!();
+        }
+    }
 }
+
