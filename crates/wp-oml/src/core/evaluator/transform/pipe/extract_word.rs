@@ -3,140 +3,16 @@ use crate::language::{ExtractMainWord, ExtractSubjectObject};
 use jieba_rs::Jieba;
 use lazy_static::lazy_static;
 use serde_json::json;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use wp_model_core::model::types::value::ObjectValue;
 use wp_model_core::model::{DataField, Value};
+
+// 导入 NLP 词典
+use super::nlp_dict_loader::NLP_DICT;
 
 lazy_static! {
     // Jieba 中文分词器实例（全局单例）
     static ref JIEBA: Jieba = Jieba::new();
-
-    // 核心词性集合（名词、动词、形容词、英文、数字）
-    static ref CORE_POS: HashSet<&'static str> = {
-        let mut set = HashSet::new();
-        // 名词类
-        set.insert("n");   // 普通名词
-        set.insert("nr");  // 人名
-        set.insert("ns");  // 地名
-        set.insert("nt");  // 机构名
-        set.insert("nz");  // 其他专名
-        set.insert("ng");  // 名词性语素
-        // 动词类
-        set.insert("v");   // 动词
-        set.insert("vn");  // 名动词
-        set.insert("vd");  // 副动词
-        // 形容词类
-        set.insert("a");   // 形容词
-        set.insert("ad");  // 副形词
-        set.insert("an");  // 名形词
-        // 英文和数字
-        set.insert("eng"); // 英文
-        set.insert("m");   // 数词
-        set.insert("x");   // 字符串（常为代码、路径等）
-        // 时间和成语
-        set.insert("t");   // 时间词
-        set.insert("i");   // 成语/习语
-        set
-    };
-
-    // 日志常见停用词（需要过滤的词）
-    static ref LOG_STOP: HashSet<&'static str> = {
-        let mut set = HashSet::new();
-        // 中文停用词
-        set.insert("的");
-        set.insert("了");
-        set.insert("在");
-        set.insert("是");
-        set.insert("我");
-        set.insert("有");
-        set.insert("和");
-        set.insert("就");
-        set.insert("不");
-        set.insert("人");
-        set.insert("都");
-        set.insert("一");
-        set.insert("一个");
-        set.insert("上");
-        set.insert("也");
-        set.insert("很");
-        set.insert("到");
-        set.insert("说");
-        set.insert("要");
-        set.insert("去");
-        set.insert("你");
-        set.insert("会");
-        set.insert("着");
-        set.insert("没有");
-        set.insert("看");
-        set.insert("好");
-        set.insert("自己");
-        set.insert("这");
-        // 英文停用词
-        set.insert("the");
-        set.insert("a");
-        set.insert("an");
-        set.insert("is");
-        set.insert("are");
-        set.insert("was");
-        set.insert("were");
-        set.insert("be");
-        set.insert("been");
-        set.insert("being");
-        set.insert("of");
-        set.insert("at");
-        set.insert("in");
-        set.insert("to");
-        set.insert("for");
-        set.insert("and");
-        set.insert("or");
-        set.insert("but");
-        set
-    };
-
-    // 日志领域关键词（强制保留的词）
-    static ref LOG_DOMAIN: HashSet<&'static str> = {
-        let mut set = HashSet::new();
-        // 日志级别
-        set.insert("error");
-        set.insert("warn");
-        set.insert("info");
-        set.insert("debug");
-        set.insert("fatal");
-        set.insert("trace");
-        // 系统相关
-        set.insert("exception");
-        set.insert("failure");
-        set.insert("timeout");
-        set.insert("connection");
-        set.insert("database");
-        set.insert("server");
-        set.insert("client");
-        set.insert("request");
-        set.insert("response");
-        set.insert("login");
-        set.insert("logout");
-        set.insert("auth");
-        set.insert("authentication");
-        set.insert("permission");
-        set.insert("access");
-        // 网络相关
-        set.insert("http");
-        set.insert("https");
-        set.insert("tcp");
-        set.insert("udp");
-        set.insert("ip");
-        set.insert("port");
-        set.insert("socket");
-        // 安全相关
-        set.insert("attack");
-        set.insert("virus");
-        set.insert("malware");
-        set.insert("threat");
-        set.insert("alert");
-        set.insert("blocked");
-        set.insert("denied");
-        set
-    };
 
     // 中英文字段映射表（保留用于其他功能扩展）
     #[allow(dead_code)]
@@ -162,124 +38,6 @@ lazy_static! {
         m.insert("描述信息", "describeInfo");
         m.insert("检测的引擎", "engine");
         m
-    };
-
-    // 状态词集合（表示结果/终态的词）
-    static ref STATUS_WORDS: HashSet<&'static str> = {
-        let mut set = HashSet::new();
-        // 英文状态词
-        set.insert("failed");
-        set.insert("failure");
-        set.insert("success");
-        set.insert("succeeded");
-        set.insert("timeout");
-        set.insert("timed");
-        set.insert("exception");
-        set.insert("crashed");
-        set.insert("disconnected");
-        set.insert("stopped");
-        set.insert("completed");
-        set.insert("pending");
-        // set.insert("running");  // 移除：-ing后缀自动处理
-        // set.insert("started");  // 移除：-ed后缀自动处理
-        // set.insert("connected");  // 移除：-ed后缀自动处理
-        set.insert("refused");
-        set.insert("dropped");
-        set.insert("rejected");
-        set.insert("expired");
-        set.insert("closed");
-        // 中文状态词
-        set.insert("失败");
-        set.insert("成功");
-        set.insert("超时");
-        set.insert("异常");
-        set.insert("错误");
-        set.insert("崩溃");
-        set.insert("断开");
-        set.insert("拒绝");
-        set.insert("丢失");
-        set
-    };
-
-    // 动作词集合（日志中常见的动作动词基词形式）
-    static ref ACTION_VERBS: HashSet<&'static str> = {
-        let mut set = HashSet::new();
-        set.insert("connect");
-        set.insert("login");
-        set.insert("logout");
-        set.insert("respond");
-        set.insert("start");
-        set.insert("stop");
-        set.insert("fail");
-        set.insert("run");
-        set.insert("process");
-        set.insert("send");
-        set.insert("receive");
-        set.insert("read");
-        set.insert("write");
-        set.insert("open");
-        set.insert("close");
-        set.insert("bind");
-        set.insert("listen");
-        set.insert("authenticate");
-        set.insert("authorize");
-        set.insert("create");
-        set.insert("delete");
-        set.insert("update");
-        set.insert("upload");
-        set.insert("download");
-        set.insert("retry");
-        set.insert("handle");
-        set.insert("load");
-        set.insert("fetch");
-        set.insert("parse");
-        set.insert("resolve");
-        set.insert("block");
-        set.insert("deny");
-        // 中文动作词
-        set.insert("连接");
-        set.insert("登录");
-        set.insert("登出");
-        set.insert("请求");
-        set.insert("响应");
-        set.insert("启动");
-        set.insert("停止");
-        set.insert("处理");
-        set.insert("发送");
-        set.insert("接收");
-        set.insert("读取");
-        set.insert("写入");
-        set.insert("认证");
-        set.insert("访问");
-        set.insert("创建");
-        set.insert("删除");
-        set.insert("更新");
-        set.insert("下载");
-        set.insert("上传");
-        set.insert("重试");
-        set
-    };
-
-    // 实体名词集合（虽然是 -tion 结尾但在日志中常作为实体的词）
-    static ref ENTITY_NOUNS: HashSet<&'static str> = {
-        let mut set = HashSet::new();
-        // 英文实体名词
-        set.insert("connection");     // 连接（作为实体：数据库连接、网络连接）
-        set.insert("transaction");    // 事务
-        set.insert("session");        // 会话
-        set.insert("application");    // 应用程序
-        set.insert("configuration");  // 配置
-        set.insert("permission");     // 权限
-        set.insert("operation");      // 操作（作为实体时）
-        set.insert("exception");      // 异常（作为实体时）
-        // 中文实体名词
-        set.insert("连接");
-        set.insert("会话");
-        set.insert("事务");
-        set.insert("应用");
-        set.insert("配置");
-        set.insert("权限");
-        set
     };
 }
 
@@ -351,15 +109,15 @@ fn classify_eng(word: &str) -> WordRole {
     let lower = word.to_lowercase();
 
     // 优先级1：领域词典明确匹配
-    if STATUS_WORDS.contains(lower.as_str()) {
+    if NLP_DICT.status_words.contains(lower.as_str()) {
         return WordRole::Status;
     }
-    if ACTION_VERBS.contains(lower.as_str()) {
+    if NLP_DICT.action_verbs.contains(lower.as_str()) {
         return WordRole::Action;
     }
 
     // 优先级2：实体名词白名单（覆盖词缀规则）
-    if ENTITY_NOUNS.contains(lower.as_str()) {
+    if NLP_DICT.entity_nouns.contains(lower.as_str()) {
         return WordRole::Entity;
     }
 
@@ -384,17 +142,17 @@ fn classify_eng(word: &str) -> WordRole {
 /// 中文词角色判断（根据词性）
 fn classify_cn(pos: &str, word: &str) -> Option<WordRole> {
     let lower = word.to_lowercase();
-    if STATUS_WORDS.contains(lower.as_str()) {
+    if NLP_DICT.status_words.contains(lower.as_str()) {
         return Some(WordRole::Status);
     }
-    if ACTION_VERBS.contains(lower.as_str()) {
+    if NLP_DICT.action_verbs.contains(lower.as_str()) {
         return Some(WordRole::Action);
     }
     match pos {
         "v" | "vn" | "vd" => Some(WordRole::Action),
         "n" | "nr" | "ns" | "nt" | "nz" | "ng" => Some(WordRole::Entity),
         _ => {
-            if LOG_DOMAIN.contains(lower.as_str()) {
+            if NLP_DICT.domain_words.contains(lower.as_str()) {
                 Some(WordRole::Entity)
             } else {
                 None // 停用词/虚词等，不参与分配
@@ -443,7 +201,7 @@ fn analyze_subject_object_with_debug(
             continue;
         }
         let word_lower = word.to_lowercase();
-        if LOG_STOP.contains(word_lower.as_str()) {
+        if NLP_DICT.stop_words.contains(word_lower.as_str()) {
             continue;
         }
 
@@ -460,12 +218,12 @@ fn analyze_subject_object_with_debug(
                     if status.is_empty() {
                         status = word.to_string();
                         if let Some(ref mut d) = debug {
-                            d.status_rule = if STATUS_WORDS.contains(word_lower.as_str()) {
+                            d.status_rule = if NLP_DICT.status_words.contains(word_lower.as_str()) {
                                 "rule1: status_word_match".to_string()
                             } else {
                                 "rule2: cn_pos_match".to_string()
                             };
-                            d.status_confidence = if STATUS_WORDS.contains(word_lower.as_str()) {
+                            d.status_confidence = if NLP_DICT.status_words.contains(word_lower.as_str()) {
                                 1.0
                             } else {
                                 0.7
@@ -478,7 +236,7 @@ fn analyze_subject_object_with_debug(
                         action = word.to_string();
                         action_seen = true;
                         if let Some(ref mut d) = debug {
-                            d.action_rule = if ACTION_VERBS.contains(word_lower.as_str()) {
+                            d.action_rule = if NLP_DICT.action_verbs.contains(word_lower.as_str()) {
                                 "rule1: action_verb_match".to_string()
                             } else if pos == "eng" && word_lower.ends_with("ing") {
                                 "rule2: eng_ing_suffix".to_string()
@@ -487,7 +245,7 @@ fn analyze_subject_object_with_debug(
                             } else {
                                 format!("rule3: cn_pos({})", pos)
                             };
-                            d.action_confidence = if ACTION_VERBS.contains(word_lower.as_str()) {
+                            d.action_confidence = if NLP_DICT.action_verbs.contains(word_lower.as_str()) {
                                 1.0
                             } else {
                                 0.7
@@ -499,12 +257,12 @@ fn analyze_subject_object_with_debug(
                     if subject.is_empty() {
                         subject = word.to_string();
                         if let Some(ref mut d) = debug {
-                            d.subject_rule = if LOG_DOMAIN.contains(word_lower.as_str()) {
+                            d.subject_rule = if NLP_DICT.domain_words.contains(word_lower.as_str()) {
                                 "rule1: domain_entity_match".to_string()
                             } else {
                                 format!("rule2: core_pos({}) + non_stopword", pos)
                             };
-                            d.subject_confidence = if LOG_DOMAIN.contains(word_lower.as_str()) {
+                            d.subject_confidence = if NLP_DICT.domain_words.contains(word_lower.as_str()) {
                                 1.0
                             } else {
                                 0.8
@@ -513,12 +271,12 @@ fn analyze_subject_object_with_debug(
                     } else if action_seen && object.is_empty() {
                         object = word.to_string();
                         if let Some(ref mut d) = debug {
-                            d.object_rule = if LOG_DOMAIN.contains(word_lower.as_str()) {
+                            d.object_rule = if NLP_DICT.domain_words.contains(word_lower.as_str()) {
                                 "rule1: domain_entity_match (after_action)".to_string()
                             } else {
                                 format!("rule2: core_pos({}) + after_action", pos)
                             };
-                            d.object_confidence = if LOG_DOMAIN.contains(word_lower.as_str()) {
+                            d.object_confidence = if NLP_DICT.domain_words.contains(word_lower.as_str()) {
                                 1.0
                             } else {
                                 0.8
@@ -624,7 +382,7 @@ impl ValueProcessor for ExtractMainWord {
                     let word_lower = word.to_lowercase();
 
                     // 规则1：日志领域词（优先级最高，直接返回）
-                    if LOG_DOMAIN.contains(word_lower.as_str()) {
+                    if NLP_DICT.domain_words.contains(word_lower.as_str()) {
                         return DataField::from_chars(
                             in_val.get_name().to_string(),
                             word.to_string(),
@@ -632,7 +390,7 @@ impl ValueProcessor for ExtractMainWord {
                     }
 
                     // 规则2：核心词性 + 非停用词
-                    if CORE_POS.contains(pos) && !LOG_STOP.contains(word_lower.as_str()) {
+                    if NLP_DICT.core_pos.contains(pos) && !NLP_DICT.stop_words.contains(word_lower.as_str()) {
                         return DataField::from_chars(
                             in_val.get_name().to_string(),
                             word.to_string(),
