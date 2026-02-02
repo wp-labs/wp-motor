@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0 Unreleased]
+
+### Added
+- **OML NLP**: Add configurable NLP dictionary system for `extract_main_word` and `extract_subject_object` pipe functions
+  - Externalize hardcoded dictionaries (core_pos, stop_words, domain_words, status_words, action_verbs, entity_nouns) to TOML configuration file
+  - Support custom dictionary via `NLP_DICT_CONFIG` environment variable
+  - Default configuration at `crates/wp-oml/nlp_dict/nlp_dict.toml` with 6 dictionary categories
+  - Lazy loading with `once_cell::Lazy` for optimal startup performance
+  - Graceful error handling: falls back to empty dictionary on config load failure
+  - Comprehensive documentation at `crates/wp-oml/nlp_dict/README.md`
+  - Design follows `knowdb.toml` pattern (versioning, enabled flags, default values)
+  - 100% backward compatible: all 74 tests pass with 100% accuracy rate
+
+### Changed
+- **OML NLP**: Migrate NLP dictionaries from hardcoded `lazy_static!` HashSets to TOML configuration
+  - Remove ~270 lines of hardcoded dictionary definitions from `extract_word.rs`
+  - Replace static references (e.g., `STATUS_WORDS`) with dynamic lookups (e.g., `NLP_DICT.status_words`)
+  - No API changes: function signatures and behavior remain identical
+
 ## [1.13.0 Unreleased]
 
 ### Added
