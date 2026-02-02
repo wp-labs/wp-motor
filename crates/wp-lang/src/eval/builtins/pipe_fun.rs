@@ -1,12 +1,13 @@
 use crate::ast::WplFun;
 use crate::ast::processor::{
-    Base64Decode, CharsHas, CharsIn, CharsNotHas, DigitHas, DigitIn, Has, IpIn, JsonUnescape,
-    ReplaceFunc, SelectLast, TakeField, TargetCharsHas, TargetCharsIn, TargetCharsNotHas,
-    TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn,
+    Base64Decode, CharsHas, CharsIn, CharsNotHas, DigitHas, DigitIn, DigitRange, Has, IpIn,
+    JsonUnescape, RegexMatch, ReplaceFunc, SelectLast, TakeField, TargetCharsHas, TargetCharsIn,
+    TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn,
 };
 use crate::eval::runtime::field_pipe::{FieldIndex, FieldPipe, FieldSelector, FieldSelectorSpec};
 use base64::Engine;
 use base64::engine::general_purpose;
+use regex::Regex;
 use winnow::combinator::fail;
 use wp_model_core::model::{DataField, Value};
 use wp_parser::symbol::ctx_desc;
@@ -221,6 +222,21 @@ impl FieldPipe for DigitIn {
     }
 }
 
+impl FieldPipe for DigitRange {
+    #[inline]
+    fn process(&self, field: Option<&mut DataField>) -> WResult<()> {
+        if let Some(item) = field
+            && let Value::Digit(value) = item.get_value()
+            && *value >= self.begin
+            && *value <= self.end
+        {
+            return Ok(());
+        }
+        fail.context(ctx_desc("<pipe> | not in range"))
+            .parse_next(&mut "")
+    }
+}
+
 impl FieldPipe for TargetIpIn {
     #[inline]
     fn process(&self, field: Option<&mut DataField>) -> WResult<()> {
@@ -330,6 +346,38 @@ impl FieldPipe for ReplaceFunc {
     }
 }
 
+impl FieldPipe for RegexMatch {
+    #[inline]
+    fn process(&self, field: Option<&mut DataField>) -> WResult<()> {
+        let Some(field) = field else {
+            return fail
+                .context(ctx_desc("regex_match | no active field"))
+                .parse_next(&mut "");
+        };
+
+        // 只处理字符串类型的字段
+        if let Value::Chars(value) = field.get_value() {
+            // 编译正则表达式
+            match Regex::new(self.pattern.as_str()) {
+                Ok(re) => {
+                    if re.is_match(value.as_str()) {
+                        Ok(())
+                    } else {
+                        fail.context(ctx_desc("regex_match | not matched"))
+                            .parse_next(&mut "")
+                    }
+                }
+                Err(_) => fail
+                    .context(ctx_desc("regex_match | invalid regex pattern"))
+                    .parse_next(&mut ""),
+            }
+        } else {
+            fail.context(ctx_desc("regex_match | field is not a string"))
+                .parse_next(&mut "")
+        }
+    }
+}
+
 impl WplFun {
     pub fn as_field_pipe(&self) -> Option<&dyn FieldPipe> {
         match self {
@@ -344,6 +392,7 @@ impl WplFun {
             WplFun::DigitHas(fun) => Some(fun),
             WplFun::TargetDigitIn(fun) => Some(fun),
             WplFun::DigitIn(fun) => Some(fun),
+            WplFun::DigitRange(fun) => Some(fun),
             WplFun::TargetIpIn(fun) => Some(fun),
             WplFun::IpIn(fun) => Some(fun),
             WplFun::TargetHas(fun) => Some(fun),
@@ -351,6 +400,7 @@ impl WplFun {
             WplFun::TransJsonUnescape(fun) => Some(fun),
             WplFun::TransBase64Decode(fun) => Some(fun),
             WplFun::TransCharsReplace(fun) => Some(fun),
+            WplFun::RegexMatch(fun) => Some(fun),
         }
     }
 
@@ -539,5 +589,188 @@ mod tests {
             .process(fields.get_mut(0))
             .is_err()
         );
+    }
+
+    #[test]
+    fn digit_range_successfully_matches_value_in_range() {
+        let mut fields = vec![DataField::from_digit("num".to_string(), 5)];
+        DigitRange {
+            begin: 1,
+            end: 10,
+        }
+        .process(fields.get_mut(0))
+        .expect("value 5 should be in range [1,10]");
+    }
+
+    #[test]
+    fn digit_range_matches_boundary_values() {
+        // 测试下界
+        let mut fields = vec![DataField::from_digit("num".to_string(), 100)];
+        DigitRange {
+            begin: 100,
+            end: 200,
+        }
+        .process(fields.get_mut(0))
+        .expect("value 100 should match lower boundary");
+
+        // 测试上界
+        let mut fields = vec![DataField::from_digit("num".to_string(), 200)];
+        DigitRange {
+            begin: 100,
+            end: 200,
+        }
+        .process(fields.get_mut(0))
+        .expect("value 200 should match upper boundary");
+    }
+
+    #[test]
+    fn digit_range_returns_err_when_value_out_of_range() {
+        let mut fields = vec![DataField::from_digit("num".to_string(), 50)];
+        assert!(DigitRange {
+            begin: 1,
+            end: 10,
+        }
+        .process(fields.get_mut(0))
+        .is_err());
+    }
+
+    #[test]
+    fn digit_range_returns_err_on_non_digit_field() {
+        let mut fields = vec![DataField::from_chars(
+            "text".to_string(),
+            "hello".to_string(),
+        )];
+        assert!(DigitRange {
+            begin: 1,
+            end: 10,
+        }
+        .process(fields.get_mut(0))
+        .is_err());
+    }
+
+    #[test]
+    fn digit_range_returns_err_when_field_is_none() {
+        assert!(DigitRange {
+            begin: 1,
+            end: 10,
+        }
+        .process(None)
+        .is_err());
+    }
+
+    #[test]
+    fn regex_match_successfully_matches_simple_pattern() {
+        let mut fields = vec![DataField::from_chars(
+            "email".to_string(),
+            "test@example.com".to_string(),
+        )];
+        RegexMatch {
+            pattern: r"^\w+@\w+\.\w+$".into(),
+        }
+        .process(fields.get_mut(0))
+        .expect("email should match pattern");
+    }
+
+    #[test]
+    fn regex_match_successfully_matches_complex_pattern() {
+        let mut fields = vec![DataField::from_chars(
+            "log".to_string(),
+            "2024-01-15 10:30:45 ERROR Something went wrong".to_string(),
+        )];
+        RegexMatch {
+            pattern: r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \w+ .+".into(),
+        }
+        .process(fields.get_mut(0))
+        .expect("log should match pattern");
+    }
+
+    #[test]
+    fn regex_match_returns_err_when_pattern_not_matched() {
+        let mut fields = vec![DataField::from_chars(
+            "text".to_string(),
+            "hello world".to_string(),
+        )];
+        assert!(RegexMatch {
+            pattern: r"^\d+$".into(),
+        }
+        .process(fields.get_mut(0))
+        .is_err());
+    }
+
+    #[test]
+    fn regex_match_returns_err_on_invalid_regex() {
+        let mut fields = vec![DataField::from_chars(
+            "text".to_string(),
+            "hello".to_string(),
+        )];
+        // 无效的正则表达式：未闭合的括号
+        assert!(RegexMatch {
+            pattern: r"(unclosed".into(),
+        }
+        .process(fields.get_mut(0))
+        .is_err());
+    }
+
+    #[test]
+    fn regex_match_returns_err_on_non_chars_field() {
+        let mut fields = vec![DataField::from_digit("num".to_string(), 123)];
+        assert!(RegexMatch {
+            pattern: r"\d+".into(),
+        }
+        .process(fields.get_mut(0))
+        .is_err());
+    }
+
+    #[test]
+    fn regex_match_returns_err_when_field_is_none() {
+        assert!(RegexMatch {
+            pattern: r"test".into(),
+        }
+        .process(None)
+        .is_err());
+    }
+
+    #[test]
+    fn regex_match_works_with_anchors() {
+        let mut fields = vec![DataField::from_chars(
+            "code".to_string(),
+            "ABC123".to_string(),
+        )];
+
+        // 完全匹配
+        RegexMatch {
+            pattern: r"^[A-Z]+\d+$".into(),
+        }
+        .process(fields.get_mut(0))
+        .expect("should match with anchors");
+
+        // 部分匹配
+        RegexMatch {
+            pattern: r"\d+".into(),
+        }
+        .process(fields.get_mut(0))
+        .expect("should match partial");
+    }
+
+    #[test]
+    fn regex_match_case_sensitive() {
+        let mut fields = vec![DataField::from_chars(
+            "text".to_string(),
+            "Hello World".to_string(),
+        )];
+
+        // 大小写敏感，不匹配
+        assert!(RegexMatch {
+            pattern: r"^hello".into(),
+        }
+        .process(fields.get_mut(0))
+        .is_err());
+
+        // 使用 (?i) 标志进行大小写不敏感匹配
+        RegexMatch {
+            pattern: r"(?i)^hello".into(),
+        }
+        .process(fields.get_mut(0))
+        .expect("should match with case-insensitive flag");
     }
 }

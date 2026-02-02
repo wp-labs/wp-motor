@@ -23,9 +23,9 @@ use crate::ast::{
     WplFun,
     processor::{
         CharsHas, CharsIn, CharsInArg, CharsNotHas, CharsNotHasArg, CharsValue, DigitHas,
-        DigitHasArg, DigitIn, DigitInArg, Has, HasArg, IpIn, IpInArg, ReplaceFunc, SelectLast,
-        TakeField, TargetCharsHas, TargetCharsIn, TargetCharsNotHas, TargetDigitHas, TargetDigitIn,
-        TargetHas, TargetIpIn, normalize_target,
+        DigitHasArg, DigitIn, DigitInArg, DigitRange, Has, HasArg, IpIn, IpInArg, RegexMatch,
+        ReplaceFunc, SelectLast, TakeField, TargetCharsHas, TargetCharsIn, TargetCharsNotHas,
+        TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn, normalize_target,
     },
 };
 
@@ -118,6 +118,12 @@ fn take_string_or_quoted(input: &mut &str) -> WResult<String> {
 pub fn wpl_fun(input: &mut &str) -> WResult<WplFun> {
     multispace0.parse_next(input)?;
     let fun = alt((
+        // Put digit_range first to avoid any prefix matching issues
+        call_fun_args2::<DigitRangeArg>.map(|arg| WplFun::DigitRange(DigitRange {
+            begin: arg.begin,
+            end: arg.end,
+        })),
+        call_fun_args1::<RegexMatch>.map(WplFun::RegexMatch),
         call_fun_args1::<TakeField>.map(WplFun::SelectTake),
         call_fun_args0::<SelectLast>.map(WplFun::SelectLast),
         call_fun_args2::<TargetCharsHas>.map(WplFun::TargetCharsHas),
@@ -482,6 +488,59 @@ impl Fun2Builder for ReplaceFunc {
             target: args.0,
             value: args.1,
         }
+    }
+}
+
+/// Parser argument for `digit_range(begin, end)` - converted to DigitRange
+#[derive(Clone, Debug, PartialEq)]
+pub struct DigitRangeArg {
+    pub(crate) begin: i64,
+    pub(crate) end: i64,
+}
+
+impl Fun2Builder for DigitRangeArg {
+    type ARG1 = i64;
+    type ARG2 = i64;
+
+    fn args1(data: &mut &str) -> WResult<Self::ARG1> {
+        multispace0.parse_next(data)?;
+        let val = digit1.parse_next(data)?;
+        Ok(val.parse::<i64>().unwrap_or(0))
+    }
+
+    fn args2(data: &mut &str) -> WResult<Self::ARG2> {
+        multispace0.parse_next(data)?;
+        let val = digit1.parse_next(data)?;
+        Ok(val.parse::<i64>().unwrap_or(0))
+    }
+
+    fn fun_name() -> &'static str {
+        "digit_range"
+    }
+
+    fn build(args: (Self::ARG1, Self::ARG2)) -> Self {
+        Self {
+            begin: args.0,
+            end: args.1,
+        }
+    }
+}
+
+impl Fun1Builder for RegexMatch {
+    type ARG1 = SmolStr;
+
+    fn args1(data: &mut &str) -> WResult<Self::ARG1> {
+        multispace0.parse_next(data)?;
+        let val = take_string_or_quoted.parse_next(data)?;
+        Ok(val.into())
+    }
+
+    fn fun_name() -> &'static str {
+        "regex_match"
+    }
+
+    fn build(args: Self::ARG1) -> Self {
+        Self { pattern: args }
     }
 }
 
@@ -871,6 +930,60 @@ mod tests {
             WplFun::TransCharsReplace(ReplaceFunc {
                 target: "line1\nline2".into(),
                 value: "tab\there".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_digit_range() {
+        use winnow::Parser;
+        use wp_parser::fun::parser::call_fun_args2;
+
+        // Direct test of DigitRangeArg parser - simple case
+        let mut input = "digit_range(1, 10)";
+        let result = call_fun_args2::<DigitRangeArg>.parse_next(&mut input);
+        assert!(result.is_ok(), "Simple case should parse successfully: {:?}", result);
+        let arg = result.unwrap();
+        assert_eq!(arg.begin, 1);
+        assert_eq!(arg.end, 10);
+
+        // Direct test with different values
+        let mut input2 = "digit_range(100, 200)";
+        let result2 = call_fun_args2::<DigitRangeArg>.parse_next(&mut input2);
+        assert!(result2.is_ok(), "Different values should parse: {:?}", result2);
+        let arg2 = result2.unwrap();
+        assert_eq!(arg2.begin, 100);
+        assert_eq!(arg2.end, 200);
+    }
+
+    #[test]
+    fn test_parse_regex_match() {
+        let mut wpl_fun = wpl_fun;
+
+        // regex_match with simple pattern (use single quotes for raw string)
+        let fun = wpl_fun.parse(r"regex_match('^\d+$')").assert();
+        assert_eq!(
+            fun,
+            WplFun::RegexMatch(RegexMatch {
+                pattern: r"^\d+$".into(),
+            })
+        );
+
+        // regex_match with complex pattern
+        let fun = wpl_fun.parse(r"regex_match('^\w+@\w+\.\w+$')").assert();
+        assert_eq!(
+            fun,
+            WplFun::RegexMatch(RegexMatch {
+                pattern: r"^\w+@\w+\.\w+$".into(),
+            })
+        );
+
+        // regex_match with alternation
+        let fun = wpl_fun.parse(r"regex_match('^(GET|POST|PUT)$')").assert();
+        assert_eq!(
+            fun,
+            WplFun::RegexMatch(RegexMatch {
+                pattern: r"^(GET|POST|PUT)$".into(),
             })
         );
     }

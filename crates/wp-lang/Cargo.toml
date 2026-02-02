@@ -61,6 +61,7 @@ ahash = { workspace = true }
 once_cell = { workspace = true }
 bytes = { workspace = true }
 memchr = { workspace = true }
+regex = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

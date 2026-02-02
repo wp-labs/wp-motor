@@ -164,6 +164,12 @@ pub struct DigitInArg {
     pub(crate) value: Vec<i64>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct DigitRange {
+    pub(crate) begin: i64,
+    pub(crate) end: i64,
+}
+
 /// Parser argument for `ip_in([...])` - converted to IpIn
 #[derive(Clone, Debug, PartialEq)]
 pub struct IpInArg {
@@ -179,6 +185,13 @@ pub struct ReplaceFunc {
     pub(crate) target: SmolStr,
     pub(crate) value: SmolStr,
 }
+
+/// 正则表达式匹配函数
+#[derive(Clone, Debug, PartialEq)]
+pub struct RegexMatch {
+    pub(crate) pattern: SmolStr,  // 正则表达式模式
+}
+
 /// Normalizes the target field name: converts "_" to None
 pub(crate) fn normalize_target(target: SmolStr) -> Option<SmolStr> {
     if target == "_" { None } else { Some(target) }
