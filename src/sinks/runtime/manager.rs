@@ -6,8 +6,12 @@ use orion_exp::{Expression, RustSymbol};
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 use wp_model_core::model::{DataField, fmt_def::TextFmt};
+
+// 全局计数器，用于生成唯一的救援文件序号
+static RESCUE_FILE_SEQ: AtomicU64 = AtomicU64::new(0);
 
 use crate::runtime::errors::err4_send_to_sink;
 use crate::sinks::RescueFileSink;
@@ -115,8 +119,12 @@ impl SinkRuntime {
     pub async fn swap_backsink(&mut self) -> AnyResult<Option<SinkBackendType>> {
         let now = Utc::now();
         let fmt_time = now.format("%Y-%m-%d_%H:%M:%S").to_string();
-        // 正在写的的rescue文件加上.lock后缀，当sink被drop时去掉.lock后缀
-        let file_path = format!("{}/{}-{}.dat.lock", self.rescue, self.name, fmt_time);
+        // 使用全局序号确保文件名唯一性，避免同一秒内重复创建相同文件名
+        let seq = RESCUE_FILE_SEQ.fetch_add(1, Ordering::SeqCst);
+        let file_path = format!(
+            "{}/{}-{}-{}.dat.lock",
+            self.rescue, self.name, fmt_time, seq
+        );
         let out_path = Path::new(&file_path);
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent)
