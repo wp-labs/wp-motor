@@ -18,7 +18,7 @@ pub use syntax::{
         JsonUnescape, MapTo, MapValue, NowDate, NowHour, NowTime, Nth, PIPE_BASE64_DECODE,
         PIPE_BASE64_ENCODE, PIPE_GET, PIPE_HTML_ESCAPE, PIPE_HTML_UNESCAPE, PIPE_IP4_TO_INT,
         PIPE_JSON_ESCAPE, PIPE_JSON_UNESCAPE, PIPE_MAP_TO, PIPE_NTH, PIPE_PATH, PIPE_SKIP_EMPTY,
-        PIPE_START_WITH, PIPE_STR_ESCAPE, PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US,
+        PIPE_STARTS_WITH, PIPE_STR_ESCAPE, PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US,
         PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON, PIPE_TO_STR, PIPE_URL, PathGet, PathType, PipeFun,
         SkipEmpty, StartsWith, StrEscape, TimeStampUnit, TimeToTs, TimeToTsMs, TimeToTsUs,
         TimeToTsZone, ToJson, ToStr, UrlGet, UrlType,

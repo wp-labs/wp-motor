@@ -562,7 +562,7 @@ impl Fun1Builder for StartsWith {
     }
 
     fn fun_name() -> &'static str {
-        "start_with"
+        "starts_with"
     }
 
     fn build(args: Self::ARG1) -> Self {
@@ -1026,8 +1026,8 @@ mod tests {
     fn test_parse_start_with() {
         let mut wpl_fun = wpl_fun;
 
-        // start_with with simple prefix
-        let fun = wpl_fun.parse(r"start_with('http')").assert();
+        // starts_with with simple prefix
+        let fun = wpl_fun.parse(r"starts_with('http')").assert();
         assert_eq!(
             fun,
             WplFun::StartsWith(StartsWith {
@@ -1035,8 +1035,8 @@ mod tests {
             })
         );
 
-        // start_with with complex prefix
-        let fun = wpl_fun.parse(r"start_with('https://')").assert();
+        // starts_with with complex prefix
+        let fun = wpl_fun.parse(r"starts_with('https://')").assert();
         assert_eq!(
             fun,
             WplFun::StartsWith(StartsWith {
@@ -1044,8 +1044,8 @@ mod tests {
             })
         );
 
-        // start_with with single character
-        let fun = wpl_fun.parse(r"start_with('/')").assert();
+        // starts_with with single character
+        let fun = wpl_fun.parse(r"starts_with('/')").assert();
         assert_eq!(fun, WplFun::StartsWith(StartsWith { prefix: "/".into() }));
     }
 }

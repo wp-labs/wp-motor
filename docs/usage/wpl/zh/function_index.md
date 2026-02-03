@@ -19,6 +19,7 @@
 | `f_chars_has` | `f_chars_has(target, value)` | 检查指定字段是否等于指定值 | - |
 | `f_chars_not_has` | `f_chars_not_has(target, value)` | 检查指定字段是否不等于指定值 | - |
 | `f_chars_in` | `f_chars_in(target, [values])` | 检查指定字段是否在值列表中 | - |
+| `starts_with` | `starts_with('prefix')` | 检查字符串是否以指定前缀开始，否则转为 ignore | [📖 详细文档](./starts_with.md) |
 | `regex_match` | `regex_match('pattern')` | 使用正则表达式匹配字符串字段 | [📖 详细文档](./regex_match.md) |
 
 ## 数值匹配函数 (Numeric Matching)
@@ -60,7 +61,7 @@
 #### 1. 条件检查函数
 用于检查字段是否满足特定条件，不修改字段值。
 
-- 字符串检查：`chars_has`, `chars_not_has`, `chars_in`, `regex_match`
+- 字符串检查：`chars_has`, `chars_not_has`, `chars_in`, `starts_with`, `regex_match`
 - 数值检查：`digit_has`, `digit_in`, `digit_range`
 - IP 检查：`ip_in`
 - 存在性检查：`has`
@@ -80,7 +81,7 @@
 ### 按目标字段支持分类
 
 #### 操作当前活动字段
-- `chars_has`, `chars_not_has`, `chars_in`
+- `chars_has`, `chars_not_has`, `chars_in`, `starts_with`
 - `digit_has`, `digit_in`, `digit_range`
 - `ip_in`
 - `has`
@@ -255,6 +256,10 @@ rule branching_logic {
 - **分隔符**: [Separator Guide](./separator.md)
 
 ## 版本历史
+
+- **1.13.4** (2026-02-03)
+  - 新增 `starts_with` 函数
+  - 完善文档体系
 
 - **1.13.1** (2026-02-02)
   - 新增 `digit_range` 函数

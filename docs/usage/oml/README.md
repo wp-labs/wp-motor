@@ -1,0 +1,67 @@
+# OML Usage Documentation
+
+WP-Motor OML (Object Mapping Language) usage documentation is available in multiple languages.
+
+## 📚 Documentation by Language
+
+### 🇨🇳 中文文档 (Chinese)
+Complete documentation in Simplified Chinese.
+
+**Start here**: [中文文档 README](./zh/README.md)
+
+### 🇬🇧 English Documentation
+Coming soon.
+
+---
+
+## 📖 Documentation Contents
+
+The Chinese version includes:
+
+- **README** - Usage guide overview and quick start
+- **Function Index** - Complete reference of all pipe functions
+- **starts_with** - String prefix matching function
+- **map_to** - Type-aware conditional value assignment function
+
+## 🚀 Quick Links
+
+### Chinese (中文)
+- [函数索引](./zh/function_index.md)
+- [starts_with 使用指南](./zh/starts_with.md)
+- [map_to 使用指南](./zh/map_to.md)
+
+## 📝 Function Categories
+
+OML pipe functions are organized into the following categories:
+
+### Field Accessors
+- `take(field)` - Extract field from input
+- `get(key)` - Get nested field value
+- `nth(index)` - Get array element
+
+### String Matching
+- `starts_with(prefix)` - Check string prefix
+
+### Value Transformation
+- `map_to(value)` - Map to specified value with type inference
+- `to_str` - Convert to string
+- `to_json` - Convert to JSON
+
+### Encoding/Decoding
+- Base64: `base64_encode`, `base64_decode`
+- HTML: `html_escape`, `html_unescape`
+- JSON: `json_escape`, `json_unescape`
+
+### Time Conversion
+- `Time::to_ts*` - Timestamp conversion
+- `Time::to_ts_zone` - Timezone conversion
+
+### Network
+- `ip4_to_int` - IPv4 to integer conversion
+- `url(type)` - URL parsing
+- `path(type)` - Path parsing
+
+---
+
+**Version**: 1.13.4
+**Last Updated**: 2026-02-03

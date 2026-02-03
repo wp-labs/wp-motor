@@ -8,14 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.13.4] - latest
 
 ### Added
-- **WPL Functions**: Add `start_with` pipe function for efficient string prefix matching
+- **WPL Functions**: Add `starts_with` pipe function for efficient string prefix matching
   - Checks if a string field starts with a specified prefix
   - More performant than regex for simple prefix checks
   - Case-sensitive matching
-- **OML Pipe Functions**: Add `start_with` pipe function for OML query language
+  - Converts to ignore field when prefix doesn't match
+- **OML Pipe Functions**: Add `starts_with` pipe function for OML query language
   - Supports same prefix matching functionality as WPL
   - Returns ignore field when prefix doesn't match
-  - Usage: `pipe take(field) | start_with('prefix')`
+  - Usage: `pipe take(field) | starts_with('prefix')`
 - **OML Pipe Functions**: Add `map_to` pipe function for type-aware conditional value assignment
   - Replaces field value when field is not ignore
   - Supports multiple types with automatic type inference: string, integer, float, boolean

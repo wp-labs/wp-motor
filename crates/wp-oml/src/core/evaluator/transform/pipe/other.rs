@@ -466,7 +466,7 @@ mod tests {
         let mut conf = r#"
         name : test
         ---
-        X  =  pipe take(url) | start_with('https://');
+        X  =  pipe take(url) | starts_with('https://');
          "#;
         let model = oml_parse_raw(&mut conf).assert();
         let target = model.transform(src, cache);
@@ -482,7 +482,7 @@ mod tests {
         let mut conf2 = r#"
         name : test
         ---
-        X  =  pipe take(url) | start_with('https://');
+        X  =  pipe take(url) | starts_with('https://');
          "#;
         let model2 = oml_parse_raw(&mut conf2).assert();
         let target2 = model2.transform(src2, cache2);
@@ -569,7 +569,7 @@ mod tests {
         let mut conf5 = r#"
         name : test
         ---
-        E  =  pipe take(url) | start_with('https://') | map_to('secure');
+        E  =  pipe take(url) | starts_with('https://') | map_to('secure');
          "#;
         let model5 = oml_parse_raw(&mut conf5).assert();
         let target5 = model5.transform(src5, cache5);

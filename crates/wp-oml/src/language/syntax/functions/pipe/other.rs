@@ -35,7 +35,7 @@ impl Display for Get {
     }
 }
 
-pub const PIPE_START_WITH: &str = "start_with";
+pub const PIPE_STARTS_WITH: &str = "starts_with";
 #[derive(Clone, Debug)]
 pub struct StartsWith {
     pub(crate) prefix: String,
@@ -43,7 +43,7 @@ pub struct StartsWith {
 
 impl Display for StartsWith {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}('{}')", PIPE_START_WITH, self.prefix)
+        write!(f, "{}('{}')", PIPE_STARTS_WITH, self.prefix)
     }
 }
 

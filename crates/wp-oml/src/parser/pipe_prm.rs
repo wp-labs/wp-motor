@@ -4,7 +4,7 @@ use crate::language::{
     Base64Decode, EncodeType, Get, HtmlEscape, HtmlUnescape, JsonEscape, JsonUnescape, MapTo,
     MapValue, Nth, PIPE_BASE64_DECODE, PIPE_GET, PIPE_HTML_ESCAPE, PIPE_HTML_UNESCAPE,
     PIPE_JSON_ESCAPE, PIPE_JSON_UNESCAPE, PIPE_MAP_TO, PIPE_NTH, PIPE_PATH, PIPE_SKIP_EMPTY,
-    PIPE_START_WITH, PIPE_STR_ESCAPE, PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US,
+    PIPE_STARTS_WITH, PIPE_STR_ESCAPE, PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US,
     PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON, PIPE_URL, PathGet, PathType, PreciseEvaluator, SkipEmpty,
     StartsWith, StrEscape, TimeStampUnit, TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone, ToJson,
     UrlGet, UrlType,
@@ -99,7 +99,7 @@ impl Fun1Builder for StartsWith {
     }
 
     fn fun_name() -> &'static str {
-        PIPE_START_WITH
+        PIPE_STARTS_WITH
     }
 
     fn build(args: Self::ARG1) -> Self {
