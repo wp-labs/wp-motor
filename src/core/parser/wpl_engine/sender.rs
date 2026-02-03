@@ -44,11 +44,7 @@ impl WplEngine {
             let err_msg = fail_info.format_error();
 
             info_data!("parse error:{}", err_msg);
-            warn_data!(
-                "event src_key:{},event_id:{}",
-                event.src_key,
-                event.event_id
-            );
+            warn_edata!(event.event_id, "event src_key:{}", event.src_key,);
 
             // 直接发送 SourceEvent
             self.send_miss_event_async(&event, err_msg).await?;
