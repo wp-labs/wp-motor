@@ -26,6 +26,7 @@ impl ParserValue<IpAddr> for IpPSR {
 impl PatternParser for IpPSR {
     fn pattern_parse(
         &self,
+        _e_id: u64,
         _fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,
@@ -85,6 +86,7 @@ impl ParserValue<IpNetValue> for IpNetP {
 impl PatternParser for IpNetP {
     fn pattern_parse(
         &self,
+        _e_id: u64,
         _fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,

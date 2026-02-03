@@ -22,6 +22,7 @@ derive_base_prs!(MethodP);
 impl PatternParser for MethodP {
     fn pattern_parse<'a>(
         &self,
+        _e_id: u64,
         _fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,
@@ -59,6 +60,7 @@ impl PatternParser for MethodP {
 impl PatternParser for RequestP {
     fn pattern_parse(
         &self,
+        _e_id: u64,
         _fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,
@@ -123,6 +125,7 @@ impl PatternParser for RequestP {
 impl PatternParser for StatusP {
     fn pattern_parse(
         &self,
+        _e_id: u64,
         _fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,
@@ -174,6 +177,7 @@ impl PatternParser for AgentP {
     //Mozilla/5.0
     fn pattern_parse(
         &self,
+        _e_id: u64,
         _fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,

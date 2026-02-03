@@ -50,6 +50,7 @@ impl WplEvalGroup {
 impl LogicProc for GroupSeq {
     fn process(
         &self,
+        e_id: u64,
         group: &WplEvalGroup,
         ups_sep: &WplSep,
         data: &mut &str,
@@ -63,7 +64,7 @@ impl LogicProc for GroupSeq {
 
             loop {
                 stop_watch.tag_used();
-                match fpu.parse(&cur_sep, data, None, out) {
+                match fpu.parse(e_id, &cur_sep, data, None, out) {
                     Ok(_) => {
                         field_parsed += 1;
                     }
@@ -96,27 +97,33 @@ impl LogicProc for GroupSeq {
 //pub const OPTIMIZE_TIMES: usize = 10000;
 
 impl WplEvalGroup {
-    pub fn proc(&self, sep: &WplSep, data: &mut &str, out: &mut Vec<DataField>) -> ModalResult<()> {
+    pub fn proc(
+        &self,
+        e_id: u64,
+        sep: &WplSep,
+        data: &mut &str,
+        out: &mut Vec<DataField>,
+    ) -> ModalResult<()> {
         match &self.rule {
             WplGroupType::Opt(x) => trace("<opt><group>", move |data: &mut &str| {
-                x.process(self, sep, data, out)
+                x.process(e_id, self, sep, data, out)
             })
             .context(ctx_desc("<opt>"))
             .context(ctx_desc(group_idx_desc(self.index)))
             .parse_next(data),
             WplGroupType::Seq(x) => trace("<group>", move |data: &mut &str| {
-                x.process(self, sep, data, out)
+                x.process(e_id, self, sep, data, out)
             })
             .context(ctx_desc(group_idx_desc(self.index)))
             .parse_next(data),
             WplGroupType::Alt(x) => trace("<alt><group>", move |data: &mut &str| {
-                x.process(self, sep, data, out)
+                x.process(e_id, self, sep, data, out)
             })
             .context(ctx_desc("<alt>"))
             .context(ctx_desc(group_idx_desc(self.index)))
             .parse_next(data),
             WplGroupType::SomeOf(x) => trace("<someof><group>", move |data: &mut &str| {
-                x.process(self, sep, data, out)
+                x.process(e_id, self, sep, data, out)
             })
             .context(ctx_desc("<someof>"))
             .context(ctx_desc(group_idx_desc(self.index)))
@@ -146,7 +153,7 @@ mod tests {
             .assert();
         let mut data = r#"[192.168.1.2 _ 06/Aug/2019:12:12:19 +0800]"#;
         let ppl = WplEvaluator::from(&express, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         assert!(result.field("ip").is_some());
         assert!(result.field("time").is_some());
@@ -160,7 +167,7 @@ mod tests {
             .assert();
         let mut data = r#"[192.168.1.2 , 06/Aug/2019:12:12:19 +0800]"#;
         let ppl = WplEvaluator::from(&express, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         assert!(result.field("ip").is_some());
         assert!(result.field("time").is_some());
@@ -175,7 +182,7 @@ mod tests {
         println!("{:?}", express);
         let mut data = r#"data : [192.168.1.2 _ 06/Aug/2019:12:12:19 +0800]"#;
         let ppl = WplEvaluator::from(&express, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         println!("{}", result);
         assert_eq!(data, "");
         assert!(result.field("ip").is_some());
@@ -190,7 +197,7 @@ mod tests {
             .assert();
         let mut data = r#"{ "data" : "[192.168.1.2 _ 06/Aug/2019:12:12:19 +0800]" } "#;
         let ppl = WplEvaluator::from(&express, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         println!("{}", result);
         assert_eq!(data, "");
         assert!(result.field("ip").is_some());
@@ -229,7 +236,7 @@ mod tests {
         let express = wpl_express.parse(r#"(chars:a, chars:b)\|"#).assert();
         let mut data = r#"foo|bar"#;
         let ppl = WplEvaluator::from(&express, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         let a = result.field("a").and_then(|f| match f.get_value() {
             Value::Chars(s) => Some(s.clone()),
@@ -246,7 +253,7 @@ mod tests {
         let express = wpl_express.parse(r#"(chars:a, chars:b\|)\,"#).assert();
         let mut data = r#"x,y|z"#;
         let ppl = WplEvaluator::from(&express, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         // a 用组分隔符 ','，b 用字段分隔符 '|'
         let a = result.field("a").and_then(|f| match f.get_value() {
             Value::Chars(s) => Some(s.clone()),

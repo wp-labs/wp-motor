@@ -16,6 +16,7 @@ derive_base_prs!(KeyValP);
 impl PatternParser for KeyValP {
     fn pattern_parse(
         &self,
+        e_id: u64,
         fpu: &FieldEvalUnit,
         ups_sep: &WplSep,
         data: &mut &str,
@@ -26,8 +27,8 @@ impl PatternParser for KeyValP {
         let (key, _, _) =
             (take_key, multispace0, alt((literal(":"), literal("=")))).parse_next(data)?;
         match fpu.group_enum {
-            WplGroupType::SomeOf(_) => value_take(fpu, ups_sep, data, key, out),
-            _ => protocol::take_sub_tdo(fpu, ups_sep, data, key, out),
+            WplGroupType::SomeOf(_) => value_take(e_id, fpu, ups_sep, data, key, out),
+            _ => protocol::take_sub_tdo(e_id, fpu, ups_sep, data, key, out),
         }
     }
 
@@ -56,6 +57,7 @@ pub fn esc_normal_str(s: &str) -> IResult<&str, &str> {
 }
 */
 fn value_take(
+    e_id: u64,
     fpu: &FieldEvalUnit,
     upper_sep: &WplSep,
     data: &mut &str,
@@ -78,12 +80,12 @@ fn value_take(
                 Ok(mut str_val) => {
                     let run_key = sub_fpu.conf().run_key(key);
                     let sep = fpu.conf().resolve_sep(&p_sep);
-                    return sub_fpu.parse(&sep, &mut str_val, run_key, out);
+                    return sub_fpu.parse(e_id, &sep, &mut str_val, run_key, out);
                 }
                 Err(_) => {
                     let sep = fpu.conf().resolve_sep(&p_sep);
                     let run_key = sub_fpu.conf().run_key(key);
-                    return sub_fpu.parse(&sep, data, run_key, out);
+                    return sub_fpu.parse(e_id, &sep, data, run_key, out);
                 }
             }
         }

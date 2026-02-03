@@ -189,7 +189,7 @@ pub struct ReplaceFunc {
 /// 正则表达式匹配函数
 #[derive(Clone, Debug, PartialEq)]
 pub struct RegexMatch {
-    pub(crate) pattern: SmolStr,  // 正则表达式模式
+    pub(crate) pattern: SmolStr, // 正则表达式模式
 }
 
 /// Normalizes the target field name: converts "_" to None

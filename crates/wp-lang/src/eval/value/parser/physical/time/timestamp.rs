@@ -16,6 +16,7 @@ pub struct TimeStampPSR {}
 impl PatternParser for TimeStampPSR {
     fn pattern_parse(
         &self,
+        _e_id: u64,
         _: &FieldEvalUnit,
         _: &crate::ast::WplSep,
         data: &mut &str,

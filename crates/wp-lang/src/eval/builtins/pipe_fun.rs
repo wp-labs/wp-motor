@@ -594,12 +594,9 @@ mod tests {
     #[test]
     fn digit_range_successfully_matches_value_in_range() {
         let mut fields = vec![DataField::from_digit("num".to_string(), 5)];
-        DigitRange {
-            begin: 1,
-            end: 10,
-        }
-        .process(fields.get_mut(0))
-        .expect("value 5 should be in range [1,10]");
+        DigitRange { begin: 1, end: 10 }
+            .process(fields.get_mut(0))
+            .expect("value 5 should be in range [1,10]");
     }
 
     #[test]
@@ -626,12 +623,11 @@ mod tests {
     #[test]
     fn digit_range_returns_err_when_value_out_of_range() {
         let mut fields = vec![DataField::from_digit("num".to_string(), 50)];
-        assert!(DigitRange {
-            begin: 1,
-            end: 10,
-        }
-        .process(fields.get_mut(0))
-        .is_err());
+        assert!(
+            DigitRange { begin: 1, end: 10 }
+                .process(fields.get_mut(0))
+                .is_err()
+        );
     }
 
     #[test]
@@ -640,22 +636,16 @@ mod tests {
             "text".to_string(),
             "hello".to_string(),
         )];
-        assert!(DigitRange {
-            begin: 1,
-            end: 10,
-        }
-        .process(fields.get_mut(0))
-        .is_err());
+        assert!(
+            DigitRange { begin: 1, end: 10 }
+                .process(fields.get_mut(0))
+                .is_err()
+        );
     }
 
     #[test]
     fn digit_range_returns_err_when_field_is_none() {
-        assert!(DigitRange {
-            begin: 1,
-            end: 10,
-        }
-        .process(None)
-        .is_err());
+        assert!(DigitRange { begin: 1, end: 10 }.process(None).is_err());
     }
 
     #[test]
@@ -690,11 +680,13 @@ mod tests {
             "text".to_string(),
             "hello world".to_string(),
         )];
-        assert!(RegexMatch {
-            pattern: r"^\d+$".into(),
-        }
-        .process(fields.get_mut(0))
-        .is_err());
+        assert!(
+            RegexMatch {
+                pattern: r"^\d+$".into(),
+            }
+            .process(fields.get_mut(0))
+            .is_err()
+        );
     }
 
     #[test]
@@ -704,30 +696,36 @@ mod tests {
             "hello".to_string(),
         )];
         // 无效的正则表达式：未闭合的括号
-        assert!(RegexMatch {
-            pattern: r"(unclosed".into(),
-        }
-        .process(fields.get_mut(0))
-        .is_err());
+        assert!(
+            RegexMatch {
+                pattern: r"(unclosed".into(),
+            }
+            .process(fields.get_mut(0))
+            .is_err()
+        );
     }
 
     #[test]
     fn regex_match_returns_err_on_non_chars_field() {
         let mut fields = vec![DataField::from_digit("num".to_string(), 123)];
-        assert!(RegexMatch {
-            pattern: r"\d+".into(),
-        }
-        .process(fields.get_mut(0))
-        .is_err());
+        assert!(
+            RegexMatch {
+                pattern: r"\d+".into(),
+            }
+            .process(fields.get_mut(0))
+            .is_err()
+        );
     }
 
     #[test]
     fn regex_match_returns_err_when_field_is_none() {
-        assert!(RegexMatch {
-            pattern: r"test".into(),
-        }
-        .process(None)
-        .is_err());
+        assert!(
+            RegexMatch {
+                pattern: r"test".into(),
+            }
+            .process(None)
+            .is_err()
+        );
     }
 
     #[test]
@@ -760,11 +758,13 @@ mod tests {
         )];
 
         // 大小写敏感，不匹配
-        assert!(RegexMatch {
-            pattern: r"^hello".into(),
-        }
-        .process(fields.get_mut(0))
-        .is_err());
+        assert!(
+            RegexMatch {
+                pattern: r"^hello".into(),
+            }
+            .process(fields.get_mut(0))
+            .is_err()
+        );
 
         // 使用 (?i) 标志进行大小写不敏感匹配
         RegexMatch {

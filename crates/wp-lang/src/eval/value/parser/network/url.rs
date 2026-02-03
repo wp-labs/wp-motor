@@ -11,6 +11,7 @@ derive_base_prs!(UrlP);
 impl PatternParser for UrlP {
     fn pattern_parse(
         &self,
+        _e_id: u64,
         _fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,

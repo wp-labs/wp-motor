@@ -17,6 +17,7 @@ derive_base_prs!(Base64P);
 impl FieldParser for Base64P {
     fn parse<'a>(
         &self,
+        _e_id: u64,
         fpu: &FieldEvalUnit,
         ups_sep: &WplSep,
         data: &mut &str,

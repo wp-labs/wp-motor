@@ -118,6 +118,7 @@ impl FieldEvalUnit {
     }
     pub fn parse(
         &self,
+        e_id: u64,
         upper_sep: &WplSep,
         data: &mut &str,
         run_key: Option<FNameStr>,
@@ -127,10 +128,10 @@ impl FieldEvalUnit {
 
         let data_rst = self
             .parser()
-            .parse(self, sep.as_ref(), data, run_key.clone(), out);
+            .parse(e_id, self, sep.as_ref(), data, run_key.clone(), out);
 
         match data_rst {
-            Ok(_) => self.pipe_exec.execute(out),
+            Ok(_) => self.pipe_exec.execute(e_id, out),
             Err(e) => {
                 if self.conf.is_opt {
                     Ok(())

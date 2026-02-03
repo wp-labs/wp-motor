@@ -3,13 +3,14 @@ use crate::ast::group::GroupSomeOf;
 use crate::eval::runtime::group::{LogicProc, WplEvalGroup};
 use winnow::stream::Stream;
 // Use workspace-level parser result alias
-use wp_log::trace_data;
+use wp_log::trace_edata;
 use wp_model_core::model::DataField;
 use wp_parser::WResult as ModalResult;
 
 impl LogicProc for GroupSomeOf {
     fn process(
         &self,
+        e_id: u64,
         group: &WplEvalGroup,
         ups_sep: &WplSep,
         data: &mut &str,
@@ -21,14 +22,14 @@ impl LogicProc for GroupSomeOf {
             all_failed = true;
             for fpu in group.field_units.iter() {
                 let ck_point = data.checkpoint();
-                match fpu.parse(&cur_sep, data, None, out) {
+                match fpu.parse(e_id, &cur_sep, data, None, out) {
                     Ok(_) => {
                         all_failed = false;
                         break;
                     }
                     Err(e) => {
                         data.reset(&ck_point);
-                        trace_data!("fpt parse error :{},{}", fpu.conf(), e);
+                        trace_edata!(e_id, "fpt parse error :{},{}", fpu.conf(), e);
                         continue;
                     }
                 }
@@ -53,22 +54,22 @@ mod tests {
         let mut data = r#"192.168.1.2 - - [06/Aug/2019:12:12:19 +0800] "#;
         let ppl = WplEvaluator::from(&express, None)?;
 
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         println!("{}", result);
 
         let mut data = r#"2002 - - [06/Aug/2019:12:12:19 +0800] "#;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         println!("{}", result);
 
         let mut data = r#"192.168.1.2 2002 - - [06/Aug/2019:12:12:19 +0800] "#;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         println!("{}", result);
 
         let mut data = r#" 2004 192.168.1.2 2002 - - [06/Aug/2019:12:12:19 +0800] "#;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         println!("{}", result);
 
@@ -94,7 +95,7 @@ mod tests {
 
         let mut data = r#"{"name": "空闲CPU百分比", "value": 96.8}, {"name": "空闲内存kB", "value": 102432896.0}, {"name": "1分钟平均CPU负载", "value": 2.52}, {"name": "15分钟平均CPU负载", "value": 4.9}, {"name": "系统启动进程个数", "value": 1340.0}, {"name": "可用磁盘空间kB", "value": 40565575858.0}, {"name": "磁盘使用百分比", "value": 8.63}, {"name": "磁盘1分钟平均负载", "value": 8.63}, {"name": "磁盘15分钟平均负载", "value": 8.64}"#;
         let ppl = WplEvaluator::from(&express, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         println!("{}", result);
         Ok(())
@@ -108,7 +109,7 @@ mod tests {
 
         let mut data = r#"b=[y]|c=z|a=x"#;
         let ppl = WplEvaluator::from(&express, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         println!("{}", result);
 
@@ -118,7 +119,7 @@ mod tests {
 
         let mut data = r#"c=z|a=x"#;
         let ppl = WplEvaluator::from(&express, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         println!("{}", result);
         Ok(())
@@ -132,7 +133,7 @@ mod tests {
 
         let mut data = r#"b=[y]|c= |a=[x]"#;
         let ppl = WplEvaluator::from(&express, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         println!("{}", result);
         Ok(())

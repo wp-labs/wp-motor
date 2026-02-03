@@ -29,6 +29,7 @@ impl ProtoTextP {
 impl PatternParser for ProtoTextP {
     fn pattern_parse<'a>(
         &self,
+        e_id: u64,
         fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,
@@ -38,12 +39,12 @@ impl PatternParser for ProtoTextP {
         let key = delimited(multispace0, take_key, multispace0).parse_next(data)?;
 
         if data.starts_with(':') {
-            Ok(parse_proto_value(fpu, key.to_string(), data, out)?)
+            Ok(parse_proto_value(e_id, fpu, key.to_string(), data, out)?)
         } else if data.starts_with('{') {
             let val_len = ScopeEval::len(data, '{', '}');
             let proto_text = take(val_len).parse_next(data)?;
             let mut proto_text = &proto_text[1..proto_text.len() - 1];
-            Self::parse_proto_object(fpu, key.to_string(), &mut proto_text, out, 1)?;
+            Self::parse_proto_object(e_id, fpu, key.to_string(), &mut proto_text, out, 1)?;
             Ok(())
         } else {
             // 不允许解析库因数据异常直接崩溃：返回结构化错误，保持与 parse_proto_object 的错误风格一致
@@ -63,6 +64,7 @@ impl PatternParser for ProtoTextP {
 }
 
 fn parse_proto_value(
+    e_id: u64,
     fpu: &FieldEvalUnit,
     key: String,
     data: &mut &str,
@@ -70,10 +72,11 @@ fn parse_proto_value(
 ) -> ModalResult<()> {
     let _ = (literal(":"), multispace0).parse_next(data)?;
     let sep = WplSep::default();
-    take_sub_tdo(fpu, &sep, data, key.as_str(), out)
+    take_sub_tdo(e_id, fpu, &sep, data, key.as_str(), out)
 }
 impl ProtoTextP {
     pub fn parse_proto_object(
+        e_id: u64,
         fpu: &FieldEvalUnit,
         root_key: String,
         data: &mut &str,
@@ -97,12 +100,12 @@ impl ProtoTextP {
             key_buf.push_str(key);
             let key = key_buf;
             if data.starts_with(':') {
-                parse_proto_value(fpu, key, data, out)?;
+                parse_proto_value(e_id, fpu, key, data, out)?;
             } else if data.starts_with('{') {
                 let val_len = ScopeEval::len(data, '{', '}');
                 let proto_text = take(val_len).parse_next(data)?;
                 let mut proto_text = &proto_text[1..proto_text.len() - 1];
-                Self::parse_proto_object(fpu, key, &mut proto_text, out, depth + 1)?;
+                Self::parse_proto_object(e_id, fpu, key, &mut proto_text, out, depth + 1)?;
             } else {
                 return fail
                     .context(ctx_desc("data proto-text format error"))
@@ -155,7 +158,7 @@ mod tests {
         let WplStatementType::Express(rule) = conf.statement;
         for f_conf in rule.group[0].fields.iter() {
             let fpu = FieldEvalUnit::for_test(ProtoTextP::default(), f_conf.clone());
-            fpu.parse(&sep, &mut values, None, &mut result).assert();
+            fpu.parse(0, &sep, &mut values, None, &mut result).assert();
             //result.append(&mut resp);
         }
 
@@ -170,7 +173,7 @@ mod tests {
         let mut values = r#"message_type: 7 skyeye_login {serial_num: "654613123_login" access_time: "2020-10-10 12:00:00" sip: "10.2.3.2" sport: 22 dip: "1.0.2.3" dport: 5432 proto: "proto" passwd: "46464864" info: "info" user: "admin" db_type: "alert" vendor_id: "1345456464" device_ip: "10.3.2.1" user_define {name: "user_name" type: "string" value: "qqqqq"}}"#;
 
         let ppl = WplEvaluator::from(&express, None)?;
-        let result = ppl.parse_groups(&mut values).assert();
+        let result = ppl.parse_groups(0, &mut values).assert();
         println!("{}", result);
         assert_eq!(result.items.len(), 17);
 

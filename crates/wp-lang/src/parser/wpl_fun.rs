@@ -119,10 +119,12 @@ pub fn wpl_fun(input: &mut &str) -> WResult<WplFun> {
     multispace0.parse_next(input)?;
     let fun = alt((
         // Put digit_range first to avoid any prefix matching issues
-        call_fun_args2::<DigitRangeArg>.map(|arg| WplFun::DigitRange(DigitRange {
-            begin: arg.begin,
-            end: arg.end,
-        })),
+        call_fun_args2::<DigitRangeArg>.map(|arg| {
+            WplFun::DigitRange(DigitRange {
+                begin: arg.begin,
+                end: arg.end,
+            })
+        }),
         call_fun_args1::<RegexMatch>.map(WplFun::RegexMatch),
         call_fun_args1::<TakeField>.map(WplFun::SelectTake),
         call_fun_args0::<SelectLast>.map(WplFun::SelectLast),
@@ -942,7 +944,11 @@ mod tests {
         // Direct test of DigitRangeArg parser - simple case
         let mut input = "digit_range(1, 10)";
         let result = call_fun_args2::<DigitRangeArg>.parse_next(&mut input);
-        assert!(result.is_ok(), "Simple case should parse successfully: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Simple case should parse successfully: {:?}",
+            result
+        );
         let arg = result.unwrap();
         assert_eq!(arg.begin, 1);
         assert_eq!(arg.end, 10);
@@ -950,7 +956,11 @@ mod tests {
         // Direct test with different values
         let mut input2 = "digit_range(100, 200)";
         let result2 = call_fun_args2::<DigitRangeArg>.parse_next(&mut input2);
-        assert!(result2.is_ok(), "Different values should parse: {:?}", result2);
+        assert!(
+            result2.is_ok(),
+            "Different values should parse: {:?}",
+            result2
+        );
         let arg2 = result2.unwrap();
         assert_eq!(arg2.begin, 100);
         assert_eq!(arg2.end, 200);

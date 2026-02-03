@@ -13,6 +13,7 @@ use crate::eval::runtime::field::FieldEvalUnit;
 pub trait FieldParser {
     fn parse(
         &self,
+        e_id: u64,
         fpu: &FieldEvalUnit,
         ups_sep: &WplSep,
         data: &mut &str,
@@ -32,6 +33,7 @@ pub trait FieldParser {
 pub trait PatternParser {
     fn pattern_parse(
         &self,
+        e_id: u64,
         fpu: &FieldEvalUnit,
         ups_sep: &WplSep,
         data: &mut &str,

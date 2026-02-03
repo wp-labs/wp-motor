@@ -21,6 +21,7 @@ pub struct PeekSymbolP {}
 impl PatternParser for SymbolP {
     fn pattern_parse(
         &self,
+        _e_id: u64,
         fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,
@@ -78,6 +79,7 @@ impl PatternParser for SymbolP {
 impl PatternParser for PeekSymbolP {
     fn pattern_parse(
         &self,
+        _e_id: u64,
         fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,

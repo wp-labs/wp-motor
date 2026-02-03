@@ -17,6 +17,7 @@ pub mod kvarr;
 pub mod proto_text;
 
 pub fn take_sub_tdo(
+    e_id: u64,
     fpu: &FieldEvalUnit,
     upper_sep: &WplSep,
     data: &mut &str,
@@ -31,7 +32,7 @@ pub fn take_sub_tdo(
                 let mut prefer_sep = fpu.conf().resolve_sep(upper_sep);
                 prefer_sep.apply_default(WplSep::inherited_sep("\\0"));
                 let run_key = sub_fpu.conf().run_key(key);
-                Ok(sub_fpu.parse(&prefer_sep, &mut str_val, run_key, out)?)
+                Ok(sub_fpu.parse(e_id, &prefer_sep, &mut str_val, run_key, out)?)
             } else {
                 out.push(DataField::from_chars(key, str_val));
                 Ok(())
@@ -42,7 +43,7 @@ pub fn take_sub_tdo(
                 let mut prefer_sep = fpu.conf().resolve_sep(upper_sep);
                 prefer_sep.apply_default(WplSep::inherited_sep("\\0"));
                 let run_key = sub_fpu.conf().run_key(key);
-                Ok(sub_fpu.parse(&prefer_sep, data, run_key, out)?)
+                Ok(sub_fpu.parse(e_id, &prefer_sep, data, run_key, out)?)
             } else {
                 let sep = fpu.conf().resolve_sep(upper_sep);
                 let val = sep.read_until_sep(data)?;

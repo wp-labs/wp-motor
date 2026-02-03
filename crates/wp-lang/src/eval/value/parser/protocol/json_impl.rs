@@ -47,6 +47,7 @@ impl JsonProc {
 
     #[allow(clippy::too_many_arguments)]
     fn proc_json_map(
+        e_id: u64,
         fpu: &FieldEvalUnit,
         upper_sep: &WplSep,
         p_path: &str,
@@ -60,6 +61,7 @@ impl JsonProc {
         //let mut sub_fields = Vec::with_capacity(20);
         for (k, v) in v_map {
             Self::proc_value_inner(
+                e_id,
                 fpu,
                 upper_sep,
                 p_path,
@@ -141,7 +143,9 @@ impl JsonProc {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn proc_value(
+        e_id: u64,
         fpu: &FieldEvalUnit,
         upper_sep: &WplSep,
         parent: &str,
@@ -151,11 +155,14 @@ impl JsonProc {
         out: &mut Vec<DataField>,
     ) -> ModalResult<()> {
         let max_depth = Self::max_depth(fpu);
-        Self::proc_value_inner(fpu, upper_sep, parent, v, name, exact, out, 0, max_depth)
+        Self::proc_value_inner(
+            e_id, fpu, upper_sep, parent, v, name, exact, out, 0, max_depth,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
     fn proc_value_inner(
+        e_id: u64,
         fpu: &FieldEvalUnit,
         upper_sep: &WplSep,
         parent: &str,
@@ -199,7 +206,7 @@ impl JsonProc {
                     let dat_str = format!("{}", b_v);
                     if let Some(fpu) = fpu.get_sub_fpu(j_path.as_str()) {
                         let ups_sep = fpu.conf().resolve_sep(upper_sep);
-                        fpu.parse(&ups_sep, &mut dat_str.as_str(), Some(run_key), out)?;
+                        fpu.parse(e_id, &ups_sep, &mut dat_str.as_str(), Some(run_key), out)?;
                         return Ok(());
                     }
                 }
@@ -214,7 +221,7 @@ impl JsonProc {
                     let dat_str = format!("{}", num);
                     if let Some(fpu) = fpu.get_sub_fpu(j_path.as_str()) {
                         let ups_sep = fpu.conf().resolve_sep(upper_sep);
-                        fpu.parse(&ups_sep, &mut dat_str.as_str(), Some(run_key), out)?;
+                        fpu.parse(e_id, &ups_sep, &mut dat_str.as_str(), Some(run_key), out)?;
                         return Ok(());
                     }
                 }
@@ -260,7 +267,7 @@ impl JsonProc {
                     }
 
                     let mut raw_ref = raw.as_str();
-                    fpu.parse(&ups_sep, &mut raw_ref, Some(run_key), out)?;
+                    fpu.parse(e_id, &ups_sep, &mut raw_ref, Some(run_key), out)?;
                     return Ok(());
                 }
                 out.push(DataField::from_chars(run_key, raw));
@@ -303,6 +310,7 @@ impl JsonProc {
                     item_name.push_str(i.to_string().as_str());
                     item_name.push(']');
                     Self::proc_value_inner(
+                        e_id,
                         fpu,
                         upper_sep,
                         parent,
@@ -319,6 +327,7 @@ impl JsonProc {
             }
             Value::Object(o) => {
                 Self::proc_json_map(
+                    e_id,
                     fpu,
                     upper_sep,
                     j_path.as_str(),

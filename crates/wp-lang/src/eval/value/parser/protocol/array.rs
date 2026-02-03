@@ -28,7 +28,7 @@ impl ArrayP {
     ) -> ModalResult<()> {
         let idx_str = format!("{}/[{}]", name, idx_local);
         let mut probe = *input;
-        match next_fpu.parse(sep, &mut probe, Some(idx_str.clone().into()), out) {
+        match next_fpu.parse(0, sep, &mut probe, Some(idx_str.clone().into()), out) {
             Ok(_) => {
                 *idx_local += 1;
                 *input = probe;
@@ -39,7 +39,7 @@ impl ArrayP {
                 let mut quoted_probe = *input;
                 if let Ok(inner) = quot_str.parse_next(&mut quoted_probe) {
                     let mut inner_ref = inner;
-                    next_fpu.parse(sep, &mut inner_ref, Some(idx_str.into()), out)?;
+                    next_fpu.parse(0, sep, &mut inner_ref, Some(idx_str.into()), out)?;
                     *idx_local += 1;
                     *input = quoted_probe;
                     Ok(())
@@ -65,6 +65,7 @@ impl ParserValue<DigitValue> for ArrayP {
 impl PatternParser for ArrayP {
     fn pattern_parse<'a>(
         &self,
+        _e_id: u64,
         fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,

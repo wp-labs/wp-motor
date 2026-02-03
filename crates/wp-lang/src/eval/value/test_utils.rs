@@ -126,7 +126,7 @@ impl ParserTUnit {
     pub fn verify_parse_suc(self, data: &mut &str) -> ModalResult<Vec<DataField>> {
         //self.fpu.exec(data, Some(self.fpu.conf().safe_name()))
         let mut out = Vec::new();
-        self.fpu.parse(&self.ups_sep, data, None, &mut out)?;
+        self.fpu.parse(0, &self.ups_sep, data, None, &mut out)?;
         Ok(out)
     }
 
@@ -134,6 +134,7 @@ impl ParserTUnit {
         let mut out = Vec::new();
         self.fpu
             .parse(
+                0,
                 &self.ups_sep,
                 data,
                 Some(self.fpu.conf().safe_name()),
@@ -149,6 +150,7 @@ impl ParserTUnit {
         let mut field = Vec::new();
         self.fpu
             .parse(
+                0,
                 &self.ups_sep,
                 data,
                 Some(self.fpu.conf().safe_name()),
@@ -163,6 +165,7 @@ impl ParserTUnit {
         let mut field = Vec::new();
         self.fpu
             .parse(
+                0,
                 &self.ups_sep,
                 data,
                 Some(self.fpu.conf().safe_name()),
@@ -179,6 +182,7 @@ impl ParserTUnit {
         assert!(
             self.fpu
                 .parse(
+                    0,
                     &self.ups_sep,
                     data,
                     Some(self.fpu.conf().safe_name()),
@@ -210,6 +214,7 @@ pub fn verify_gen_parse(env: &mut ParserTestEnv, fpu: &FieldEvalUnit, conf: &Wpl
     let mut data = buffer.as_str();
     let mut field = Vec::new();
     match fpu.parse(
+        0,
         &cur_sep,
         &mut data,
         Some(fpu.conf().safe_name()),

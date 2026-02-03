@@ -19,6 +19,7 @@ derive_base_prs!(DomainP);
 impl PatternParser for DomainP {
     fn pattern_parse(
         &self,
+        _e_id: u64,
         _fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,
