@@ -35,6 +35,49 @@ impl Display for Get {
     }
 }
 
+pub const PIPE_START_WITH: &str = "start_with";
+#[derive(Clone, Debug)]
+pub struct StartsWith {
+    pub(crate) prefix: String,
+}
+
+impl Display for StartsWith {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}('{}')", PIPE_START_WITH, self.prefix)
+    }
+}
+
+pub const PIPE_MAP_TO: &str = "map_to";
+#[derive(Clone, Debug)]
+pub enum MapValue {
+    Chars(String),
+    Digit(i64),
+    Float(f64),
+    Bool(bool),
+}
+
+impl Display for MapValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MapValue::Chars(s) => write!(f, "'{}'", s),
+            MapValue::Digit(d) => write!(f, "{}", d),
+            MapValue::Float(fl) => write!(f, "{}", fl),
+            MapValue::Bool(b) => write!(f, "{}", b),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MapTo {
+    pub(crate) value: MapValue,
+}
+
+impl Display for MapTo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}({})", PIPE_MAP_TO, self.value)
+    }
+}
+
 #[derive(Default, Debug, Clone, Serialize, Deserialize, EnumString, strum_macros::Display)]
 pub enum PathType {
     #[default]

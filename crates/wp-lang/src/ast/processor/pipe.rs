@@ -3,7 +3,7 @@ use smol_str::SmolStr;
 
 use super::function::{
     CharsHas, CharsIn, CharsNotHas, DigitHas, DigitIn, DigitRange, Has, IpIn, JsonUnescape,
-    RegexMatch, ReplaceFunc, SelectLast, TakeField, TargetCharsHas, TargetCharsIn,
+    RegexMatch, ReplaceFunc, SelectLast, StartsWith, TakeField, TargetCharsHas, TargetCharsIn,
     TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn,
 };
 use crate::ast::{group::WplGroup, processor::Base64Decode};
@@ -37,6 +37,7 @@ pub enum WplFun {
     TransCharsReplace(ReplaceFunc),
     // Pattern matching functions
     RegexMatch(RegexMatch),
+    StartsWith(StartsWith),
 }
 
 #[derive(Debug, Clone, PartialEq, Getters)]

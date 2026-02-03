@@ -1,8 +1,8 @@
 use crate::ast::WplFun;
 use crate::ast::processor::{
     Base64Decode, CharsHas, CharsIn, CharsNotHas, DigitHas, DigitIn, DigitRange, Has, IpIn,
-    JsonUnescape, RegexMatch, ReplaceFunc, SelectLast, TakeField, TargetCharsHas, TargetCharsIn,
-    TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn,
+    JsonUnescape, RegexMatch, ReplaceFunc, SelectLast, StartsWith, TakeField, TargetCharsHas,
+    TargetCharsIn, TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn,
 };
 use crate::eval::runtime::field_pipe::{FieldIndex, FieldPipe, FieldSelector, FieldSelectorSpec};
 use base64::Engine;
@@ -378,6 +378,35 @@ impl FieldPipe for RegexMatch {
     }
 }
 
+impl FieldPipe for StartsWith {
+    #[inline]
+    fn process(&self, field: Option<&mut DataField>) -> WResult<()> {
+        let Some(field) = field else {
+            return fail
+                .context(ctx_desc("start_with | no active field"))
+                .parse_next(&mut "");
+        };
+
+        // 只处理字符串类型的字段
+        if let Value::Chars(value) = field.get_value() {
+            if value.starts_with(self.prefix.as_str()) {
+                // 匹配成功，保持原字段
+                Ok(())
+            } else {
+                // 不匹配，将字段转换为 ignore 类型
+                let field_name = field.get_name().to_string();
+                *field = DataField::from_ignore(field_name);
+                Ok(())
+            }
+        } else {
+            // 非字符串类型也转换为 ignore
+            let field_name = field.get_name().to_string();
+            *field = DataField::from_ignore(field_name);
+            Ok(())
+        }
+    }
+}
+
 impl WplFun {
     pub fn as_field_pipe(&self) -> Option<&dyn FieldPipe> {
         match self {
@@ -401,6 +430,7 @@ impl WplFun {
             WplFun::TransBase64Decode(fun) => Some(fun),
             WplFun::TransCharsReplace(fun) => Some(fun),
             WplFun::RegexMatch(fun) => Some(fun),
+            WplFun::StartsWith(fun) => Some(fun),
         }
     }
 
@@ -772,5 +802,110 @@ mod tests {
         }
         .process(fields.get_mut(0))
         .expect("should match with case-insensitive flag");
+    }
+
+    #[test]
+    fn start_with_matches_prefix() {
+        let mut fields = vec![DataField::from_chars(
+            "url".to_string(),
+            "https://example.com".to_string(),
+        )];
+
+        // 匹配前缀 - 保持原字段
+        StartsWith {
+            prefix: "https://".into(),
+        }
+        .process(fields.get_mut(0))
+        .expect("should succeed");
+
+        // 验证字段未被修改
+        assert_eq!(
+            fields[0].get_value(),
+            &Value::Chars("https://example.com".into())
+        );
+
+        // 不匹配 - 转换为 ignore
+        let mut fields2 = vec![DataField::from_chars(
+            "url".to_string(),
+            "http://example.com".to_string(),
+        )];
+
+        StartsWith {
+            prefix: "https://".into(),
+        }
+        .process(fields2.get_mut(0))
+        .expect("should succeed"); // 不再返回错误
+
+        // 验证字段被转换为 ignore 类型
+        use wp_model_core::model::DataType;
+        assert_eq!(fields2[0].get_meta(), &DataType::Ignore);
+    }
+
+    #[test]
+    fn start_with_empty_string() {
+        let mut fields = vec![DataField::from_chars(
+            "text".to_string(),
+            "any string".to_string(),
+        )];
+
+        // 空前缀应该匹配任何字符串
+        StartsWith { prefix: "".into() }
+            .process(fields.get_mut(0))
+            .expect("empty prefix should match");
+
+        // 验证字段未被修改
+        assert_eq!(fields[0].get_value(), &Value::Chars("any string".into()));
+    }
+
+    #[test]
+    fn start_with_case_sensitive() {
+        let mut fields = vec![DataField::from_chars(
+            "text".to_string(),
+            "Hello World".to_string(),
+        )];
+
+        // 大小写敏感，匹配
+        StartsWith {
+            prefix: "Hello".into(),
+        }
+        .process(fields.get_mut(0))
+        .expect("should match");
+
+        // 验证字段未被修改
+        assert_eq!(fields[0].get_value(), &Value::Chars("Hello World".into()));
+
+        // 大小写不匹配 - 转换为 ignore
+        let mut fields2 = vec![DataField::from_chars(
+            "text".to_string(),
+            "Hello World".to_string(),
+        )];
+
+        StartsWith {
+            prefix: "hello".into(),
+        }
+        .process(fields2.get_mut(0))
+        .expect("should succeed"); // 不再返回错误
+
+        // 验证字段被转换为 ignore 类型
+        use wp_model_core::model::DataType;
+        assert_eq!(fields2[0].get_meta(), &DataType::Ignore);
+    }
+
+    #[test]
+    fn start_with_non_string_field() {
+        use wp_model_core::model::DataType;
+
+        // 测试非字符串类型的字段
+        let mut fields = vec![DataField::from_digit("count".to_string(), 42)];
+
+        StartsWith {
+            prefix: "test".into(),
+        }
+        .process(fields.get_mut(0))
+        .expect("should succeed"); // 不返回错误
+
+        // 验证字段被转换为 ignore 类型
+        assert_eq!(fields[0].get_meta(), &DataType::Ignore);
+        assert_eq!(fields[0].get_name(), "count");
     }
 }

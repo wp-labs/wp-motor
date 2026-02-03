@@ -1,12 +1,13 @@
 use std::str::FromStr;
 
 use crate::language::{
-    Base64Decode, EncodeType, Get, HtmlEscape, HtmlUnescape, JsonEscape, JsonUnescape, Nth,
-    PIPE_BASE64_DECODE, PIPE_GET, PIPE_HTML_ESCAPE, PIPE_HTML_UNESCAPE, PIPE_JSON_ESCAPE,
-    PIPE_JSON_UNESCAPE, PIPE_NTH, PIPE_PATH, PIPE_SKIP_EMPTY, PIPE_STR_ESCAPE, PIPE_TIME_TO_TS,
-    PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US, PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON, PIPE_URL, PathGet,
-    PathType, PreciseEvaluator, SkipEmpty, StrEscape, TimeStampUnit, TimeToTs, TimeToTsMs,
-    TimeToTsUs, TimeToTsZone, ToJson, UrlGet, UrlType,
+    Base64Decode, EncodeType, Get, HtmlEscape, HtmlUnescape, JsonEscape, JsonUnescape, MapTo,
+    MapValue, Nth, PIPE_BASE64_DECODE, PIPE_GET, PIPE_HTML_ESCAPE, PIPE_HTML_UNESCAPE,
+    PIPE_JSON_ESCAPE, PIPE_JSON_UNESCAPE, PIPE_MAP_TO, PIPE_NTH, PIPE_PATH, PIPE_SKIP_EMPTY,
+    PIPE_START_WITH, PIPE_STR_ESCAPE, PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US,
+    PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON, PIPE_URL, PathGet, PathType, PreciseEvaluator, SkipEmpty,
+    StartsWith, StrEscape, TimeStampUnit, TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone, ToJson,
+    UrlGet, UrlType,
 };
 use crate::language::{Base64Encode, PIPE_BASE64_ENCODE, PIPE_TO_STR, ToStr};
 use crate::language::{Ip4ToInt, PIPE_IP4_TO_INT, PiPeOperation, PipeFun};
@@ -85,6 +86,77 @@ impl Fun1Builder for Get {
 
     fn build(args: Self::ARG1) -> Self {
         Get { name: args }
+    }
+}
+
+impl Fun1Builder for StartsWith {
+    type ARG1 = String;
+    fn args1(data: &mut &str) -> WResult<Self::ARG1> {
+        use wpl::parser::utils::quot_str;
+        multispace0.parse_next(data)?;
+        let prefix = quot_str.parse_next(data)?;
+        Ok(prefix.to_string())
+    }
+
+    fn fun_name() -> &'static str {
+        PIPE_START_WITH
+    }
+
+    fn build(args: Self::ARG1) -> Self {
+        StartsWith { prefix: args }
+    }
+}
+
+impl Fun1Builder for MapTo {
+    type ARG1 = MapValue;
+    fn args1(data: &mut &str) -> WResult<Self::ARG1> {
+        use winnow::ascii::float;
+        use winnow::token::literal;
+        use wpl::parser::utils::quot_str;
+
+        multispace0.parse_next(data)?;
+
+        // 尝试解析布尔值
+        if literal::<&str, &str, ContextError>("true")
+            .parse_next(data)
+            .is_ok()
+        {
+            return Ok(MapValue::Bool(true));
+        }
+        if literal::<&str, &str, ContextError>("false")
+            .parse_next(data)
+            .is_ok()
+        {
+            return Ok(MapValue::Bool(false));
+        }
+
+        // 尝试解析数字（浮点数或整数）
+        let checkpoint = data.checkpoint();
+        if let Ok(f) = float::<&str, f64, ContextError>.parse_next(data) {
+            // 检查是否为整数
+            if f.fract() == 0.0 && f.abs() <= i64::MAX as f64 {
+                return Ok(MapValue::Digit(f as i64));
+            } else {
+                return Ok(MapValue::Float(f));
+            }
+        }
+        data.reset(&checkpoint);
+
+        // 尝试解析字符串
+        if let Ok(s) = quot_str.parse_next(data) {
+            return Ok(MapValue::Chars(s.to_string()));
+        }
+
+        fail.context(ctx_desc("expected string, number, or boolean"))
+            .parse_next(data)
+    }
+
+    fn fun_name() -> &'static str {
+        PIPE_MAP_TO
+    }
+
+    fn build(args: Self::ARG1) -> Self {
+        MapTo { value: args }
     }
 }
 impl Fun1Builder for Base64Decode {
@@ -189,25 +261,31 @@ pub fn oml_pipe(data: &mut &str) -> WResult<PipeFun> {
     symbol_pipe.parse_next(data)?;
     multispace0.parse_next(data)?;
     let fun = alt((
-        parser::call_fun_args2::<TimeToTsZone>.map(PipeFun::TimeToTsZone),
-        parser::call_fun_args1::<Nth>.map(PipeFun::Nth),
-        parser::call_fun_args1::<Get>.map(PipeFun::Get),
-        parser::call_fun_args1::<Base64Decode>.map(PipeFun::Base64Decode),
-        parser::call_fun_args1::<PathGet>.map(PipeFun::PathGet),
-        parser::call_fun_args1::<UrlGet>.map(PipeFun::UrlGet),
-        PIPE_HTML_ESCAPE.map(|_| PipeFun::HtmlEscape(HtmlEscape::default())),
-        PIPE_HTML_UNESCAPE.map(|_| PipeFun::HtmlUnescape(HtmlUnescape::default())),
-        PIPE_STR_ESCAPE.map(|_| PipeFun::StrEscape(StrEscape::default())),
-        PIPE_JSON_ESCAPE.map(|_| PipeFun::JsonEscape(JsonEscape::default())),
-        PIPE_JSON_UNESCAPE.map(|_| PipeFun::JsonUnescape(JsonUnescape::default())),
-        PIPE_BASE64_ENCODE.map(|_| PipeFun::Base64Encode(Base64Encode::default())),
-        PIPE_TIME_TO_TS_MS.map(|_| PipeFun::TimeToTsMs(TimeToTsMs::default())),
-        PIPE_TIME_TO_TS_US.map(|_| PipeFun::TimeToTsUs(TimeToTsUs::default())),
-        PIPE_TIME_TO_TS.map(|_| PipeFun::TimeToTs(TimeToTs::default())),
-        PIPE_TO_JSON.map(|_| PipeFun::ToJson(ToJson::default())),
-        PIPE_TO_STR.map(|_| PipeFun::ToStr(ToStr::default())),
-        PIPE_SKIP_EMPTY.map(|_| PipeFun::SkipEmpty(SkipEmpty::default())),
-        PIPE_IP4_TO_INT.map(|_| PipeFun::Ip4ToInt(Ip4ToInt::default())),
+        alt((
+            parser::call_fun_args2::<TimeToTsZone>.map(PipeFun::TimeToTsZone),
+            parser::call_fun_args1::<Nth>.map(PipeFun::Nth),
+            parser::call_fun_args1::<Get>.map(PipeFun::Get),
+            parser::call_fun_args1::<StartsWith>.map(PipeFun::StartsWith),
+            parser::call_fun_args1::<MapTo>.map(PipeFun::MapTo),
+            parser::call_fun_args1::<Base64Decode>.map(PipeFun::Base64Decode),
+            parser::call_fun_args1::<PathGet>.map(PipeFun::PathGet),
+            parser::call_fun_args1::<UrlGet>.map(PipeFun::UrlGet),
+        )),
+        alt((
+            PIPE_HTML_ESCAPE.map(|_| PipeFun::HtmlEscape(HtmlEscape::default())),
+            PIPE_HTML_UNESCAPE.map(|_| PipeFun::HtmlUnescape(HtmlUnescape::default())),
+            PIPE_STR_ESCAPE.map(|_| PipeFun::StrEscape(StrEscape::default())),
+            PIPE_JSON_ESCAPE.map(|_| PipeFun::JsonEscape(JsonEscape::default())),
+            PIPE_JSON_UNESCAPE.map(|_| PipeFun::JsonUnescape(JsonUnescape::default())),
+            PIPE_BASE64_ENCODE.map(|_| PipeFun::Base64Encode(Base64Encode::default())),
+            PIPE_TIME_TO_TS_MS.map(|_| PipeFun::TimeToTsMs(TimeToTsMs::default())),
+            PIPE_TIME_TO_TS_US.map(|_| PipeFun::TimeToTsUs(TimeToTsUs::default())),
+            PIPE_TIME_TO_TS.map(|_| PipeFun::TimeToTs(TimeToTs::default())),
+            PIPE_TO_JSON.map(|_| PipeFun::ToJson(ToJson::default())),
+            PIPE_TO_STR.map(|_| PipeFun::ToStr(ToStr::default())),
+            PIPE_SKIP_EMPTY.map(|_| PipeFun::SkipEmpty(SkipEmpty::default())),
+            PIPE_IP4_TO_INT.map(|_| PipeFun::Ip4ToInt(Ip4ToInt::default())),
+        )),
     ))
     .context(StrContext::Label("pipe fun"))
     .context(ctx_desc("fun not found!"))

@@ -192,6 +192,12 @@ pub struct RegexMatch {
     pub(crate) pattern: SmolStr, // 正则表达式模式
 }
 
+/// 字符串前缀匹配函数
+#[derive(Clone, Debug, PartialEq)]
+pub struct StartsWith {
+    pub(crate) prefix: SmolStr, // 要匹配的前缀
+}
+
 /// Normalizes the target field name: converts "_" to None
 pub(crate) fn normalize_target(target: SmolStr) -> Option<SmolStr> {
     if target == "_" { None } else { Some(target) }

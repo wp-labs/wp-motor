@@ -24,6 +24,8 @@ impl ValueProcessor for PipeFun {
             PipeFun::TimeToTsZone(o) => o.value_cacu(in_val),
             PipeFun::Nth(o) => o.value_cacu(in_val),
             PipeFun::Get(o) => o.value_cacu(in_val),
+            PipeFun::StartsWith(o) => o.value_cacu(in_val),
+            PipeFun::MapTo(o) => o.value_cacu(in_val),
             PipeFun::ToStr(o) => o.value_cacu(in_val),
             PipeFun::ToJson(o) => o.value_cacu(in_val),
             PipeFun::SkipEmpty(o) => o.value_cacu(in_val),

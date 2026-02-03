@@ -24,8 +24,8 @@ use crate::ast::{
     processor::{
         CharsHas, CharsIn, CharsInArg, CharsNotHas, CharsNotHasArg, CharsValue, DigitHas,
         DigitHasArg, DigitIn, DigitInArg, DigitRange, Has, HasArg, IpIn, IpInArg, RegexMatch,
-        ReplaceFunc, SelectLast, TakeField, TargetCharsHas, TargetCharsIn, TargetCharsNotHas,
-        TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn, normalize_target,
+        ReplaceFunc, SelectLast, StartsWith, TakeField, TargetCharsHas, TargetCharsIn,
+        TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn, normalize_target,
     },
 };
 
@@ -118,34 +118,40 @@ fn take_string_or_quoted(input: &mut &str) -> WResult<String> {
 pub fn wpl_fun(input: &mut &str) -> WResult<WplFun> {
     multispace0.parse_next(input)?;
     let fun = alt((
-        // Put digit_range first to avoid any prefix matching issues
-        call_fun_args2::<DigitRangeArg>.map(|arg| {
-            WplFun::DigitRange(DigitRange {
-                begin: arg.begin,
-                end: arg.end,
-            })
-        }),
-        call_fun_args1::<RegexMatch>.map(WplFun::RegexMatch),
-        call_fun_args1::<TakeField>.map(WplFun::SelectTake),
-        call_fun_args0::<SelectLast>.map(WplFun::SelectLast),
-        call_fun_args2::<TargetCharsHas>.map(WplFun::TargetCharsHas),
-        call_fun_args1::<CharsHas>.map(WplFun::CharsHas),
-        call_fun_args2::<TargetCharsNotHas>.map(WplFun::TargetCharsNotHas),
-        call_fun_args1::<CharsNotHasArg>
-            .map(|arg| WplFun::CharsNotHas(CharsNotHas { value: arg.value })),
-        call_fun_args2::<TargetCharsIn>.map(WplFun::TargetCharsIn),
-        call_fun_args1::<CharsInArg>.map(|arg| WplFun::CharsIn(CharsIn { value: arg.value })),
-        call_fun_args2::<TargetDigitHas>.map(WplFun::TargetDigitHas),
-        call_fun_args1::<DigitHasArg>.map(|arg| WplFun::DigitHas(DigitHas { value: arg.value })),
-        call_fun_args2::<TargetDigitIn>.map(WplFun::TargetDigitIn),
-        call_fun_args1::<DigitInArg>.map(|arg| WplFun::DigitIn(DigitIn { value: arg.value })),
-        call_fun_args2::<TargetIpIn>.map(WplFun::TargetIpIn),
-        call_fun_args1::<IpInArg>.map(|arg| WplFun::IpIn(IpIn { value: arg.value })),
-        call_fun_args1::<TargetHas>.map(WplFun::TargetHas),
-        call_fun_args0::<HasArg>.map(|_| WplFun::Has(Has)),
-        call_fun_args0::<JsonUnescape>.map(WplFun::TransJsonUnescape),
-        call_fun_args0::<Base64Decode>.map(WplFun::TransBase64Decode),
-        call_fun_args2::<ReplaceFunc>.map(WplFun::TransCharsReplace),
+        alt((
+            // Put digit_range first to avoid any prefix matching issues
+            call_fun_args2::<DigitRangeArg>.map(|arg| {
+                WplFun::DigitRange(DigitRange {
+                    begin: arg.begin,
+                    end: arg.end,
+                })
+            }),
+            call_fun_args1::<RegexMatch>.map(WplFun::RegexMatch),
+            call_fun_args1::<StartsWith>.map(WplFun::StartsWith),
+            call_fun_args1::<TakeField>.map(WplFun::SelectTake),
+            call_fun_args0::<SelectLast>.map(WplFun::SelectLast),
+            call_fun_args2::<TargetCharsHas>.map(WplFun::TargetCharsHas),
+            call_fun_args1::<CharsHas>.map(WplFun::CharsHas),
+            call_fun_args2::<TargetCharsNotHas>.map(WplFun::TargetCharsNotHas),
+            call_fun_args1::<CharsNotHasArg>
+                .map(|arg| WplFun::CharsNotHas(CharsNotHas { value: arg.value })),
+            call_fun_args2::<TargetCharsIn>.map(WplFun::TargetCharsIn),
+            call_fun_args1::<CharsInArg>.map(|arg| WplFun::CharsIn(CharsIn { value: arg.value })),
+        )),
+        alt((
+            call_fun_args2::<TargetDigitHas>.map(WplFun::TargetDigitHas),
+            call_fun_args1::<DigitHasArg>
+                .map(|arg| WplFun::DigitHas(DigitHas { value: arg.value })),
+            call_fun_args2::<TargetDigitIn>.map(WplFun::TargetDigitIn),
+            call_fun_args1::<DigitInArg>.map(|arg| WplFun::DigitIn(DigitIn { value: arg.value })),
+            call_fun_args2::<TargetIpIn>.map(WplFun::TargetIpIn),
+            call_fun_args1::<IpInArg>.map(|arg| WplFun::IpIn(IpIn { value: arg.value })),
+            call_fun_args1::<TargetHas>.map(WplFun::TargetHas),
+            call_fun_args0::<HasArg>.map(|_| WplFun::Has(Has)),
+            call_fun_args0::<JsonUnescape>.map(WplFun::TransJsonUnescape),
+            call_fun_args0::<Base64Decode>.map(WplFun::TransBase64Decode),
+            call_fun_args2::<ReplaceFunc>.map(WplFun::TransCharsReplace),
+        )),
     ))
     .parse_next(input)?;
     Ok(fun)
@@ -543,6 +549,24 @@ impl Fun1Builder for RegexMatch {
 
     fn build(args: Self::ARG1) -> Self {
         Self { pattern: args }
+    }
+}
+
+impl Fun1Builder for StartsWith {
+    type ARG1 = SmolStr;
+
+    fn args1(data: &mut &str) -> WResult<Self::ARG1> {
+        multispace0.parse_next(data)?;
+        let val = take_string_or_quoted.parse_next(data)?;
+        Ok(val.into())
+    }
+
+    fn fun_name() -> &'static str {
+        "start_with"
+    }
+
+    fn build(args: Self::ARG1) -> Self {
+        Self { prefix: args }
     }
 }
 
@@ -996,5 +1020,32 @@ mod tests {
                 pattern: r"^(GET|POST|PUT)$".into(),
             })
         );
+    }
+
+    #[test]
+    fn test_parse_start_with() {
+        let mut wpl_fun = wpl_fun;
+
+        // start_with with simple prefix
+        let fun = wpl_fun.parse(r"start_with('http')").assert();
+        assert_eq!(
+            fun,
+            WplFun::StartsWith(StartsWith {
+                prefix: "http".into(),
+            })
+        );
+
+        // start_with with complex prefix
+        let fun = wpl_fun.parse(r"start_with('https://')").assert();
+        assert_eq!(
+            fun,
+            WplFun::StartsWith(StartsWith {
+                prefix: "https://".into(),
+            })
+        );
+
+        // start_with with single character
+        let fun = wpl_fun.parse(r"start_with('/')").assert();
+        assert_eq!(fun, WplFun::StartsWith(StartsWith { prefix: "/".into() }));
     }
 }
