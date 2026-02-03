@@ -5,16 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.13.0 Unreleased]
+## [1.13.3 Unreleased]
+
+### Fixed
+- **WPL Parser**: Fix compilation errors in pattern parser implementations by adding missing `event_id` parameter to all trait methods
+- **Runtime**: Remove unused `debug_data` import in vm_unit module
+
+
+## [1.13.2] - 2026-02-03
 
 ### Added
 - **WPL Parser**: Add support for `\t` (tab) and `\S` (non-whitespace) separators in parsing expressions
 - **WPL Parser**: Add support for quoted field names with special characters (e.g., `"field.name"`, `"field-name"`) #16
 - **WPL Functions**: Add `chars_replace` function for character-level string replacement #13
+- **WPL Functions**: Add `regex_match` function for regex pattern matching
+- **WPL Functions**: Add `digit_range` function for numeric range validation
+- **Documentation**: Add multi-language documentation structure for WPL guides
 
 ### Changed
 - **Logging**: Optimize high-frequency log paths with `log_enabled!` guard to eliminate loop overhead when log level is filtered
 - **Logging**: Add `event_id` to debug messages for better traceability
+- **WPL Parser**: Add `event_id` parameter to `PatternParser` trait for improved event tracing across all parser implementations
+
+### Fixed
+- **Miss Sink**: Remove base64 encoding from raw data display to show actual content
+- **Data Rescue**: Fix lost rescue data problem #19
 
 ### Removed
 - **Syslog UDP Source**: Remove `SO_REUSEPORT` multi-instance support
