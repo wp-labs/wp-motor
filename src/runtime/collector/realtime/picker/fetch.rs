@@ -170,7 +170,7 @@ impl JMActPicker {
                                 for v in &batch {
                                     info_edata!(
                                         v.event_id,
-                                        "[{}] => received  data:\n{}",source.identifier(), v.payload
+                                        "[{}] => received  data:{}",source.identifier(), v.payload
                                     );
                                 }
                             }
