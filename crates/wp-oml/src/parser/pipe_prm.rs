@@ -338,4 +338,30 @@ mod tests {
         println!("err:{}, \nwhere:{}", e, code);
         assert!(e.to_string().contains("need 'pipe' keyword"));
     }
+
+    #[test]
+    fn test_pipe_optional_keyword() -> WResult<()> {
+        use crate::parser::pipe_prm::oml_aga_pipe_noprefix;
+        use wp_parser::Parser;
+
+        // Test pipe without 'pipe' keyword - should parse successfully
+        let mut code = r#" take(ip) | to_str | to_json"#;
+        let result = oml_aga_pipe_noprefix.parse_next(&mut code);
+        assert!(result.is_ok(), "Should parse without 'pipe' keyword");
+        println!("Parsed: {}", result.unwrap());
+
+        let mut code = r#" read(url) | starts_with('https://') | map_to(true)"#;
+        let result = oml_aga_pipe_noprefix.parse_next(&mut code);
+        assert!(result.is_ok(), "Should parse starts_with and map_to");
+
+        let mut code = r#" take(field) | base64_encode | base64_decode(Utf8)"#;
+        let result = oml_aga_pipe_noprefix.parse_next(&mut code);
+        assert!(result.is_ok(), "Should parse base64 functions");
+
+        let mut code = r#" read(path) | skip_empty | path(name)"#;
+        let result = oml_aga_pipe_noprefix.parse_next(&mut code);
+        assert!(result.is_ok(), "Should parse skip_empty and path");
+
+        Ok(())
+    }
 }

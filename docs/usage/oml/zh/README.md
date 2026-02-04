@@ -39,14 +39,19 @@
 
 ### 基本管道结构
 
+**注意**：`pipe` 关键字是可选的，可以省略直接写管道函数链。
+
 ```oml
 name : my_rule
 ---
-# 1. 提取字段
+# 完整写法（带 pipe 关键字）
 result = pipe take(source_field)
-    # 2. 过滤条件
     | starts_with('prefix')
-    # 3. 值映射
+    | map_to('mapped_value');
+
+# 简化写法（省略 pipe 关键字） - 推荐
+result = take(source_field)
+    | starts_with('prefix')
     | map_to('mapped_value');
 ```
 
@@ -57,7 +62,11 @@ result = pipe take(source_field)
 ```oml
 name : filter_https
 ---
-secure_url = pipe take(url) | starts_with('https://');
+# 简化写法（推荐）
+secure_url = take(url) | starts_with('https://');
+
+# 完整写法
+# secure_url = pipe take(url) | starts_with('https://');
 ```
 
 #### 模式 2: 条件标记
@@ -65,7 +74,8 @@ secure_url = pipe take(url) | starts_with('https://');
 ```oml
 name : mark_secure
 ---
-is_secure = pipe take(url)
+# 简化写法（推荐）
+is_secure = take(url)
     | starts_with('https://')
     | map_to(true);
 ```
@@ -76,13 +86,13 @@ is_secure = pipe take(url)
 name : classify_protocols
 ---
 # HTTP 分类
-http_level = pipe take(url) | starts_with('http://') | map_to(1);
+http_level = take(url) | starts_with('http://') | map_to(1);
 
 # HTTPS 分类
-https_level = pipe take(url) | starts_with('https://') | map_to(3);
+https_level = take(url) | starts_with('https://') | map_to(3);
 
 # FTP 分类
-ftp_level = pipe take(url) | starts_with('ftp://') | map_to(2);
+ftp_level = take(url) | starts_with('ftp://') | map_to(2);
 ```
 
 #### 模式 4: 路径规范化
@@ -91,10 +101,10 @@ ftp_level = pipe take(url) | starts_with('ftp://') | map_to(2);
 name : normalize_paths
 ---
 # 只接受 API v1 路径
-api_v1 = pipe take(path) | starts_with('/api/v1/');
+api_v1 = take(path) | starts_with('/api/v1/');
 
 # 只接受 API v2 路径
-api_v2 = pipe take(path) | starts_with('/api/v2/');
+api_v2 = take(path) | starts_with('/api/v2/');
 ```
 
 ## 📖 函数选择指南
@@ -168,6 +178,86 @@ priority = pipe take(field) | map_to(100);
 threshold = pipe take(field) | map_to(100.0);
 ```
 
+## 💡 临时字段
+
+OML 支持使用临时字段进行中间计算，这些字段在最终输出时会被自动过滤。
+
+### 临时字段规则
+
+- **命名规则**：字段名以 `__` （双下划线）开头的字段被视为临时字段
+- **正常使用**：临时字段可以在规则中正常使用和引用
+- **自动过滤**：转换完成后，临时字段会自动标记为 `ignore` 类型
+- **零成本**：无临时字段时几乎无性能开销（~1ns）
+
+### 性能特性
+
+OML 采用**解析时检测 + 运行时条件过滤**的优化策略：
+
+| 场景 | 性能开销 | 说明 |
+|------|---------|------|
+| 无临时字段 | **~1ns** | 仅条件检查，99%+ 成本节省 |
+| 有临时字段 | ~500ns | 执行过滤逻辑 |
+| 解析时检测 | ~50-500ns | 一次性成本，可忽略 |
+
+**优化效果**：
+- 在解析阶段检测是否使用了临时字段
+- 运行时仅在必要时执行过滤
+- 大多数场景（无临时字段）几乎零开销
+
+### 使用示例
+
+```oml
+name : example
+---
+# 定义临时字段用于中间计算
+__protocol = take(url) | starts_with('https://') | map_to('https');
+__is_secure = match read(__protocol) {
+    chars(https) => chars(true),
+    _ => chars(false),
+};
+
+# 最终输出字段
+security_level = match read(__is_secure) {
+    chars(true) => chars(high),
+    _ => chars(low),
+};
+```
+
+**输出结果**：
+- `__protocol` - ignore 类型（自动过滤）
+- `__is_secure` - ignore 类型（自动过滤）
+- `security_level` - 正常输出
+
+### 使用场景
+
+1. **复杂计算分解**：将复杂逻辑分解为多个步骤
+2. **中间状态保存**：保存中间计算结果供后续使用
+3. **避免重复计算**：将公共计算结果存储在临时字段中
+4. **提高可读性**：通过命名临时字段使规则更易理解
+
+### 最佳实践
+
+```oml
+name : best_practice
+---
+# ✅ 推荐：使用临时字段分解复杂逻辑
+__url_type = match read(url) {
+    starts_with('https://') => chars(secure),
+    starts_with('http://') => chars(insecure),
+    _ => chars(unknown),
+};
+
+__port = take(port) | map_to(443);
+
+final_endpoint = fmt("{}://{}", @__url_type, @__port);
+
+# ❌ 不推荐：复杂的嵌套表达式
+# final_endpoint = fmt("{}://{}",
+#     match read(url) { starts_with('https://') => chars(secure), ... },
+#     take(port) | map_to(443)
+# );
+```
+
 ## 🔧 调试技巧
 
 ### 1. 分步测试
@@ -235,6 +325,9 @@ result = pipe take(url)
   - 数值比较：`gt`, `lt`, `eq`, `in_range`
 - ⭐ **新增** `starts_with` pipe 函数 - 字符串前缀匹配
 - ⭐ **新增** `map_to` pipe 函数 - 类型感知的条件值赋值
+- ⭐ **新增** 引号字符串支持 - `chars('hello world')` 支持包含空格的字符串
+- ⭐ **新增** 临时字段自动过滤 - 以 `__` 开头的字段自动标记为 ignore
+- 🔧 **改进** `pipe` 关键字变为可选 - 可简写为 `take(field) | func`
 - 📖 完善使用文档和示例
 
 ## 📞 获取帮助

@@ -24,6 +24,18 @@ impl DataTransformer for ObjModel {
             ado.eval_proc(&mut tdo_ref, &mut out, cache);
         }
         debug_data!("{} convert crate item : {}", self.name(), self.items.len());
+
+        // Filter temporary fields only if the model has any
+        // This check is performed at parse time for zero-cost abstraction
+        if self.has_temp_fields() {
+            // Convert fields starting with "__" to ignore type
+            for field in &mut out.items {
+                if field.get_name().starts_with("__") {
+                    *field = DataField::from_ignore(field.get_name());
+                }
+            }
+        }
+
         out
     }
 

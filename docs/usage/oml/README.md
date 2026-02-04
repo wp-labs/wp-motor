@@ -93,3 +93,53 @@ Functions used in pipe chains for data transformation:
 - String matching functions: `starts_with`, `ends_with`, `contains`, `regex_match`, `is_empty`, `iequals`
 - Numeric comparison functions: `gt`, `lt`, `eq`, `in_range`
 - Pipe functions: `starts_with`, `map_to`
+- ⭐ Temporary fields with `__` prefix - automatic filtering after transformation
+- ⭐ Quoted string support: `chars('hello world')`
+- `pipe` keyword is now optional
+
+## 💡 Temporary Fields
+
+OML supports temporary fields for intermediate calculations with automatic filtering.
+
+### Naming Convention
+
+Fields starting with `__` (double underscore) are treated as temporary fields:
+
+```oml
+name : example
+---
+# Temporary fields (auto-filtered)
+__protocol = take(url) | starts_with('https://') | map_to('https');
+__is_secure = match read(__protocol) {
+    chars(https) => chars(true),
+    _ => chars(false),
+};
+
+# Final output field
+security_level = match read(__is_secure) {
+    chars(true) => chars(high),
+    _ => chars(low),
+};
+```
+
+**Output**:
+- `__protocol` → ignore type (filtered)
+- `__is_secure` → ignore type (filtered)
+- `security_level` → normal output
+
+### Performance
+
+OML uses **parse-time detection + runtime conditional filtering**:
+
+| Scenario | Overhead | Description |
+|----------|----------|-------------|
+| No temp fields | **~1ns** | Skip filtering (99%+ cost reduction) |
+| With temp fields | ~500ns | Execute filtering logic |
+| Parse-time check | ~50-500ns | One-time cost (negligible) |
+
+### Use Cases
+
+1. **Complex logic decomposition** - Break down complex rules into steps
+2. **Intermediate state** - Store intermediate results for reuse
+3. **Avoid duplication** - Cache common calculations
+4. **Readability** - Name intermediate values for clarity

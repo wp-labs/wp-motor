@@ -10,6 +10,8 @@ pub struct ObjModel {
     name: String,
     rules: WildArray,
     pub items: Vec<EvalExp>,
+    #[getter(skip)]
+    has_temp_fields: bool,
 }
 
 impl ObjModel {
@@ -17,6 +19,14 @@ impl ObjModel {
         if let Some(rules) = rules_opt {
             self.rules = WildArray::new1(rules);
         }
+    }
+
+    pub fn has_temp_fields(&self) -> bool {
+        self.has_temp_fields
+    }
+
+    pub(crate) fn set_has_temp_fields(&mut self, has_temp: bool) {
+        self.has_temp_fields = has_temp;
     }
 }
 
@@ -26,6 +36,7 @@ impl ObjModel {
             name,
             rules: WildArray::default(),
             items: Vec::new(),
+            has_temp_fields: false,
         }
     }
 }

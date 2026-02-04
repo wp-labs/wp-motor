@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **OML Pipe Functions**: Add `starts_with` pipe function for OML query language
   - Supports same prefix matching functionality as WPL
   - Returns ignore field when prefix doesn't match
-  - Usage: `pipe take(field) | starts_with('prefix')`
+  - Usage: `pipe take(field) | starts_with('prefix')` or `take(field) | starts_with('prefix')`
 - **OML Pipe Functions**: Add `map_to` pipe function for type-aware conditional value assignment
   - Replaces field value when field is not ignore
   - Supports multiple types with automatic type inference: string, integer, float, boolean
@@ -51,6 +51,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Escape sequence support: `\n`, `\r`, `\t`, `\\`, `\'`, `\"`
   - Backward compatible with unquoted syntax: `chars(hello)`
   - Works in all contexts: field assignments, match expressions, etc.
+- **OML Transformer**: Add automatic temporary field filtering with performance optimization
+  - Fields with names starting with `__` are automatically converted to ignore type after transformation
+  - Parse-time detection: checks for temporary fields during OML parsing (one-time cost ~50-500ns)
+  - Runtime optimization: skips filtering entirely when no temporary fields exist (~99% cost reduction)
+  - Enables using intermediate/temporary fields in calculations without polluting final output
+  - Example: `__temp = chars(value); result = pipe take(__temp) | base64_encode;`
+  - The `__temp` field will be marked as ignore in the final output
+  - Performance: ~1ns overhead for models without temp fields, ~500ns for models with temp fields
+
+### Changed
+- **OML Syntax**: `pipe` keyword is now optional in pipe expressions
+  - Both `pipe take(field) | func` and `take(field) | func` are supported
+  - Simplified syntax improves readability
+  - Display output always includes `pipe` for consistency
 
 
 ## [1.13.3] - 2026-02-03

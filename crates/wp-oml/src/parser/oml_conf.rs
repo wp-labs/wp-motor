@@ -36,6 +36,11 @@ pub fn oml_conf_code(data: &mut &str) -> WResult<ObjModel> {
     debug_rule!("obj model: aggregate item  loaded!");
     //repeat(1.., terminated(oml_aggregate, symbol_semicolon)).parse_next(data)?;
     a_items.items.append(&mut items);
+
+    // Check if any field name starts with "__" (temporary field marker)
+    let has_temp = check_temp_fields(&a_items.items);
+    a_items.set_has_temp_fields(has_temp);
+
     multispace0.parse_next(data)?;
     if !data.is_empty() {
         if peek_str("---", data).is_ok() {
@@ -46,6 +51,43 @@ pub fn oml_conf_code(data: &mut &str) -> WResult<ObjModel> {
         }
     }
     Ok(a_items)
+}
+
+/// Check if any evaluation expression has a target field starting with "__"
+fn check_temp_fields(items: &[EvalExp]) -> bool {
+    for item in items {
+        match item {
+            EvalExp::Single(single) => {
+                if check_targets_temp(single.target()) {
+                    return true;
+                }
+            }
+            EvalExp::Batch(batch) => {
+                if check_batch_target_temp(batch.target()) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn check_targets_temp(targets: &[crate::language::EvaluationTarget]) -> bool {
+    targets.iter().any(|t| {
+        t.name()
+            .as_ref()
+            .map(|n| n.starts_with("__"))
+            .unwrap_or(false)
+    })
+}
+
+fn check_batch_target_temp(target: &crate::language::BatchEvalTarget) -> bool {
+    target
+        .origin()
+        .name()
+        .as_ref()
+        .map(|n| n.starts_with("__"))
+        .unwrap_or(false)
 }
 
 pub fn oml_conf_head(data: &mut &str) -> WResult<String> {
@@ -124,6 +166,35 @@ version      : chars   = pipe take() | base64_encode  ;
 version      : chars   = pipe take(ip) | to_str |  base64_encode ;
         "#;
         assert_oml_parse(&mut code, oml_parse_raw);
+        Ok(())
+    }
+
+    #[test]
+    fn test_conf_pipe_optional_keyword() -> ModalResult<()> {
+        use orion_error::TestAssert;
+
+        // Test pipe without 'pipe' keyword - should parse successfully
+        let mut code = r#"
+name : test
+---
+url_secure = take(url) | starts_with('https://') | map_to(true) ;
+encoded = read(data) | base64_encode ;
+        "#;
+        let model = oml_parse_raw(&mut code).assert();
+        assert_eq!(model.name(), "test");
+        assert_eq!(model.items.len(), 2);
+
+        // Test mixed usage: with and without 'pipe' keyword
+        let mut code = r#"
+name : test
+---
+version1 = pipe take(ip) | to_str | base64_encode ;
+version2 = take(ip) | to_str | base64_encode ;
+        "#;
+        let model = oml_parse_raw(&mut code).assert();
+        assert_eq!(model.name(), "test");
+        assert_eq!(model.items.len(), 2);
+
         Ok(())
     }
     #[test]
@@ -243,6 +314,162 @@ msg = chars('hello\nworld');
         "#;
         let model2 = oml_parse_raw(&mut code2).assert();
         assert_eq!(model2.name(), "test");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_temp_field_filter() -> ModalResult<()> {
+        use crate::core::DataTransformer;
+        use orion_error::TestAssert;
+        use wp_data_model::cache::FieldQueryCache;
+        use wp_model_core::model::{DataRecord, DataType};
+
+        // Test that fields starting with "__" are converted to ignore type
+        let mut code = r#"
+name : test
+---
+__temp = chars(temporary);
+result = chars(final);
+__another_temp = chars(also_temp);
+        "#;
+        let model = oml_parse_raw(&mut code).assert();
+        assert_eq!(model.name(), "test");
+
+        // Transform with empty input
+        let cache = &mut FieldQueryCache::default();
+        let input = DataRecord::default();
+        let output = model.transform(input, cache);
+
+        // Check that normal fields are preserved
+        let result_field = output.field("result");
+        assert!(result_field.is_some(), "Normal field 'result' should exist");
+        assert_eq!(result_field.unwrap().get_meta(), &DataType::Chars);
+        assert_eq!(result_field.unwrap().get_value().to_string(), "final");
+
+        // Check that temporary fields are converted to ignore type
+        let temp_field = output.field("__temp");
+        assert!(
+            temp_field.is_some(),
+            "Temporary field '__temp' should exist"
+        );
+        assert_eq!(
+            temp_field.unwrap().get_meta(),
+            &DataType::Ignore,
+            "Temporary field should be Ignore type"
+        );
+
+        let another_temp_field = output.field("__another_temp");
+        assert!(
+            another_temp_field.is_some(),
+            "Temporary field '__another_temp' should exist"
+        );
+        assert_eq!(
+            another_temp_field.unwrap().get_meta(),
+            &DataType::Ignore,
+            "Temporary field should be Ignore type"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_temp_field_in_computation() -> ModalResult<()> {
+        use crate::core::DataTransformer;
+        use orion_error::TestAssert;
+        use wp_data_model::cache::FieldQueryCache;
+        use wp_model_core::model::{DataRecord, DataType};
+
+        // Test that temporary fields can be used in intermediate computation
+        // Simple test: use temp field in match expression
+        let mut code = r#"
+name : test
+---
+__temp_type = chars(error);
+result = match read(__temp_type) {
+    chars(error) => chars(failed),
+    _ => chars(ok),
+};
+        "#;
+        let model = oml_parse_raw(&mut code).assert();
+
+        let cache = &mut FieldQueryCache::default();
+        let input = DataRecord::default();
+        let output = model.transform(input, cache);
+
+        // Debug: print all fields
+        println!("Output fields:");
+        for field in &output.items {
+            println!(
+                "  {}: {} = {:?}",
+                field.get_name(),
+                field.get_meta(),
+                field.get_value()
+            );
+        }
+
+        // Check that the final result field exists
+        let result = output.field("result");
+        assert!(result.is_some(), "Result field should exist");
+
+        // Check that temporary field is converted to ignore type
+        let temp_field = output.field("__temp_type");
+        assert!(temp_field.is_some());
+        assert_eq!(
+            temp_field.unwrap().get_meta(),
+            &DataType::Ignore,
+            "__temp_type should be Ignore type"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_temp_field_flag() -> ModalResult<()> {
+        use orion_error::TestAssert;
+
+        // Test case 1: Model with no temporary fields
+        let mut code_no_temp = r#"
+name : test
+---
+normal1 = chars(value1);
+normal2 = chars(value2);
+        "#;
+        let model_no_temp = oml_parse_raw(&mut code_no_temp).assert();
+        assert_eq!(
+            model_no_temp.has_temp_fields(),
+            false,
+            "Should not have temp fields flag"
+        );
+
+        // Test case 2: Model with temporary fields
+        let mut code_with_temp = r#"
+name : test
+---
+__temp = chars(temp_value);
+normal = chars(normal_value);
+        "#;
+        let model_with_temp = oml_parse_raw(&mut code_with_temp).assert();
+        assert_eq!(
+            model_with_temp.has_temp_fields(),
+            true,
+            "Should have temp fields flag"
+        );
+
+        // Test case 3: Multiple temporary fields
+        let mut code_multi_temp = r#"
+name : test
+---
+__temp1 = chars(value1);
+normal = chars(value2);
+__temp2 = chars(value3);
+        "#;
+        let model_multi_temp = oml_parse_raw(&mut code_multi_temp).assert();
+        assert_eq!(
+            model_multi_temp.has_temp_fields(),
+            true,
+            "Should have temp fields flag"
+        );
 
         Ok(())
     }
