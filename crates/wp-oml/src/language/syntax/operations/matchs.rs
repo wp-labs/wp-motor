@@ -53,6 +53,7 @@ impl Display for MatchFun {
             if arg.parse::<f64>().is_ok() {
                 write!(f, "{}({})", self.name, arg)
             } else {
+                // Don't escape - quot_str returns raw content with escape sequences intact
                 write!(f, "{}('{}')", self.name, arg)
             }
         } else {
@@ -65,6 +66,7 @@ impl Display for MatchFun {
                 if arg.parse::<f64>().is_ok() {
                     write!(f, "{}", arg)?;
                 } else {
+                    // Don't escape - quot_str returns raw content with escape sequences intact
                     write!(f, "'{}'", arg)?;
                 }
             }

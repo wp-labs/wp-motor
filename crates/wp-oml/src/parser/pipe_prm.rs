@@ -18,6 +18,7 @@ use winnow::ascii::{alphanumeric0, digit1, multispace0};
 use winnow::combinator::{alt, fail, opt, repeat};
 use winnow::error::{ContextError, ErrMode, StrContext};
 use winnow::stream::Stream; // for checkpoint/reset on &str
+use winnow::token::take;
 use wp_parser::Parser;
 use wp_parser::WResult;
 use wp_parser::fun::fun_trait::{Fun1Builder, Fun2Builder};
@@ -130,15 +131,51 @@ impl Fun1Builder for MapTo {
             return Ok(MapValue::Bool(false));
         }
 
-        // 尝试解析数字（浮点数或整数）
+        // 尝试解析数字：先尝试整数，失败时再尝试浮点数
         let checkpoint = data.checkpoint();
-        if let Ok(f) = float::<&str, f64, ContextError>.parse_next(data) {
-            // 检查是否为整数
-            if f.fract() == 0.0 && f.abs() <= i64::MAX as f64 {
-                return Ok(MapValue::Digit(f as i64));
-            } else {
-                return Ok(MapValue::Float(f));
+
+        // Try parsing as integer first (to avoid precision loss for large integers)
+        // Use digit1 to capture the numeric string, then parse directly
+
+        // Check for optional negative sign
+        let has_minus = literal::<&str, &str, ContextError>("-")
+            .parse_next(data)
+            .is_ok();
+
+        // Try to parse digits
+        if let Ok(digits) = digit1::<&str, ContextError>.parse_next(data) {
+            // Peek next char - if it's '.' or 'e'/'E', it's a float
+            let peek_checkpoint = data.checkpoint();
+            let next_char = opt(take::<usize, &str, ContextError>(1usize)).parse_next(data);
+            data.reset(&peek_checkpoint);
+
+            let is_float = next_char
+                .ok()
+                .flatten()
+                .map(|c| c == "." || c == "e" || c == "E")
+                .unwrap_or(false);
+
+            if !is_float {
+                // It's an integer
+                let num_str = if has_minus {
+                    format!("-{}", digits)
+                } else {
+                    digits.to_string()
+                };
+
+                if let Ok(i) = num_str.parse::<i64>() {
+                    return Ok(MapValue::Digit(i));
+                } else {
+                    warn_rule!("integer out of range: {}", num_str);
+                    // Fall through to try float parsing
+                }
             }
+        }
+
+        // Reset and try parsing as float
+        data.reset(&checkpoint);
+        if let Ok(f) = float::<&str, f64, ContextError>.parse_next(data) {
+            return Ok(MapValue::Float(f));
         }
         data.reset(&checkpoint);
 
@@ -361,6 +398,98 @@ mod tests {
         let mut code = r#" read(path) | skip_empty | path(name)"#;
         let result = oml_aga_pipe_noprefix.parse_next(&mut code);
         assert!(result.is_ok(), "Should parse skip_empty and path");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_map_to_large_integers() -> WResult<()> {
+        use crate::parser::pipe_prm::oml_aga_pipe;
+        use wp_parser::Parser;
+
+        // Test large integer that would lose precision if parsed as f64 first
+        // 9007199254740993 is 2^53 + 1, which cannot be exactly represented in f64
+        let mut code = r#" pipe take(field) | map_to(9007199254740993)"#;
+        let result = oml_aga_pipe.parse_next(&mut code);
+        assert!(result.is_ok(), "Should parse large integer");
+
+        let parsed = result.unwrap();
+        let output = format!("{}", parsed);
+        println!("Parsed large integer: {}", output);
+
+        // Verify it contains the exact integer (not truncated)
+        assert!(
+            output.contains("9007199254740993"),
+            "Large integer should be preserved exactly"
+        );
+
+        // Test negative large integer
+        let mut code2 = r#" pipe take(field) | map_to(-9007199254740993)"#;
+        let result2 = oml_aga_pipe.parse_next(&mut code2);
+        assert!(result2.is_ok(), "Should parse negative large integer");
+
+        let parsed2 = result2.unwrap();
+        let output2 = format!("{}", parsed2);
+        assert!(
+            output2.contains("-9007199254740993"),
+            "Negative large integer should be preserved exactly"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_string_escaping_round_trip() -> WResult<()> {
+        use crate::parser::pipe_prm::oml_aga_pipe;
+        use wp_parser::Parser;
+
+        // Test round-trip parsing: parse -> display -> parse
+        // The key is that Display output should be parseable
+        let test_cases = vec![
+            r#" pipe take(field) | starts_with('O\'Reilly')"#,
+            r#" pipe take(field) | starts_with('Bob\'s site')"#,
+            r#" pipe take(field) | starts_with('path\\with\\backslash')"#,
+            r#" pipe take(field) | starts_with('line1\nline2')"#,
+            r#" pipe take(field) | starts_with('tab\there')"#,
+            r#" pipe take(field) | map_to('test\'value')"#,
+        ];
+
+        for code in test_cases {
+            println!("\n=== Testing code: {} ===", code);
+
+            // Parse original code
+            let mut code_slice = code;
+            let result = oml_aga_pipe.parse_next(&mut code_slice);
+            assert!(result.is_ok(), "Should parse code: '{}'", code);
+
+            // Get Display output
+            let parsed = result.unwrap();
+            let output = format!("{}", parsed);
+            println!("Display output: {}", output);
+
+            // Parse the output again (round-trip)
+            let mut output_slice = output.as_str();
+            let result2 = oml_aga_pipe.parse_next(&mut output_slice);
+            if let Err(e) = &result2 {
+                println!("Round-trip parse error: {}", e);
+            }
+            assert!(
+                result2.is_ok(),
+                "Round-trip parse should succeed for: {}",
+                code
+            );
+
+            // Verify third round also works
+            let parsed2 = result2.unwrap();
+            let output2 = format!("{}", parsed2);
+            println!("Second display output: {}", output2);
+
+            // Output should stabilize after first round-trip
+            assert_eq!(
+                output, output2,
+                "Display output should be stable after round-trip"
+            );
+        }
 
         Ok(())
     }

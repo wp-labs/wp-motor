@@ -26,7 +26,8 @@ use super::tdc_prm::{oml_aga_tdc, oml_aga_value};
 
 fn match_cond1(data: &mut &str) -> WResult<MatchCond> {
     multispace0.parse_next(data)?;
-    alt((cond_neq, cond_in, cond_fun, cond_eq)).parse_next(data)
+    // Try cond_fun before cond_in to allow functions like in_range, in_*
+    alt((cond_neq, cond_fun, cond_in, cond_eq)).parse_next(data)
 }
 
 fn match_cond1_item(data: &mut &str) -> WResult<MatchCase> {
@@ -708,7 +709,9 @@ Result = match read(status) {
 
     #[test]
     fn test_match_with_regex() {
-        // Test regex matching
+        use wp_parser::Parser;
+
+        // Test regex matching - verify round-trip parsing works
         let mut code = r#" match read(log_line) {
         regex_match('^\[ERROR\].*') => chars(error),
         regex_match('^\[WARN\].*') => chars(warning),
@@ -716,7 +719,33 @@ Result = match read(status) {
         _ => chars(other),
         }
        "#;
-        assert_oml_parse(&mut code, oml_aga_match);
+        let result = oml_aga_match.parse_next(&mut code);
+        assert!(result.is_ok(), "Should parse regex match");
+
+        // Verify Display output and round-trip parsing
+        let parsed = result.unwrap();
+        let output = format!("{}", parsed);
+        println!("Original regex match Display output:\n{}", output);
+
+        // The output should preserve the original escape sequences
+        // quot_str returns raw content, so backslashes are preserved as-is
+        assert!(output.contains(r#"regex_match('^\[ERROR\].*')"#));
+        assert!(output.contains(r#"regex_match('^\[WARN\].*')"#));
+        assert!(output.contains(r#"regex_match('^\d{4}-\d{2}-\d{2}')"#));
+
+        // Verify round-trip: parse the Display output
+        let mut output_slice = output.as_str();
+        let result2 = oml_aga_match.parse_next(&mut output_slice);
+        assert!(result2.is_ok(), "Round-trip parse should succeed");
+
+        // Verify output is stable after round-trip
+        let parsed2 = result2.unwrap();
+        let output2 = format!("{}", parsed2);
+        assert_eq!(
+            output.replace(" ", "").replace("\n", ""),
+            output2.replace(" ", "").replace("\n", ""),
+            "Output should be stable after round-trip"
+        );
     }
 
     #[test]
@@ -778,5 +807,52 @@ Result = match read(status) {
         }
        "#;
         assert_oml_parse(&mut code4, oml_aga_match);
+    }
+
+    #[test]
+    fn test_match_function_escaping_round_trip() {
+        use wp_parser::Parser;
+
+        // Test strings with special characters in match functions
+        let test_cases = vec![
+            (
+                r#" match read(Content) {
+        starts_with('O\'Reilly') => chars(ok),
+        _ => chars(fail),
+        }"#,
+                "O'Reilly",
+            ),
+            (
+                r#" match read(path) {
+        contains('error\\path') => chars(error),
+        _ => chars(normal),
+        }"#,
+                r"error\path",
+            ),
+        ];
+
+        for (code, expected_content) in test_cases {
+            let mut code_slice = code;
+            let result = oml_aga_match.parse_next(&mut code_slice);
+            assert!(
+                result.is_ok(),
+                "Should parse match with escaped string: {}",
+                expected_content
+            );
+
+            // Check round-trip: Display output should be parseable
+            let parsed = result.unwrap();
+            let output = format!("{}", parsed);
+            println!("Round-trip output:\n{}", output);
+
+            // Verify escaping is present in output
+            let mut output_slice = output.as_str();
+            let result2 = oml_aga_match.parse_next(&mut output_slice);
+            assert!(
+                result2.is_ok(),
+                "Round-trip parse should succeed for: {}",
+                expected_content
+            );
+        }
     }
 }

@@ -43,6 +43,7 @@ pub struct StartsWith {
 
 impl Display for StartsWith {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        // Don't escape - quot_str returns raw content with escape sequences intact
         write!(f, "{}('{}')", PIPE_STARTS_WITH, self.prefix)
     }
 }
@@ -59,6 +60,7 @@ pub enum MapValue {
 impl Display for MapValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            // Don't escape - quot_str returns raw content with escape sequences intact
             MapValue::Chars(s) => write!(f, "'{}'", s),
             MapValue::Digit(d) => write!(f, "{}", d),
             MapValue::Float(fl) => write!(f, "{}", fl),

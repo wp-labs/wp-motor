@@ -66,6 +66,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Simplified syntax improves readability
   - Display output always includes `pipe` for consistency
 
+### Fixed
+- **OML Match Parser**: Fixed `in_range` function parsing failure in match expressions
+  - Issue: `kw_in` consumed prefix `in` before `cond_fun` could parse `in_range`
+  - Fix: Reordered `match_cond1` alternatives to try `cond_fun` before `cond_in`
+  - Now `match read(x) { in_range(0, 10) => ... }` parses correctly
+- **OML map_to Parser**: Fixed large integer precision loss during parsing
+  - Issue: Parsing integers via f64 caused precision loss for values > 2^53 (e.g., 9007199254740993)
+  - Fix: Try parsing as i64 first, only fall back to f64 for actual floats
+  - Preserves exact integer values up to i64::MAX
+- **OML Display Output**: Fixed round-trip parsing compatibility for strings
+  - Issue: Display output was not parseable by `quot_str` due to escaping mismatch
+  - Fix: Removed extra escaping in Display implementations since `quot_str` preserves raw escape sequences
+  - Display output now stable across multiple round-trips (parse -> display -> parse -> display)
+
 
 ## [1.13.3] - 2026-02-03
 
