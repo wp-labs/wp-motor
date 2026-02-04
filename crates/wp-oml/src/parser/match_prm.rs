@@ -1,7 +1,7 @@
-use crate::language::{MatchFun, MatchOperation};
 use crate::language::NestedAccessor;
 use crate::language::{MatchCase, MatchCond};
 use crate::language::{MatchCondition, MatchSource, PreciseEvaluator};
+use crate::language::{MatchFun, MatchOperation};
 use crate::parser::collect_prm::oml_aga_collect;
 use crate::parser::keyword::{kw_gw_match, kw_in};
 use crate::parser::oml_aggregate::oml_crate_calc_ref;
@@ -26,13 +26,7 @@ use super::tdc_prm::{oml_aga_tdc, oml_aga_value};
 
 fn match_cond1(data: &mut &str) -> WResult<MatchCond> {
     multispace0.parse_next(data)?;
-    alt((
-        cond_neq,
-        cond_in,
-        cond_fun,
-        cond_eq,
-    ))
-    .parse_next(data)
+    alt((cond_neq, cond_in, cond_fun, cond_eq)).parse_next(data)
 }
 
 fn match_cond1_item(data: &mut &str) -> WResult<MatchCase> {
@@ -131,20 +125,30 @@ fn cond_fun(data: &mut &str) -> WResult<MatchCond> {
     // Parse function name (identifier: letters, digits, underscore)
     // Must start with a letter
     let first_char = peek(take::<usize, &str, ContextError>(1usize)).parse_next(data);
-    if !first_char.map(|s| s.chars().next().unwrap().is_ascii_alphabetic()).unwrap_or(false) {
+    if !first_char
+        .map(|s| s.chars().next().unwrap().is_ascii_alphabetic())
+        .unwrap_or(false)
+    {
         data.reset(&cp);
         return winnow::combinator::fail.parse_next(data);
     }
 
-    let fun_name: &str = take_while(1.., |c: char| c.is_ascii_alphanumeric() || c == '_')
-        .parse_next(data)?;
+    let fun_name: &str =
+        take_while(1.., |c: char| c.is_ascii_alphanumeric() || c == '_').parse_next(data)?;
 
     // Check if this is a known match function
     // If not, reset and fail so other parsers can try
     const KNOWN_MATCH_FUNCTIONS: &[&str] = &[
-        "starts_with", "ends_with", "contains", "regex_match",
-        "is_empty", "iequals",
-        "gt", "lt", "eq", "in_range",
+        "starts_with",
+        "ends_with",
+        "contains",
+        "regex_match",
+        "is_empty",
+        "iequals",
+        "gt",
+        "lt",
+        "eq",
+        "in_range",
     ];
 
     if !KNOWN_MATCH_FUNCTIONS.contains(&fun_name) {
@@ -180,7 +184,8 @@ fn cond_fun(data: &mut &str) -> WResult<MatchCond> {
                 use winnow::token::take_while;
                 let unquoted: &str = take_while(1.., |c: char| {
                     c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_'
-                }).parse_next(&mut arg_data)?;
+                })
+                .parse_next(&mut arg_data)?;
                 args_vec.push(unquoted.to_string());
             }
 
@@ -429,7 +434,11 @@ A = match read(field) {
 };
 "#;
         let result = oml_parse_raw(&mut conf);
-        assert!(result.is_ok(), "Match OML parse should succeed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Match OML parse should succeed: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -444,7 +453,11 @@ A = match read(field) {
 };
 "#;
         let result = oml_parse_raw(&mut conf);
-        assert!(result.is_ok(), "Function match parse should succeed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Function match parse should succeed: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -497,7 +510,10 @@ ErrorType = match read(message) {
 "#;
         let model3 = oml_parse_raw(&mut conf3).expect("Failed to parse contains");
         let cache3 = &mut FieldQueryCache::default();
-        let data3 = vec![DataField::from_chars("message", "Connection timeout occurred")];
+        let data3 = vec![DataField::from_chars(
+            "message",
+            "Connection timeout occurred",
+        )];
         let src3 = DataRecord { items: data3 };
         let target3 = model3.transform(src3, cache3);
         let expect3 = DataField::from_chars("ErrorType".to_string(), "timeout".to_string());
@@ -621,10 +637,10 @@ Result = match read(status) {
 
     #[test]
     fn test_match_with_quoted_strings() {
+        use crate::core::DataTransformer;
         use orion_error::TestAssert;
         use wp_data_model::cache::FieldQueryCache;
         use wp_model_core::model::DataRecord;
-        use crate::core::DataTransformer;
 
         // Test match with quoted strings in results
         let mut code = r#"
