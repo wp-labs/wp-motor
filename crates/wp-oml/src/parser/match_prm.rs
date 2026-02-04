@@ -1,4 +1,4 @@
-use crate::language::MatchOperation;
+use crate::language::{MatchFun, MatchOperation};
 use crate::language::NestedAccessor;
 use crate::language::{MatchCase, MatchCond};
 use crate::language::{MatchCondition, MatchSource, PreciseEvaluator};
@@ -7,7 +7,8 @@ use crate::parser::keyword::{kw_gw_match, kw_in};
 use crate::parser::oml_aggregate::oml_crate_calc_ref;
 use winnow::ascii::multispace0;
 use winnow::combinator::{alt, opt, peek, repeat};
-use winnow::error::{StrContext, StrContextValue};
+use winnow::error::{ContextError, StrContext, StrContextValue};
+use winnow::stream::Stream;
 use winnow::token::take;
 use wp_model_core::model::DataField;
 use wp_parser::Parser;
@@ -18,24 +19,20 @@ use wp_parser::symbol::{
     symbol_semicolon, symbol_under_line,
 };
 use wp_parser::utils::get_scope;
+use wpl::parser::utils::quot_str;
 
 use super::syntax;
 use super::tdc_prm::{oml_aga_tdc, oml_aga_value};
 
 fn match_cond1(data: &mut &str) -> WResult<MatchCond> {
     multispace0.parse_next(data)?;
-    let mut cond_exp = match peek(take(1usize)).parse_next(data)? {
-        "!" => cond_neq,
-        "i" => {
-            if peek(take(2usize)).parse_next(data)? == "in" {
-                cond_in
-            } else {
-                cond_eq
-            }
-        }
-        _ => cond_eq,
-    };
-    cond_exp.parse_next(data)
+    alt((
+        cond_neq,
+        cond_in,
+        cond_fun,
+        cond_eq,
+    ))
+    .parse_next(data)
 }
 
 fn match_cond1_item(data: &mut &str) -> WResult<MatchCase> {
@@ -121,6 +118,89 @@ fn cond_in(data: &mut &str) -> WResult<MatchCond> {
     let (beg, end) = tdo_val_scope.parse_next(data)?;
     Ok(MatchCond::In(beg, end))
 }
+
+/// Parse function-based match condition like `starts_with('prefix')`
+fn cond_fun(data: &mut &str) -> WResult<MatchCond> {
+    use winnow::token::take_while;
+
+    multispace0.parse_next(data)?;
+
+    // Try to parse function name followed by '('
+    let cp = data.checkpoint();
+
+    // Parse function name (identifier: letters, digits, underscore)
+    // Must start with a letter
+    let first_char = peek(take::<usize, &str, ContextError>(1usize)).parse_next(data);
+    if !first_char.map(|s| s.chars().next().unwrap().is_ascii_alphabetic()).unwrap_or(false) {
+        data.reset(&cp);
+        return winnow::combinator::fail.parse_next(data);
+    }
+
+    let fun_name: &str = take_while(1.., |c: char| c.is_ascii_alphanumeric() || c == '_')
+        .parse_next(data)?;
+
+    // Check if this is a known match function
+    // If not, reset and fail so other parsers can try
+    const KNOWN_MATCH_FUNCTIONS: &[&str] = &[
+        "starts_with", "ends_with", "contains", "regex_match",
+        "is_empty", "iequals",
+        "gt", "lt", "eq", "in_range",
+    ];
+
+    if !KNOWN_MATCH_FUNCTIONS.contains(&fun_name) {
+        data.reset(&cp);
+        return winnow::combinator::fail.parse_next(data);
+    }
+
+    multispace0.parse_next(data)?;
+
+    // Must be followed by '(' to be a function call
+    let next_char = peek(take::<usize, &str, ContextError>(1usize)).parse_next(data);
+    if !next_char.map(|s| s == "(").unwrap_or(false) {
+        data.reset(&cp);
+        return winnow::combinator::fail.parse_next(data);
+    }
+
+    // Parse arguments in parentheses
+    let arg_str = get_scope(data, '(', ')')?;
+
+    // Extract argument values (can be multiple, comma-separated)
+    let args = if !arg_str.trim().is_empty() {
+        let mut args_vec = Vec::new();
+        let mut arg_data = arg_str.trim();
+
+        loop {
+            multispace0.parse_next(&mut arg_data)?;
+
+            // Try to parse as quoted string first
+            if let Ok(quoted) = quot_str.parse_next(&mut arg_data) {
+                args_vec.push(quoted.to_string());
+            } else {
+                // Try to parse as unquoted number or identifier
+                use winnow::token::take_while;
+                let unquoted: &str = take_while(1.., |c: char| {
+                    c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_'
+                }).parse_next(&mut arg_data)?;
+                args_vec.push(unquoted.to_string());
+            }
+
+            multispace0.parse_next(&mut arg_data)?;
+
+            // Check for comma (more arguments)
+            if symbol_comma.parse_next(&mut arg_data).is_ok() {
+                continue;
+            } else {
+                break;
+            }
+        }
+
+        args_vec
+    } else {
+        Vec::new()
+    };
+
+    Ok(MatchCond::Fun(MatchFun::new_with_args(fun_name, args)))
+}
 pub fn oml_match(data: &mut &str) -> WResult<MatchOperation> {
     let _ = multispace0.parse_next(data)?;
     kw_gw_match.parse_next(data)?;
@@ -168,6 +248,7 @@ pub fn oml_aga_match(data: &mut &str) -> WResult<PreciseEvaluator> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use orion_error::TestAssert;
     use wp_parser::WResult as ModalResult;
 
@@ -270,5 +351,416 @@ mod tests {
         }
        "#;
         assert_oml_parse(&mut code, oml_aga_match);
+    }
+
+    #[test]
+    fn test_match_with_function() {
+        // Test function-based matching with starts_with
+        let mut code = r#" match read(Content) {
+        starts_with('jk2_init()') => chars(E1),
+        starts_with('WARNING') => chars(E2),
+        _ => chars(E3),
+        }
+       "#;
+        assert_oml_parse(&mut code, oml_aga_match);
+    }
+
+    #[test]
+    fn test_match_with_ends_with() {
+        // Test ends_with function
+        let mut code = r#" match read(filename) {
+        ends_with('.log') => chars(log_file),
+        ends_with('.txt') => chars(text_file),
+        ends_with('.json') => chars(json_file),
+        _ => chars(unknown),
+        }
+       "#;
+        assert_oml_parse(&mut code, oml_aga_match);
+    }
+
+    #[test]
+    fn test_match_with_contains() {
+        // Test contains function
+        let mut code = r#" match read(message) {
+        contains('error') => chars(error_msg),
+        contains('warning') => chars(warn_msg),
+        contains('timeout') => chars(timeout_msg),
+        _ => chars(normal_msg),
+        }
+       "#;
+        assert_oml_parse(&mut code, oml_aga_match);
+    }
+
+    #[test]
+    fn test_match_mixed_functions() {
+        // Test mixing different functions
+        let mut code = r#" match read(log_line) {
+        starts_with('[ERROR]') => chars(error),
+        starts_with('[WARN]') => chars(warning),
+        contains('exception') => chars(exception),
+        ends_with('failed') => chars(failure),
+        _ => chars(other),
+        }
+       "#;
+        assert_oml_parse(&mut code, oml_aga_match);
+    }
+
+    #[test]
+    fn test_oml_parse_basic() {
+        use crate::parser::oml_parse_raw;
+
+        let mut conf = r#"name : test
+---
+A = read(field);
+"#;
+        let result = oml_parse_raw(&mut conf);
+        assert!(result.is_ok(), "Basic OML parse should succeed");
+    }
+
+    #[test]
+    fn test_oml_parse_with_simple_match() {
+        use crate::parser::oml_parse_raw;
+
+        let mut conf = r#"name : test
+---
+A = match read(field) {
+    chars(A) => chars(B),
+    _ => chars(C),
+};
+"#;
+        let result = oml_parse_raw(&mut conf);
+        assert!(result.is_ok(), "Match OML parse should succeed: {:?}", result);
+    }
+
+    #[test]
+    fn test_oml_parse_with_function_match() {
+        use crate::parser::oml_parse_raw;
+
+        let mut conf = r#"name : test
+---
+A = match read(field) {
+    starts_with('test') => chars(ok),
+    _ => chars(fail),
+};
+"#;
+        let result = oml_parse_raw(&mut conf);
+        assert!(result.is_ok(), "Function match parse should succeed: {:?}", result);
+    }
+
+    #[test]
+    fn test_match_function_execution() {
+        use crate::core::DataTransformer;
+        use crate::parser::oml_parse_raw;
+        use wp_data_model::cache::FieldQueryCache;
+        use wp_model_core::model::{DataField, DataRecord};
+
+        // Test starts_with
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![DataField::from_chars("Content", "[ERROR] System failure")];
+        let src = DataRecord { items: data };
+
+        let mut conf = r#"name : test
+---
+EventType = match read(Content) {
+    starts_with('[ERROR]') => chars(error),
+    _ => chars(other),
+};
+"#;
+        let model = oml_parse_raw(&mut conf).expect("Failed to parse starts_with");
+        let target = model.transform(src, cache);
+        let expect = DataField::from_chars("EventType".to_string(), "error".to_string());
+        assert_eq!(target.field("EventType"), Some(&expect));
+
+        // Test ends_with
+        let mut conf2 = r#"name : test
+---
+FileType = match read(filename) {
+    ends_with('.json') => chars(json),
+    _ => chars(other),
+};
+"#;
+        let model2 = oml_parse_raw(&mut conf2).expect("Failed to parse ends_with");
+        let cache2 = &mut FieldQueryCache::default();
+        let data2 = vec![DataField::from_chars("filename", "config.json")];
+        let src2 = DataRecord { items: data2 };
+        let target2 = model2.transform(src2, cache2);
+        let expect2 = DataField::from_chars("FileType".to_string(), "json".to_string());
+        assert_eq!(target2.field("FileType"), Some(&expect2));
+
+        // Test contains
+        let mut conf3 = r#"name : test
+---
+ErrorType = match read(message) {
+    contains('timeout') => chars(timeout),
+    _ => chars(other),
+};
+"#;
+        let model3 = oml_parse_raw(&mut conf3).expect("Failed to parse contains");
+        let cache3 = &mut FieldQueryCache::default();
+        let data3 = vec![DataField::from_chars("message", "Connection timeout occurred")];
+        let src3 = DataRecord { items: data3 };
+        let target3 = model3.transform(src3, cache3);
+        let expect3 = DataField::from_chars("ErrorType".to_string(), "timeout".to_string());
+        assert_eq!(target3.field("ErrorType"), Some(&expect3));
+
+        // Test regex_match
+        let mut conf4 = r#"name : test
+---
+LogLevel = match read(log_line) {
+    regex_match('^\[ERROR\]') => chars(error),
+    _ => chars(other),
+};
+"#;
+        let model4 = oml_parse_raw(&mut conf4).expect("Failed to parse regex_match");
+        let cache4 = &mut FieldQueryCache::default();
+        let data4 = vec![DataField::from_chars("log_line", "[ERROR] Failed")];
+        let src4 = DataRecord { items: data4 };
+        let target4 = model4.transform(src4, cache4);
+        let expect4 = DataField::from_chars("LogLevel".to_string(), "error".to_string());
+        assert_eq!(target4.field("LogLevel"), Some(&expect4));
+
+        // Test is_empty - empty case
+        let mut conf5 = r#"name : test
+---
+Status = match read(field) {
+    is_empty() => chars(empty),
+    _ => chars(not_empty),
+};
+"#;
+        let model5 = oml_parse_raw(&mut conf5).expect("Failed to parse is_empty");
+        let cache5 = &mut FieldQueryCache::default();
+        let data5 = vec![DataField::from_chars("field", "")];
+        let src5 = DataRecord { items: data5 };
+        let target5 = model5.transform(src5, cache5);
+        let expect5 = DataField::from_chars("Status".to_string(), "empty".to_string());
+        assert_eq!(target5.field("Status"), Some(&expect5));
+
+        // Test iequals (moved to end, after gt/lt/eq/in_range)
+        // Already tested in conf11 below
+
+        // Test gt
+        let mut conf6 = r#"name : test
+---
+Level = match read(count) {
+    gt(100) => chars(high),
+    _ => chars(low),
+};
+"#;
+        let model6 = oml_parse_raw(&mut conf6).expect("Failed to parse gt");
+        let cache6 = &mut FieldQueryCache::default();
+        let data6 = vec![DataField::from_digit("count", 150)];
+        let src6 = DataRecord { items: data6 };
+        let target6 = model6.transform(src6, cache6);
+        let expect6 = DataField::from_chars("Level".to_string(), "high".to_string());
+        assert_eq!(target6.field("Level"), Some(&expect6));
+
+        // Test lt
+        let mut conf7 = r#"name : test
+---
+Grade = match read(score) {
+    lt(60) => chars(fail),
+    _ => chars(pass),
+};
+"#;
+        let model7 = oml_parse_raw(&mut conf7).expect("Failed to parse lt");
+        let cache7 = &mut FieldQueryCache::default();
+        let data7 = vec![DataField::from_digit("score", 45)];
+        let src7 = DataRecord { items: data7 };
+        let target7 = model7.transform(src7, cache7);
+        let expect7 = DataField::from_chars("Grade".to_string(), "fail".to_string());
+        assert_eq!(target7.field("Grade"), Some(&expect7));
+
+        // Test eq
+        let mut conf8 = r#"name : test
+---
+Status = match read(level) {
+    eq(5) => chars(max),
+    _ => chars(normal),
+};
+"#;
+        let model8 = oml_parse_raw(&mut conf8).expect("Failed to parse eq");
+        let cache8 = &mut FieldQueryCache::default();
+        let data8 = vec![DataField::from_digit("level", 5)];
+        let src8 = DataRecord { items: data8 };
+        let target8 = model8.transform(src8, cache8);
+        let expect8 = DataField::from_chars("Status".to_string(), "max".to_string());
+        assert_eq!(target8.field("Status"), Some(&expect8));
+
+        // Test in_range
+        let mut conf9 = r#"name : test
+---
+TempZone = match read(temperature) {
+    in_range(20, 30) => chars(comfortable),
+    _ => chars(other),
+};
+"#;
+        let model9 = oml_parse_raw(&mut conf9).expect("Failed to parse in_range");
+        let cache9 = &mut FieldQueryCache::default();
+        let data9 = vec![DataField::from_digit("temperature", 25)];
+        let src9 = DataRecord { items: data9 };
+        let target9 = model9.transform(src9, cache9);
+        let expect9 = DataField::from_chars("TempZone".to_string(), "comfortable".to_string());
+        assert_eq!(target9.field("TempZone"), Some(&expect9));
+
+        // Test iequals
+        let mut conf10 = r#"name : test
+---
+Result = match read(status) {
+    iequals('success') => chars(ok),
+    _ => chars(other),
+};
+"#;
+        let model10 = oml_parse_raw(&mut conf10).expect("Failed to parse iequals");
+        let cache10 = &mut FieldQueryCache::default();
+        let data10 = vec![DataField::from_chars("status", "SUCCESS")];
+        let src10 = DataRecord { items: data10 };
+        let target10 = model10.transform(src10, cache10);
+        let expect10 = DataField::from_chars("Result".to_string(), "ok".to_string());
+        assert_eq!(target10.field("Result"), Some(&expect10));
+    }
+
+    #[test]
+    fn test_match_with_quoted_strings() {
+        use orion_error::TestAssert;
+        use wp_data_model::cache::FieldQueryCache;
+        use wp_model_core::model::DataRecord;
+        use crate::core::DataTransformer;
+
+        // Test match with quoted strings in results
+        let mut code = r#"
+name : test
+---
+Result = match read(status) {
+    chars(A) => chars('success message'),
+    chars(B) => chars("failure message"),
+    _ => chars('default message'),
+};
+"#;
+        let model = crate::parser::oml_conf::oml_parse_raw(&mut code).assert();
+        assert_eq!(model.name(), "test");
+
+        // Test execution: verify that quoted strings are parsed correctly
+        let cache = &mut FieldQueryCache::default();
+
+        // Test case 1: status = A
+        let data1 = vec![DataField::from_chars("status", "A")];
+        let src1 = DataRecord { items: data1 };
+        let target1 = model.transform(src1, cache);
+        let expect1 = DataField::from_chars("Result".to_string(), "success message".to_string());
+        assert_eq!(target1.field("Result"), Some(&expect1)); // Verify the value contains space
+
+        // Test case 2: status = B
+        let data2 = vec![DataField::from_chars("status", "B")];
+        let src2 = DataRecord { items: data2 };
+        let target2 = model.transform(src2, cache);
+        let expect2 = DataField::from_chars("Result".to_string(), "failure message".to_string());
+        assert_eq!(target2.field("Result"), Some(&expect2));
+
+        // Test case 3: status = C (default)
+        let data3 = vec![DataField::from_chars("status", "C")];
+        let src3 = DataRecord { items: data3 };
+        let target3 = model.transform(src3, cache);
+        let expect3 = DataField::from_chars("Result".to_string(), "default message".to_string());
+        assert_eq!(target3.field("Result"), Some(&expect3));
+    }
+
+    #[test]
+    fn test_cond_fun_parsing() {
+        // Test parsing just the condition
+        let mut code = r#"starts_with('test')"#;
+        let result = cond_fun(&mut code);
+        println!("Result: {:?}", result);
+        match result {
+            Ok(MatchCond::Fun(fun)) => {
+                assert_eq!(fun.name, "starts_with");
+                assert_eq!(fun.args, vec!["test".to_string()]);
+            }
+            other => panic!("Expected Fun condition, got: {:?}", other),
+        }
+
+        // Test is_empty with no arguments
+        let mut code2 = r#"is_empty()"#;
+        let result2 = cond_fun(&mut code2);
+        match result2 {
+            Ok(MatchCond::Fun(fun)) => {
+                assert_eq!(fun.name, "is_empty");
+                assert!(fun.args.is_empty());
+            }
+            other => panic!("Expected Fun condition for is_empty, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_match_with_regex() {
+        // Test regex matching
+        let mut code = r#" match read(log_line) {
+        regex_match('^\[ERROR\].*') => chars(error),
+        regex_match('^\[WARN\].*') => chars(warning),
+        regex_match('^\d{4}-\d{2}-\d{2}') => chars(dated),
+        _ => chars(other),
+        }
+       "#;
+        assert_oml_parse(&mut code, oml_aga_match);
+    }
+
+    #[test]
+    fn test_match_with_is_empty() {
+        // Test is_empty function
+        let mut code = r#" match read(field) {
+        is_empty() => chars(empty),
+        _ => chars(not_empty),
+        }
+       "#;
+        assert_oml_parse(&mut code, oml_aga_match);
+    }
+
+    #[test]
+    fn test_match_with_iequals() {
+        // Test case-insensitive matching
+        let mut code = r#" match read(status) {
+        iequals('success') => chars(ok),
+        iequals('error') => chars(fail),
+        iequals('warning') => chars(warn),
+        _ => chars(unknown),
+        }
+       "#;
+        assert_oml_parse(&mut code, oml_aga_match);
+    }
+
+    #[test]
+    fn test_match_with_numeric_comparison() {
+        // Test gt
+        let mut code = r#" match read(count) {
+        gt(100) => chars(high),
+        _ => chars(low),
+        }
+       "#;
+        assert_oml_parse(&mut code, oml_aga_match);
+
+        // Test lt
+        let mut code2 = r#" match read(score) {
+        lt(60) => chars(fail),
+        _ => chars(pass),
+        }
+       "#;
+        assert_oml_parse(&mut code2, oml_aga_match);
+
+        // Test eq
+        let mut code3 = r#" match read(level) {
+        eq(5) => chars(max),
+        _ => chars(other),
+        }
+       "#;
+        assert_oml_parse(&mut code3, oml_aga_match);
+
+        // Test in_range
+        let mut code4 = r#" match read(temperature) {
+        in_range(20, 30) => chars(comfortable),
+        in_range(10, 20) => chars(cool),
+        in_range(30, 40) => chars(warm),
+        _ => chars(extreme),
+        }
+       "#;
+        assert_oml_parse(&mut code4, oml_aga_match);
     }
 }

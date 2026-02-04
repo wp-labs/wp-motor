@@ -52,6 +52,7 @@ parse-display-derive = { workspace = true }
 encoding_rs = { workspace = true }
 imap-types = { workspace = true }
 url = { workspace = true }
+regex = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

@@ -219,4 +219,31 @@ update_time  : auto = take () { _ :  time(2020-10-01 12:30:30) };
         assert_oml_parse_ext(&mut pure_code, oml_parse_raw, expect);
         Ok(())
     }
+
+    #[test]
+    fn test_conf_quoted_chars() -> ModalResult<()> {
+        use orion_error::TestAssert;
+
+        // Test that chars() supports both quoted and unquoted strings
+        let mut code1 = r#"
+name : test
+---
+msg1 = chars('hello world');
+msg2 = chars("goodbye");
+msg3 = chars(unquoted);
+        "#;
+        let model = oml_parse_raw(&mut code1).assert();
+        assert_eq!(model.name(), "test");
+
+        // Test with special characters
+        let mut code2 = r#"
+name : test
+---
+msg = chars('hello\nworld');
+        "#;
+        let model2 = oml_parse_raw(&mut code2).assert();
+        assert_eq!(model2.name(), "test");
+
+        Ok(())
+    }
 }

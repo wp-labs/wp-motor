@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.13.4] - latest
+## [1.13.4 Unreleased]
 
 ### Added
 - **WPL Functions**: Add `starts_with` pipe function for efficient string prefix matching
@@ -26,6 +26,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `pipe take(field) | map_to(123)` - map to integer
     - `pipe take(field) | map_to(3.14)` - map to float
     - `pipe take(field) | map_to(true)` - map to boolean
+- **OML Match Expression**: Add function-based pattern matching support
+  - Enables using functions like `starts_with` in match conditions
+  - Syntax: `match read(field) { starts_with('prefix') => result, _ => default }`
+  - More flexible than simple value comparison
+  - Useful for log parsing, URL routing, and content classification
+  - Supported functions:
+    - **String matching**:
+      - `starts_with(prefix)` - Check if string starts with prefix
+      - `ends_with(suffix)` - Check if string ends with suffix
+      - `contains(substring)` - Check if string contains substring
+      - `regex_match(pattern)` - Match string against regex pattern
+      - `is_empty()` - Check if string is empty (no arguments)
+      - `iequals(value)` - Case-insensitive string comparison
+    - **Numeric comparison**:
+      - `gt(value)` - Check if numeric field > value
+      - `lt(value)` - Check if numeric field < value
+      - `eq(value)` - Check if numeric field equals value (with floating point tolerance)
+      - `in_range(min, max)` - Check if numeric field is within range [min, max]
+- **OML Parser**: Add quoted string support for `chars()` and other value constructors
+  - Supports single quotes: `chars('hello world')`
+  - Supports double quotes: `chars("hello world")`
+  - Enables strings containing spaces and special characters
+  - Escape sequence support: `\n`, `\r`, `\t`, `\\`, `\'`, `\"`
+  - Backward compatible with unquoted syntax: `chars(hello)`
+  - Works in all contexts: field assignments, match expressions, etc.
 
 
 ## [1.13.3] - 2026-02-03

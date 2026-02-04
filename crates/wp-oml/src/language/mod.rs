@@ -25,7 +25,7 @@ pub use syntax::{
     },
     //lib_prm::LookupQuery,
     operations::{
-        FmtOperation, MapOperation, MatchAble, MatchCase, MatchCond, MatchCondition,
+        FmtOperation, MapOperation, MatchAble, MatchCase, MatchCond, MatchCondition, MatchFun,
         MatchOperation, MatchSource, PiPeOperation, RecordOperation, RecordOperationBuilder,
         SqlQuery,
     },
