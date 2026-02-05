@@ -4,7 +4,7 @@ use wp_parse_api::{PipeProcessor, RawData, WparseResult};
 
 /// BOM (Byte Order Mark) 清除处理器
 ///
-/// 移除数据开头的 BOM 标记，支持以下编码的 BOM：
+/// 移除数据中所有位置的 BOM 标记，支持以下编码的 BOM：
 /// - UTF-8 BOM: 0xEF 0xBB 0xBF
 /// - UTF-16 LE BOM: 0xFF 0xFE
 /// - UTF-16 BE BOM: 0xFE 0xFF
@@ -12,57 +12,89 @@ use wp_parse_api::{PipeProcessor, RawData, WparseResult};
 /// - UTF-32 BE BOM: 0x00 0x00 0xFE 0xFF
 ///
 /// # 行为
-/// - 检测并移除开头的 BOM 字节序列
+/// - 扫描整个数据，移除所有位置出现的 BOM 字节序列
 /// - 如果没有 BOM，返回原始数据
 /// - 保持输入容器类型不变
 #[derive(Debug)]
 pub struct BomClearProc;
 
-/// 检测并移除 BOM 标记
+/// 检测指定位置是否为 BOM 标记
 ///
 /// # 返回
-/// - `Some(n)` - BOM 长度，应该跳过前 n 个字节
-/// - `None` - 无 BOM
-fn detect_bom(data: &[u8]) -> Option<usize> {
+/// - `Some(n)` - BOM 长度，应该跳过后续 n 个字节
+/// - `None` - 当前位置无 BOM
+fn detect_bom_at(data: &[u8], pos: usize) -> Option<usize> {
+    let remaining = &data[pos..];
+
     // UTF-8 BOM: EF BB BF
-    if data.len() >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
+    if remaining.len() >= 3 && remaining[0] == 0xEF && remaining[1] == 0xBB && remaining[2] == 0xBF
+    {
         return Some(3);
     }
 
     // UTF-32 LE BOM: FF FE 00 00 (必须在 UTF-16 LE 之前检查)
-    if data.len() >= 4 && data[0] == 0xFF && data[1] == 0xFE && data[2] == 0x00 && data[3] == 0x00 {
+    if remaining.len() >= 4
+        && remaining[0] == 0xFF
+        && remaining[1] == 0xFE
+        && remaining[2] == 0x00
+        && remaining[3] == 0x00
+    {
         return Some(4);
     }
 
     // UTF-32 BE BOM: 00 00 FE FF (必须在 UTF-16 BE 之前检查)
-    if data.len() >= 4 && data[0] == 0x00 && data[1] == 0x00 && data[2] == 0xFE && data[3] == 0xFF {
+    if remaining.len() >= 4
+        && remaining[0] == 0x00
+        && remaining[1] == 0x00
+        && remaining[2] == 0xFE
+        && remaining[3] == 0xFF
+    {
         return Some(4);
     }
 
     // UTF-16 LE BOM: FF FE
-    if data.len() >= 2 && data[0] == 0xFF && data[1] == 0xFE {
+    if remaining.len() >= 2 && remaining[0] == 0xFF && remaining[1] == 0xFE {
         return Some(2);
     }
 
     // UTF-16 BE BOM: FE FF
-    if data.len() >= 2 && data[0] == 0xFE && data[1] == 0xFF {
+    if remaining.len() >= 2 && remaining[0] == 0xFE && remaining[1] == 0xFF {
         return Some(2);
     }
 
     None
 }
 
+/// 移除字节数据中所有位置的 BOM
+fn remove_all_boms(data: &[u8]) -> Option<Vec<u8>> {
+    let mut result = Vec::new();
+    let mut has_bom = false;
+    let mut pos = 0;
+
+    while pos < data.len() {
+        if let Some(bom_len) = detect_bom_at(data, pos) {
+            // 发现 BOM，跳过
+            has_bom = true;
+            pos += bom_len;
+        } else {
+            // 非 BOM 字节，添加到结果
+            result.push(data[pos]);
+            pos += 1;
+        }
+    }
+
+    if has_bom { Some(result) } else { None }
+}
+
 impl PipeProcessor for BomClearProc {
-    /// 清除数据开头的 BOM 标记
+    /// 清除数据中所有位置的 BOM 标记
     fn process(&self, data: RawData) -> WparseResult<RawData> {
         match data {
             RawData::String(s) => {
                 let bytes = s.as_bytes();
-                if let Some(bom_len) = detect_bom(bytes) {
-                    // 移除 BOM
-                    let without_bom = &bytes[bom_len..];
+                if let Some(cleaned) = remove_all_boms(bytes) {
                     // 转换回字符串（应该总是有效的 UTF-8）
-                    let result = String::from_utf8_lossy(without_bom).into_owned();
+                    let result = String::from_utf8_lossy(&cleaned).into_owned();
                     Ok(RawData::from_string(result))
                 } else {
                     // 无 BOM，返回原始数据
@@ -70,20 +102,16 @@ impl PipeProcessor for BomClearProc {
                 }
             }
             RawData::Bytes(b) => {
-                if let Some(bom_len) = detect_bom(&b) {
-                    // 移除 BOM
-                    let without_bom = b.slice(bom_len..);
-                    Ok(RawData::Bytes(without_bom))
+                if let Some(cleaned) = remove_all_boms(&b) {
+                    Ok(RawData::Bytes(cleaned.into()))
                 } else {
                     // 无 BOM，返回原始数据
                     Ok(RawData::Bytes(b))
                 }
             }
             RawData::ArcBytes(b) => {
-                if let Some(bom_len) = detect_bom(&b) {
-                    // 移除 BOM
-                    let without_bom = b[bom_len..].to_vec();
-                    Ok(RawData::ArcBytes(Arc::new(without_bom)))
+                if let Some(cleaned) = remove_all_boms(&b) {
+                    Ok(RawData::ArcBytes(Arc::new(cleaned)))
                 } else {
                     // 无 BOM，返回原始数据
                     Ok(RawData::ArcBytes(b))
@@ -99,8 +127,15 @@ impl PipeProcessor for BomClearProc {
 
 #[cfg(test)]
 mod tests {
+    use bytes::Bytes;
+
     use super::*;
     use crate::types::AnyResult;
+
+    /// 检测数据开头是否为 BOM（用于测试）
+    fn detect_bom(data: &[u8]) -> Option<usize> {
+        detect_bom_at(data, 0)
+    }
 
     #[test]
     fn test_detect_utf8_bom() {
@@ -284,6 +319,104 @@ mod tests {
         let arc_result = BomClearProc.process(arc_data)?;
         assert!(matches!(arc_result, RawData::ArcBytes(_)));
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_bom_in_middle_of_data() -> AnyResult<()> {
+        // 测试数据中间出现的 BOM
+        let mut input = b"hello".to_vec();
+        input.extend_from_slice(&[0xEF, 0xBB, 0xBF]); // UTF-8 BOM
+        input.extend_from_slice(b"world");
+        let data = RawData::Bytes(Bytes::from(input));
+
+        let result = BomClearProc.process(data)?;
+        assert_eq!(
+            crate::eval::builtins::raw_to_utf8_string(&result),
+            "helloworld"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_multiple_boms_in_data() -> AnyResult<()> {
+        // 测试数据中出现多个 BOM
+        let mut input = vec![0xEF, 0xBB, 0xBF]; // 开头 UTF-8 BOM
+        input.extend_from_slice(b"start");
+        input.extend_from_slice(&[0xEF, 0xBB, 0xBF]); // 中间 UTF-8 BOM
+        input.extend_from_slice(b"middle");
+        input.extend_from_slice(&[0xEF, 0xBB, 0xBF]); // 末尾 UTF-8 BOM
+        input.extend_from_slice(b"end");
+        let data = RawData::from_string(String::from_utf8(input)?);
+
+        let result = BomClearProc.process(data)?;
+        assert_eq!(
+            crate::eval::builtins::raw_to_utf8_string(&result),
+            "startmiddleend"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_mixed_bom_types() -> AnyResult<()> {
+        // 测试混合不同类型的 BOM
+        let mut input = vec![0xEF, 0xBB, 0xBF]; // UTF-8 BOM
+        input.extend_from_slice(b"utf8");
+        input.extend_from_slice(&[0xFF, 0xFE]); // UTF-16 LE BOM
+        input.extend_from_slice(b"utf16");
+        input.extend_from_slice(&[0xFE, 0xFF]); // UTF-16 BE BOM
+        input.extend_from_slice(b"data");
+        let data = RawData::Bytes(Bytes::from(input));
+
+        let result = BomClearProc.process(data)?;
+        assert_eq!(
+            crate::eval::builtins::raw_to_utf8_string(&result),
+            "utf8utf16data"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_bom_at_end() -> AnyResult<()> {
+        // 测试末尾的 BOM
+        let mut input = b"data".to_vec();
+        input.extend_from_slice(&[0xEF, 0xBB, 0xBF]); // UTF-8 BOM
+        let data = RawData::Bytes(Bytes::from(input));
+
+        let result = BomClearProc.process(data)?;
+        assert_eq!(crate::eval::builtins::raw_to_utf8_string(&result), "data");
+        Ok(())
+    }
+
+    #[test]
+    fn test_consecutive_boms() -> AnyResult<()> {
+        // 测试连续的 BOM
+        let mut input = vec![0xEF, 0xBB, 0xBF]; // UTF-8 BOM
+        input.extend_from_slice(&[0xEF, 0xBB, 0xBF]); // 又一个 UTF-8 BOM
+        input.extend_from_slice(&[0xEF, 0xBB, 0xBF]); // 再一个 UTF-8 BOM
+        input.extend_from_slice(b"text");
+        let data = RawData::ArcBytes(Arc::new(input));
+
+        let result = BomClearProc.process(data)?;
+        assert_eq!(crate::eval::builtins::raw_to_utf8_string(&result), "text");
+        Ok(())
+    }
+
+    #[test]
+    fn test_bom_removal_with_chinese() -> AnyResult<()> {
+        // 测试中文数据中的 BOM
+        let mut input = b"start".to_vec();
+        input.extend_from_slice(&[0xEF, 0xBB, 0xBF]); // UTF-8 BOM
+        input.extend_from_slice("中文".as_bytes());
+        input.extend_from_slice(&[0xEF, 0xBB, 0xBF]); // UTF-8 BOM
+        input.extend_from_slice("内容".as_bytes());
+        let data = RawData::from_string(String::from_utf8(input)?);
+
+        let result = BomClearProc.process(data)?;
+        assert_eq!(
+            crate::eval::builtins::raw_to_utf8_string(&result),
+            "start中文内容"
+        );
         Ok(())
     }
 }
