@@ -230,8 +230,51 @@ fn rewrite_precise_evaluator(
             Ok(())
         }
         PreciseEvaluator::Match(op) => rewrite_match_operation(op, const_fields),
+        PreciseEvaluator::Pipe(pipe) => rewrite_pipe_operation(pipe, const_fields),
+        PreciseEvaluator::Fun(fun) => rewrite_fun_operation(fun, const_fields),
+        PreciseEvaluator::Map(map) => rewrite_map_operation(map, const_fields),
+        PreciseEvaluator::Tdc(op) => rewrite_record_operation(op, const_fields),
+        PreciseEvaluator::Collect(arr) => rewrite_arr_operation(arr, const_fields),
         _ => Ok(()),
     }
+}
+
+fn rewrite_map_operation(
+    op: &mut crate::language::MapOperation,
+    const_fields: &HashMap<String, Arc<DataField>>,
+) -> Result<(), ErrMode<ContextError>> {
+    for binding in op.subs_mut() {
+        rewrite_nested_accessor(binding.acquirer_mut(), const_fields)?;
+    }
+    Ok(())
+}
+
+fn rewrite_record_operation(
+    _op: &mut crate::language::RecordOperation,
+    _const_fields: &HashMap<String, Arc<DataField>>,
+) -> Result<(), ErrMode<ContextError>> {
+    Ok(())
+}
+
+fn rewrite_arr_operation(
+    _arr: &mut crate::language::ArrOperation,
+    _const_fields: &HashMap<String, Arc<DataField>>,
+) -> Result<(), ErrMode<ContextError>> {
+    Ok(())
+}
+
+fn rewrite_pipe_operation(
+    _op: &mut crate::language::PiPeOperation,
+    _const_fields: &HashMap<String, Arc<DataField>>,
+) -> Result<(), ErrMode<ContextError>> {
+    Ok(())
+}
+
+fn rewrite_fun_operation(
+    _fun: &mut crate::language::FunOperation,
+    _const_fields: &HashMap<String, Arc<DataField>>,
+) -> Result<(), ErrMode<ContextError>> {
+    Ok(())
 }
 
 fn rewrite_match_operation(

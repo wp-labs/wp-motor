@@ -11,7 +11,7 @@ use wp_parser::atom::take_var_name;
 use crate::language::PreciseEvaluator;
 
 thread_local! {
-    static STATIC_SYMBOLS: RefCell<Option<HashSet<String>>> = RefCell::new(None);
+    static STATIC_SYMBOLS: RefCell<Option<HashSet<String>>> = const { RefCell::new(None) };
 }
 
 pub fn install_symbols(symbols: Vec<String>) {
