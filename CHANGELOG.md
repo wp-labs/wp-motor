@@ -59,6 +59,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Example: `__temp = chars(value); result = pipe take(__temp) | base64_encode;`
   - The `__temp` field will be marked as ignore in the final output
   - Performance: ~1ns overhead for models without temp fields, ~500ns for models with temp fields
+- **WPL Pipe Processor**: Add `strip/bom` processor for removing BOM (Byte Order Mark) from data
+  - Supports UTF-8, UTF-16 LE/BE, and UTF-32 LE/BE BOM detection and removal
+  - Fast O(1) detection by checking only first 2-4 bytes
+  - Zero-copy optimization when no BOM present
+  - Preserves input container type (String → String, Bytes → Bytes, ArcBytes → ArcBytes)
+  - Usage: `data | strip/bom` or via registry `create_pipe_unit("strip/bom")`
+  - Follows industry standard naming convention (e.g., `dos2unix --strip-bom`, `iconv --strip-bom`)
+  - Common use cases: processing user-uploaded files, cleaning API responses, log file parsing
 
 ### Changed
 - **OML Syntax**: `pipe` keyword is now optional in pipe expressions
