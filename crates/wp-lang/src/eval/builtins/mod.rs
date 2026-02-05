@@ -68,9 +68,17 @@ mod tests {
         // 验证所有内置处理器都已注册
         let units = registry::list_pipe_units();
 
-        assert!(units.iter().any(|name| name.to_uppercase() == "DECODE/BASE64"));
+        assert!(
+            units
+                .iter()
+                .any(|name| name.to_uppercase() == "DECODE/BASE64")
+        );
         assert!(units.iter().any(|name| name.to_uppercase() == "DECODE/HEX"));
-        assert!(units.iter().any(|name| name.to_uppercase() == "UNQUOTE/UNESCAPE"));
+        assert!(
+            units
+                .iter()
+                .any(|name| name.to_uppercase() == "UNQUOTE/UNESCAPE")
+        );
         assert!(units.iter().any(|name| name.to_uppercase() == "STRIP/BOM"));
     }
 

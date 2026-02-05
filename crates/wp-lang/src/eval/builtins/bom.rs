@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use std::sync::Arc;
 
 use wp_parse_api::{PipeProcessor, RawData, WparseResult};
@@ -31,22 +30,12 @@ fn detect_bom(data: &[u8]) -> Option<usize> {
     }
 
     // UTF-32 LE BOM: FF FE 00 00 (必须在 UTF-16 LE 之前检查)
-    if data.len() >= 4
-        && data[0] == 0xFF
-        && data[1] == 0xFE
-        && data[2] == 0x00
-        && data[3] == 0x00
-    {
+    if data.len() >= 4 && data[0] == 0xFF && data[1] == 0xFE && data[2] == 0x00 && data[3] == 0x00 {
         return Some(4);
     }
 
     // UTF-32 BE BOM: 00 00 FE FF (必须在 UTF-16 BE 之前检查)
-    if data.len() >= 4
-        && data[0] == 0x00
-        && data[1] == 0x00
-        && data[2] == 0xFE
-        && data[3] == 0xFF
-    {
+    if data.len() >= 4 && data[0] == 0x00 && data[1] == 0x00 && data[2] == 0xFE && data[3] == 0xFF {
         return Some(4);
     }
 
@@ -177,10 +166,7 @@ mod tests {
 
         let result = BomClearProc.process(data)?;
         assert!(matches!(result, RawData::Bytes(_)));
-        assert_eq!(
-            crate::eval::builtins::raw_to_utf8_string(&result),
-            "hello"
-        );
+        assert_eq!(crate::eval::builtins::raw_to_utf8_string(&result), "hello");
         Ok(())
     }
 
@@ -193,10 +179,7 @@ mod tests {
 
         let result = BomClearProc.process(data)?;
         assert!(matches!(result, RawData::Bytes(_)));
-        assert_eq!(
-            crate::eval::builtins::raw_to_utf8_string(&result),
-            "world"
-        );
+        assert_eq!(crate::eval::builtins::raw_to_utf8_string(&result), "world");
         Ok(())
     }
 
