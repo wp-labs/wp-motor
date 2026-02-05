@@ -9,6 +9,14 @@ impl PiPeOperation {
     pub fn new(from: DirectAccessor, items: Vec<PipeFun>) -> Self {
         Self { from, items }
     }
+
+    pub fn from_mut(&mut self) -> &mut DirectAccessor {
+        &mut self.from
+    }
+
+    pub fn items_mut(&mut self) -> &mut Vec<PipeFun> {
+        &mut self.items
+    }
 }
 
 impl Display for PiPeOperation {

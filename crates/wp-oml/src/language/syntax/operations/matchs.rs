@@ -422,6 +422,9 @@ impl MatchCase {
             result: value,
         }
     }
+    pub fn result_mut(&mut self) -> &mut NestedAccessor {
+        &mut self.result
+    }
     pub fn eq_const<S: Into<String>>(meta_str: &str, m_val: S, t_val: S) -> AnyResult<Self> {
         let meta = DataType::from(meta_str)?;
         let m_obj = DataField::from_str(meta.clone(), "".to_string(), m_val.into())?;
@@ -496,6 +499,14 @@ impl MatchOperation {
             items,
             default,
         }
+    }
+
+    pub fn items_mut(&mut self) -> &mut Vec<MatchCase> {
+        &mut self.items
+    }
+
+    pub fn default_mut(&mut self) -> Option<&mut MatchCase> {
+        self.default.as_mut()
     }
 }
 

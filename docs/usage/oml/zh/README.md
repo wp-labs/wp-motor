@@ -8,6 +8,7 @@
 
 - **[函数索引](./function_index.md)** - 所有可用 pipe function 的完整列表
 - **[Match 表达式函数](./match_functions.md)** - Match 表达式中的函数匹配 ⭐ 新增
+- **[`static` 块常量](./static_blocks.md)** - 模型级常量与模板缓存 ⭐ 新增
 
 ### 函数详细文档
 
@@ -317,6 +318,11 @@ result = pipe take(url)
   - 最佳实践
 
 ## 🆕 最新更新
+
+### v1.14.1 (2026-02-06)
+
+- ⭐ **新增** `static { ... }` 块，可在解析阶段构建模型级常量并在运行时复用
+- ⭐ **新增** 文档《[static 块常量与模板缓存](./static_blocks.md)》，附示例与最佳实践
 
 ### v1.13.4 (2026-02-04)
 

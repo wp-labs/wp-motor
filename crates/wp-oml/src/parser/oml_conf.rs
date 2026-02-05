@@ -1,15 +1,23 @@
-use crate::language::{EvalExp, ObjModel};
+use crate::core::DataRecordRef;
+use crate::core::ExpEvaluator;
+use crate::language::{EvalExp, ObjModel, PreciseEvaluator};
 use crate::parser::error::OMLCodeErrorTait;
-use crate::parser::keyword::{kw_head_sep_line, kw_oml_name};
+use crate::parser::keyword::{kw_head_sep_line, kw_oml_name, kw_static};
 use crate::parser::oml_aggregate::oml_aggregate;
+use crate::parser::static_ctx::{clear_symbols, install_symbols};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use winnow::ascii::multispace0;
 use winnow::combinator::{opt, repeat};
-use winnow::error::StrContext;
+use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
+use wp_data_model::cache::FieldQueryCache;
 use wp_error::{OMLCodeError, OMLCodeResult};
+use wp_model_core::model::{DataField, DataRecord};
 use wp_parser::Parser;
 use wp_parser::WResult;
 use wp_parser::atom::{take_obj_path, take_obj_wild_path};
 use wp_parser::symbol::symbol_colon;
+use wp_parser::utils::get_scope;
 use wpl::parser::utils::peek_str;
 
 use super::keyword::kw_oml_rule;
@@ -32,10 +40,15 @@ pub fn oml_conf_code(data: &mut &str) -> WResult<ObjModel> {
     debug_rule!("obj model: rules loaded!");
     a_items.bind_rules(rules);
     kw_head_sep_line.parse_next(data)?;
+
+    let static_items = parse_static_blocks(data)?;
     let mut items: Vec<EvalExp> = repeat(1.., oml_aggregate).parse_next(data)?;
     debug_rule!("obj model: aggregate item  loaded!");
     //repeat(1.., terminated(oml_aggregate, symbol_semicolon)).parse_next(data)?;
     a_items.items.append(&mut items);
+    clear_symbols();
+
+    finalize_static_blocks(&mut a_items, static_items)?;
 
     // Check if any field name starts with "__" (temporary field marker)
     let has_temp = check_temp_fields(&a_items.items);
@@ -88,6 +101,166 @@ fn check_batch_target_temp(target: &crate::language::BatchEvalTarget) -> bool {
         .as_ref()
         .map(|n| n.starts_with("__"))
         .unwrap_or(false)
+}
+
+fn parse_static_blocks(data: &mut &str) -> WResult<Vec<EvalExp>> {
+    let mut static_items = Vec::new();
+    let mut symbols = Vec::new();
+    let mut symbol_set = HashSet::new();
+    loop {
+        multispace0.parse_next(data)?;
+        if peek_str("static", data).is_err() {
+            break;
+        }
+        kw_static.parse_next(data)?;
+        multispace0.parse_next(data)?;
+        let block = get_scope(data, '{', '}')?;
+        let mut block_data: &str = block;
+        loop {
+            multispace0.parse_next(&mut block_data)?;
+            if block_data.is_empty() {
+                break;
+            }
+            let exp = oml_aggregate.parse_next(&mut block_data)?;
+            let sym_name = extract_static_target(&exp)?;
+            if !symbol_set.insert(sym_name.clone()) {
+                let mut err = ContextError::new();
+                err.push(StrContext::Label("duplicate static binding"));
+                err.push(StrContext::Expected(StrContextValue::Description(
+                    "unique symbol",
+                )));
+                return Err(ErrMode::Cut(err));
+            }
+            symbols.push(sym_name);
+            static_items.push(exp);
+        }
+    }
+    if symbols.is_empty() {
+        clear_symbols();
+    } else {
+        install_symbols(symbols);
+    }
+    Ok(static_items)
+}
+
+fn extract_static_target(exp: &EvalExp) -> Result<String, ErrMode<ContextError>> {
+    match exp {
+        EvalExp::Single(single) => {
+            if let Some(target) = single.target().first() {
+                Ok(target.safe_name())
+            } else {
+                let mut err = ContextError::new();
+                err.push(StrContext::Label("static assignment"));
+                err.push(StrContext::Expected(StrContextValue::Description(
+                    "target required",
+                )));
+                Err(ErrMode::Cut(err))
+            }
+        }
+        EvalExp::Batch(_) => {
+            let mut err = ContextError::new();
+            err.push(StrContext::Label("static assignment"));
+            err.push(StrContext::Expected(StrContextValue::Description(
+                "single evaluator",
+            )));
+            Err(ErrMode::Cut(err))
+        }
+    }
+}
+
+fn finalize_static_blocks(
+    model: &mut ObjModel,
+    static_items: Vec<EvalExp>,
+) -> Result<(), ErrMode<ContextError>> {
+    if static_items.is_empty() {
+        model.set_static_fields(HashMap::new());
+        return Ok(());
+    }
+
+    let const_fields = materialize_static_items(&static_items)?;
+    rewrite_static_references(model, &const_fields)?;
+    model.set_static_fields(const_fields);
+    Ok(())
+}
+
+fn materialize_static_items(
+    items: &[EvalExp],
+) -> Result<HashMap<String, Arc<DataField>>, ErrMode<ContextError>> {
+    let mut cache = FieldQueryCache::default();
+    let src = DataRecord::default();
+    let mut dst = DataRecord::default();
+
+    for exp in items {
+        let mut src_ref = DataRecordRef::from(&src);
+        exp.eval_proc(&mut src_ref, &mut dst, &mut cache);
+    }
+
+    let mut const_map = HashMap::new();
+    for field in dst.items.into_iter() {
+        const_map.insert(field.get_name().to_string(), Arc::new(field));
+    }
+    Ok(const_map)
+}
+
+fn rewrite_static_references(
+    model: &mut ObjModel,
+    const_fields: &HashMap<String, Arc<DataField>>,
+) -> Result<(), ErrMode<ContextError>> {
+    for item in &mut model.items {
+        if let EvalExp::Single(single) = item {
+            rewrite_precise_evaluator(single.eval_way_mut(), const_fields)?;
+        }
+    }
+    Ok(())
+}
+
+fn rewrite_precise_evaluator(
+    eval: &mut PreciseEvaluator,
+    const_fields: &HashMap<String, Arc<DataField>>,
+) -> Result<(), ErrMode<ContextError>> {
+    match eval {
+        PreciseEvaluator::StaticSymbol(sym) => {
+            let field = const_fields.get(sym).ok_or_else(|| {
+                let mut err = ContextError::new();
+                err.push(StrContext::Label("static reference"));
+                err.push(StrContext::Label("symbol not found"));
+                ErrMode::Cut(err)
+            })?;
+            *eval = PreciseEvaluator::Obj((**field).clone());
+            Ok(())
+        }
+        PreciseEvaluator::Match(op) => rewrite_match_operation(op, const_fields),
+        _ => Ok(()),
+    }
+}
+
+fn rewrite_match_operation(
+    op: &mut crate::language::MatchOperation,
+    const_fields: &HashMap<String, Arc<DataField>>,
+) -> Result<(), ErrMode<ContextError>> {
+    for case in op.items_mut() {
+        rewrite_nested_accessor(case.result_mut(), const_fields)?;
+    }
+    if let Some(default_case) = op.default_mut() {
+        rewrite_nested_accessor(default_case.result_mut(), const_fields)?;
+    }
+    Ok(())
+}
+
+fn rewrite_nested_accessor(
+    accessor: &mut crate::language::NestedAccessor,
+    const_fields: &HashMap<String, Arc<DataField>>,
+) -> Result<(), ErrMode<ContextError>> {
+    if let Some(sym) = accessor.as_static_symbol() {
+        let field = const_fields.get(sym).ok_or_else(|| {
+            let mut err = ContextError::new();
+            err.push(StrContext::Label("static reference"));
+            err.push(StrContext::Label("symbol not found"));
+            ErrMode::Cut(err)
+        })?;
+        accessor.replace_with_field((**field).clone());
+    }
+    Ok(())
 }
 
 pub fn oml_conf_head(data: &mut &str) -> WResult<String> {
@@ -195,6 +368,88 @@ version2 = take(ip) | to_str | base64_encode ;
         assert_eq!(model.name(), "test");
         assert_eq!(model.items.len(), 2);
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_static_block_parsing() -> ModalResult<()> {
+        use crate::language::{EvalExp, PreciseEvaluator};
+
+        let mut code = r#"
+name : test
+---
+static {
+    template = object {
+        id = chars(E1);
+    };
+}
+
+target_template = template;
+        "#;
+
+        let model = oml_parse_raw(&mut code)?;
+        assert_eq!(model.static_fields().len(), 1);
+        assert_eq!(model.items.len(), 1);
+        match &model.items[0] {
+            EvalExp::Single(single) => match single.eval_way() {
+                PreciseEvaluator::Obj(field) => {
+                    assert_eq!(field.get_name(), "template");
+                }
+                other => panic!("unexpected evaluator: {:?}", other),
+            },
+            _ => panic!("expected single evaluator"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_static_in_match_cases() -> ModalResult<()> {
+        use crate::language::{EvalExp, NestedAccessor, PreciseEvaluator};
+
+        let mut code = r#"
+name : test
+---
+static {
+    tpl = object {
+        id = chars(E1);
+        tpl = chars(foo)
+    };
+}
+
+target = match read(Content) {
+    starts_with('foo') => tpl;
+    _ => tpl;
+};
+        "#;
+
+        let model = oml_parse_raw(&mut code)?;
+        assert_eq!(model.static_fields().len(), 1);
+        match &model.items[0] {
+            EvalExp::Single(single) => match single.eval_way() {
+                PreciseEvaluator::Match(op) => {
+                    for case in op.items() {
+                        match case.result() {
+                            NestedAccessor::Field(field) => {
+                                assert_eq!(field.get_name(), "tpl");
+                            }
+                            other => panic!("expected field accessor, got {:?}", other),
+                        }
+                    }
+                    if let Some(default_case) = op.default() {
+                        match default_case.result() {
+                            NestedAccessor::Field(field) => {
+                                assert_eq!(field.get_name(), "tpl");
+                            }
+                            other => panic!("expected field accessor, got {:?}", other),
+                        }
+                    } else {
+                        panic!("match should have default case");
+                    }
+                }
+                other => panic!("unexpected evaluator: {:?}", other),
+            },
+            _ => panic!("expected single evaluator"),
+        }
         Ok(())
     }
     #[test]

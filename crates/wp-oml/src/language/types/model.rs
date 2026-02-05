@@ -1,8 +1,11 @@
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 
 use crate::language::EvalExp;
 use derive_getters::Getters;
 use enum_dispatch::enum_dispatch;
+use wp_model_core::model::DataField;
 use wp_specs::WildArray;
 
 #[derive(Getters, Debug, Clone)]
@@ -12,6 +15,8 @@ pub struct ObjModel {
     pub items: Vec<EvalExp>,
     #[getter(skip)]
     has_temp_fields: bool,
+    #[getter(skip)]
+    static_fields: HashMap<String, Arc<DataField>>,
 }
 
 impl ObjModel {
@@ -28,6 +33,14 @@ impl ObjModel {
     pub(crate) fn set_has_temp_fields(&mut self, has_temp: bool) {
         self.has_temp_fields = has_temp;
     }
+
+    pub(crate) fn set_static_fields(&mut self, fields: HashMap<String, Arc<DataField>>) {
+        self.static_fields = fields;
+    }
+
+    pub fn static_fields(&self) -> &HashMap<String, Arc<DataField>> {
+        &self.static_fields
+    }
 }
 
 impl ObjModel {
@@ -37,6 +50,7 @@ impl ObjModel {
             rules: WildArray::default(),
             items: Vec::new(),
             has_temp_fields: false,
+            static_fields: HashMap::new(),
         }
     }
 }

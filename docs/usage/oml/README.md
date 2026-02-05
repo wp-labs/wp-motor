@@ -23,6 +23,7 @@ The Chinese version includes:
 - **Match Functions** - Function-based pattern matching in match expressions ⭐ New
 - **starts_with** - String prefix matching function
 - **map_to** - Type-aware conditional value assignment function
+- **static Blocks** - Model-scoped constants & template caching ⭐ New
 
 ## 🚀 Quick Links
 
@@ -31,6 +32,7 @@ The Chinese version includes:
 - [Match 表达式函数](./zh/match_functions.md) - ⭐ New
 - [starts_with 使用指南](./zh/starts_with.md)
 - [map_to 使用指南](./zh/map_to.md)
+- [`static` 块常量](./zh/static_blocks.md) - ⭐ New
 
 ## 📝 Function Categories
 

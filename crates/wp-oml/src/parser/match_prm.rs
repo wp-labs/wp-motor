@@ -5,6 +5,7 @@ use crate::language::{MatchFun, MatchOperation};
 use crate::parser::collect_prm::oml_aga_collect;
 use crate::parser::keyword::{kw_gw_match, kw_in};
 use crate::parser::oml_aggregate::oml_crate_calc_ref;
+use crate::parser::static_ctx::parse_static_value;
 use winnow::ascii::multispace0;
 use winnow::combinator::{alt, opt, peek, repeat};
 use winnow::error::{ContextError, StrContext, StrContextValue};
@@ -58,13 +59,20 @@ fn match_cond2_item(data: &mut &str) -> WResult<MatchCase> {
 
 fn match_calc_target(data: &mut &str) -> WResult<NestedAccessor> {
     symbol_match_to.parse_next(data)?;
-    let gw = alt((oml_aga_tdc, oml_aga_value, oml_aga_collect)).parse_next(data)?;
+    let gw = alt((
+        oml_aga_tdc,
+        oml_aga_value,
+        oml_aga_collect,
+        parse_static_value,
+    ))
+    .parse_next(data)?;
     opt(symbol_comma).parse_next(data)?;
     opt(symbol_semicolon).parse_next(data)?;
     let sub_gw = match gw {
         PreciseEvaluator::Obj(x) => NestedAccessor::Field(x),
         PreciseEvaluator::Tdc(x) => NestedAccessor::Direct(x),
         PreciseEvaluator::Collect(x) => NestedAccessor::Collect(x),
+        PreciseEvaluator::StaticSymbol(sym) => NestedAccessor::StaticSymbol(sym),
         _ => {
             unreachable!("not support to match item")
         }

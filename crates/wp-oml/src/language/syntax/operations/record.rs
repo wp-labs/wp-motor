@@ -35,4 +35,8 @@ impl RecordOperation {
             default_val: None,
         }
     }
+
+    pub fn dat_get_mut(&mut self) -> &mut DirectAccessor {
+        &mut self.dat_get
+    }
 }
