@@ -6,9 +6,9 @@ use orion_variate::EnvDict;
 use std::fs;
 use std::hint::black_box;
 use std::path::PathBuf;
-use wp_conf::test_support::ForTest;
+use wp_config::test_support::ForTest;
+use wp_data_model::cache::FieldQueryCache;
 use wp_knowledge::facade as kdb;
-use wp_model_core::cache::FieldQueryCache;
 use wp_model_core::model::{DataField, DataRecord};
 use wp_parser::Parser;
 
@@ -289,7 +289,7 @@ fn bench_threadclone_sql(c: &mut Criterion) {
         // 预热
         for k in keys.iter().take(n.min(3)) {
             let src = DataRecord {
-                items: vec![DataField::from_chars("p1", k)],
+                items: vec![DataField::from_chars("p1", *k)],
             };
             let _ = mdl_1.transform(src, &mut cache);
         }
@@ -345,7 +345,7 @@ fn bench_threadclone_sql(c: &mut Criterion) {
                 // 预热热点
                 for k in ks.iter().take(n.min(3)) {
                     let src = DataRecord {
-                        items: vec![DataField::from_chars("p1", k)],
+                        items: vec![DataField::from_chars("p1", *k)],
                     };
                     let _ = m.transform(src, &mut cache);
                 }
