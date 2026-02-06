@@ -39,4 +39,8 @@ impl RecordOperation {
     pub fn dat_get_mut(&mut self) -> &mut DirectAccessor {
         &mut self.dat_get
     }
+
+    pub fn default_val_mut(&mut self) -> Option<&mut GenericBinding> {
+        self.default_val.as_mut()
+    }
 }

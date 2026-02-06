@@ -250,9 +250,12 @@ fn rewrite_map_operation(
 }
 
 fn rewrite_record_operation(
-    _op: &mut crate::language::RecordOperation,
-    _const_fields: &HashMap<String, Arc<DataField>>,
+    op: &mut crate::language::RecordOperation,
+    const_fields: &HashMap<String, Arc<DataField>>,
 ) -> Result<(), ErrMode<ContextError>> {
+    if let Some(default) = op.default_val_mut() {
+        rewrite_generic_accessor(default.accessor_mut(), const_fields)?;
+    }
     Ok(())
 }
 
@@ -292,6 +295,22 @@ fn rewrite_match_operation(
 
 fn rewrite_nested_accessor(
     accessor: &mut crate::language::NestedAccessor,
+    const_fields: &HashMap<String, Arc<DataField>>,
+) -> Result<(), ErrMode<ContextError>> {
+    if let Some(sym) = accessor.as_static_symbol() {
+        let field = const_fields.get(sym).ok_or_else(|| {
+            let mut err = ContextError::new();
+            err.push(StrContext::Label("static reference"));
+            err.push(StrContext::Label("symbol not found"));
+            ErrMode::Cut(err)
+        })?;
+        accessor.replace_with_field((**field).clone());
+    }
+    Ok(())
+}
+
+fn rewrite_generic_accessor(
+    accessor: &mut crate::language::GenericAccessor,
     const_fields: &HashMap<String, Arc<DataField>>,
 ) -> Result<(), ErrMode<ContextError>> {
     if let Some(sym) = accessor.as_static_symbol() {
@@ -437,6 +456,81 @@ target_template = template;
             EvalExp::Single(single) => match single.eval_way() {
                 PreciseEvaluator::Obj(field) => {
                     assert_eq!(field.get_name(), "template");
+                }
+                other => panic!("unexpected evaluator: {:?}", other),
+            },
+            _ => panic!("expected single evaluator"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_static_in_map_binding() -> ModalResult<()> {
+        use crate::language::{EvalExp, NestedAccessor, PreciseEvaluator};
+
+        let mut code = r#"
+name : test
+---
+static {
+    tpl = object {
+        id = chars(E1);
+        tpl = chars(foo)
+    };
+}
+
+result = object {
+    clone = tpl;
+};
+        "#;
+
+        let model = oml_parse_raw(&mut code)?;
+        assert_eq!(model.static_fields().len(), 1);
+        match &model.items[0] {
+            EvalExp::Single(single) => match single.eval_way() {
+                PreciseEvaluator::Map(map) => {
+                    let subs = map.subs();
+                    assert_eq!(subs.len(), 1);
+                    match subs[0].acquirer() {
+                        NestedAccessor::Field(_) => {}
+                        other => panic!("expected field accessor, got {:?}", other),
+                    }
+                }
+                other => panic!("unexpected evaluator: {:?}", other),
+            },
+            _ => panic!("expected single evaluator"),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_static_in_default_binding() -> ModalResult<()> {
+        use crate::language::{EvalExp, GenericAccessor, PreciseEvaluator};
+
+        let mut code = r#"
+name : test
+---
+static {
+    fallback = object {
+        id = chars(E1);
+        tpl = chars(bar)
+    };
+}
+
+value = take(Value) { _ : fallback };
+        "#;
+
+        let model = oml_parse_raw(&mut code)?;
+        assert_eq!(model.static_fields().len(), 1);
+        match &model.items[0] {
+            EvalExp::Single(single) => match single.eval_way() {
+                PreciseEvaluator::Tdc(op) => {
+                    let default = op.default_val().as_ref().expect("default binding");
+                    match default.accessor() {
+                        GenericAccessor::Field(field) => {
+                            assert_eq!(field.get_name(), "fallback");
+                        }
+                        other => panic!("expected field accessor, got {:?}", other),
+                    }
                 }
                 other => panic!("unexpected evaluator: {:?}", other),
             },

@@ -13,6 +13,10 @@ impl GenericBinding {
             accessor: acquirer,
         }
     }
+
+    pub fn accessor_mut(&mut self) -> &mut GenericAccessor {
+        &mut self.accessor
+    }
 }
 
 impl Display for GenericBinding {

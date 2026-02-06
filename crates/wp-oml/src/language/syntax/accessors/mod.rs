@@ -137,6 +137,7 @@ impl Display for DirectAccessor {
 pub enum GenericAccessor {
     Field(DataField),
     Fun(FunOperation),
+    StaticSymbol(String),
 }
 
 impl Display for GenericAccessor {
@@ -148,6 +149,23 @@ impl Display for GenericAccessor {
             GenericAccessor::Fun(x) => {
                 write!(f, "{}", x)
             }
+            GenericAccessor::StaticSymbol(sym) => {
+                write!(f, "{}", sym)
+            }
+        }
+    }
+}
+
+impl GenericAccessor {
+    pub fn replace_with_field(&mut self, field: DataField) {
+        *self = GenericAccessor::Field(field);
+    }
+
+    pub fn as_static_symbol(&self) -> Option<&str> {
+        if let GenericAccessor::StaticSymbol(sym) = self {
+            Some(sym.as_str())
+        } else {
+            None
         }
     }
 }
