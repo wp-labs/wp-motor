@@ -2,20 +2,21 @@ use crate::core::DataRecordRef;
 use crate::core::ExpEvaluator;
 use crate::language::{EvalExp, ObjModel, PreciseEvaluator};
 use crate::parser::error::OMLCodeErrorTait;
-use crate::parser::keyword::{kw_head_sep_line, kw_oml_name, kw_static};
+use crate::parser::keyword::{kw_head_sep_line, kw_oml_enable, kw_oml_name, kw_static};
 use crate::parser::oml_aggregate::oml_aggregate;
 use crate::parser::static_ctx::{clear_symbols, install_symbols};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use winnow::ascii::multispace0;
-use winnow::combinator::{opt, repeat};
+use winnow::combinator::repeat;
 use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
+use winnow::stream::Stream;
 use wp_data_model::cache::FieldQueryCache;
 use wp_error::{OMLCodeError, OMLCodeResult};
 use wp_model_core::model::{DataField, DataRecord};
 use wp_parser::Parser;
 use wp_parser::WResult;
-use wp_parser::atom::{take_obj_path, take_obj_wild_path};
+use wp_parser::atom::{take_obj_path, take_var_name};
 use wp_parser::symbol::symbol_colon;
 use wp_parser::utils::get_scope;
 use wpl::parser::utils::peek_str;
@@ -36,9 +37,32 @@ pub fn oml_conf_code(data: &mut &str) -> WResult<ObjModel> {
     let name = oml_conf_head.parse_next(data)?;
     debug_rule!("obj model: {} begin ", name);
     let mut a_items = ObjModel::new(name);
-    let rules = opt(oml_conf_rules).parse_next(data)?;
+
+    // Parse optional config items (enable and rule) in any order
+    loop {
+        multispace0.parse_next(data)?;
+        let ck = data.checkpoint();
+        // Try to parse enable first (to avoid 'enable' being consumed as a rule path)
+        if oml_conf_enable.parse_next(data).is_ok_and(|en| {
+            a_items.set_enable(en);
+            true
+        }) {
+            continue;
+        }
+        data.reset(&ck);
+        // Try to parse rules
+        if oml_conf_rules.parse_next(data).is_ok_and(|rules| {
+            a_items.bind_rules(Some(rules));
+            true
+        }) {
+            continue;
+        }
+        data.reset(&ck);
+        // Neither enable nor rules found, break
+        break;
+    }
     debug_rule!("obj model: rules loaded!");
-    a_items.bind_rules(rules);
+
     kw_head_sep_line.parse_next(data)?;
 
     let static_items = parse_static_blocks(data)?;
@@ -338,8 +362,47 @@ pub fn oml_conf_head(data: &mut &str) -> WResult<String> {
 pub fn oml_conf_rules(data: &mut &str) -> WResult<Vec<String>> {
     multispace0.parse_next(data)?;
     let (_, _) = (kw_oml_rule, symbol_colon).parse_next(data)?;
-    let rules: Vec<&str> = repeat(0.., take_obj_wild_path).parse_next(data)?;
+    // Use custom path parser that stops before reserved keywords
+    let rules: Vec<&str> = repeat(0.., oml_rule_path).parse_next(data)?;
     Ok(rules.into_iter().map(|s| s.to_string()).collect())
+}
+
+/// Custom rule path parser that checks for reserved keywords
+fn oml_rule_path<'a>(input: &mut &'a str) -> WResult<&'a str> {
+    use winnow::ascii::multispace1;
+    use winnow::token::take_while;
+
+    multispace0.parse_next(input)?;
+    // Check if it's a reserved keyword before parsing
+    let trimmed = input.trim_start();
+    if trimmed.starts_with("enable") || trimmed.starts_with("---") {
+        // Return backtrack error to stop repeat
+        return Err(winnow::error::ErrMode::Backtrack(ContextError::new()));
+    }
+    let key =
+        take_while(1.., ('0'..='9', 'A'..='Z', 'a'..='z', ['_', '/', '*'])).parse_next(input)?;
+    multispace1.parse_next(input)?;
+    Ok(key)
+}
+
+pub fn oml_conf_enable(data: &mut &str) -> WResult<bool> {
+    multispace0.parse_next(data)?;
+    let (_, _) = (kw_oml_enable, symbol_colon).parse_next(data)?;
+    let value: &str = take_var_name
+        .context(StrContext::Label("enable value"))
+        .parse_next(data)?;
+    match value {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => {
+            let mut err = ContextError::new();
+            err.push(StrContext::Label("enable value"));
+            err.push(StrContext::Expected(StrContextValue::Description(
+                "true or false",
+            )));
+            Err(ErrMode::Cut(err))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -862,6 +925,96 @@ __temp2 = chars(value3);
             true,
             "Should have temp fields flag"
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_enable_config_default() -> ModalResult<()> {
+        use orion_error::TestAssert;
+
+        // Test case 1: Default enable (no enable config)
+        let mut code_default = r#"
+name : test
+---
+field = chars(value);
+        "#;
+        let model_default = oml_parse_raw(&mut code_default).assert();
+        assert_eq!(
+            *model_default.enable(),
+            true,
+            "Default enable should be true"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_enable_config_true() -> ModalResult<()> {
+        use orion_error::TestAssert;
+
+        // Test case 2: Explicit enable = true
+        let mut code_enable_true = r#"
+name : test
+enable : true
+---
+field = chars(value);
+        "#;
+        let model_enable_true = oml_parse_raw(&mut code_enable_true).assert();
+        assert_eq!(*model_enable_true.enable(), true, "Explicit enable true");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_enable_config_false() -> ModalResult<()> {
+        use orion_error::TestAssert;
+
+        // Test case 3: Explicit enable = false
+        let mut code_enable_false = r#"
+name : test
+enable : false
+---
+field = chars(value);
+        "#;
+        let model_enable_false = oml_parse_raw(&mut code_enable_false).assert();
+        assert_eq!(*model_enable_false.enable(), false, "Explicit enable false");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_enable_config_with_rule() -> ModalResult<()> {
+        use orion_error::TestAssert;
+
+        // Test case 4: enable with rule
+        let mut code_with_rule = r#"
+name : test
+rule : /test/*
+enable : false
+---
+field = chars(value);
+        "#;
+        let model_with_rule = oml_parse_raw(&mut code_with_rule).assert();
+        assert_eq!(*model_with_rule.enable(), false, "enable with rule");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_enable_explicit() -> ModalResult<()> {
+        use crate::parser::oml_conf::oml_conf_enable;
+
+        // Test parsing enable directly
+        let mut enable_str = "enable : true ";
+        let result = oml_conf_enable(&mut enable_str);
+        assert!(result.is_ok(), "Should parse enable: {:?}", result);
+        assert_eq!(result.unwrap(), true);
+
+        let mut enable_false = "enable : false ";
+        let result = oml_conf_enable(&mut enable_false);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), false);
 
         Ok(())
     }

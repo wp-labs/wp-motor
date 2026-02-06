@@ -12,6 +12,7 @@ use wp_specs::WildArray;
 pub struct ObjModel {
     name: String,
     rules: WildArray,
+    enable: bool,
     pub items: Vec<EvalExp>,
     #[getter(skip)]
     has_temp_fields: bool,
@@ -24,6 +25,10 @@ impl ObjModel {
         if let Some(rules) = rules_opt {
             self.rules = WildArray::new1(rules);
         }
+    }
+
+    pub(crate) fn set_enable(&mut self, enable: bool) {
+        self.enable = enable;
     }
 
     pub fn has_temp_fields(&self) -> bool {
@@ -48,6 +53,7 @@ impl ObjModel {
         Self {
             name,
             rules: WildArray::default(),
+            enable: true,
             items: Vec::new(),
             has_temp_fields: false,
             static_fields: HashMap::new(),

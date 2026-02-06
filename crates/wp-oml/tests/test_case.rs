@@ -591,3 +591,183 @@ fn test_value_arr1() {
     );
 }
 //}
+
+// ==================== Enable Configuration Tests ====================
+
+#[test]
+fn test_enable_default_true() {
+    // Test that enable defaults to true when not specified
+    let mut conf = r#"
+        name : test
+        ---
+        A1 = chars(hello);
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+    assert_eq!(*model.enable(), true, "Default enable should be true");
+}
+
+#[test]
+fn test_enable_explicit_true() {
+    // Test explicit enable: true
+    let mut conf = r#"
+        name : test
+        enable : true
+        ---
+        A1 = chars(hello);
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+    assert_eq!(*model.enable(), true, "Explicit enable true");
+}
+
+#[test]
+fn test_enable_explicit_false() {
+    // Test explicit enable: false
+    let mut conf = r#"
+        name : test
+        enable : false
+        ---
+        A1 = chars(hello);
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+    assert_eq!(*model.enable(), false, "Explicit enable false");
+}
+
+#[test]
+fn test_enable_with_rule() {
+    // Test enable with rule configuration
+    let mut conf = r#"
+        name : test
+        rule : /nginx/*
+        enable : false
+        ---
+        A1 = chars(hello);
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+    assert_eq!(*model.enable(), false, "Enable should be false");
+    assert!(!model.rules().is_empty(), "Rules should be set");
+}
+
+#[test]
+fn test_enable_before_rule() {
+    // Test enable before rule (order independence)
+    let mut conf = r#"
+        name : test
+        enable : false
+        rule : /path/*
+        ---
+        A1 = chars(hello);
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+    assert_eq!(*model.enable(), false, "Enable should be false");
+    assert!(!model.rules().is_empty(), "Rules should be set");
+}
+
+#[test]
+fn test_enabled_model_transforms_data() {
+    // Test that enabled model transforms data correctly
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : test
+        enable : true
+        ---
+        result = chars(transformed);
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+    assert_eq!(*model.enable(), true);
+
+    let src = DataRecord::default();
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.field("result"),
+        Some(&DataField::from_chars("result", "transformed"))
+    );
+}
+
+#[test]
+fn test_disabled_model_still_parses() {
+    // Test that disabled model can still be parsed and used if needed
+    // (the filtering happens at load time, not at parse time)
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : disabled_model
+        enable : false
+        ---
+        result = chars(should_not_run);
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+    assert_eq!(*model.enable(), false);
+    assert_eq!(model.name(), "disabled_model");
+
+    // Model can still transform if called directly (filtering is at load time)
+    let src = DataRecord::default();
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.field("result"),
+        Some(&DataField::from_chars("result", "should_not_run"))
+    );
+}
+
+#[test]
+fn test_enable_with_complex_config() {
+    // Test enable with complex configuration including static blocks
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : complex_model
+        rule : /api/* /web/*
+        enable : true
+        ---
+        static {
+            default_val = chars(default);
+        }
+        result = default_val;
+        field1, field2 = take();
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+    assert_eq!(*model.enable(), true);
+    assert_eq!(model.rules().as_ref().len(), 2);
+
+    let data = vec![
+        DataField::from_chars("field1", "v1"),
+        DataField::from_chars("field2", "v2"),
+    ];
+    let src = DataRecord { items: data };
+    let target = model.transform(src, cache);
+
+    assert_eq!(
+        target.field("result"),
+        Some(&DataField::from_chars("result", "default"))
+    );
+    assert_eq!(
+        target.field("field1"),
+        Some(&DataField::from_chars("field1", "v1"))
+    );
+}
+
+#[test]
+fn test_enable_preserves_model_name() {
+    // Ensure enable config doesn't affect model name parsing
+    let mut conf = r#"
+        name : my_special_model
+        enable : false
+        ---
+        x = chars(y);
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+    assert_eq!(model.name(), "my_special_model");
+    assert_eq!(*model.enable(), false);
+}
+
+#[test]
+fn test_multiple_rules_with_enable() {
+    // Test multiple rules with enable configuration
+    let mut conf = r#"
+        name : multi_rule_model
+        rule : /path/a/* /path/b/* /path/c/*
+        enable : true
+        ---
+        * = take();
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+    assert_eq!(*model.enable(), true);
+    assert_eq!(model.rules().as_ref().len(), 3);
+}

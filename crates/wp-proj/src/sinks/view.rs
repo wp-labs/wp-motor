@@ -200,6 +200,10 @@ pub fn collect_oml_models(work_root: &str, dict: &EnvDict) -> RunResult<Vec<OmlR
         let model = ObjModel::load(path_str.as_str()).map_err(|e| {
             RunReason::from_conf(format!("parse OML {} failed: {}", path_str, e)).to_err()
         })?;
+        // Skip disabled models
+        if !model.enable() {
+            continue;
+        }
         let rules: Vec<String> = model
             .rules()
             .as_ref()

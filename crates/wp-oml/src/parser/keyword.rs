@@ -50,6 +50,17 @@ pub fn kw_oml_rule(data: &mut &str) -> WResult<()> {
         .parse_next(data)?;
     Ok(())
 }
+
+pub fn kw_oml_enable(data: &mut &str) -> WResult<()> {
+    let _ = multispace0.parse_next(data)?;
+    literal("enable")
+        .context(StrContext::Label("oml keyword"))
+        .context(StrContext::Expected(StrContextValue::Description(
+            "need 'enable' ",
+        )))
+        .parse_next(data)?;
+    Ok(())
+}
 pub fn kw_static(data: &mut &str) -> WResult<()> {
     let _ = multispace0.parse_next(data)?;
     literal("static")
