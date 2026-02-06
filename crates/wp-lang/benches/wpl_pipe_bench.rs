@@ -84,8 +84,9 @@ fn criterion_pipe_f_chars_in_1k_10p(c: &mut Criterion) {
     let wpl = format!("(json {} )", build_pipes_f_chars_in(10, n_fields, "v"));
     let express = wpl_express.parse(&wpl).assert();
     let lpp = WplEvaluator::from(&express, None).assert();
+    let raw = RawData::from_string(data.clone());
     c.bench_function("pipe_f_chars_in_1k_10p", |b| {
-        b.iter(|| wpl_parse(&lpp, &data))
+        b.iter(|| wpl_parse(&lpp, &raw))
     });
 }
 
