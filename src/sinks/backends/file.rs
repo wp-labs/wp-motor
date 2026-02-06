@@ -34,18 +34,16 @@ pub(crate) struct FileSinkSpec {
     fmt: TextFmt,
     base: String,
     file_name: String,
+    sync: bool,
 }
 
 impl FileSinkSpec {
     pub(crate) fn from_resolved(_kind: &str, spec: &ResolvedSinkSpec) -> AnyResult<Self> {
         if let Some(s) = spec.params.get("fmt").and_then(|v| v.as_str()) {
-            let ok = matches!(
-                s,
-                "json" | "csv" | "show" | "kv" | "raw" | "proto" | "proto-text"
-            );
+            let ok = matches!(s, "json" | "csv" | "show" | "kv" | "raw" | "proto-text");
             if !ok {
                 anyhow::bail!(
-                    "invalid fmt: '{}'; allowed: json,csv,show,kv,raw,proto,proto-text",
+                    "invalid fmt: '{}'; allowed: json,csv,show,kv,raw,proto-text",
                     s
                 );
             }
@@ -68,15 +66,25 @@ impl FileSinkSpec {
             .and_then(|v| v.as_str())
             .unwrap_or("out.dat")
             .to_string();
+        let sync = spec
+            .params
+            .get("sync")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         Ok(Self {
             fmt,
             base,
             file_name,
+            sync,
         })
     }
 
     pub(crate) fn text_fmt(&self) -> TextFmt {
         self.fmt
+    }
+
+    pub(crate) fn sync(&self) -> bool {
+        self.sync
     }
 
     pub(crate) fn resolve_path(&self, _ctx: &SinkBuildCtx) -> String {
@@ -159,11 +167,12 @@ const FILE_BUF_SIZE: usize = 102_400; // 100 KiB
 
 // Classic async file sink (original behavior preserved):
 // - Direct BufWriter writes
-// - Periodic flush by count (every 100 writes)
+// - Periodic flush by count (every 100 writes) OR immediate flush based on config
 pub struct AsyncFileSink {
     path: String,
     out_io: BufWriter<tokio::fs::File>,
     proc_cnt: usize,
+    sync: bool,
 }
 
 impl Drop for AsyncFileSink {
@@ -181,6 +190,10 @@ impl Drop for AsyncFileSink {
 
 impl AsyncFileSink {
     pub async fn new(out_path: &str) -> AnyResult<Self> {
+        Self::with_sync(out_path, false).await
+    }
+
+    pub async fn with_sync(out_path: &str, sync: bool) -> AnyResult<Self> {
         if let Some(parent) = std::path::Path::new(out_path).parent()
             && !parent.exists()
         {
@@ -196,6 +209,7 @@ impl AsyncFileSink {
             path: out_path.to_string(),
             out_io: BufWriter::with_capacity(FILE_BUF_SIZE, out_io),
             proc_cnt: 0,
+            sync,
         })
     }
 }
@@ -228,7 +242,9 @@ impl AsyncRawdatSink for AsyncFileSink {
             .await
             .owe(SinkReason::sink("file out fail"))?;
         self.proc_cnt += 1;
-        if self.proc_cnt.is_multiple_of(100) {
+
+        // Flush immediately if sync mode enabled, otherwise flush every 100 writes
+        if self.sync || self.proc_cnt.is_multiple_of(100) {
             self.out_io
                 .flush()
                 .await
@@ -279,7 +295,9 @@ impl AsyncRawdatSink for AsyncFileSink {
             .owe(SinkReason::sink("file out fail"))?;
 
         self.proc_cnt += data.len();
-        if self.proc_cnt.is_multiple_of(100) {
+
+        // Flush immediately if sync mode enabled, otherwise flush every 100 writes
+        if self.sync || self.proc_cnt.is_multiple_of(100) {
             self.out_io
                 .flush()
                 .await
@@ -316,7 +334,9 @@ impl AsyncRawdatSink for AsyncFileSink {
             .owe(SinkReason::sink("file out fail"))?;
 
         self.proc_cnt += data.len();
-        if self.proc_cnt.is_multiple_of(100) {
+
+        // Flush immediately if sync mode enabled, otherwise flush every 100 writes
+        if self.sync || self.proc_cnt.is_multiple_of(100) {
             self.out_io
                 .flush()
                 .await
