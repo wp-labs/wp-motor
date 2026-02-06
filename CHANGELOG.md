@@ -5,16 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.15.0] - 2026-02-06
+## [1.15.0] - 2026-02-07
 
 ### Added
-- **OML Static Blocks**: introduce `static { ... }` sections for model-scoped constants和模板缓存
-  - 静态表达式仅在模型加载时执行一次，结果存入常量池，后续记录直接复用，避免重复构造 `object { ... }`
-  - 可在赋值、`match` 分支、`object { field = tpl; }`、默认值 `{ _ : tpl }` 等场景直接写静态符号
-- **OML Enable Configuration**: 新增 `enable` 配置项，支持禁用 OML 模型
+- **Sinks/File**: Add `sync` parameter to control immediate disk flushing
+  - `sync: false` (default): High-performance mode with buffered writes, suitable for large data volumes
+  - `sync: true`: Real-time disk writes for data safety, suitable for critical data
+- **OML Static Blocks**: Introduce `static { ... }` sections for model-scoped constants and template caching
+  - Static expressions are executed only once during model loading, results stored in constant pool for reuse across records, avoiding repeated `object { ... }` construction
+  - Static symbols can be directly used in assignments, `match` branches, `object { field = tpl; }`, default values `{ _ : tpl }`, and other scenarios
+- **OML Enable Configuration**: Add `enable` configuration option to support disabling OML models
+
+### Changed
+- **Documentation**: Unify all configuration examples from YAML/JSON format to TOML format
+- **Sinks/File**: Remove proto binary format support, retain proto-text text format
+- **Sinks/File**: Supported output formats: json, csv, kv, show, raw, proto-text
+
+### Fixed
+- **Benchmarks**: Fix compilation errors in OML benchmarks
+  - Fix dereferencing issue in `DataField::from_chars` calls
+  - Update import paths from `wp_conf` to `wp_config`
+  - Add missing dev-dependencies: orion-variate, wp_config
 
 
-## [1.14.1 latest ]
+## [1.14.1] - 2026-02-05
 
 ### Added
 - **WPL Pipe Processor**: Add `strip/bom` processor for removing BOM (Byte Order Mark) from data
