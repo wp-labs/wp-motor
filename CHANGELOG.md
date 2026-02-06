@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-02-06
+
+### Added
+- **OML Static Blocks**: introduce `static { ... }` sections for model-scoped constants和模板缓存
+  - 静态表达式仅在模型加载时执行一次，结果存入常量池，后续记录直接复用，避免重复构造 `object { ... }`
+  - 可在赋值、`match` 分支、`object { field = tpl; }`、默认值 `{ _ : tpl }` 等场景直接写静态符号
+
+
 ## [1.14.1 latest ]
 
 ### Added

@@ -34,6 +34,9 @@ The Chinese version includes:
 - [map_to 使用指南](./zh/map_to.md)
 - [`static` 块常量](./zh/static_blocks.md) - ⭐ New
 
+### English
+- [`static` Blocks](./static_blocks.md) - New
+
 ## 📝 Function Categories
 
 OML provides two types of functions:
