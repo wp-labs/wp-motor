@@ -128,6 +128,12 @@ impl WplEvalGroup {
             .context(ctx_desc("<someof>"))
             .context(ctx_desc(group_idx_desc(self.index)))
             .parse_next(data),
+            WplGroupType::No(x) => trace("<no><group>", move |data: &mut &str| {
+                x.process(e_id, self, sep, data, out)
+            })
+            .context(ctx_desc("<no>"))
+            .context(ctx_desc(group_idx_desc(self.index)))
+            .parse_next(data),
         }
     }
 }
