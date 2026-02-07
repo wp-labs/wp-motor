@@ -52,7 +52,7 @@ fn bench_oml_sql(c: &mut Criterion) {
     let src_with_param = DataRecord {
         items: vec![DataField::from_chars("py", "xiaolongnu")],
     };
-    let empty = DataRecord { items: vec![] };
+    let empty = DataRecord::from(vec![]);
 
     let mut group = c.benchmark_group("oml_sql");
 

@@ -46,19 +46,19 @@ impl SinkDispatcher {
                 return Ok(0);
             }
             let unit = &package[0];
-            let pkg_id = *unit.id();
+            let event_id = *unit.id();
             // Now SinkRecUnit contains the meta and data directly
             match unit.meta() {
-                // 为与常规路由组行为对齐：并行>1 时，不再对同名 sink 广播，而是按 pkg_id 在同名副本间一致性分配，仅投递一次
+                // 为与常规路由组行为对齐：并行>1 时，不再对同名 sink 广播，而是按 event_id 在同名副本间一致性分配，仅投递一次
                 ProcMeta::Rule(rule) => {
                     self.dispatch_one_per_name_tdc(
-                        pkg_id,
+                        event_id,
                         (ProcMeta::Rule(rule.clone()), unit.data().clone()),
                         Some(bad_s),
                         mon,
                     )
                     .await?;
-                    debug_edata!(pkg_id, "sink group {} hash-route tdc", self.conf.name());
+                    debug_edata!(event_id, "sink group {} hash-route tdc", self.conf.name());
                     return Ok(1);
                 }
                 ProcMeta::Null => {
@@ -72,6 +72,7 @@ impl SinkDispatcher {
 
     pub async fn sink_tdc_direct(
         &mut self,
+        event_id: u64,
         bad_s: Option<&ASinkSender>,
         mon: Option<&MonSend>,
         pkg: (ProcMeta, Arc<DataRecord>),
@@ -79,7 +80,12 @@ impl SinkDispatcher {
         for sink_rt in self.sinks.iter_mut() {
             if sink_rt.is_ready() {
                 sink_rt
-                    .send_to_sink(SinkDataEnum::Rec(pkg.0.clone(), pkg.1.clone()), bad_s, mon)
+                    .send_to_sink(
+                        event_id,
+                        SinkDataEnum::Rec(pkg.0.clone(), pkg.1.clone()),
+                        bad_s,
+                        mon,
+                    )
                     .await?;
             }
         }
@@ -101,7 +107,7 @@ impl SinkDispatcher {
 
         let count = pkg.len();
 
-        // Hash-route: distribute records to sink replicas by pkg_id
+        // Hash-route: distribute records to sink replicas by event_id
         // Group records by sink name and replica index
         use std::collections::HashMap;
         let mut per_sink_units: HashMap<String, Vec<SinkRecUnit>> = HashMap::new();
@@ -122,7 +128,7 @@ impl SinkDispatcher {
         // ordinals tracks the current replica index for each sink name as we iterate through sinks
         let mut ordinals: HashMap<String, usize> = HashMap::new();
         for unit in pkg.into_iter() {
-            let pkg_id = *unit.id();
+            let event_id = *unit.id();
 
             // Reset ordinals for each unit to start from replica 0
             ordinals.clear();
@@ -134,7 +140,7 @@ impl SinkDispatcher {
                 }
                 let name = &rt.name;
                 let total = *totals.get(name.as_str()).unwrap_or(&1);
-                let target_idx = (pkg_id as usize) % total;
+                let target_idx = (event_id as usize) % total;
                 let ord = ordinals.entry(name.clone()).or_default();
                 let this = *ord;
                 *ord += 1;
@@ -171,6 +177,7 @@ impl SinkDispatcher {
 
     pub async fn sink_raw(
         &mut self,
+        event_id: u64,
         bad_s: Option<&ASinkSender>,
         mon: Option<&MonSend>,
         dat: String,
@@ -184,7 +191,7 @@ impl SinkDispatcher {
             for sink_rt in self.sinks.iter_mut() {
                 if sink_rt.is_ready() {
                     sink_rt
-                        .send_to_sink(SinkDataEnum::from(dat), bad_s, mon)
+                        .send_to_sink(event_id, SinkDataEnum::from(dat), bad_s, mon)
                         .await?;
                     break;
                 }
@@ -195,7 +202,7 @@ impl SinkDispatcher {
         for sink_rt in self.sinks.iter_mut() {
             if sink_rt.is_ready() {
                 sink_rt
-                    .send_to_sink(SinkDataEnum::from(dat.clone()), bad_s, mon)
+                    .send_to_sink(event_id, SinkDataEnum::from(dat.clone()), bad_s, mon)
                     .await?;
             }
         }
@@ -205,7 +212,7 @@ impl SinkDispatcher {
     // ============ hash-route helpers (one replica per sink name) ============
     async fn dispatch_one_per_name_tdc(
         &mut self,
-        pkg_id: PkgID,
+        event_id: PkgID,
         pkg: (ProcMeta, Arc<DataRecord>),
         bad_s: Option<&ASinkSender>,
         mon: Option<&MonSend>,
@@ -229,13 +236,18 @@ impl SinkDispatcher {
             }
             let name = rt.name.clone();
             let total = *totals.get(name.as_str()).unwrap_or(&1);
-            let idx = (pkg_id as usize) % total;
+            let idx = (event_id as usize) % total;
             let ord = ordinals.entry(name.clone()).or_default();
             let this = *ord;
             *ord += 1;
             if this == idx {
-                rt.send_to_sink(SinkDataEnum::Rec(pkg.0.clone(), pkg.1.clone()), bad_s, mon)
-                    .await?;
+                rt.send_to_sink(
+                    event_id,
+                    SinkDataEnum::Rec(pkg.0.clone(), pkg.1.clone()),
+                    bad_s,
+                    mon,
+                )
+                .await?;
             }
         }
         Ok(())
@@ -243,7 +255,7 @@ impl SinkDispatcher {
 
     async fn dispatch_one_per_name_raw(
         &mut self,
-        pkg_id: PkgID,
+        event_id: PkgID,
         body: String,
         bad_s: Option<&ASinkSender>,
         mon: Option<&MonSend>,
@@ -265,12 +277,12 @@ impl SinkDispatcher {
             }
             let name = rt.name.clone();
             let total = *totals.get(name.as_str()).unwrap_or(&1);
-            let idx = (pkg_id as usize) % total;
+            let idx = (event_id as usize) % total;
             let ord = ordinals.entry(name.clone()).or_default();
             let this = *ord;
             *ord += 1;
             if this == idx {
-                rt.send_to_sink(SinkDataEnum::from(body.clone()), bad_s, mon)
+                rt.send_to_sink(event_id, SinkDataEnum::from(body.clone()), bad_s, mon)
                     .await?;
             }
         }

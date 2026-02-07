@@ -479,7 +479,7 @@ A = match read(field) {
         // Test starts_with
         let cache = &mut FieldQueryCache::default();
         let data = vec![DataField::from_chars("Content", "[ERROR] System failure")];
-        let src = DataRecord { items: data };
+        let src = DataRecord::from(data);
 
         let mut conf = r#"name : test
 ---
@@ -504,7 +504,7 @@ FileType = match read(filename) {
         let model2 = oml_parse_raw(&mut conf2).expect("Failed to parse ends_with");
         let cache2 = &mut FieldQueryCache::default();
         let data2 = vec![DataField::from_chars("filename", "config.json")];
-        let src2 = DataRecord { items: data2 };
+        let src2 = DataRecord::from(data2);
         let target2 = model2.transform(src2, cache2);
         let expect2 = DataField::from_chars("FileType".to_string(), "json".to_string());
         assert_eq!(target2.field("FileType"), Some(&expect2));
@@ -523,7 +523,7 @@ ErrorType = match read(message) {
             "message",
             "Connection timeout occurred",
         )];
-        let src3 = DataRecord { items: data3 };
+        let src3 = DataRecord::from(data3);
         let target3 = model3.transform(src3, cache3);
         let expect3 = DataField::from_chars("ErrorType".to_string(), "timeout".to_string());
         assert_eq!(target3.field("ErrorType"), Some(&expect3));
@@ -539,7 +539,7 @@ LogLevel = match read(log_line) {
         let model4 = oml_parse_raw(&mut conf4).expect("Failed to parse regex_match");
         let cache4 = &mut FieldQueryCache::default();
         let data4 = vec![DataField::from_chars("log_line", "[ERROR] Failed")];
-        let src4 = DataRecord { items: data4 };
+        let src4 = DataRecord::from(data4);
         let target4 = model4.transform(src4, cache4);
         let expect4 = DataField::from_chars("LogLevel".to_string(), "error".to_string());
         assert_eq!(target4.field("LogLevel"), Some(&expect4));
@@ -555,7 +555,7 @@ Status = match read(field) {
         let model5 = oml_parse_raw(&mut conf5).expect("Failed to parse is_empty");
         let cache5 = &mut FieldQueryCache::default();
         let data5 = vec![DataField::from_chars("field", "")];
-        let src5 = DataRecord { items: data5 };
+        let src5 = DataRecord::from(data5);
         let target5 = model5.transform(src5, cache5);
         let expect5 = DataField::from_chars("Status".to_string(), "empty".to_string());
         assert_eq!(target5.field("Status"), Some(&expect5));
@@ -574,7 +574,7 @@ Level = match read(count) {
         let model6 = oml_parse_raw(&mut conf6).expect("Failed to parse gt");
         let cache6 = &mut FieldQueryCache::default();
         let data6 = vec![DataField::from_digit("count", 150)];
-        let src6 = DataRecord { items: data6 };
+        let src6 = DataRecord::from(data6);
         let target6 = model6.transform(src6, cache6);
         let expect6 = DataField::from_chars("Level".to_string(), "high".to_string());
         assert_eq!(target6.field("Level"), Some(&expect6));
@@ -590,7 +590,7 @@ Grade = match read(score) {
         let model7 = oml_parse_raw(&mut conf7).expect("Failed to parse lt");
         let cache7 = &mut FieldQueryCache::default();
         let data7 = vec![DataField::from_digit("score", 45)];
-        let src7 = DataRecord { items: data7 };
+        let src7 = DataRecord::from(data7);
         let target7 = model7.transform(src7, cache7);
         let expect7 = DataField::from_chars("Grade".to_string(), "fail".to_string());
         assert_eq!(target7.field("Grade"), Some(&expect7));
@@ -606,7 +606,7 @@ Status = match read(level) {
         let model8 = oml_parse_raw(&mut conf8).expect("Failed to parse eq");
         let cache8 = &mut FieldQueryCache::default();
         let data8 = vec![DataField::from_digit("level", 5)];
-        let src8 = DataRecord { items: data8 };
+        let src8 = DataRecord::from(data8);
         let target8 = model8.transform(src8, cache8);
         let expect8 = DataField::from_chars("Status".to_string(), "max".to_string());
         assert_eq!(target8.field("Status"), Some(&expect8));
@@ -622,7 +622,7 @@ TempZone = match read(temperature) {
         let model9 = oml_parse_raw(&mut conf9).expect("Failed to parse in_range");
         let cache9 = &mut FieldQueryCache::default();
         let data9 = vec![DataField::from_digit("temperature", 25)];
-        let src9 = DataRecord { items: data9 };
+        let src9 = DataRecord::from(data9);
         let target9 = model9.transform(src9, cache9);
         let expect9 = DataField::from_chars("TempZone".to_string(), "comfortable".to_string());
         assert_eq!(target9.field("TempZone"), Some(&expect9));
@@ -638,7 +638,7 @@ Result = match read(status) {
         let model10 = oml_parse_raw(&mut conf10).expect("Failed to parse iequals");
         let cache10 = &mut FieldQueryCache::default();
         let data10 = vec![DataField::from_chars("status", "SUCCESS")];
-        let src10 = DataRecord { items: data10 };
+        let src10 = DataRecord::from(data10);
         let target10 = model10.transform(src10, cache10);
         let expect10 = DataField::from_chars("Result".to_string(), "ok".to_string());
         assert_eq!(target10.field("Result"), Some(&expect10));
@@ -669,21 +669,21 @@ Result = match read(status) {
 
         // Test case 1: status = A
         let data1 = vec![DataField::from_chars("status", "A")];
-        let src1 = DataRecord { items: data1 };
+        let src1 = DataRecord::from(data1);
         let target1 = model.transform(src1, cache);
         let expect1 = DataField::from_chars("Result".to_string(), "success message".to_string());
         assert_eq!(target1.field("Result"), Some(&expect1)); // Verify the value contains space
 
         // Test case 2: status = B
         let data2 = vec![DataField::from_chars("status", "B")];
-        let src2 = DataRecord { items: data2 };
+        let src2 = DataRecord::from(data2);
         let target2 = model.transform(src2, cache);
         let expect2 = DataField::from_chars("Result".to_string(), "failure message".to_string());
         assert_eq!(target2.field("Result"), Some(&expect2));
 
         // Test case 3: status = C (default)
         let data3 = vec![DataField::from_chars("status", "C")];
-        let src3 = DataRecord { items: data3 };
+        let src3 = DataRecord::from(data3);
         let target3 = model.transform(src3, cache);
         let expect3 = DataField::from_chars("Result".to_string(), "default message".to_string());
         assert_eq!(target3.field("Result"), Some(&expect3));

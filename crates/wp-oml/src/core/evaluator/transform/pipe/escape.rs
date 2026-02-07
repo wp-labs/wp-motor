@@ -101,7 +101,7 @@ mod tests {
     fn test_html_escape() {
         let cache = &mut FieldQueryCache::default();
         let data = vec![DataField::from_chars("A1", "<html>")];
-        let src = DataRecord { items: data };
+        let src = DataRecord::from(data);
 
         let mut conf = r#"
         name : test
@@ -120,7 +120,7 @@ mod tests {
     fn test_str_escape() {
         let cache = &mut FieldQueryCache::default();
         let data = vec![DataField::from_chars("A1", "html\"1_")];
-        let src = DataRecord { items: data };
+        let src = DataRecord::from(data);
 
         let mut conf = r#"
         name : test
@@ -139,7 +139,7 @@ mod tests {
     fn test_json_escape() {
         let cache = &mut FieldQueryCache::default();
         let data = vec![DataField::from_chars("A1", "This is a crab: 🦀")];
-        let src = DataRecord { items: data };
+        let src = DataRecord::from(data);
 
         let mut conf = r#"
         name : test

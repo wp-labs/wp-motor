@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use orion_error::ErrorOwe;
 use std::fs;
 use std::fs::File;
-use std::io::{Cursor, Write};
+use std::io::{Cursor, ErrorKind, Write};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::fs::OpenOptions;
@@ -19,6 +19,25 @@ use tokio_async_drop::tokio_async_drop;
 use wp_connector_api::{SinkBuildCtx, SinkReason, SinkResult, SinkSpec as ResolvedSinkSpec};
 use wp_data_fmt::{DataFormat, FormatType};
 use wp_model_core::model::fmt_def::TextFmt;
+
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[cfg(test)]
+static SYNC_ALL_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(test)]
+pub(super) fn take_sync_all_count() -> usize {
+    SYNC_ALL_COUNTER.swap(0, Ordering::Relaxed)
+}
+
+#[cfg(test)]
+fn record_sync_all_call() {
+    SYNC_ALL_COUNTER.fetch_add(1, Ordering::Relaxed);
+}
+
+#[cfg(not(test))]
+fn record_sync_all_call() {}
 
 pub fn create_watch_out(fmt: TextFmt) -> (SafeH<Cursor<Vec<u8>>>, SinkEndpoint) {
     let buffer_out = BufferMonitor::new();
@@ -100,6 +119,7 @@ pub struct FileSink {
     path: String,
     out_io: SafeH<std::fs::File>,
     buffer: Cursor<Vec<u8>>,
+    lock_released: bool,
 }
 
 impl FileSink {
@@ -110,15 +130,37 @@ impl FileSink {
             path: out_path.to_string(),
             out_io: SafeH::build(out_io),
             buffer: Cursor::new(Vec::with_capacity(10240)),
+            lock_released: !out_path.ends_with(".lock"),
         })
+    }
+
+    fn unlock_lockfile(&mut self) -> std::io::Result<()> {
+        if self.lock_released || !self.path.ends_with(".lock") {
+            self.lock_released = true;
+            return Ok(());
+        }
+        if let Some(new_path) = self.path.strip_suffix(".lock") {
+            match fs::rename(&self.path, new_path) {
+                Ok(()) => {
+                    self.lock_released = true;
+                    Ok(())
+                }
+                Err(err) if err.kind() == ErrorKind::NotFound => {
+                    self.lock_released = true;
+                    Ok(())
+                }
+                Err(err) => Err(err),
+            }
+        } else {
+            self.lock_released = true;
+            Ok(())
+        }
     }
 }
 
 impl Drop for FileSink {
     fn drop(&mut self) {
-        if let Some(new_path) = self.path.strip_suffix(".lock")
-            && let Err(e) = fs::rename(&self.path, new_path)
-        {
+        if let Err(e) = self.unlock_lockfile() {
             error_data!("解锁备份文件失败,{}", e);
         }
     }
@@ -131,10 +173,7 @@ impl SyncCtrl for FileSink {
                 .write_all(&self.buffer.clone().into_inner())
                 .owe(SinkReason::Sink("file stop fail".into()))?;
         }
-        // Rename .lock -> .dat on explicit stop to ensure unlock even if Drop timing varies
-        if let Some(new_path) = self.path.strip_suffix(".lock")
-            && let Err(e) = fs::rename(&self.path, new_path)
-        {
+        if let Err(e) = self.unlock_lockfile() {
             error_data!("unlock rescue file on stop failed: {}", e);
         }
         Ok(())
@@ -173,13 +212,12 @@ pub struct AsyncFileSink {
     out_io: BufWriter<tokio::fs::File>,
     proc_cnt: usize,
     sync: bool,
+    lock_released: bool,
 }
 
 impl Drop for AsyncFileSink {
     fn drop(&mut self) {
-        if let Some(new_path) = self.path.strip_suffix(".lock")
-            && let Err(e) = fs::rename(&self.path, new_path)
-        {
+        if let Err(e) = self.unlock_lockfile() {
             error_data!("解锁备份文件失败,{}", e);
         }
         tokio_async_drop!({
@@ -210,7 +248,31 @@ impl AsyncFileSink {
             out_io: BufWriter::with_capacity(FILE_BUF_SIZE, out_io),
             proc_cnt: 0,
             sync,
+            lock_released: !out_path.ends_with(".lock"),
         })
+    }
+
+    fn unlock_lockfile(&mut self) -> std::io::Result<()> {
+        if self.lock_released || !self.path.ends_with(".lock") {
+            self.lock_released = true;
+            return Ok(());
+        }
+        if let Some(new_path) = self.path.strip_suffix(".lock") {
+            match fs::rename(&self.path, new_path) {
+                Ok(()) => {
+                    self.lock_released = true;
+                    Ok(())
+                }
+                Err(err) if err.kind() == ErrorKind::NotFound => {
+                    self.lock_released = true;
+                    Ok(())
+                }
+                Err(err) => Err(err),
+            }
+        } else {
+            self.lock_released = true;
+            Ok(())
+        }
     }
 }
 
@@ -221,9 +283,7 @@ impl AsyncCtrl for AsyncFileSink {
             .flush()
             .await
             .owe(SinkReason::sink("file out fail"))?;
-        if let Some(new_path) = self.path.strip_suffix(".lock")
-            && let Err(e) = fs::rename(&self.path, new_path)
-        {
+        if let Err(e) = self.unlock_lockfile() {
             error_data!("unlock rescue file on stop failed: {}", e);
         }
         Ok(())
@@ -257,6 +317,7 @@ impl AsyncRawdatSink for AsyncFileSink {
                     .sync_all()
                     .await
                     .owe(SinkReason::sink("file sync fail"))?;
+                record_sync_all_call();
             }
         }
         Ok(())
@@ -315,6 +376,7 @@ impl AsyncRawdatSink for AsyncFileSink {
                     .sync_all()
                     .await
                     .owe(SinkReason::sink("file sync fail"))?;
+                record_sync_all_call();
             }
         }
 
@@ -363,6 +425,7 @@ impl AsyncRawdatSink for AsyncFileSink {
                     .sync_all()
                     .await
                     .owe(SinkReason::sink("file sync fail"))?;
+                record_sync_all_call();
             }
         }
 
@@ -425,7 +488,10 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_sync_parameter() -> AnyResult<()> {
-        use wp_connector_api::AsyncRawDataSink;
+        use wp_connector_api::{AsyncCtrl, AsyncRawDataSink};
+
+        // Reset sync counter before exercising the sink
+        super::take_sync_all_count();
 
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -434,35 +500,29 @@ mod tests {
         let base = std::env::temp_dir().join(format!("wp_sync_test_{}", ts));
         fs::create_dir_all(&base)?;
 
-        // Test sync=true: data should be immediately written to disk
         let sync_file = base.join("sync_true.dat.lock");
         let mut sink_sync =
             AsyncFileSink::with_sync(sync_file.to_string_lossy().as_ref(), true).await?;
         AsyncRawDataSink::sink_str(&mut sink_sync, "line1").await?;
-
-        // File should exist and contain data immediately (after sync_all)
-        let content = fs::read_to_string(&sync_file)?;
-        assert!(
-            content.contains("line1"),
-            "sync=true should write data immediately"
+        AsyncRawDataSink::sink_str(&mut sink_sync, "line2").await?;
+        let sync_calls = super::take_sync_all_count();
+        assert_eq!(
+            sync_calls, 2,
+            "sync=true 应在每次写入后触发 fsync 确保落盘"
         );
+        AsyncCtrl::stop(&mut sink_sync).await?;
 
-        wp_connector_api::AsyncCtrl::stop(&mut sink_sync).await?;
-
-        // Test sync=false: data might be buffered
         let no_sync_file = base.join("sync_false.dat.lock");
         let mut sink_no_sync =
             AsyncFileSink::with_sync(no_sync_file.to_string_lossy().as_ref(), false).await?;
         AsyncRawDataSink::sink_str(&mut sink_no_sync, "line1").await?;
-
-        // Data might not be immediately visible (buffered)
-        // But after stop, it should be written
-        wp_connector_api::AsyncCtrl::stop(&mut sink_no_sync).await?;
-        let content = fs::read_to_string(base.join("sync_false.dat"))?;
-        assert!(
-            content.contains("line1"),
-            "data should be written after stop"
+        AsyncRawDataSink::sink_str(&mut sink_no_sync, "line2").await?;
+        let sync_calls = super::take_sync_all_count();
+        assert_eq!(
+            sync_calls, 0,
+            "sync=false 模式下不应调用 fsync"
         );
+        AsyncCtrl::stop(&mut sink_no_sync).await?;
 
         let _ = fs::remove_dir_all(&base);
         Ok(())

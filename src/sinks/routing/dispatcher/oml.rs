@@ -108,10 +108,10 @@ impl SinkDispatcher {
             let passthrough = input
                 .into_iter()
                 .map(|unit| {
-                    let (pkg_id, meta, record_arc) = unit.into_parts();
+                    let (event_id, meta, record_arc) = unit.into_parts();
                     let record =
                         Arc::try_unwrap(record_arc).unwrap_or_else(|arc| arc.as_ref().clone());
-                    TransformedRecUnit::new(pkg_id, meta, record)
+                    TransformedRecUnit::new(event_id, meta, record)
                 })
                 .collect();
             return Ok((passthrough, Vec::new()));
@@ -120,7 +120,7 @@ impl SinkDispatcher {
         let mut successes = Vec::with_capacity(input.len());
         let mut failures = Vec::new();
         for unit in input {
-            let (pkg_id, meta, record_arc) = unit.into_parts();
+            let (event_id, meta, record_arc) = unit.into_parts();
             let original_len = record_arc.items.len();
             let output = om_ins.transform_ref(record_arc.as_ref(), cache);
             if output.items.is_empty() {
@@ -134,15 +134,15 @@ impl SinkDispatcher {
                     original_len,
                     output.items.len(),
                 );
-                warn_data!("oml proc fail!{},{}", pkg_id, failed.to_string());
+                warn_data!("oml proc fail!{},{}", event_id, failed.to_string());
                 failures.push(SinkRecUnit::with_record(
-                    pkg_id,
+                    event_id,
                     meta.clone(),
                     Arc::new(failed),
                 ));
             } else {
-                info_edata!(pkg_id, "oml proc suc! {}", meta);
-                successes.push(TransformedRecUnit::new(pkg_id, meta, output));
+                info_edata!(event_id, "oml proc suc! {}", meta);
+                successes.push(TransformedRecUnit::new(event_id, meta, output));
             }
         }
         Ok((successes, failures))

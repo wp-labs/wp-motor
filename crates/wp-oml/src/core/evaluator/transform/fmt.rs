@@ -82,7 +82,7 @@ mod tests {
             DataField::from_chars("B2", "h2"),
             DataField::from_chars("C3", "h3"),
         ];
-        let src = DataRecord { items: data };
+        let src = DataRecord::from(data);
         let mut cache = FieldQueryCache::default();
 
         let mut conf = r#"

@@ -536,7 +536,7 @@ impl ActSink {
                             // Handle SinkPackage
                             for unit in package.iter() {
                                 sink_rt
-                                    .send_to_sink(SinkDataEnum::Rec(unit.meta().clone(), unit.data().clone()), Option::from(&self.bad_s), Some(&self.mon_s))
+                                    .send_to_sink(*unit.id(), SinkDataEnum::Rec(unit.meta().clone(), unit.data().clone()), Option::from(&self.bad_s), Some(&self.mon_s))
                                     .await?;
                                 run_ctrl.rec_task_suc();
                             }

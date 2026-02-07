@@ -26,7 +26,7 @@ fn test_crate_get() {
         DataField::from_chars("B2", "hello2"),
         DataField::from_chars("C3", "hello3"),
     ];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
 
     let mut conf = r#"
         name : test
@@ -73,7 +73,7 @@ fn test_take_fun() {
         DataField::from_chars("B2", "hello2"),
         DataField::from_chars("C3", "hello3"),
     ];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
     let mut conf = r#"
         name : test
         ---
@@ -101,7 +101,7 @@ fn test_take_conv() {
         DataField::from_chars("B2", "100"),
         DataField::from_chars("C3", "100.1"),
     ];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
     let mut conf = r#"
         name : test
         ---
@@ -135,7 +135,7 @@ fn test_wild_get() {
         DataField::from_chars("C3/name", "hello3"),
         DataField::from_chars("C4/name ", "hello3"),
     ];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
 
     let mut conf = r#"
         name : test
@@ -200,7 +200,7 @@ fn test_crate_move() {
         DataField::from_chars("B2", "hello2"),
         DataField::from_chars("C3", "hello3"),
     ];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
 
     let mut conf = r#"
         name : test
@@ -225,7 +225,7 @@ fn test_value_get() {
         DataField::from_chars("B2", "hello2"),
         DataField::from_chars("C3", "hello3"),
     ];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
 
     let mut conf = r#"
         name : test
@@ -248,7 +248,7 @@ fn test_map_get() {
         DataField::from_chars("C3", "hello3"),
     ];
     let expect = data.clone();
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
 
     let mut conf = r#"
         name : test
@@ -294,7 +294,7 @@ fn test_match_get() {
         DataField::from_chars("city1", "cs"),
         DataField::from_chars("city2", "hk"),
     ];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
     let one = target.field("X");
@@ -306,7 +306,7 @@ fn test_match_get() {
         DataField::from_chars("city1", "cs"),
         DataField::from_chars("city2", "hk"),
     ];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
     let one = target.field("X");
@@ -318,7 +318,7 @@ fn test_match_get() {
         DataField::from_chars("city1", "cs"),
         DataField::from_chars("city2", "hk"),
     ];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
     let one = target.field("X");
@@ -346,7 +346,7 @@ fn test_match2_get() -> ModalResult<()> {
         DataField::from_chars("city1", "cs"),
         DataField::from_chars("city2", "hk"),
     ];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
     let one = target.field("X");
@@ -359,7 +359,7 @@ fn test_match2_get() -> ModalResult<()> {
         DataField::from_chars("city1", "cs"),
         DataField::from_chars("city2", "hk"),
     ];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
     let one = target.field("X");
@@ -372,7 +372,7 @@ fn test_match2_get() -> ModalResult<()> {
         DataField::from_chars("city1", "cs"),
         DataField::from_chars("city2", "hk"),
     ];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
     let one = target.field("X");
@@ -384,7 +384,7 @@ fn test_match2_get() -> ModalResult<()> {
         DataField::from_chars("city1", "cs"),
         DataField::from_chars("city2", "hk"),
     ];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
     let one = target.field("X");
@@ -408,13 +408,13 @@ fn test_match3_get() -> ModalResult<()> {
     let model = oml_parse_raw(&mut conf).assert();
 
     let data = vec![DataField::from_bool("key1", true)];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     let one = target.field("X");
     assert_eq!(one, Some(&DataField::from_digit("X", 1)));
 
     let data = vec![DataField::from_bool("key1", false)];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     let one = target.field("X");
     assert_eq!(one, Some(&DataField::from_digit("X", 2)));
@@ -445,21 +445,21 @@ X: chars = match  read(month) {
     let model = oml_parse_raw(&mut conf).assert();
 
     let data = vec![DataField::from_digit("month", 3)];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
     let one = target.field("X");
     assert_eq!(one, Some(&DataField::from_chars("X", "Q1")));
 
     let data = vec![DataField::from_digit("month", 6)];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
     let one = target.field("X");
     assert_eq!(one, Some(&DataField::from_chars("X", "Q2")));
 
     let data = vec![DataField::from_digit("month", 10)];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
     let one = target.field("X");
@@ -477,9 +477,7 @@ fn test_value_arr() {
         DataField::from_chars("C3", "hello3"),
         DataField::from_chars("C4", "hello4"),
     ];
-    let src = DataRecord {
-        items: data.clone(),
-    };
+    let src = DataRecord::from(data.clone());
 
     let mut conf = r#"
         name : test
@@ -511,9 +509,7 @@ fn test_sql_1() -> AnyResult<()> {
     let _ = wp_knowledge::facade::init_mem_provider(MemDB::global());
     MemDB::load_test()?;
     let data = vec![DataField::from_chars("py", "xiaolongnu")];
-    let src = DataRecord {
-        items: data.clone(),
-    };
+    let src = DataRecord::from(data.clone());
 
     let mut conf = r#"
         name : test
@@ -536,9 +532,7 @@ fn test_sql_debug() -> AnyResult<()> {
     let _ = wp_knowledge::facade::init_mem_provider(MemDB::global());
     MemDB::load_test()?;
     let data = vec![DataField::from_chars("X", "xiaolongnu")];
-    let src = DataRecord {
-        items: data.clone(),
-    };
+    let src = DataRecord::from(data.clone());
 
     let mut conf = r#"
         name : test
@@ -563,9 +557,7 @@ fn test_value_arr1() {
         DataField::from_chars("details[2]/process_name", "hello3"),
         DataField::from_chars("details[3]/process_name", "hello4"),
     ];
-    let src = DataRecord {
-        items: data.clone(),
-    };
+    let src = DataRecord::from(data.clone());
 
     let mut conf = r#"
         name : test
@@ -730,7 +722,7 @@ fn test_enable_with_complex_config() {
         DataField::from_chars("field1", "v1"),
         DataField::from_chars("field2", "v2"),
     ];
-    let src = DataRecord { items: data };
+    let src = DataRecord::from(data);
     let target = model.transform(src, cache);
 
     assert_eq!(

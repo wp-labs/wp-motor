@@ -157,6 +157,7 @@ impl SinkRuntime {
     /// 发送单个数据项到 Sink（保持向后兼容）
     pub async fn send_to_sink(
         &mut self,
+        event_id: u64,
         data: SinkDataEnum,
         bad_s: Option<&ASinkSender>,
         mon: Option<&MonSend>,
@@ -196,20 +197,20 @@ impl SinkRuntime {
                         return Err(e);
                     }
                     ErrorHandlingStrategy::Tolerant => {
-                        debug_data!("sink error and tolerant : {}", e);
+                        debug_edata!(event_id, "sink error and tolerant: {}", e);
                         //pass;
                     }
                     ErrorHandlingStrategy::Ignore => {
-                        debug_data!("sink error and ignore: {}", e);
+                        debug_edata!(event_id, "sink error and ignore: {}", e);
                     }
                     ErrorHandlingStrategy::Terminate => {
-                        info_data!("sink error and end: {}", e);
+                        info_edata!(event_id, "sink error and end: {}", e);
                         break;
                     }
                 }
             } else {
                 self.stat_end(&data);
-                info_data!("sink {} send suc!", self.name);
+                debug_edata!(event_id, "sink {} send suc!", self.name);
             }
             if !redo {
                 break;
@@ -597,7 +598,7 @@ mod tests {
                 SinkDataEnum::Rec(ProcMeta::Rule("/shh/test_rule16".into()), Arc::new(record));
 
             runtime
-                .send_to_sink(packet, Some(&bad_tx), None)
+                .send_to_sink(1, packet, Some(&bad_tx), None)
                 .await
                 .expect("send_to_sink should succeed after swap");
 

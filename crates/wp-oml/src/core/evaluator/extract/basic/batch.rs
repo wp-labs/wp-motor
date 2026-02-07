@@ -80,9 +80,7 @@ mod tests {
             DataField::from_chars("details[2]/process_name", "hello3"),
             DataField::from_chars("details[3]/process_name", "hello4"),
         ];
-        let src = DataRecord {
-            items: data.clone(),
-        };
+        let src = DataRecord::from(data.clone());
 
         let target = BatchEvalExp::new("*".to_string(), DataType::Auto);
         let mut needs = DataRecord::default();
@@ -110,16 +108,12 @@ mod tests {
             DataField::from_chars("details[2]/process_name", "hello3"),
             DataField::from_chars("details[3]/process_name", "hello4"),
         ];
-        let src = DataRecord {
-            items: data.clone(),
-        };
+        let src = DataRecord::from(data.clone());
         let expect_data = vec![
             DataField::from_chars("details[1]/process_name", "hello2"),
             DataField::from_chars("details[11]/process_name", "hello2"),
         ];
-        let expect = DataRecord {
-            items: expect_data.clone(),
-        };
+        let expect = DataRecord::from(expect_data.clone());
 
         let target = BatchEvalExp::new("details[1*process_name".to_string(), DataType::Auto);
         let mut needs = DataRecord::default();

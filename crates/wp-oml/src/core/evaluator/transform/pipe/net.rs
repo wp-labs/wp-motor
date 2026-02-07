@@ -33,7 +33,7 @@ mod tests {
             "src_ip",
             IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         )];
-        let src = DataRecord { items: data };
+        let src = DataRecord::from(data);
 
         let mut conf = r#"
         name : test
