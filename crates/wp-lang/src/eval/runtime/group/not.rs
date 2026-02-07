@@ -1,11 +1,11 @@
 use crate::WplSep;
-use crate::ast::group::GroupNo;
+use crate::ast::group::GroupNot;
 use crate::eval::runtime::group::{LogicProc, WplEvalGroup};
 use winnow::stream::Stream;
 use wp_model_core::model::DataField;
 use wp_parser::WResult as ModalResult;
 
-impl LogicProc for GroupNo {
+impl LogicProc for GroupNot {
     fn process(
         &self,
         e_id: u64,
@@ -14,18 +14,18 @@ impl LogicProc for GroupNo {
         data: &mut &str,
         out: &mut Vec<DataField>,
     ) -> ModalResult<()> {
-        no_proc(e_id, group, ups_sep, data, out)
+        not_proc(e_id, group, ups_sep, data, out)
     }
 }
 
-pub fn no_proc(
+pub fn not_proc(
     e_id: u64,
     group: &WplEvalGroup,
     ups_sep: &WplSep,
     data: &mut &str,
     out: &mut Vec<DataField>,
 ) -> ModalResult<()> {
-    // no() should have exactly one sub-field
+    // not() should have exactly one sub-field
     let fpu = match group.field_units.first() {
         Some(f) => f,
         None => {
@@ -49,7 +49,7 @@ pub fn no_proc(
         &mut temp_out,
     ) {
         Ok(_) => {
-            // Sub-field matched - this is FAILURE for no()
+            // Sub-field matched - this is FAILURE for not()
             // Reset data position and return error
             data.reset(&ck_point);
             Err(winnow::error::ErrMode::Backtrack(
@@ -57,7 +57,7 @@ pub fn no_proc(
             ))
         }
         Err(_) => {
-            // Sub-field failed to match - this is SUCCESS for no()
+            // Sub-field failed to match - this is SUCCESS for not()
             // Important: DON'T reset data position!
             // The internal parser may have consumed some input before failing
             // (e.g., symbol(ERROR) might consume whitespace before failing)
@@ -83,9 +83,9 @@ mod tests {
     use wp_parser::Parser;
 
     #[test]
-    fn test_no_group_basic() -> AnyResult<()> {
-        // no(symbol(ERROR)) should succeed when ERROR is NOT present
-        let express = wpl_express.parse(r#"no(symbol(ERROR):test)"#).assert();
+    fn test_not_group_basic() -> AnyResult<()> {
+        // not(symbol(ERROR)) should succeed when ERROR is NOT present
+        let express = wpl_express.parse(r#"not(symbol(ERROR):test)"#).assert();
         let mut data = "INFO: hello world";
         let ppl = WplEvaluator::from(&express, None)?;
 
@@ -98,24 +98,24 @@ mod tests {
     }
 
     #[test]
-    fn test_no_group_failure() -> AnyResult<()> {
-        // no(symbol(ERROR)) should fail when ERROR IS present
-        let express = wpl_express.parse(r#"no(symbol(ERROR):test)"#).assert();
+    fn test_not_group_failure() -> AnyResult<()> {
+        // not(symbol(ERROR)) should fail when ERROR IS present
+        let express = wpl_express.parse(r#"not(symbol(ERROR):test)"#).assert();
         let mut data = "ERROR: something wrong";
         let ppl = WplEvaluator::from(&express, None)?;
 
         let result = ppl.parse_groups(0, &mut data);
-        assert!(result.is_err(), "no() should fail when symbol matches");
+        assert!(result.is_err(), "not() should fail when symbol matches");
 
         Ok(())
     }
 
     #[test]
-    fn test_no_with_peek_symbol() -> AnyResult<()> {
-        // no(peek_symbol(ERROR)) should not consume input
+    fn test_not_with_peek_symbol() -> AnyResult<()> {
+        // not(peek_symbol(ERROR)) should not consume input
         // Correct format: multiple parallel groups
         let express = wpl_express
-            .parse(r#"no(peek_symbol(ERROR):test),(chars:msg)"#)
+            .parse(r#"not(peek_symbol(ERROR):test),(chars:msg)"#)
             .assert();
         let mut data = "INFO message";
         let ppl = WplEvaluator::from(&express, None)?;

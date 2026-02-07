@@ -81,32 +81,32 @@ some_of(field1, field2, field3)
 some_of(digit:port, chars:service)
 ```
 
-### no - Negative Assertion
+### not - Negative Assertion
 
 Reverse logic: succeeds when the inner field fails to parse.
 
 **Syntax:**
 ```wpl
-no(field)
+not(field)
 ```
 
 **Behavior:**
 - Attempts to parse the inner field
-- `no()` succeeds when the inner field fails
-- `no()` fails when the inner field succeeds
+- `not()` succeeds when the inner field fails
+- `not()` fails when the inner field succeeds
 - Returns an `ignore` type field on success
 
 **Input Consumption:**
-- `no(symbol(...))` - Consumes input (symbol may consume whitespace on failure)
-- `no(peek_symbol(...))` - Does not consume input (peek_symbol never consumes)
+- `not(symbol(...))` - Consumes input (symbol may consume whitespace on failure)
+- `not(peek_symbol(...))` - Does not consume input (peek_symbol never consumes)
 
 **Examples:**
 ```wpl
 # Ensure ERROR keyword is not present
-no(symbol(ERROR):check)
+not(symbol(ERROR):check)
 
 # Use with peek_symbol to avoid consuming input
-no(peek_symbol(ERROR):check), (chars:msg)
+not(peek_symbol(ERROR):check), (chars:msg)
 ```
 
 ## Use Cases
@@ -129,7 +129,7 @@ alt(ip:addr, chars:addr)
 
 ```wpl
 # Process only non-error logs
-no(symbol(ERROR)), (chars:msg)
+not(symbol(ERROR)), (chars:msg)
 ```
 
 ### 4. Lenient Matching
@@ -148,7 +148,7 @@ Groups can be nested and combined to implement complex parsing logic:
 opt(alt(ip:addr, chars:domain))
 
 # Ensure not ERROR, then parse message
-no(peek_symbol(ERROR)), (alt(json, kv, chars):msg)
+not(peek_symbol(ERROR)), (alt(json, kv, chars):msg)
 ```
 
 ## Important Notes
@@ -162,13 +162,13 @@ no(peek_symbol(ERROR)), (alt(json, kv, chars):msg)
    (chars), (digit, chars)
    ```
 
-2. **no() can only contain a single field**
+2. **not() can only contain a single field**
    ```wpl
    # ✓ Correct
-   no(symbol(ERROR):check)
+   not(symbol(ERROR):check)
 
    # ❌ Wrong
-   no(symbol(ERROR), symbol(FATAL))
+   not(symbol(ERROR), symbol(FATAL))
    ```
 
 3. **Input consumption depends on the inner parser**

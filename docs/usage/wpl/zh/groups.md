@@ -81,32 +81,32 @@ some_of(field1, field2, field3)
 some_of(digit:port, chars:service)
 ```
 
-### no - 负向断言
+### not - 负向断言
 
 反向逻辑，当内部字段解析失败时才成功。
 
 **语法：**
 ```wpl
-no(field)
+not(field)
 ```
 
 **行为：**
 - 尝试解析内部字段
-- 内部字段失败时，no() 成功
-- 内部字段成功时，no() 失败
+- 内部字段失败时，not() 成功
+- 内部字段成功时，not() 失败
 - 成功时返回 `ignore` 类型字段
 
 **输入消费：**
-- `no(symbol(...))` - 会消费输入（symbol 在失败时可能消费空白字符）
-- `no(peek_symbol(...))` - 不消费输入（peek_symbol 永不消费）
+- `not(symbol(...))` - 会消费输入（symbol 在失败时可能消费空白字符）
+- `not(peek_symbol(...))` - 不消费输入（peek_symbol 永不消费）
 
 **示例：**
 ```wpl
 # 确保不存在 ERROR 关键字
-no(symbol(ERROR):check)
+not(symbol(ERROR):check)
 
 # 与 peek_symbol 配合，不消费输入
-no(peek_symbol(ERROR):check), (chars:msg)
+not(peek_symbol(ERROR):check), (chars:msg)
 ```
 
 ## 使用场景
@@ -129,7 +129,7 @@ alt(ip:addr, chars:addr)
 
 ```wpl
 # 只处理非错误日志
-no(symbol(ERROR)), (chars:msg)
+not(symbol(ERROR)), (chars:msg)
 ```
 
 ### 4. 宽松匹配
@@ -148,7 +148,7 @@ Group 可以嵌套组合，实现复杂的解析逻辑：
 opt(alt(ip:addr, chars:domain))
 
 # 确保不是 ERROR，然后解析消息
-no(peek_symbol(ERROR)), (alt(json, kv, chars):msg)
+not(peek_symbol(ERROR)), (alt(json, kv, chars):msg)
 ```
 
 ## 注意事项
@@ -162,13 +162,13 @@ no(peek_symbol(ERROR)), (alt(json, kv, chars):msg)
    (chars), (digit, chars)
    ```
 
-2. **no() 只能包含单个字段**
+2. **not() 只能包含单个字段**
    ```wpl
    # ✓ 正确
-   no(symbol(ERROR):check)
+   not(symbol(ERROR):check)
 
    # ❌ 错误
-   no(symbol(ERROR), symbol(FATAL))
+   not(symbol(ERROR), symbol(FATAL))
    ```
 
 3. **输入消费行为取决于内部 parser**

@@ -13,7 +13,7 @@ pub enum WplGroupType {
     Seq(GroupSeq),
     Alt(GroupAlt),
     SomeOf(GroupSomeOf),
-    No(GroupNo),
+    Not(GroupNot),
 }
 impl Default for WplGroupType {
     fn default() -> Self {
@@ -33,7 +33,7 @@ pub struct GroupAlt;
 pub struct GroupSomeOf;
 
 #[derive(Default, Debug, PartialEq, Clone)]
-pub struct GroupNo;
+pub struct GroupNot;
 
 impl Display for WplGroupType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -50,8 +50,8 @@ impl Display for WplGroupType {
             WplGroupType::SomeOf(_) => {
                 write!(f, "some_of")?;
             }
-            WplGroupType::No(_) => {
-                write!(f, "no")?;
+            WplGroupType::Not(_) => {
+                write!(f, "not")?;
             }
         }
         Ok(())
@@ -65,7 +65,7 @@ impl FromStr for WplGroupType {
             "order" | "seq" => Ok(WplGroupType::Seq(GroupSeq)),
             "alt" => Ok(WplGroupType::Alt(GroupAlt)),
             "some_of" => Ok(WplGroupType::SomeOf(GroupSomeOf)),
-            "no" => Ok(WplGroupType::No(GroupNo)),
+            "not" => Ok(WplGroupType::Not(GroupNot)),
             _ => Err(()),
         }
     }

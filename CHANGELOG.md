@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Sinks/File**: Add `sync` parameter to control immediate disk flushing
   - `sync: false` (default): High-performance mode with buffered writes, suitable for large data volumes
   - `sync: true`: Real-time disk writes for data safety, suitable for critical data
-- **WPL no() Group**: Add `no()` group wrapper for negative assertion in field parsing
+- **WPL not() Group**: Add `not()` group wrapper for negative assertion in field parsing
 - **OML Static Blocks**: Introduce `static { ... }` sections for model-scoped constants and template caching
   - Static expressions are executed only once during model loading, results stored in constant pool for reuse across records, avoiding repeated `object { ... }` construction
   - Static symbols can be directly used in assignments, `match` branches, `object { field = tpl; }`, default values `{ _ : tpl }`, and other scenarios

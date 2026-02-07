@@ -15,7 +15,7 @@ pub fn wpl_group(input: &mut &str) -> WResult<WplGroup> {
     multispace0.parse_next(input)?;
 
     if peek_str("(", input).is_err() {
-        let meta_str = alt(("alt", "opt", "some_of", "seq", "no"))
+        let meta_str = alt(("alt", "opt", "some_of", "seq", "not"))
             .context(ctx_literal(CTX_GROUP_META_HINT))
             .context(ctx_desc(CTX_EXPECT_GROUP_META))
             .parse_next(input)?;
