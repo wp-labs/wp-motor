@@ -58,11 +58,7 @@ impl SinkDispatcher {
                         mon,
                     )
                     .await?;
-                    debug_data!(
-                        "pkg_id: {}, sink group {} hash-route tdc",
-                        pkg_id,
-                        self.conf.name()
-                    );
+                    debug_edata!(pkg_id, "sink group {} hash-route tdc", self.conf.name());
                     return Ok(1);
                 }
                 ProcMeta::Null => {

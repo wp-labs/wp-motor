@@ -141,7 +141,7 @@ impl SinkDispatcher {
                     Arc::new(failed),
                 ));
             } else {
-                info_data!("oml proc suc!{},{}", pkg_id, meta);
+                info_edata!(pkg_id, "oml proc suc! {}", meta);
                 successes.push(TransformedRecUnit::new(pkg_id, meta, output));
             }
         }

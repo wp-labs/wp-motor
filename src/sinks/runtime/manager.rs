@@ -253,7 +253,7 @@ impl SinkRuntime {
                 }
                 Err(e) => {
                     for e_id in &ids {
-                        error_data!("sink data failed! {}:{}", e_id, e);
+                        error_edata!(*e_id, "sink data failed: {}", e);
                     }
                     if self.handle_send_error(&e, bad_s, mon).await? {
                         continue;
