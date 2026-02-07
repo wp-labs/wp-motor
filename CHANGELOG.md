@@ -7,11 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.15.1 latest ]
 
+### Added
+- **WPL Pipe Functions**: Add `not()` wrapper function for inverting pipe function results
+  - Syntax: `| not(f_chars_has(dev_type, NDS))` succeeds when dev_type ≠ NDS
+  - Supports wrapping any field pipe function (f_has, f_chars_has, chars_has, etc.)
+  - Preserves field value - only inverts success/failure result
+  - Supports nested negation: `not(not(...))` for double negation logic
+
 ### Changed
 - **Sinks/Logging**: Unify event ID naming across the codebase for end-to-end tracing
 
 ### Fixed
 - **WP-OML Tests**: Fix `DataRecord` initialization for compatibility with wp-model-core 0.7.2
+- **WPL Pipe Functions**: Fix `f_chars_not_has` and `chars_not_has` type checking bug
+  - Previously: Non-Chars fields (e.g., Digit) incorrectly returned FALSE
+  - Now: Non-Chars fields correctly return TRUE (they are "not the target Chars value")
+  - Semantics: Missing field OR non-Chars type OR value ≠ target → TRUE; value == target → FALSE
 
 
 ## [1.15.0] - 2026-02-07

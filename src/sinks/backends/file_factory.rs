@@ -80,6 +80,21 @@ impl SinkDefProvider for FileFactory {
             origin: Some("builtin:file".into()),
         });
 
+        // Alias for file_proto_text_sink for backward compatibility
+        let mut params = ParamMap::new();
+        params.insert("fmt".into(), json!("proto-text"));
+        params.insert("base".into(), json!("./data/out_dat"));
+        params.insert("file".into(), json!("default.dat"));
+        params.insert("sync".into(), json!(false));
+        defs.push(ConnectorDef {
+            id: "file_proto_sink".into(),
+            kind: self.kind().into(),
+            scope: ConnectorScope::Sink,
+            allow_override: vec!["base".into(), "file".into(), "sync".into()],
+            default_params: params,
+            origin: Some("builtin:file".into()),
+        });
+
         let mut params = ParamMap::new();
         params.insert("fmt".into(), json!("kv"));
         params.insert("base".into(), json!("./data/out_dat"));

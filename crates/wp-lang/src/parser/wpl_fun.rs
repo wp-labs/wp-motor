@@ -23,8 +23,8 @@ use crate::ast::{
     WplFun,
     processor::{
         CharsHas, CharsIn, CharsInArg, CharsNotHas, CharsNotHasArg, CharsValue, DigitHas,
-        DigitHasArg, DigitIn, DigitInArg, DigitRange, Has, HasArg, IpIn, IpInArg, RegexMatch,
-        ReplaceFunc, SelectLast, StartsWith, TakeField, TargetCharsHas, TargetCharsIn,
+        DigitHasArg, DigitIn, DigitInArg, DigitRange, Has, HasArg, IpIn, IpInArg, PipeNot,
+        RegexMatch, ReplaceFunc, SelectLast, StartsWith, TakeField, TargetCharsHas, TargetCharsIn,
         TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn, normalize_target,
     },
 };
@@ -118,6 +118,8 @@ fn take_string_or_quoted(input: &mut &str) -> WResult<String> {
 pub fn wpl_fun(input: &mut &str) -> WResult<WplFun> {
     multispace0.parse_next(input)?;
     let fun = alt((
+        // Parse not() wrapper function first (needs special handling for recursive parsing)
+        parse_pipe_not,
         alt((
             // Put digit_range first to avoid any prefix matching issues
             call_fun_args2::<DigitRangeArg>.map(|arg| {
@@ -155,6 +157,25 @@ pub fn wpl_fun(input: &mut &str) -> WResult<WplFun> {
     ))
     .parse_next(input)?;
     Ok(fun)
+}
+
+/// Parse not(inner_function) - requires special handling for recursive parsing
+fn parse_pipe_not(input: &mut &str) -> WResult<WplFun> {
+    // Match "not"
+    literal("not").parse_next(input)?;
+    multispace0.parse_next(input)?;
+    // Match "("
+    literal("(").parse_next(input)?;
+    multispace0.parse_next(input)?;
+    // Recursively parse inner function
+    let inner = wpl_fun.parse_next(input)?;
+    multispace0.parse_next(input)?;
+    // Match ")"
+    literal(")").parse_next(input)?;
+
+    Ok(WplFun::PipeNot(PipeNot {
+        inner: Box::new(inner),
+    }))
 }
 
 impl Fun2Builder for TargetDigitHas {
@@ -1047,5 +1068,54 @@ mod tests {
         // starts_with with single character
         let fun = wpl_fun.parse(r"starts_with('/')").assert();
         assert_eq!(fun, WplFun::StartsWith(StartsWith { prefix: "/".into() }));
+    }
+
+    #[test]
+    fn test_parse_pipe_not() {
+        // Test: not(f_chars_has(dev_type, NDS))
+        let fun = wpl_fun.parse(r"not(f_chars_has(dev_type, NDS))").assert();
+
+        if let WplFun::PipeNot(pipe_not) = fun {
+            if let WplFun::TargetCharsHas(inner) = *pipe_not.inner {
+                assert_eq!(inner.target, Some("dev_type".into()));
+                assert_eq!(inner.value.as_str(), "NDS");
+            } else {
+                panic!("Inner function should be TargetCharsHas");
+            }
+        } else {
+            panic!("Should parse as PipeNot");
+        }
+
+        // Test: not(has())
+        let fun = wpl_fun.parse(r"not(has())").assert();
+        if let WplFun::PipeNot(pipe_not) = fun {
+            assert!(matches!(*pipe_not.inner, WplFun::Has(_)));
+        } else {
+            panic!("Should parse as PipeNot with Has");
+        }
+
+        // Test: not(f_has(field_name))
+        let fun = wpl_fun.parse(r"not(f_has(field_name))").assert();
+        if let WplFun::PipeNot(pipe_not) = fun {
+            if let WplFun::TargetHas(inner) = *pipe_not.inner {
+                assert_eq!(inner.target, Some("field_name".into()));
+            } else {
+                panic!("Inner function should be TargetHas");
+            }
+        } else {
+            panic!("Should parse as PipeNot");
+        }
+
+        // Test: Double negation not(not(has()))
+        let fun = wpl_fun.parse(r"not(not(has()))").assert();
+        if let WplFun::PipeNot(outer_not) = fun {
+            if let WplFun::PipeNot(inner_not) = *outer_not.inner {
+                assert!(matches!(*inner_not.inner, WplFun::Has(_)));
+            } else {
+                panic!("Inner should be PipeNot");
+            }
+        } else {
+            panic!("Should parse as nested PipeNot");
+        }
     }
 }

@@ -45,6 +45,12 @@ This document lists all available field functions in the WP-Motor WPL language.
 | `has` | `has()` | Check if the current active field exists | - |
 | `f_has` | `f_has(target)` | Check if the specified field exists | - |
 
+## Wrapper Functions
+
+| Function | Syntax | Description | Documentation |
+|------|------|------|------|
+| `not` | `not(inner_function)` | Invert the success/failure result of the inner pipe function | [📖 Detailed Documentation](./not.md) |
+
 ## String Transformation
 
 | Function | Syntax | Description | Documentation |
@@ -76,6 +82,11 @@ Used to select a specific field as the active field.
 
 - `take`: Select by name
 - `last`: Select the last field
+
+#### 4. Wrapper Functions
+Wrap other functions to change their behavior.
+
+- `not`: Invert the success/failure result of the inner function
 
 ### By Target Field Support
 
@@ -255,6 +266,10 @@ rule branching_logic {
 - **Separator**: [Separator Guide](./separator.md)
 
 ## Version History
+
+- **1.15.1** (2026-02-07)
+  - Added `not()` wrapper function
+  - Fixed `f_chars_not_has` and `chars_not_has` type checking bug
 
 - **1.13.1** (2026-02-02)
   - Added `digit_range` function

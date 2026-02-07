@@ -3,13 +3,16 @@ use smol_str::SmolStr;
 
 use super::function::{
     CharsHas, CharsIn, CharsNotHas, DigitHas, DigitIn, DigitRange, Has, IpIn, JsonUnescape,
-    RegexMatch, ReplaceFunc, SelectLast, StartsWith, TakeField, TargetCharsHas, TargetCharsIn,
-    TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn,
+    PipeNot, RegexMatch, ReplaceFunc, SelectLast, StartsWith, TakeField, TargetCharsHas,
+    TargetCharsIn, TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn,
 };
 use crate::ast::{group::WplGroup, processor::Base64Decode};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum WplFun {
+    // Wrapper functions
+    PipeNot(PipeNot),
+    // Field selectors
     SelectTake(TakeField),
     SelectLast(SelectLast),
     // Character comparison functions

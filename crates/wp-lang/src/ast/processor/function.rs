@@ -5,6 +5,19 @@ use smol_str::SmolStr;
 #[derive(Clone, Debug, PartialEq)]
 pub struct CharsValue(pub(crate) SmolStr);
 
+// ============ Wrapper Functions ============
+
+/// Negates (inverts) the result of an inner pipe function
+///
+/// Succeeds when the inner function fails, and fails when the inner function succeeds.
+/// The field value is not modified - only the success/failure result is inverted.
+///
+/// Example: `| not(f_chars_has(dev_type, NDS))` succeeds when dev_type != NDS
+#[derive(Clone, Debug, PartialEq)]
+pub struct PipeNot {
+    pub(crate) inner: Box<crate::ast::WplFun>,
+}
+
 // ============ Field Existence Check ============
 
 /// Checks if active field exists

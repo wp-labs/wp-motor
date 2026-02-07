@@ -1,8 +1,9 @@
 use crate::ast::WplFun;
 use crate::ast::processor::{
     Base64Decode, CharsHas, CharsIn, CharsNotHas, DigitHas, DigitIn, DigitRange, Has, IpIn,
-    JsonUnescape, RegexMatch, ReplaceFunc, SelectLast, StartsWith, TakeField, TargetCharsHas,
-    TargetCharsIn, TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn,
+    JsonUnescape, PipeNot, RegexMatch, ReplaceFunc, SelectLast, StartsWith, TakeField,
+    TargetCharsHas, TargetCharsIn, TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas,
+    TargetIpIn,
 };
 use crate::eval::runtime::field_pipe::{FieldIndex, FieldPipe, FieldSelector, FieldSelectorSpec};
 use base64::Engine;
@@ -90,15 +91,19 @@ impl FieldPipe for TargetCharsNotHas {
     #[inline]
     fn process(&self, field: Option<&mut DataField>) -> WResult<()> {
         match field {
-            None => Ok(()),
+            None => Ok(()), // Field doesn't exist → TRUE (permissive)
             Some(item) => {
+                // If it's a Chars type and values are equal → FALSE
                 if let Value::Chars(value) = item.get_value()
-                    && value.as_str() != self.value.as_str()
+                    && value.as_str() == self.value.as_str()
                 {
-                    return Ok(());
+                    // Values equal → FALSE
+                    return fail
+                        .context(ctx_desc("<pipe> | not exists"))
+                        .parse_next(&mut "");
                 }
-                fail.context(ctx_desc("<pipe> | not exists"))
-                    .parse_next(&mut "")
+                // Not a Chars type OR values not equal → TRUE
+                Ok(())
             }
         }
     }
@@ -112,17 +117,55 @@ impl FieldPipe for CharsNotHas {
     #[inline]
     fn process(&self, field: Option<&mut DataField>) -> WResult<()> {
         match field {
-            None => Ok(()),
+            None => Ok(()), // Field doesn't exist → TRUE (permissive)
             Some(item) => {
+                // If it's a Chars type and values are equal → FALSE
                 if let Value::Chars(value) = item.get_value()
-                    && value.as_str() != self.value.as_str()
+                    && value.as_str() == self.value.as_str()
                 {
-                    return Ok(());
+                    // Values equal → FALSE
+                    return fail
+                        .context(ctx_desc("<pipe> | not exists"))
+                        .parse_next(&mut "");
                 }
-                fail.context(ctx_desc("<pipe> | not exists"))
-                    .parse_next(&mut "")
+                // Not a Chars type OR values not equal → TRUE
+                Ok(())
             }
         }
+    }
+}
+
+impl FieldPipe for PipeNot {
+    #[inline]
+    fn process(&self, field: Option<&mut DataField>) -> WResult<()> {
+        // Get inner pipe function
+        let Some(inner_pipe) = self.inner.as_field_pipe() else {
+            return fail
+                .context(ctx_desc("not() can only wrap field pipe functions"))
+                .parse_next(&mut "");
+        };
+
+        // Clone field to test without side effects
+        let mut test_field = field.as_ref().map(|f| (*f).clone());
+
+        // Execute inner function and invert result
+        match inner_pipe.process(test_field.as_mut()) {
+            Ok(_) => {
+                // Inner succeeded → not() fails
+                fail.context(ctx_desc("not() | inner matched"))
+                    .parse_next(&mut "")
+            }
+            Err(_) => {
+                // Inner failed → not() succeeds
+                // Original field remains unchanged
+                Ok(())
+            }
+        }
+    }
+
+    fn auto_select<'a>(&'a self) -> Option<FieldSelectorSpec<'a>> {
+        // Forward to inner function's auto_select
+        self.inner.auto_selector_spec()
     }
 }
 
@@ -410,6 +453,7 @@ impl FieldPipe for StartsWith {
 impl WplFun {
     pub fn as_field_pipe(&self) -> Option<&dyn FieldPipe> {
         match self {
+            WplFun::PipeNot(fun) => Some(fun),
             WplFun::SelectTake(_) | WplFun::SelectLast(_) => None,
             WplFun::TargetCharsHas(fun) => Some(fun),
             WplFun::CharsHas(fun) => Some(fun),
@@ -444,6 +488,7 @@ impl WplFun {
 
     pub fn auto_selector_spec(&self) -> Option<FieldSelectorSpec<'_>> {
         match self {
+            WplFun::PipeNot(fun) => fun.auto_select(),
             WplFun::TargetCharsHas(fun) => fun.auto_select(),
             WplFun::TargetCharsNotHas(fun) => fun.auto_select(),
             WplFun::TargetCharsIn(fun) => fun.auto_select(),
@@ -907,5 +952,181 @@ mod tests {
         // 验证字段被转换为 ignore 类型
         assert_eq!(fields[0].get_meta(), &DataType::Ignore);
         assert_eq!(fields[0].get_name(), "count");
+    }
+
+    #[test]
+    fn pipe_not_inverts_chars_has_success() {
+        // Test: not(f_chars_has(dev_type, NDS)) when dev_type == NDS
+        // Inner function succeeds → not() should fail
+        let mut fields = vec![DataField::from_chars(
+            "dev_type".to_string(),
+            "NDS".to_string(),
+        )];
+
+        let inner = WplFun::TargetCharsHas(TargetCharsHas {
+            target: Some("dev_type".into()),
+            value: "NDS".into(),
+        });
+
+        let not_fun = PipeNot {
+            inner: Box::new(inner),
+        };
+
+        // Should fail because inner matches
+        assert!(not_fun.process(fields.get_mut(0)).is_err());
+    }
+
+    #[test]
+    fn pipe_not_inverts_chars_has_failure() {
+        // Test: not(f_chars_has(dev_type, NDS)) when dev_type == NDSS
+        // Inner function fails → not() should succeed
+        let mut fields = vec![DataField::from_chars(
+            "dev_type".to_string(),
+            "NDSS".to_string(),
+        )];
+
+        let inner = WplFun::TargetCharsHas(TargetCharsHas {
+            target: Some("dev_type".into()),
+            value: "NDS".into(),
+        });
+
+        let not_fun = PipeNot {
+            inner: Box::new(inner),
+        };
+
+        // Should succeed because inner does not match
+        assert!(not_fun.process(fields.get_mut(0)).is_ok());
+
+        // Verify original field is unchanged
+        assert_eq!(fields[0].get_value(), &Value::Chars("NDSS".into()));
+    }
+
+    #[test]
+    fn pipe_not_with_missing_field() {
+        // Test: not(f_has(missing_field)) when field doesn't exist
+        // Inner function fails → not() should succeed
+
+        let inner = WplFun::TargetHas(TargetHas {
+            target: Some("missing_field".into()),
+        });
+
+        let not_fun = PipeNot {
+            inner: Box::new(inner),
+        };
+
+        // Pass None to simulate missing field
+        // Should succeed because field doesn't exist
+        assert!(not_fun.process(None).is_ok());
+    }
+
+    #[test]
+    fn pipe_not_double_negation() {
+        // Test: not(not(f_chars_has(dev_type, NDS))) when dev_type == NDS
+        // Inner not() fails → outer not() succeeds
+        let mut fields = vec![DataField::from_chars(
+            "dev_type".to_string(),
+            "NDS".to_string(),
+        )];
+
+        let innermost = WplFun::TargetCharsHas(TargetCharsHas {
+            target: Some("dev_type".into()),
+            value: "NDS".into(),
+        });
+
+        let inner_not = WplFun::PipeNot(PipeNot {
+            inner: Box::new(innermost),
+        });
+
+        let outer_not = PipeNot {
+            inner: Box::new(inner_not),
+        };
+
+        // Double negation: inner matches → inner_not fails → outer_not succeeds
+        assert!(outer_not.process(fields.get_mut(0)).is_ok());
+    }
+
+    #[test]
+    fn pipe_not_preserves_field_value() {
+        // Verify that not() doesn't modify the field value
+        let mut fields = vec![DataField::from_chars(
+            "dev_type".to_string(),
+            "ORIGINAL".to_string(),
+        )];
+
+        let inner = WplFun::TargetCharsHas(TargetCharsHas {
+            target: Some("dev_type".into()),
+            value: "NDS".into(),
+        });
+
+        let not_fun = PipeNot {
+            inner: Box::new(inner),
+        };
+
+        not_fun.process(fields.get_mut(0)).expect("should succeed");
+
+        // Field value should remain unchanged
+        assert_eq!(fields[0].get_value(), &Value::Chars("ORIGINAL".into()));
+        assert_eq!(fields[0].get_name(), "dev_type");
+    }
+
+    #[test]
+    fn chars_not_has_with_digit_field() {
+        // Bug fix test: When field is Digit type (not Chars),
+        // chars_not_has should return TRUE (field is not the target string)
+        let mut fields = vec![DataField::from_digit("count".to_string(), 42)];
+
+        let not_has = CharsNotHas {
+            value: "NDS".into(),
+        };
+
+        // Should succeed because digit field is NOT a Chars value "NDS"
+        assert!(not_has.process(fields.get_mut(0)).is_ok());
+    }
+
+    #[test]
+    fn target_chars_not_has_with_digit_field() {
+        // Bug fix test: When field is Digit type (not Chars),
+        // f_chars_not_has should return TRUE
+        let mut fields = vec![DataField::from_digit("dev_type".to_string(), 123)];
+
+        let not_has = TargetCharsNotHas {
+            target: Some("dev_type".into()),
+            value: "NDS".into(),
+        };
+
+        // Should succeed because digit field is NOT a Chars value "NDS"
+        assert!(not_has.process(fields.get_mut(0)).is_ok());
+    }
+
+    #[test]
+    fn chars_not_has_matching_chars() {
+        // When field is Chars and value matches, should fail
+        let mut fields = vec![DataField::from_chars(
+            "dev_type".to_string(),
+            "NDS".to_string(),
+        )];
+
+        let not_has = CharsNotHas {
+            value: "NDS".into(),
+        };
+
+        // Should fail because value matches
+        assert!(not_has.process(fields.get_mut(0)).is_err());
+    }
+
+    #[test]
+    fn chars_not_has_different_chars() {
+        // When field is Chars and value doesn't match, should succeed
+        let mut fields = vec![DataField::from_chars(
+            "dev_type".to_string(),
+            "NDSS".to_string(),
+        )];
+
+        let not_has = CharsNotHas {
+            value: "NDS".into(),
+        };
+
+        // Should succeed because value doesn't match
+        assert!(not_has.process(fields.get_mut(0)).is_ok());
     }
 }
