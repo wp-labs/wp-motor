@@ -18,10 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **OML Enable Configuration**: Add `enable` configuration option to support disabling OML models
 
 ### Changed
-- **Sinks/File**: Remove proto binary format support 
+- **Sinks/Infrastructure**: Optimize infrastructure sink data flow to maintain batch processing
+- **Sinks/File**: Remove proto binary format support
 - **Sinks/File**: Supported output formats: json, csv, kv, show, raw, proto-text
 
 ### Fixed
+- **Sinks/File**: Fix `sync` parameter not forcing data to disk
+  - Now calls `sync_all()` after `flush()` when `sync: true` to ensure data is physically written to disk
+  - Previously only flushed to OS buffer, which didn't guarantee immediate disk writes
 - **Benchmarks**: Fix compilation errors in OML benchmarks
   - Fix dereferencing issue in `DataField::from_chars` calls
   - Update import paths from `wp_conf` to `wp_config`

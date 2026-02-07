@@ -16,6 +16,20 @@ use crate::sinks::SinkRecUnit;
 
 pub type BufferMonitor = WatchOuterImpl<StubOuter>;
 
+/// WatchOuterImpl is designed for real-time monitoring and observation.
+///
+/// # Design Philosophy
+/// - **Real-time visibility**: Each record is written immediately to ensure external
+///   readers can observe data as it arrives
+/// - **Shared buffer**: The buffer is typically shared via `SafeH<Cursor<Vec<u8>>>` clone,
+///   allowing external monitoring programs to read in real-time
+/// - **No batching optimization**: Batch methods intentionally write records one-by-one
+///   to maintain real-time visibility, rather than accumulating for bulk writes
+///
+/// # Use Cases
+/// - Test fixtures that need to capture output
+/// - Debug monitoring of data pipelines
+/// - Real-time data observation tools
 #[derive(Clone)]
 pub struct WatchOuterImpl<T>
 where
@@ -164,6 +178,8 @@ where
     }
 
     async fn sink_str_batch(&mut self, data: Vec<&str>) -> SinkResult<()> {
+        // For real-time monitoring, write each record immediately
+        // to ensure data is visible to external readers without delay
         for str_data in data {
             self.sink_str(str_data).await?;
         }
@@ -171,9 +187,67 @@ where
     }
 
     async fn sink_bytes_batch(&mut self, data: Vec<&[u8]>) -> SinkResult<()> {
+        // For real-time monitoring, write each record immediately
+        // to ensure data is visible to external readers without delay
         for bytes_data in data {
             self.sink_bytes(bytes_data).await?;
         }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::AnyResult;
+    use wp_connector_api::AsyncRawDataSink;
+
+    #[tokio::test]
+    async fn test_realtime_monitoring() -> AnyResult<()> {
+        let mut monitor = BufferMonitor::new();
+        let buffer_ref = monitor.buffer.clone();
+
+        // Write data in batch
+        let data: Vec<&str> = vec!["line1", "line2", "line3"];
+        monitor.sink_str_batch(data).await?;
+
+        // External reader should see all data immediately
+        let buffer = buffer_ref.read().unwrap();
+        let content = String::from_utf8_lossy(buffer.get_ref());
+        assert!(content.contains("line1"));
+        assert!(content.contains("line2"));
+        assert!(content.contains("line3"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_incremental_visibility() -> AnyResult<()> {
+        let mut monitor = BufferMonitor::new();
+        let buffer_ref = monitor.buffer.clone();
+
+        // Write first record
+        monitor.sink_str("first").await?;
+
+        // Should be immediately visible
+        {
+            let buffer = buffer_ref.read().unwrap();
+            let content = String::from_utf8_lossy(buffer.get_ref());
+            assert!(content.contains("first"));
+            assert!(!content.contains("second"));
+        }
+
+        // Write second record
+        monitor.sink_str("second").await?;
+
+        // Both should be visible
+        {
+            let buffer = buffer_ref.read().unwrap();
+            let content = String::from_utf8_lossy(buffer.get_ref());
+            assert!(content.contains("first"));
+            assert!(content.contains("second"));
+        }
+
         Ok(())
     }
 }

@@ -249,6 +249,15 @@ impl AsyncRawdatSink for AsyncFileSink {
                 .flush()
                 .await
                 .owe(SinkReason::sink("file out fail"))?;
+
+            // If sync mode enabled, force data to disk
+            if self.sync {
+                self.out_io
+                    .get_ref()
+                    .sync_all()
+                    .await
+                    .owe(SinkReason::sink("file sync fail"))?;
+            }
         }
         Ok(())
     }
@@ -256,15 +265,11 @@ impl AsyncRawdatSink for AsyncFileSink {
         if data.as_bytes().last() == Some(&b'\n') {
             self.sink_bytes(data.as_bytes()).await
         } else {
-            self.out_io
-                .write_all(data.as_bytes())
-                .await
-                .owe(SinkReason::sink("file out fail"))?;
-            self.out_io
-                .write_all(b"\n")
-                .await
-                .owe(SinkReason::sink("file out fail"))?;
-            Ok(())
+            // Need to add newline and trigger flush logic
+            let mut buffer = Vec::with_capacity(data.len() + 1);
+            buffer.extend_from_slice(data.as_bytes());
+            buffer.push(b'\n');
+            self.sink_bytes(&buffer).await
         }
     }
 
@@ -302,6 +307,15 @@ impl AsyncRawdatSink for AsyncFileSink {
                 .flush()
                 .await
                 .owe(SinkReason::sink("file out fail"))?;
+
+            // If sync mode enabled, force data to disk
+            if self.sync {
+                self.out_io
+                    .get_ref()
+                    .sync_all()
+                    .await
+                    .owe(SinkReason::sink("file sync fail"))?;
+            }
         }
 
         Ok(())
@@ -341,6 +355,15 @@ impl AsyncRawdatSink for AsyncFileSink {
                 .flush()
                 .await
                 .owe(SinkReason::sink("file out fail"))?;
+
+            // If sync mode enabled, force data to disk
+            if self.sync {
+                self.out_io
+                    .get_ref()
+                    .sync_all()
+                    .await
+                    .owe(SinkReason::sink("file sync fail"))?;
+            }
         }
 
         Ok(())
@@ -395,6 +418,51 @@ mod tests {
         assert!(!Path::new(own_lock.to_string_lossy().as_ref()).exists());
         assert!(Path::new(base.join("group1/sinkA-001.dat").to_string_lossy().as_ref()).exists());
         assert!(Path::new(other_lock.to_string_lossy().as_ref()).exists());
+
+        let _ = fs::remove_dir_all(&base);
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_sync_parameter() -> AnyResult<()> {
+        use wp_connector_api::AsyncRawDataSink;
+
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("wp_sync_test_{}", ts));
+        fs::create_dir_all(&base)?;
+
+        // Test sync=true: data should be immediately written to disk
+        let sync_file = base.join("sync_true.dat.lock");
+        let mut sink_sync =
+            AsyncFileSink::with_sync(sync_file.to_string_lossy().as_ref(), true).await?;
+        AsyncRawDataSink::sink_str(&mut sink_sync, "line1").await?;
+
+        // File should exist and contain data immediately (after sync_all)
+        let content = fs::read_to_string(&sync_file)?;
+        assert!(
+            content.contains("line1"),
+            "sync=true should write data immediately"
+        );
+
+        wp_connector_api::AsyncCtrl::stop(&mut sink_sync).await?;
+
+        // Test sync=false: data might be buffered
+        let no_sync_file = base.join("sync_false.dat.lock");
+        let mut sink_no_sync =
+            AsyncFileSink::with_sync(no_sync_file.to_string_lossy().as_ref(), false).await?;
+        AsyncRawDataSink::sink_str(&mut sink_no_sync, "line1").await?;
+
+        // Data might not be immediately visible (buffered)
+        // But after stop, it should be written
+        wp_connector_api::AsyncCtrl::stop(&mut sink_no_sync).await?;
+        let content = fs::read_to_string(base.join("sync_false.dat"))?;
+        assert!(
+            content.contains("line1"),
+            "data should be written after stop"
+        );
 
         let _ = fs::remove_dir_all(&base);
         Ok(())

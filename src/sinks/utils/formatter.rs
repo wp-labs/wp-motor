@@ -133,15 +133,15 @@ where
     }
 
     async fn sink_str_batch(&mut self, data: Vec<&str>) -> SinkResult<()> {
-        for str_data in data {
-            self.sink_str(str_data).await?;
+        if let Some(ref mut next) = self.next_proc {
+            return next.sink_str_batch(data).await;
         }
         Ok(())
     }
 
     async fn sink_bytes_batch(&mut self, data: Vec<&[u8]>) -> SinkResult<()> {
-        for bytes_data in data {
-            self.sink_bytes(bytes_data).await?;
+        if let Some(ref mut next) = self.next_proc {
+            return next.sink_bytes_batch(data).await;
         }
         Ok(())
     }
