@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.1 latest ]
+
+### Changed
+- **Sinks/Logging**: Unify event ID naming across the codebase for end-to-end tracing
+
+### Fixed
+- **WP-OML Tests**: Fix `DataRecord` initialization for compatibility with wp-model-core 0.7.2
+
+
 ## [1.15.0] - 2026-02-07
 
 ### Added
