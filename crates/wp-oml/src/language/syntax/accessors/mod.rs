@@ -19,6 +19,8 @@ pub enum NestedAccessor {
     Direct(RecordOperation),
     Fun(FunOperation),
     Collect(ArrOperation),
+    /// Placeholder for static symbol; resolved after parsing
+    StaticSymbol(String),
 }
 
 impl FieldExtractor for NestedAccessor {
@@ -33,6 +35,9 @@ impl FieldExtractor for NestedAccessor {
             NestedAccessor::Direct(o) => o.extract_one(target, src, dst),
             NestedAccessor::Fun(o) => o.extract_one(target, src, dst),
             NestedAccessor::Collect(o) => o.extract_one(target, src, dst),
+            NestedAccessor::StaticSymbol(sym) => {
+                panic!("unresolved static symbol during execution: {sym}")
+            }
         }
     }
     fn extract_more(
@@ -46,6 +51,9 @@ impl FieldExtractor for NestedAccessor {
             NestedAccessor::Direct(o) => o.extract_more(src, dst, cache),
             NestedAccessor::Fun(o) => o.extract_more(src, dst, cache),
             NestedAccessor::Collect(o) => o.extract_more(src, dst, cache),
+            NestedAccessor::StaticSymbol(sym) => {
+                panic!("unresolved static symbol during execution: {sym}")
+            }
         }
     }
     fn support_batch(&self) -> bool {
@@ -54,6 +62,9 @@ impl FieldExtractor for NestedAccessor {
             NestedAccessor::Direct(o) => o.support_batch(),
             NestedAccessor::Fun(o) => o.support_batch(),
             NestedAccessor::Collect(o) => o.support_batch(),
+            NestedAccessor::StaticSymbol(sym) => {
+                panic!("unresolved static symbol during execution: {sym}")
+            }
         }
     }
 }
@@ -73,6 +84,23 @@ impl Display for NestedAccessor {
             NestedAccessor::Fun(x) => {
                 write!(f, "{}", x)
             }
+            NestedAccessor::StaticSymbol(sym) => {
+                write!(f, "{}", sym)
+            }
+        }
+    }
+}
+
+impl NestedAccessor {
+    pub fn replace_with_field(&mut self, field: DataField) {
+        *self = NestedAccessor::Field(field);
+    }
+
+    pub fn as_static_symbol(&self) -> Option<&str> {
+        if let NestedAccessor::StaticSymbol(sym) = self {
+            Some(sym.as_str())
+        } else {
+            None
         }
     }
 }
@@ -109,6 +137,7 @@ impl Display for DirectAccessor {
 pub enum GenericAccessor {
     Field(DataField),
     Fun(FunOperation),
+    StaticSymbol(String),
 }
 
 impl Display for GenericAccessor {
@@ -120,6 +149,23 @@ impl Display for GenericAccessor {
             GenericAccessor::Fun(x) => {
                 write!(f, "{}", x)
             }
+            GenericAccessor::StaticSymbol(sym) => {
+                write!(f, "{}", sym)
+            }
+        }
+    }
+}
+
+impl GenericAccessor {
+    pub fn replace_with_field(&mut self, field: DataField) {
+        *self = GenericAccessor::Field(field);
+    }
+
+    pub fn as_static_symbol(&self) -> Option<&str> {
+        if let GenericAccessor::StaticSymbol(sym) = self {
+            Some(sym.as_str())
+        } else {
+            None
         }
     }
 }

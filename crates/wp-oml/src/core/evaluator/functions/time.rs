@@ -93,7 +93,7 @@ mod tests {
             DataField::from_chars("B2", "hello2"),
             DataField::from_chars("C3", "hello3"),
         ];
-        let src = DataRecord { items: data };
+        let src = DataRecord::from(data);
 
         let mut conf = r#"
         name : test

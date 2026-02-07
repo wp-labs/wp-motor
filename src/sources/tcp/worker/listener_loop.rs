@@ -70,12 +70,12 @@ impl TcpListenerLoop {
         loop {
             tokio::select! {
                 _ = stop_rx.recv() => {
-                    info_data!("TCP listener loop '{}' stopped", self.key);
+                    info_ctrl!("TCP listener loop '{}' stopped", self.key);
                     break;
                 }
                 _ = accept_interval.tick() => {
                     if let Err(e) = self.accept_connection(&listener).await {
-                        error_data!("TCP listener loop '{}' accept failed: {}", self.key, e);
+                        error_ctrl!("TCP listener loop '{}' accept failed: {}", self.key, e);
                     }
                 }
             }
@@ -120,7 +120,7 @@ impl TcpListenerLoop {
                         })
                         .await
                     {
-                        warn_data!(
+                        warn_ctrl!(
                             "TCP listener loop '{}' failed to dispatch connection {}: {}",
                             self.key,
                             connection_id,
@@ -138,7 +138,7 @@ impl TcpListenerLoop {
                 }
             }
             Ok(Err(e)) => {
-                error_data!("TCP listener loop '{}' accept error: {}", self.key, e);
+                error_ctrl!("TCP listener loop '{}' accept error: {}", self.key, e);
             }
             Err(_) => {}
         }

@@ -23,9 +23,9 @@ use crate::ast::{
     WplFun,
     processor::{
         CharsHas, CharsIn, CharsInArg, CharsNotHas, CharsNotHasArg, CharsValue, DigitHas,
-        DigitHasArg, DigitIn, DigitInArg, Has, HasArg, IpIn, IpInArg, ReplaceFunc, SelectLast,
-        TakeField, TargetCharsHas, TargetCharsIn, TargetCharsNotHas, TargetDigitHas, TargetDigitIn,
-        TargetHas, TargetIpIn, normalize_target,
+        DigitHasArg, DigitIn, DigitInArg, DigitRange, Has, HasArg, IpIn, IpInArg, PipeNot,
+        RegexMatch, ReplaceFunc, SelectLast, StartsWith, TakeField, TargetCharsHas, TargetCharsIn,
+        TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn, normalize_target,
     },
 };
 
@@ -118,29 +118,64 @@ fn take_string_or_quoted(input: &mut &str) -> WResult<String> {
 pub fn wpl_fun(input: &mut &str) -> WResult<WplFun> {
     multispace0.parse_next(input)?;
     let fun = alt((
-        call_fun_args1::<TakeField>.map(WplFun::SelectTake),
-        call_fun_args0::<SelectLast>.map(WplFun::SelectLast),
-        call_fun_args2::<TargetCharsHas>.map(WplFun::TargetCharsHas),
-        call_fun_args1::<CharsHas>.map(WplFun::CharsHas),
-        call_fun_args2::<TargetCharsNotHas>.map(WplFun::TargetCharsNotHas),
-        call_fun_args1::<CharsNotHasArg>
-            .map(|arg| WplFun::CharsNotHas(CharsNotHas { value: arg.value })),
-        call_fun_args2::<TargetCharsIn>.map(WplFun::TargetCharsIn),
-        call_fun_args1::<CharsInArg>.map(|arg| WplFun::CharsIn(CharsIn { value: arg.value })),
-        call_fun_args2::<TargetDigitHas>.map(WplFun::TargetDigitHas),
-        call_fun_args1::<DigitHasArg>.map(|arg| WplFun::DigitHas(DigitHas { value: arg.value })),
-        call_fun_args2::<TargetDigitIn>.map(WplFun::TargetDigitIn),
-        call_fun_args1::<DigitInArg>.map(|arg| WplFun::DigitIn(DigitIn { value: arg.value })),
-        call_fun_args2::<TargetIpIn>.map(WplFun::TargetIpIn),
-        call_fun_args1::<IpInArg>.map(|arg| WplFun::IpIn(IpIn { value: arg.value })),
-        call_fun_args1::<TargetHas>.map(WplFun::TargetHas),
-        call_fun_args0::<HasArg>.map(|_| WplFun::Has(Has)),
-        call_fun_args0::<JsonUnescape>.map(WplFun::TransJsonUnescape),
-        call_fun_args0::<Base64Decode>.map(WplFun::TransBase64Decode),
-        call_fun_args2::<ReplaceFunc>.map(WplFun::TransCharsReplace),
+        // Parse not() wrapper function first (needs special handling for recursive parsing)
+        parse_pipe_not,
+        alt((
+            // Put digit_range first to avoid any prefix matching issues
+            call_fun_args2::<DigitRangeArg>.map(|arg| {
+                WplFun::DigitRange(DigitRange {
+                    begin: arg.begin,
+                    end: arg.end,
+                })
+            }),
+            call_fun_args1::<RegexMatch>.map(WplFun::RegexMatch),
+            call_fun_args1::<StartsWith>.map(WplFun::StartsWith),
+            call_fun_args1::<TakeField>.map(WplFun::SelectTake),
+            call_fun_args0::<SelectLast>.map(WplFun::SelectLast),
+            call_fun_args2::<TargetCharsHas>.map(WplFun::TargetCharsHas),
+            call_fun_args1::<CharsHas>.map(WplFun::CharsHas),
+            call_fun_args2::<TargetCharsNotHas>.map(WplFun::TargetCharsNotHas),
+            call_fun_args1::<CharsNotHasArg>
+                .map(|arg| WplFun::CharsNotHas(CharsNotHas { value: arg.value })),
+            call_fun_args2::<TargetCharsIn>.map(WplFun::TargetCharsIn),
+            call_fun_args1::<CharsInArg>.map(|arg| WplFun::CharsIn(CharsIn { value: arg.value })),
+        )),
+        alt((
+            call_fun_args2::<TargetDigitHas>.map(WplFun::TargetDigitHas),
+            call_fun_args1::<DigitHasArg>
+                .map(|arg| WplFun::DigitHas(DigitHas { value: arg.value })),
+            call_fun_args2::<TargetDigitIn>.map(WplFun::TargetDigitIn),
+            call_fun_args1::<DigitInArg>.map(|arg| WplFun::DigitIn(DigitIn { value: arg.value })),
+            call_fun_args2::<TargetIpIn>.map(WplFun::TargetIpIn),
+            call_fun_args1::<IpInArg>.map(|arg| WplFun::IpIn(IpIn { value: arg.value })),
+            call_fun_args1::<TargetHas>.map(WplFun::TargetHas),
+            call_fun_args0::<HasArg>.map(|_| WplFun::Has(Has)),
+            call_fun_args0::<JsonUnescape>.map(WplFun::TransJsonUnescape),
+            call_fun_args0::<Base64Decode>.map(WplFun::TransBase64Decode),
+            call_fun_args2::<ReplaceFunc>.map(WplFun::TransCharsReplace),
+        )),
     ))
     .parse_next(input)?;
     Ok(fun)
+}
+
+/// Parse not(inner_function) - requires special handling for recursive parsing
+fn parse_pipe_not(input: &mut &str) -> WResult<WplFun> {
+    // Match "not"
+    literal("not").parse_next(input)?;
+    multispace0.parse_next(input)?;
+    // Match "("
+    literal("(").parse_next(input)?;
+    multispace0.parse_next(input)?;
+    // Recursively parse inner function
+    let inner = wpl_fun.parse_next(input)?;
+    multispace0.parse_next(input)?;
+    // Match ")"
+    literal(")").parse_next(input)?;
+
+    Ok(WplFun::PipeNot(PipeNot {
+        inner: Box::new(inner),
+    }))
 }
 
 impl Fun2Builder for TargetDigitHas {
@@ -482,6 +517,77 @@ impl Fun2Builder for ReplaceFunc {
             target: args.0,
             value: args.1,
         }
+    }
+}
+
+/// Parser argument for `digit_range(begin, end)` - converted to DigitRange
+#[derive(Clone, Debug, PartialEq)]
+pub struct DigitRangeArg {
+    pub(crate) begin: i64,
+    pub(crate) end: i64,
+}
+
+impl Fun2Builder for DigitRangeArg {
+    type ARG1 = i64;
+    type ARG2 = i64;
+
+    fn args1(data: &mut &str) -> WResult<Self::ARG1> {
+        multispace0.parse_next(data)?;
+        let val = digit1.parse_next(data)?;
+        Ok(val.parse::<i64>().unwrap_or(0))
+    }
+
+    fn args2(data: &mut &str) -> WResult<Self::ARG2> {
+        multispace0.parse_next(data)?;
+        let val = digit1.parse_next(data)?;
+        Ok(val.parse::<i64>().unwrap_or(0))
+    }
+
+    fn fun_name() -> &'static str {
+        "digit_range"
+    }
+
+    fn build(args: (Self::ARG1, Self::ARG2)) -> Self {
+        Self {
+            begin: args.0,
+            end: args.1,
+        }
+    }
+}
+
+impl Fun1Builder for RegexMatch {
+    type ARG1 = SmolStr;
+
+    fn args1(data: &mut &str) -> WResult<Self::ARG1> {
+        multispace0.parse_next(data)?;
+        let val = take_string_or_quoted.parse_next(data)?;
+        Ok(val.into())
+    }
+
+    fn fun_name() -> &'static str {
+        "regex_match"
+    }
+
+    fn build(args: Self::ARG1) -> Self {
+        Self { pattern: args }
+    }
+}
+
+impl Fun1Builder for StartsWith {
+    type ARG1 = SmolStr;
+
+    fn args1(data: &mut &str) -> WResult<Self::ARG1> {
+        multispace0.parse_next(data)?;
+        let val = take_string_or_quoted.parse_next(data)?;
+        Ok(val.into())
+    }
+
+    fn fun_name() -> &'static str {
+        "starts_with"
+    }
+
+    fn build(args: Self::ARG1) -> Self {
+        Self { prefix: args }
     }
 }
 
@@ -873,5 +979,143 @@ mod tests {
                 value: "tab\there".into(),
             })
         );
+    }
+
+    #[test]
+    fn test_parse_digit_range() {
+        use winnow::Parser;
+        use wp_parser::fun::parser::call_fun_args2;
+
+        // Direct test of DigitRangeArg parser - simple case
+        let mut input = "digit_range(1, 10)";
+        let result = call_fun_args2::<DigitRangeArg>.parse_next(&mut input);
+        assert!(
+            result.is_ok(),
+            "Simple case should parse successfully: {:?}",
+            result
+        );
+        let arg = result.unwrap();
+        assert_eq!(arg.begin, 1);
+        assert_eq!(arg.end, 10);
+
+        // Direct test with different values
+        let mut input2 = "digit_range(100, 200)";
+        let result2 = call_fun_args2::<DigitRangeArg>.parse_next(&mut input2);
+        assert!(
+            result2.is_ok(),
+            "Different values should parse: {:?}",
+            result2
+        );
+        let arg2 = result2.unwrap();
+        assert_eq!(arg2.begin, 100);
+        assert_eq!(arg2.end, 200);
+    }
+
+    #[test]
+    fn test_parse_regex_match() {
+        let mut wpl_fun = wpl_fun;
+
+        // regex_match with simple pattern (use single quotes for raw string)
+        let fun = wpl_fun.parse(r"regex_match('^\d+$')").assert();
+        assert_eq!(
+            fun,
+            WplFun::RegexMatch(RegexMatch {
+                pattern: r"^\d+$".into(),
+            })
+        );
+
+        // regex_match with complex pattern
+        let fun = wpl_fun.parse(r"regex_match('^\w+@\w+\.\w+$')").assert();
+        assert_eq!(
+            fun,
+            WplFun::RegexMatch(RegexMatch {
+                pattern: r"^\w+@\w+\.\w+$".into(),
+            })
+        );
+
+        // regex_match with alternation
+        let fun = wpl_fun.parse(r"regex_match('^(GET|POST|PUT)$')").assert();
+        assert_eq!(
+            fun,
+            WplFun::RegexMatch(RegexMatch {
+                pattern: r"^(GET|POST|PUT)$".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_start_with() {
+        let mut wpl_fun = wpl_fun;
+
+        // starts_with with simple prefix
+        let fun = wpl_fun.parse(r"starts_with('http')").assert();
+        assert_eq!(
+            fun,
+            WplFun::StartsWith(StartsWith {
+                prefix: "http".into(),
+            })
+        );
+
+        // starts_with with complex prefix
+        let fun = wpl_fun.parse(r"starts_with('https://')").assert();
+        assert_eq!(
+            fun,
+            WplFun::StartsWith(StartsWith {
+                prefix: "https://".into(),
+            })
+        );
+
+        // starts_with with single character
+        let fun = wpl_fun.parse(r"starts_with('/')").assert();
+        assert_eq!(fun, WplFun::StartsWith(StartsWith { prefix: "/".into() }));
+    }
+
+    #[test]
+    fn test_parse_pipe_not() {
+        // Test: not(f_chars_has(dev_type, NDS))
+        let fun = wpl_fun.parse(r"not(f_chars_has(dev_type, NDS))").assert();
+
+        if let WplFun::PipeNot(pipe_not) = fun {
+            if let WplFun::TargetCharsHas(inner) = *pipe_not.inner {
+                assert_eq!(inner.target, Some("dev_type".into()));
+                assert_eq!(inner.value.as_str(), "NDS");
+            } else {
+                panic!("Inner function should be TargetCharsHas");
+            }
+        } else {
+            panic!("Should parse as PipeNot");
+        }
+
+        // Test: not(has())
+        let fun = wpl_fun.parse(r"not(has())").assert();
+        if let WplFun::PipeNot(pipe_not) = fun {
+            assert!(matches!(*pipe_not.inner, WplFun::Has(_)));
+        } else {
+            panic!("Should parse as PipeNot with Has");
+        }
+
+        // Test: not(f_has(field_name))
+        let fun = wpl_fun.parse(r"not(f_has(field_name))").assert();
+        if let WplFun::PipeNot(pipe_not) = fun {
+            if let WplFun::TargetHas(inner) = *pipe_not.inner {
+                assert_eq!(inner.target, Some("field_name".into()));
+            } else {
+                panic!("Inner function should be TargetHas");
+            }
+        } else {
+            panic!("Should parse as PipeNot");
+        }
+
+        // Test: Double negation not(not(has()))
+        let fun = wpl_fun.parse(r"not(not(has()))").assert();
+        if let WplFun::PipeNot(outer_not) = fun {
+            if let WplFun::PipeNot(inner_not) = *outer_not.inner {
+                assert!(matches!(*inner_not.inner, WplFun::Has(_)));
+            } else {
+                panic!("Inner should be PipeNot");
+            }
+        } else {
+            panic!("Should parse as nested PipeNot");
+        }
     }
 }

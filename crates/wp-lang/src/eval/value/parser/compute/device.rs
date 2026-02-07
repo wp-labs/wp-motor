@@ -22,6 +22,7 @@ pub struct SnP {}
 impl PatternParser for SnP {
     fn pattern_parse(
         &self,
+        _e_id: u64,
         _fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,
@@ -65,7 +66,7 @@ mod tests {
         let fpu = FieldEvalUnit::for_test(parser, conf);
         let mut out = Vec::new();
         assert!(
-            fpu.parse(&ups_sep, &mut "KM-KJY-DC-USG12004-B02 ", None, &mut out)
+            fpu.parse(0, &ups_sep, &mut "KM-KJY-DC-USG12004-B02 ", None, &mut out)
                 .is_ok()
         );
     }

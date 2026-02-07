@@ -433,7 +433,7 @@ mod tests {
             DataField::from_chars("D2", "的是在了不"), // 全停用词
         ];
 
-        let src = DataRecord { items: data };
+        let src = DataRecord::from(data);
 
         let mut conf = r#"
         name : test
@@ -552,7 +552,7 @@ mod tests {
             DataField::from_chars("E11", "Connecting to remote host"),
         ];
 
-        let src = DataRecord { items: data };
+        let src = DataRecord::from(data);
 
         let mut conf = r#"
         name : test_english
@@ -722,7 +722,7 @@ mod tests {
             DataField::from_chars("M9", "HTTP请求超时"),
         ];
 
-        let src = DataRecord { items: data };
+        let src = DataRecord::from(data);
 
         let mut conf = r#"
         name : test_saso
@@ -978,7 +978,7 @@ mod tests {
             total += 1;
 
             let data = vec![DataField::from_chars("msg", test_case.text)];
-            let src = DataRecord { items: data };
+            let src = DataRecord::from(data);
 
             let mut conf = r#"
                 name : accuracy_test

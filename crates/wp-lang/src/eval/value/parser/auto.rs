@@ -25,6 +25,7 @@ impl Default for CombinedParser {
 impl FieldParser for CombinedParser {
     fn parse<'a>(
         &self,
+        e_id: u64,
         fpu: &FieldEvalUnit,
         ups_sep: &WplSep,
         data: &mut &str,
@@ -39,7 +40,7 @@ impl FieldParser for CombinedParser {
         let start = data.checkpoint();
         for p in &self.ps {
             // 每次迭代只需要 clone 一次（如果需要的话）
-            match p.parse(fpu, ups_sep, data, default_name.clone(), out) {
+            match p.parse(e_id, fpu, ups_sep, data, default_name.clone(), out) {
                 Ok(o) => {
                     return Ok(o);
                 }

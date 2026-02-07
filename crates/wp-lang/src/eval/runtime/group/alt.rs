@@ -2,23 +2,25 @@ use crate::WplSep;
 use crate::ast::group::GroupAlt;
 use crate::eval::runtime::group::{LogicProc, WplEvalGroup};
 use winnow::stream::Stream;
-use wp_log::trace_data;
+use wp_log::trace_edata;
 use wp_model_core::model::DataField;
 use wp_parser::WResult as ModalResult;
 
 impl LogicProc for GroupAlt {
     fn process(
         &self,
+        e_id: u64,
         group: &WplEvalGroup,
         ups_sep: &WplSep,
         data: &mut &str,
         out: &mut Vec<DataField>,
     ) -> ModalResult<()> {
-        alt_proc(group, ups_sep, data, out)
+        alt_proc(e_id, group, ups_sep, data, out)
     }
 }
 
 pub fn alt_proc(
+    e_id: u64,
     group: &WplEvalGroup,
     ups_sep: &WplSep,
     data: &mut &str,
@@ -32,12 +34,12 @@ pub fn alt_proc(
             break;
         }
         let ck_point = data.checkpoint();
-        match fpu.parse(&cur_sep, data, Some(fpu.conf().safe_name()), out) {
+        match fpu.parse(e_id, &cur_sep, data, Some(fpu.conf().safe_name()), out) {
             Ok(_) => {
                 return Ok(());
             }
             Err(e) => {
-                trace_data!("fpu parse error {} {} \n{}", fpu.conf(), e, data);
+                trace_edata!(e_id, "fpu parse error {} {} \n{}", fpu.conf(), e, data);
                 let cur_pos = data.len();
                 if cur_pos < min_left_len || last_err.is_none() {
                     last_err = Some(e);
@@ -71,7 +73,7 @@ mod tests {
         let mut data = r#"192.168.1.2 - - [06/Aug/2019:12:12:19 +0800] "#;
         let ppl = WplEvaluator::from(&express, None)?;
 
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         println!("{}", result);
         assert_eq!(
@@ -83,13 +85,13 @@ mod tests {
         );
 
         let mut data = r#"2002 - - [06/Aug/2019:12:12:19 +0800] "#;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         println!("{}", result);
         assert_eq!(result.field("id"), Some(&DataField::from_digit("id", 2002)));
 
         let mut data = r#"bad - - [06/Aug/2019:12:12:19 +0800] "#;
-        let result = ppl.parse_groups(&mut data);
+        let result = ppl.parse_groups(0, &mut data);
         assert!(result.is_err());
         Ok(())
     }

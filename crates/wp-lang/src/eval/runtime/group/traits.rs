@@ -9,6 +9,7 @@ use super::WplEvalGroup;
 pub trait LogicProc {
     fn process(
         &self,
+        e_id: u64,
         group: &WplEvalGroup,
         ups_sep: &WplSep,
         data: &mut &str,

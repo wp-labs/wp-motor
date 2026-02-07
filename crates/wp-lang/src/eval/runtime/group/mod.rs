@@ -1,4 +1,5 @@
 mod alt;
+mod not;
 mod opt;
 mod order;
 mod some_of;

@@ -2,14 +2,17 @@ use derive_getters::Getters;
 use smol_str::SmolStr;
 
 use super::function::{
-    CharsHas, CharsIn, CharsNotHas, DigitHas, DigitIn, Has, IpIn, JsonUnescape, ReplaceFunc,
-    SelectLast, TakeField, TargetCharsHas, TargetCharsIn, TargetCharsNotHas, TargetDigitHas,
-    TargetDigitIn, TargetHas, TargetIpIn,
+    CharsHas, CharsIn, CharsNotHas, DigitHas, DigitIn, DigitRange, Has, IpIn, JsonUnescape,
+    PipeNot, RegexMatch, ReplaceFunc, SelectLast, StartsWith, TakeField, TargetCharsHas,
+    TargetCharsIn, TargetCharsNotHas, TargetDigitHas, TargetDigitIn, TargetHas, TargetIpIn,
 };
 use crate::ast::{group::WplGroup, processor::Base64Decode};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum WplFun {
+    // Wrapper functions
+    PipeNot(PipeNot),
+    // Field selectors
     SelectTake(TakeField),
     SelectLast(SelectLast),
     // Character comparison functions
@@ -24,6 +27,7 @@ pub enum WplFun {
     DigitHas(DigitHas),
     TargetDigitIn(TargetDigitIn),
     DigitIn(DigitIn),
+    DigitRange(DigitRange),
     // IP address comparison
     TargetIpIn(TargetIpIn),
     IpIn(IpIn),
@@ -34,6 +38,9 @@ pub enum WplFun {
     TransJsonUnescape(JsonUnescape),
     TransBase64Decode(Base64Decode),
     TransCharsReplace(ReplaceFunc),
+    // Pattern matching functions
+    RegexMatch(RegexMatch),
+    StartsWith(StartsWith),
 }
 
 #[derive(Debug, Clone, PartialEq, Getters)]

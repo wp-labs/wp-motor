@@ -36,8 +36,9 @@ impl FieldExtractor for FmtOperation {
                 diagnostics::push(OmlIssue::new(OmlIssueKind::FmtVarMissing, name));
             }
         }
-        debug_data!("fmt:{}, val:{:?}", self.fmt_str(), args);
-        debug_data!(
+        debug_edata!(dst.id, "fmt:{}, val:{:?}", self.fmt_str(), args);
+        debug_edata!(
+            dst.id,
             " oml fmt not get data from : {}, vars:{:?}",
             dst,
             not_find_items
@@ -81,7 +82,7 @@ mod tests {
             DataField::from_chars("B2", "h2"),
             DataField::from_chars("C3", "h3"),
         ];
-        let src = DataRecord { items: data };
+        let src = DataRecord::from(data);
         let mut cache = FieldQueryCache::default();
 
         let mut conf = r#"

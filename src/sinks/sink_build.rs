@@ -12,8 +12,16 @@ pub async fn build_file_sink(
     conf: &SinkInstanceConf,
     out_path: &str,
 ) -> AnyResult<AsyncFileSinkEx> {
+    build_file_sink_with_sync(conf, out_path, false).await
+}
+
+pub async fn build_file_sink_with_sync(
+    conf: &SinkInstanceConf,
+    out_path: &str,
+    sync: bool,
+) -> AnyResult<AsyncFileSinkEx> {
     let mut out: AsyncFileSinkEx = AsyncFormatter::new(conf.fmt);
-    out.next_pipe(AsyncFileSink::new(out_path).await?);
+    out.next_pipe(AsyncFileSink::with_sync(out_path, sync).await?);
     Ok(out)
 }
 

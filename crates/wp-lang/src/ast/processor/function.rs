@@ -5,6 +5,19 @@ use smol_str::SmolStr;
 #[derive(Clone, Debug, PartialEq)]
 pub struct CharsValue(pub(crate) SmolStr);
 
+// ============ Wrapper Functions ============
+
+/// Negates (inverts) the result of an inner pipe function
+///
+/// Succeeds when the inner function fails, and fails when the inner function succeeds.
+/// The field value is not modified - only the success/failure result is inverted.
+///
+/// Example: `| not(f_chars_has(dev_type, NDS))` succeeds when dev_type != NDS
+#[derive(Clone, Debug, PartialEq)]
+pub struct PipeNot {
+    pub(crate) inner: Box<crate::ast::WplFun>,
+}
+
 // ============ Field Existence Check ============
 
 /// Checks if active field exists
@@ -164,6 +177,12 @@ pub struct DigitInArg {
     pub(crate) value: Vec<i64>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct DigitRange {
+    pub(crate) begin: i64,
+    pub(crate) end: i64,
+}
+
 /// Parser argument for `ip_in([...])` - converted to IpIn
 #[derive(Clone, Debug, PartialEq)]
 pub struct IpInArg {
@@ -179,6 +198,19 @@ pub struct ReplaceFunc {
     pub(crate) target: SmolStr,
     pub(crate) value: SmolStr,
 }
+
+/// 正则表达式匹配函数
+#[derive(Clone, Debug, PartialEq)]
+pub struct RegexMatch {
+    pub(crate) pattern: SmolStr, // 正则表达式模式
+}
+
+/// 字符串前缀匹配函数
+#[derive(Clone, Debug, PartialEq)]
+pub struct StartsWith {
+    pub(crate) prefix: SmolStr, // 要匹配的前缀
+}
+
 /// Normalizes the target field name: converts "_" to None
 pub(crate) fn normalize_target(target: SmolStr) -> Option<SmolStr> {
     if target == "_" { None } else { Some(target) }

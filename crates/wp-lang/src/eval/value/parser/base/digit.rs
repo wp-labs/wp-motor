@@ -30,6 +30,7 @@ impl ParserValue<DigitValue> for DigitP {
 impl PatternParser for DigitP {
     fn pattern_parse<'a>(
         &self,
+        _e_id: u64,
         fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,
@@ -80,6 +81,7 @@ impl ParserValue<FloatValue> for FloatP {
 impl PatternParser for FloatP {
     fn pattern_parse<'a>(
         &self,
+        _e_id: u64,
         _fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,

@@ -32,6 +32,7 @@ impl ParserValue<HexT> for HexDigitP {
 impl PatternParser for HexDigitP {
     fn pattern_parse(
         &self,
+        _e_id: u64,
         _fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,
@@ -79,11 +80,14 @@ mod tests {
         let parser = HexDigitP::default();
         let mut out = Vec::new();
         let fpu = FieldEvalUnit::for_test(parser, conf);
-        fpu.parse(&ups_sep, &mut "0x16fe67000", None, &mut out)
+        fpu.parse(0, &ups_sep, &mut "0x16fe67000", None, &mut out)
             .assert();
 
         let mut out = Vec::new();
-        assert!(fpu.parse(&ups_sep, &mut "16fe70", None, &mut out).is_ok());
+        assert!(
+            fpu.parse(0, &ups_sep, &mut "16fe70", None, &mut out)
+                .is_ok()
+        );
 
         let mut data = "(0x16fe67000)";
         let conf = WplField::try_parse("hex<(,)>").assert();

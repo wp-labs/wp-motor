@@ -120,7 +120,32 @@ pub fn take_parentheses_val(data: &mut &str) -> WResult<String> {
         )))
         .parse_next(data)?;
 
-    Ok(content.trim().to_string())
+    let trimmed = content.trim();
+
+    // Check if the content is a quoted string
+    let result = if (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+        || (trimmed.starts_with('"') && trimmed.ends_with('"'))
+    {
+        // Remove quotes and process escape sequences
+        if trimmed.len() >= 2 {
+            let unquoted = &trimmed[1..trimmed.len() - 1];
+            // Process basic escape sequences
+            unquoted
+                .replace("\\n", "\n")
+                .replace("\\r", "\r")
+                .replace("\\t", "\t")
+                .replace("\\\\", "\\")
+                .replace("\\'", "'")
+                .replace("\\\"", "\"")
+        } else {
+            String::new()
+        }
+    } else {
+        // No quotes, return as-is
+        trimmed.to_string()
+    };
+
+    Ok(result)
 }
 
 pub fn take_parentheses_scope<'a>(data: &mut &'a str) -> WResult<(&'a str, &'a str)> {
@@ -290,6 +315,54 @@ mod tests {
             let mut data = "";
             let result = take_parentheses_val.parse_next(&mut data);
             assert!(result.is_err(), "Should fail on empty input");
+        }
+
+        #[test]
+        fn quoted_single_quotes() -> WResult<()> {
+            let mut data = "('hello world')";
+            let val = take_parentheses_val.parse_next(&mut data)?;
+            assert_eq!(val, "hello world");
+            Ok(())
+        }
+
+        #[test]
+        fn quoted_double_quotes() -> WResult<()> {
+            let mut data = r#"("hello world")"#;
+            let val = take_parentheses_val.parse_next(&mut data)?;
+            assert_eq!(val, "hello world");
+            Ok(())
+        }
+
+        #[test]
+        fn quoted_with_escape_sequences() -> WResult<()> {
+            let mut data = r#"('hello\nworld\ttab')"#;
+            let val = take_parentheses_val.parse_next(&mut data)?;
+            assert_eq!(val, "hello\nworld\ttab");
+            Ok(())
+        }
+
+        #[test]
+        fn quoted_with_escaped_quotes() -> WResult<()> {
+            let mut data = r#"('it\'s working')"#;
+            let val = take_parentheses_val.parse_next(&mut data)?;
+            assert_eq!(val, "it's working");
+            Ok(())
+        }
+
+        #[test]
+        fn unquoted_backward_compatible() -> WResult<()> {
+            let mut data = "(hello)";
+            let val = take_parentheses_val.parse_next(&mut data)?;
+            assert_eq!(val, "hello");
+            Ok(())
+        }
+
+        #[test]
+        fn unquoted_with_special_chars() -> WResult<()> {
+            let mut data = "(1.0.0)";
+            let val = take_parentheses_val.parse_next(&mut data)?;
+            assert_eq!(val, "1.0.0");
+            Ok(())
         }
     }
 }

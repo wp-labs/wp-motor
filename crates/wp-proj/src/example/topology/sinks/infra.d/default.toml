@@ -7,6 +7,7 @@ name = "default"
 connect = "file_proto_sink"
 [sink_group.sinks.params]
 file = "default.dat"
+sync = false
 
 [sink_group.sinks.expect]
 ratio = 0.0

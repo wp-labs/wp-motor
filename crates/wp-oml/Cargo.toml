@@ -53,15 +53,22 @@ encoding_rs = { workspace = true }
 imap-types = { workspace = true }
 url = { workspace = true }
 jieba-rs = "0.8"
+regex = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
 env_logger = { workspace = true }
 mockall = { workspace = true }
+orion-variate = { workspace = true }
+wp_config = { workspace = true }
 
 
 [[bench]]
 name = "oml_sql_bench"
+harness = false
+
+[[bench]]
+name = "oml_static_block"
 harness = false
 
 [[bench]]

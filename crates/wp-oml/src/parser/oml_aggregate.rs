@@ -21,6 +21,7 @@ use crate::parser::match_prm::oml_aga_match;
 use crate::parser::pipe_prm; // for oml_aga_pipe_noprefix
 use crate::parser::pipe_prm::oml_aga_pipe;
 use crate::parser::sql_prm::oml_aga_sql;
+use crate::parser::static_ctx::parse_static_value;
 use crate::parser::syntax::oml_default;
 use crate::parser::tdc_prm::{oml_aga_tdc, oml_aga_value, oml_batch_gw_get};
 use crate::parser::{oml_acq, syntax};
@@ -140,6 +141,7 @@ pub fn oml_aggregate(data: &mut &str) -> WResult<EvalExp> {
             _ => alt((
                 trace("get value:", oml_aga_value),
                 trace("fun  struct:", oml_gw_fun),
+                trace("static value:", parse_static_value),
                 fail.context(StrContext::Label("method"))
                     .context(StrContext::Expected(StrContextValue::StringLiteral(
                         "<meta>(...)",

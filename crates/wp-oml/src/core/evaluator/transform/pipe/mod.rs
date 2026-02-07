@@ -8,6 +8,7 @@ mod escape;
 mod extract_word;
 mod net;
 mod nlp_dict_loader;
+mod other;
 mod path_url;
 mod pipe_operation;
 mod time;
@@ -32,6 +33,8 @@ impl ValueProcessor for PipeFun {
             PipeFun::TimeToTsZone(o) => o.value_cacu(in_val),
             PipeFun::Nth(o) => o.value_cacu(in_val),
             PipeFun::Get(o) => o.value_cacu(in_val),
+            PipeFun::StartsWith(o) => o.value_cacu(in_val),
+            PipeFun::MapTo(o) => o.value_cacu(in_val),
             PipeFun::ToStr(o) => o.value_cacu(in_val),
             PipeFun::ToJson(o) => o.value_cacu(in_val),
             PipeFun::SkipEmpty(o) => o.value_cacu(in_val),

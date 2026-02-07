@@ -49,15 +49,11 @@ impl WplEngine {
                 }
                 ProcessResult::Miss(fail_info) => {
                     if payload_is_whitespace(&data.payload) {
-                        trace_data!("drop whitespace event {} without miss", data.event_id);
+                        trace_edata!(data.event_id, "drop whitespace event without miss");
                         continue;
                     }
                     // 完全失败，记录深度最高的错误信息
-                    warn_data!(
-                        "wpls miss event_id :{} data:\n{}",
-                        data.event_id,
-                        data.payload
-                    );
+                    warn_edata!(data.event_id, "wpls miss data:\n{}", data.payload);
                     miss_packets.push((data, fail_info));
                 }
             }

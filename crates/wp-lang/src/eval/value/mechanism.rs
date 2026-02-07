@@ -22,6 +22,7 @@ where
 {
     fn parse(
         &self,
+        e_id: u64,
         fpu: &FieldEvalUnit,
         ups_sep: &WplSep,
         data: &mut &str,
@@ -42,6 +43,7 @@ where
             let cp = data.checkpoint();
             let mut take = fpu.conf().scope_field(data)?;
             self.pattern_parse(
+                e_id,
                 fpu,
                 ups_sep,
                 &mut take,
@@ -63,6 +65,7 @@ where
         } else {
             if fpu.conf().meta_type().parse_patten_first() {
                 self.pattern_parse(
+                    e_id,
                     fpu,
                     ups_sep,
                     data,
@@ -83,6 +86,7 @@ where
                 ups_sep.read_until_sep(data)?
             };
             self.pattern_parse(
+                e_id,
                 fpu,
                 ups_sep,
                 &mut take.as_str(),

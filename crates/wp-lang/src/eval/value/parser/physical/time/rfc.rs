@@ -163,6 +163,7 @@ pub struct TimeRFC2822 {}
 impl PatternParser for TimeP {
     fn pattern_parse(
         &self,
+        _e_id: u64,
         _fpu: &FieldEvalUnit,
         _ups_sep: &crate::ast::WplSep,
         data: &mut &str,
@@ -193,6 +194,7 @@ impl PatternParser for TimeP {
 impl PatternParser for TimeISOP {
     fn pattern_parse(
         &self,
+        _e_id: u64,
         _fpu: &FieldEvalUnit,
         _: &crate::ast::WplSep,
         data: &mut &str,
@@ -215,13 +217,14 @@ impl PatternParser for TimeISOP {
 impl PatternParser for TimeRFC3339 {
     fn pattern_parse(
         &self,
+        e_id: u64,
         fpu: &FieldEvalUnit,
         s: &crate::ast::WplSep,
         d: &mut &str,
         n: FNameStr,
         o: &mut Vec<DataField>,
     ) -> WResult<()> {
-        TimeISOP {}.pattern_parse(fpu, s, d, n, o)
+        TimeISOP {}.pattern_parse(e_id, fpu, s, d, n, o)
     }
     fn patten_gen(
         &self,
@@ -235,6 +238,7 @@ impl PatternParser for TimeRFC3339 {
 impl PatternParser for TimeRFC2822 {
     fn pattern_parse(
         &self,
+        _e_id: u64,
         _: &FieldEvalUnit,
         _: &crate::ast::WplSep,
         data: &mut &str,

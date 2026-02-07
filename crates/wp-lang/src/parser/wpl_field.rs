@@ -248,6 +248,7 @@ fn wpl_field_impl(input: &mut &str) -> ModalResult<WplField> {
                 .parse_next(input)?,
         );
     }
+
     if peek_str(":", input).is_ok() {
         (":", multispace0).parse_next(input)?;
         let f_name = take_var_name

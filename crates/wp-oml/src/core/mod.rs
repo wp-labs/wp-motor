@@ -59,6 +59,9 @@ impl FieldExtractor for PreciseEvaluator {
             PreciseEvaluator::Fmt(o) => o.extract_one(target, src, dst),
             PreciseEvaluator::Collect(o) => o.extract_one(target, src, dst),
             PreciseEvaluator::Val(o) => o.extract_one(target, src, dst),
+            PreciseEvaluator::StaticSymbol(sym) => {
+                panic!("unresolved static symbol during execution: {sym}")
+            }
         }
     }
 
@@ -79,6 +82,9 @@ impl FieldExtractor for PreciseEvaluator {
             PreciseEvaluator::Fmt(o) => o.extract_more(src, dst, cache),
             PreciseEvaluator::Collect(o) => o.extract_more(src, dst, cache),
             PreciseEvaluator::Val(o) => o.extract_more(src, dst, cache),
+            PreciseEvaluator::StaticSymbol(sym) => {
+                panic!("unresolved static symbol during execution: {sym}")
+            }
         }
     }
 
@@ -94,6 +100,9 @@ impl FieldExtractor for PreciseEvaluator {
             PreciseEvaluator::Fmt(o) => o.support_batch(),
             PreciseEvaluator::Collect(o) => o.support_batch(),
             PreciseEvaluator::Val(o) => o.support_batch(),
+            PreciseEvaluator::StaticSymbol(sym) => {
+                panic!("unresolved static symbol during execution: {sym}")
+            }
         }
     }
 }

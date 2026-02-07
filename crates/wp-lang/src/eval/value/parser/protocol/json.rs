@@ -15,6 +15,7 @@ pub struct JsonP {}
 impl PatternParser for JsonP {
     fn pattern_parse<'a>(
         &self,
+        e_id: u64,
         fpu: &FieldEvalUnit,
         ups_sep: &WplSep,
         data: &mut &str,
@@ -26,7 +27,7 @@ impl PatternParser for JsonP {
         let mut deserializer = Deserializer::from_reader(&mut cursor);
         if let Ok(value) = Value::deserialize(&mut deserializer) {
             let json_end = cursor.position() as usize;
-            JsonProc::proc_value(fpu, ups_sep, "", &value, name.as_str(), false, out)?;
+            JsonProc::proc_value(e_id, fpu, ups_sep, "", &value, name.as_str(), false, out)?;
             let (_, remaining_text) = data.split_at(json_end);
             *data = remaining_text;
             Ok(())
@@ -98,7 +99,7 @@ mod tests {
         let mut out = Vec::new();
         let ups_sep = WplSep::default();
         let fpu = FieldEvalUnit::for_test(JsonP::default(), f_conf.clone());
-        fpu.parse(&ups_sep, &mut data, None, &mut out).assert();
+        fpu.parse(0, &ups_sep, &mut data, None, &mut out).assert();
 
         Ok(())
     }
@@ -152,7 +153,7 @@ mod tests {
         let fpu = FieldEvalUnit::from_auto(f_conf.clone());
         let ups_sep = WplSep::default();
         let mut out = Vec::new();
-        fpu.parse(&ups_sep, &mut data, None, &mut out).assert();
+        fpu.parse(0, &ups_sep, &mut data, None, &mut out).assert();
 
         let mut no_ignore = 0;
         for i in &out {
@@ -181,7 +182,7 @@ mod tests {
         let fpu = FieldEvalUnit::from_auto(f_conf.clone());
         let ups_sep = WplSep::default();
         let mut out = Vec::new();
-        fpu.parse(&ups_sep, &mut data, None, &mut out).assert();
+        fpu.parse(0, &ups_sep, &mut data, None, &mut out).assert();
 
         let mut no_ignore = 0;
         for i in out {
@@ -205,7 +206,7 @@ mod tests {
         let fpu = FieldEvalUnit::from_auto(f_conf.clone());
         let mut out = Vec::new();
         let ups_sep = WplSep::default();
-        fpu.parse(&ups_sep, &mut data, None, &mut out).assert();
+        fpu.parse(0, &ups_sep, &mut data, None, &mut out).assert();
         let mut no_ignore = 0;
         println!("TDC:{}", DataRecord::from(out.clone()));
         for i in out {
@@ -242,7 +243,7 @@ mod tests {
         let fpu = FieldEvalUnit::from_auto(f_conf.clone());
         let mut out = Vec::new();
         let ups_sep = WplSep::default();
-        fpu.parse(&ups_sep, &mut data, None, &mut out).assert();
+        fpu.parse(0, &ups_sep, &mut data, None, &mut out).assert();
         for i in out {
             if i.get_name().eq("action/text") {
                 assert_eq!(
@@ -264,7 +265,7 @@ mod tests {
         let fpu = FieldEvalUnit::for_test(JsonP::default(), f_conf.clone());
         let mut out = Vec::new();
         let ups_sep = WplSep::default();
-        fpu.parse(&ups_sep, &mut data, None, &mut out).assert();
+        fpu.parse(0, &ups_sep, &mut data, None, &mut out).assert();
         for i in out {
             if i.get_name().eq("action/text") {
                 assert_eq!(
@@ -463,7 +464,7 @@ mod tests {
         let fpu = FieldEvalUnit::from_auto(f_conf.clone());
         let ups_sep = WplSep::default();
         let mut out = Vec::new();
-        fpu.parse(&ups_sep, &mut data, None, &mut out).assert();
+        fpu.parse(0, &ups_sep, &mut data, None, &mut out).assert();
         let dr = DataRecord::from(out);
         // 路径中的反斜杠数量符合预期；txt 中包含实际换行
         assert_eq!(

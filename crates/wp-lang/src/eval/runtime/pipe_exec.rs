@@ -46,7 +46,7 @@ impl PipeExecutor {
         self.pipes.push(pipe);
     }
 
-    pub fn execute(&self, data: &mut Vec<DataField>) -> ModalResult<()> {
+    pub fn execute(&self, e_id: u64, data: &mut Vec<DataField>) -> ModalResult<()> {
         let mut cursor = FieldCursor::new(data, &self.pipes);
 
         for pipe in &self.pipes {
@@ -70,7 +70,7 @@ impl PipeExecutor {
                         continue;
                     };
                     let removed = data.remove(idx);
-                    process_group_pipe(group, removed, data)?;
+                    process_group_pipe(e_id, group, removed, data)?;
                     cursor.after_mutation(data, true);
                 }
             }
@@ -80,6 +80,7 @@ impl PipeExecutor {
 }
 
 fn process_group_pipe(
+    e_id: u64,
     group: &WplEvalGroup,
     field: DataField,
     fields: &mut Vec<DataField>,
@@ -87,7 +88,7 @@ fn process_group_pipe(
     if let Value::Chars(res_data) = field.get_value() {
         let sep = WplSep::default();
         let mut data = res_data.as_str();
-        group.proc(&sep, &mut data, fields)
+        group.proc(e_id, &sep, &mut data, fields)
     } else {
         fail.context(ctx_desc("not support parse pipe"))
             .parse_next(&mut "")

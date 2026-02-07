@@ -18,6 +18,7 @@ pub struct IgnoreP {}
 impl PatternParser for IgnoreP {
     fn pattern_parse<'a>(
         &self,
+        _e_id: u64,
         _fpu: &FieldEvalUnit,
         _ups_sep: &WplSep,
         data: &mut &str,

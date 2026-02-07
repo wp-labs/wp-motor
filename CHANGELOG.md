@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.14.0 Unreleased]
+## [1.16.0 Unreleased]
 
 ### Added
 - **OML NLP**: Add configurable NLP dictionary system for `extract_main_word` and `extract_subject_object` pipe functions
@@ -24,16 +24,163 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Replace static references (e.g., `STATUS_WORDS`) with dynamic lookups (e.g., `NLP_DICT.status_words`)
   - No API changes: function signatures and behavior remain identical
 
-## [1.13.0 Unreleased]
+## [1.15.1 latest ]
+
+### Added
+- **WPL Pipe Functions**: Add `not()` wrapper function for inverting pipe function results
+  - Syntax: `| not(f_chars_has(dev_type, NDS))` succeeds when dev_type ≠ NDS
+  - Supports wrapping any field pipe function (f_has, f_chars_has, chars_has, etc.)
+  - Preserves field value - only inverts success/failure result
+  - Supports nested negation: `not(not(...))` for double negation logic
+
+### Changed
+- **Sinks/Logging**: Unify event ID naming across the codebase for end-to-end tracing
+
+### Fixed
+- **WP-OML Tests**: Fix `DataRecord` initialization for compatibility with wp-model-core 0.7.2
+- **WPL Pipe Functions**: Fix `f_chars_not_has` and `chars_not_has` type checking bug
+  - Previously: Non-Chars fields (e.g., Digit) incorrectly returned FALSE
+  - Now: Non-Chars fields correctly return TRUE (they are "not the target Chars value")
+  - Semantics: Missing field OR non-Chars type OR value ≠ target → TRUE; value == target → FALSE
+
+
+## [1.15.0] - 2026-02-07
+
+### Added
+- **Sinks/File**: Add `sync` parameter to control immediate disk flushing
+  - `sync: false` (default): High-performance mode with buffered writes, suitable for large data volumes
+  - `sync: true`: Real-time disk writes for data safety, suitable for critical data
+- **WPL not() Group**: Add `not()` group wrapper for negative assertion in field parsing
+- **OML Static Blocks**: Introduce `static { ... }` sections for model-scoped constants and template caching
+  - Static expressions are executed only once during model loading, results stored in constant pool for reuse across records, avoiding repeated `object { ... }` construction
+  - Static symbols can be directly used in assignments, `match` branches, `object { field = tpl; }`, default values `{ _ : tpl }`, and other scenarios
+- **OML Enable Configuration**: Add `enable` configuration option to support disabling OML models
+
+### Changed
+- **Sinks/Infrastructure**: Optimize infrastructure sink data flow to maintain batch processing
+- **Sinks/File**: Remove proto binary format support
+- **Sinks/File**: Supported output formats: json, csv, kv, show, raw, proto-text
+
+### Fixed
+- **Sinks/File**: Fix `sync` parameter not forcing data to disk
+  - Now calls `sync_all()` after `flush()` when `sync: true` to ensure data is physically written to disk
+  - Previously only flushed to OS buffer, which didn't guarantee immediate disk writes
+- **Benchmarks**: Fix compilation errors in OML benchmarks
+  - Fix dereferencing issue in `DataField::from_chars` calls
+  - Update import paths from `wp_conf` to `wp_config`
+  - Add missing dev-dependencies: orion-variate, wp_config
+
+
+## [1.14.1] - 2026-02-05
+
+### Added
+- **WPL Pipe Processor**: Add `strip/bom` processor for removing BOM (Byte Order Mark) from data
+  - Supports UTF-8, UTF-16 LE/BE, and UTF-32 LE/BE BOM detection and removal
+  - Fast O(1) detection by checking only first 2-4 bytes
+  - Preserves input container type (String → String, Bytes → Bytes, ArcBytes → ArcBytes)
+
+
+## [1.14.0] - 2026-02-04
+
+### Added
+- **WPL Functions**: Add `starts_with` pipe function for efficient string prefix matching
+  - Checks if a string field starts with a specified prefix
+  - More performant than regex for simple prefix checks
+  - Case-sensitive matching
+  - Converts to ignore field when prefix doesn't match
+- **OML Pipe Functions**: Add `starts_with` pipe function for OML query language
+  - Supports same prefix matching functionality as WPL
+  - Returns ignore field when prefix doesn't match
+  - Usage: `pipe take(field) | starts_with('prefix')` or `take(field) | starts_with('prefix')`
+- **OML Pipe Functions**: Add `map_to` pipe function for type-aware conditional value assignment
+  - Replaces field value when field is not ignore
+  - Supports multiple types with automatic type inference: string, integer, float, boolean
+  - Preserves ignore fields unchanged
+  - Usage examples:
+    - `pipe take(field) | map_to('string')` - map to string
+    - `pipe take(field) | map_to(123)` - map to integer
+    - `pipe take(field) | map_to(3.14)` - map to float
+    - `pipe take(field) | map_to(true)` - map to boolean
+- **OML Match Expression**: Add function-based pattern matching support
+  - Enables using functions like `starts_with` in match conditions
+  - Syntax: `match read(field) { starts_with('prefix') => result, _ => default }`
+  - More flexible than simple value comparison
+  - Useful for log parsing, URL routing, and content classification
+  - Supported functions:
+    - **String matching**:
+      - `starts_with(prefix)` - Check if string starts with prefix
+      - `ends_with(suffix)` - Check if string ends with suffix
+      - `contains(substring)` - Check if string contains substring
+      - `regex_match(pattern)` - Match string against regex pattern
+      - `is_empty()` - Check if string is empty (no arguments)
+      - `iequals(value)` - Case-insensitive string comparison
+    - **Numeric comparison**:
+      - `gt(value)` - Check if numeric field > value
+      - `lt(value)` - Check if numeric field < value
+      - `eq(value)` - Check if numeric field equals value (with floating point tolerance)
+      - `in_range(min, max)` - Check if numeric field is within range [min, max]
+- **OML Parser**: Add quoted string support for `chars()` and other value constructors
+  - Supports single quotes: `chars('hello world')`
+  - Supports double quotes: `chars("hello world")`
+  - Enables strings containing spaces and special characters
+  - Escape sequence support: `\n`, `\r`, `\t`, `\\`, `\'`, `\"`
+  - Backward compatible with unquoted syntax: `chars(hello)`
+  - Works in all contexts: field assignments, match expressions, etc.
+- **OML Transformer**: Add automatic temporary field filtering with performance optimization
+  - Fields with names starting with `__` are automatically converted to ignore type after transformation
+  - Parse-time detection: checks for temporary fields during OML parsing (one-time cost ~50-500ns)
+  - Runtime optimization: skips filtering entirely when no temporary fields exist (~99% cost reduction)
+  - Enables using intermediate/temporary fields in calculations without polluting final output
+  - Example: `__temp = chars(value); result = pipe take(__temp) | base64_encode;`
+  - The `__temp` field will be marked as ignore in the final output
+  - Performance: ~1ns overhead for models without temp fields, ~500ns for models with temp fields
+
+### Changed
+- **OML Syntax**: `pipe` keyword is now optional in pipe expressions
+  - Both `pipe take(field) | func` and `take(field) | func` are supported
+  - Simplified syntax improves readability
+  - Display output always includes `pipe` for consistency
+
+### Fixed
+- **OML Match Parser**: Fixed `in_range` function parsing failure in match expressions
+  - Issue: `kw_in` consumed prefix `in` before `cond_fun` could parse `in_range`
+  - Fix: Reordered `match_cond1` alternatives to try `cond_fun` before `cond_in`
+  - Now `match read(x) { in_range(0, 10) => ... }` parses correctly
+- **OML map_to Parser**: Fixed large integer precision loss during parsing
+  - Issue: Parsing integers via f64 caused precision loss for values > 2^53 (e.g., 9007199254740993)
+  - Fix: Try parsing as i64 first, only fall back to f64 for actual floats
+  - Preserves exact integer values up to i64::MAX
+- **OML Display Output**: Fixed round-trip parsing compatibility for strings
+  - Issue: Display output was not parseable by `quot_str` due to escaping mismatch
+  - Fix: Removed extra escaping in Display implementations since `quot_str` preserves raw escape sequences
+  - Display output now stable across multiple round-trips (parse -> display -> parse -> display)
+
+
+## [1.13.3] - 2026-02-03
+
+### Fixed
+- **WPL Parser**: Fix compilation errors in pattern parser implementations by adding missing `event_id` parameter to all trait methods
+- **Runtime**: Remove unused `debug_data` import in vm_unit module
+
+
+## [1.13.2] - 2026-02-03
 
 ### Added
 - **WPL Parser**: Add support for `\t` (tab) and `\S` (non-whitespace) separators in parsing expressions
 - **WPL Parser**: Add support for quoted field names with special characters (e.g., `"field.name"`, `"field-name"`) #16
 - **WPL Functions**: Add `chars_replace` function for character-level string replacement #13
+- **WPL Functions**: Add `regex_match` function for regex pattern matching
+- **WPL Functions**: Add `digit_range` function for numeric range validation
+- **Documentation**: Add multi-language documentation structure for WPL guides
 
 ### Changed
 - **Logging**: Optimize high-frequency log paths with `log_enabled!` guard to eliminate loop overhead when log level is filtered
 - **Logging**: Add `event_id` to debug messages for better traceability
+- **WPL Parser**: Add `event_id` parameter to `PatternParser` trait for improved event tracing across all parser implementations
+
+### Fixed
+- **Miss Sink**: Remove base64 encoding from raw data display to show actual content
+- **Data Rescue**: Fix lost rescue data problem #19
 
 ### Removed
 - **Syslog UDP Source**: Remove `SO_REUSEPORT` multi-instance support

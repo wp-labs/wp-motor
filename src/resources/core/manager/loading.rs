@@ -46,6 +46,11 @@ impl ResManager {
                     .err_conv()
                     .want("load oml")
                     .with(path.as_str())?;
+                // Skip disabled models
+                if !mdl.enable() {
+                    info_data!("oml disabled, skip: {} ", path);
+                    continue;
+                }
                 info_data!("oml load success, from {} ", path);
                 for w_rule in mdl.rules().as_ref() {
                     for r_path in wpl_index.rule_key().iter() {

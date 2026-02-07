@@ -29,7 +29,7 @@ pub use routing::dispatcher::perf::OmlBatchPerfCase;
 pub use routing::registry::SinkRegistry; // used by apps/tests
 pub use routing::registry::SinkRouteAgent; // used by tests
 pub(crate) use runtime::manager::SinkRuntime;
-pub use sink_build::build_file_sink;
+pub use sink_build::{build_file_sink, build_file_sink_with_sync};
 pub use types::*; // SinkBackendType, SinkEndpoint (used by apps/tests)
 pub use utils::buffer_monitor::BufferMonitor; // used by tests
 pub use utils::formatter::FormatAdapter; // used by tests

@@ -50,7 +50,7 @@ mod tests {
             DataField::from_chars("sport", "514"),
             DataField::from_chars("dport", "22"),
         ];
-        let src = DataRecord { items: data };
+        let src = DataRecord::from(data);
 
         let mut conf = r#"
         name : das_apt_alert_log

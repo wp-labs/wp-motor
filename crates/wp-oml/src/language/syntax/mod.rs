@@ -27,6 +27,10 @@ impl NestedBinding {
             acquirer: get_way,
         }
     }
+
+    pub fn acquirer_mut(&mut self) -> &mut NestedAccessor {
+        &mut self.acquirer
+    }
 }
 
 impl Display for NestedBinding {

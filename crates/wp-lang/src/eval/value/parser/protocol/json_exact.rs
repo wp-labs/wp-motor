@@ -13,6 +13,7 @@ pub struct ExactJsonP {}
 impl PatternParser for ExactJsonP {
     fn pattern_parse<'a>(
         &self,
+        e_id: u64,
         fpu: &FieldEvalUnit,
         ups_sep: &WplSep,
         data: &mut &str,
@@ -24,7 +25,7 @@ impl PatternParser for ExactJsonP {
         let mut deserializer = Deserializer::from_reader(&mut cursor);
         if let Ok(value) = Value::deserialize(&mut deserializer) {
             let json_end = cursor.position() as usize;
-            JsonProc::proc_value(fpu, ups_sep, "", &value, name.as_str(), true, out)?;
+            JsonProc::proc_value(e_id, fpu, ups_sep, "", &value, name.as_str(), true, out)?;
             let (_, remaining_text) = data.split_at(json_end);
             *data = remaining_text;
             Ok(())

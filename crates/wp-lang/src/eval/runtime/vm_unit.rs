@@ -14,7 +14,7 @@ use crate::parser::wpl_rule::wpl_rule;
 use anyhow::Result;
 use orion_error::{ErrorWith, ToStructError, UvsDataFrom};
 use orion_overload::new::New3;
-use wp_log::debug_data;
+use wp_log::debug_edata;
 use wp_model_core::model::DataRecord;
 use wp_parser::Parser;
 use wp_parser::WResult as ModalResult;
@@ -73,18 +73,18 @@ impl WplEvaluator {
         Ok(pipe_obj)
     }
 
-    fn pipe_proc(&self, id: u64, data: RawData) -> Result<RawData, WparseError> {
+    fn pipe_proc(&self, e_id: u64, data: RawData) -> Result<RawData, WparseError> {
         let mut target = data;
         for proc_unit in &self.preorder {
             target = proc_unit
                 .process(target)
                 .want("pipe convert")
-                .with(id.to_string())
+                .with(e_id.to_string())
                 .with(proc_unit.name())?;
 
-            debug_data!(
-                "pipe  {} id: {} out:{}",
-                id,
+            debug_edata!(
+                e_id,
+                "pipe  {}  out:{}",
                 proc_unit.name(),
                 raw_to_utf8_string(&target)
             );
@@ -92,13 +92,13 @@ impl WplEvaluator {
         Ok(target)
     }
 
-    pub fn proc<D>(&self, id: u64, data: D, oth_suc_len: usize) -> DataResult
+    pub fn proc<D>(&self, e_id: u64, data: D, oth_suc_len: usize) -> DataResult
     where
         D: IntoRawData,
     {
         let mut working_raw: RawData = data.into_raw();
         if !self.preorder.is_empty() {
-            working_raw = self.pipe_proc(id, working_raw)?;
+            working_raw = self.pipe_proc(e_id, working_raw)?;
         }
 
         let input_holder: Cow<'_, str> = match &working_raw {
@@ -109,7 +109,7 @@ impl WplEvaluator {
         let mut input: &str = input_holder.as_ref();
 
         let ori_len = input.len();
-        match self.parse_groups(&mut input) {
+        match self.parse_groups(e_id, &mut input) {
             Ok(log) => Ok((log, input.to_string())),
             Err(e) => {
                 let cur_pos = input.len();
@@ -227,12 +227,12 @@ impl WplEvaluator {
         Ok(fpu)
     }
     //pub fn fields_proc(&self, data: &mut &str) -> WparseResult<DataRecord> {
-    pub fn parse_groups(&self, data: &mut &str) -> ModalResult<DataRecord> {
+    pub fn parse_groups(&self, e_id: u64, data: &mut &str) -> ModalResult<DataRecord> {
         let mut result = Vec::with_capacity(100);
 
         let sep = WplSep::default();
         for group_unit in self.group_units.iter() {
-            match group_unit.proc(&sep, data, &mut result) {
+            match group_unit.proc(e_id, &sep, data, &mut result) {
                 Ok(_) => {}
                 Err(e) => {
                     return Err(e);
@@ -295,7 +295,7 @@ mod tests {
         let conf = WplExpress::new(vec![fdc3("auto", " ", true)?]);
         let ppl = WplEvaluator::from(&conf, None)?;
 
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         result.items.iter().for_each(|f| println!("{}", f));
         Ok(())
     }
@@ -305,10 +305,10 @@ mod tests {
         let conf = WplExpress::new(vec![fdc3("auto", " ", true)?]);
         let ppl = WplEvaluator::from(&conf, None)?;
         let mut data = r#"id=tos time="2023-05-15 09:11:53" fw=OS  pri=5 type=mgmt user=superman src=10.111.233.51 op="Modify pwd of manager" result=0 recorder=manager_so msg="null""#;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         result.items.iter().for_each(|f| println!("{}", f));
         let mut data = r#"id=tos time="2023-05-15 09:11:53" fw=OS  pri=5 type=mgmt user=superman src=10.111.233.51 op="system admininfo modify name zhaolei new_password QXF5dW53ZWleMDIwNw== privilege config login_type local comment 安全管理员 add" result=0 recorder=config msg="nuid=tos time="2023-05-15 09:11:53" fw=OS  pri=5 type=mgmt user=superman src=10.111.233.51 op="webtr webadmin show" result=-1 recorder=config msg="error -8010 : 无效输入，分析" "#;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         result.items.iter().for_each(|f| println!("{}", f));
         Ok(())
     }
@@ -320,7 +320,7 @@ mod tests {
         let ppl = WplEvaluator::from(&conf, None)?;
         let mut data = r#"192.168.1.2 - - [06/Aug/2019:12:12:19 +0800] "GET /nginx-logo.png HTTP/1.1" 200 368 "http://119.122.1.4/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.142 Safari/537.36" "-""#;
 
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         result.items.iter().for_each(|f| println!("{}", f));
         Ok(())
@@ -332,7 +332,7 @@ mod tests {
 
         let conf = WplExpress::new(vec![fdc3("auto", " ", true)?]);
         let ppl = WplEvaluator::from(&conf, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
 
         assert_eq!(data, "");
         result.items.iter().for_each(|f| println!("{}", f));
@@ -361,7 +361,7 @@ mod tests {
         ]);
 
         let ppl = WplEvaluator::from(&conf, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         result.items.iter().for_each(|f| println!("{}", f));
         Ok(())
@@ -378,7 +378,7 @@ mod tests {
             fdc3("auto", ",", true)?,
         ]);
         let ppl = WplEvaluator::from(&conf, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         result.items.iter().for_each(|f| println!("{:?}", f));
         Ok(())
@@ -396,7 +396,7 @@ mod tests {
             fdc3("auto", ",", true)?,
         ]);
         let ppl = WplEvaluator::from(&conf, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         result.items.iter().for_each(|f| println!("{:?}", f));
         Ok(())
@@ -414,7 +414,7 @@ mod tests {
             fdc3("auto", ",", true)?,
         ]);
         let ppl = WplEvaluator::from(&conf, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         result.items.iter().for_each(|f| println!("{}", f));
         Ok(())
@@ -439,12 +439,12 @@ mod tests {
             fdc3("kv", ",", false)?,
         ]);
         let ppl = WplEvaluator::from(&conf, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         result.items.iter().for_each(|f| println!("{}", f));
 
         let mut data = r#"1857,2021-4-10 0:46:8,R2IP-IF-06UT-7KUU,chars_1914,2021-4-15 2:19:43,u6s=TNSAlucV,228.211.38.109,k02=doYanSlf,chars_276,SIw=nu8atSqT,84e=e6qUb2k7,aVs=pk8M8rQU,5An=9upLU8aa"#;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         result.items.iter().for_each(|f| println!("{}", f));
         Ok(())
@@ -490,7 +490,7 @@ mod tests {
             fdc3("_", ",", false)?,
         ]);
         let ppl = WplEvaluator::from(&conf, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         result.items.iter().for_each(|f| println!("{}", f));
         Ok(())
@@ -501,7 +501,7 @@ mod tests {
         let mut data = r#"2345,2021-7-15 7:50:32,9OPP-MU-JME2-YGUW,chars_740"#;
         let conf = WplExpress::new(vec![fdc4_1("_", ",", true, 4)?]);
         let ppl = WplEvaluator::from(&conf, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         assert_eq!(result.items.len(), 4);
         result.items.iter().for_each(|f| println!("{}", f));
@@ -509,7 +509,7 @@ mod tests {
         let mut data = r#"2345,2021-7-15 7:50:32,9OPP-MU-JME2-YGUW,chars_740"#;
         let conf = WplExpress::new(vec![fdc4_1("_", ",", true, 3)?]);
         let ppl = WplEvaluator::from(&conf, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "chars_740");
         assert_eq!(result.items.len(), 3);
         Ok(())

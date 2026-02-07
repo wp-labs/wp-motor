@@ -3,6 +3,7 @@ use oml::core::DataTransformer;
 use oml::language::ObjModel;
 use oml::parser::oml_parse_raw;
 use std::hint::black_box;
+use wp_data_model::cache::FieldQueryCache;
 use wp_knowledge::facade as kdb;
 use wp_knowledge::mem::memdb::MemDB;
 
@@ -51,7 +52,7 @@ fn bench_oml_sql(c: &mut Criterion) {
     let src_with_param = DataRecord {
         items: vec![DataField::from_chars("py", "xiaolongnu")],
     };
-    let empty = DataRecord { items: vec![] };
+    let empty = DataRecord::from(vec![]);
 
     let mut group = c.benchmark_group("oml_sql");
 
@@ -144,7 +145,7 @@ fn bench_oml_sql(c: &mut Criterion) {
         // 预热：针对前几个热点先命中
         for k in keys.iter().take(n.min(3)) {
             let src = DataRecord {
-                items: vec![DataField::from_chars("py", k)],
+                items: vec![DataField::from_chars("py", *k)],
             };
             let _ = mdl_1_param.transform(src, &mut cache);
         }

@@ -70,7 +70,7 @@ mod tests {
             "A1",
             "C:\\Users\\wplab\\AppData\\Local\\Temp\\B8A93152-2B59-426D-BE5F-5521D4D2D957\\api-ms-win-core-file-l1-2-1.dll",
         )];
-        let src = DataRecord { items: data };
+        let src = DataRecord::from(data);
 
         let mut conf = r#"
         name : test
@@ -95,7 +95,7 @@ mod tests {
             "A1",
             "https://a.b.com:8888/OneCollector/1.0?cors=true&content-type=application/x-json-stream#id1",
         )];
-        let src = DataRecord { items: data };
+        let src = DataRecord::from(data);
 
         let mut conf = r#"
         name : test

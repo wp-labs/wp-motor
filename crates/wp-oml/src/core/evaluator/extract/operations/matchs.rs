@@ -40,7 +40,8 @@ impl FieldExtractor for MatchOperation {
                             return i.result().extract_one(target, src, dst);
                         }
                     }
-                    warn_data!(
+                    warn_edata!(
+                        dst.id,
                         "not same type data ({}:{}, {}:{})",
                         fst_val.get_name(),
                         fst_val.get_meta(),

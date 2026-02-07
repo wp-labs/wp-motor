@@ -8,6 +8,7 @@ connect = "file_proto_sink"
 
 [sink_group.sinks.params]
 file = "monitor.dat"
+sync = true
 
 [sink_group.sinks.expect]
 max = 1.0

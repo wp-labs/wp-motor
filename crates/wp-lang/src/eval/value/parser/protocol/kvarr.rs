@@ -24,6 +24,7 @@ impl DefaultSep for KvArrP {
 impl PatternParser for KvArrP {
     fn pattern_parse(
         &self,
+        e_id: u64,
         fpu: &FieldEvalUnit,
         ups_sep: &WplSep,
         data: &mut &str,
@@ -44,7 +45,7 @@ impl PatternParser for KvArrP {
                 Ok((key, value)) => {
                     parsed += 1;
                     let start_idx = out.len();
-                    Self::emit_value(fpu, ups_sep, key.as_str(), value, out)?;
+                    Self::emit_value(e_id, fpu, ups_sep, key.as_str(), value, out)?;
                     let end_idx = out.len();
                     if end_idx > start_idx {
                         emitted_ranges.push((key, start_idx, end_idx));
@@ -169,6 +170,7 @@ impl KvArrP {
     }
 
     fn emit_value(
+        e_id: u64,
         fpu: &FieldEvalUnit,
         upper_sep: &WplSep,
         key: &str,
@@ -183,7 +185,7 @@ impl KvArrP {
                 }
                 let run_key = sub_fpu.conf().run_key(key);
                 let mut raw_ref = raw.as_str();
-                sub_fpu.parse(&sep, &mut raw_ref, run_key, out)?;
+                sub_fpu.parse(e_id, &sep, &mut raw_ref, run_key, out)?;
             }
             return Ok(());
         }
@@ -215,14 +217,14 @@ impl KvArrP {
             }
             Value::Array(vals) => {
                 for v in vals {
-                    Self::emit_value(fpu, upper_sep, key, v, out)?;
+                    Self::emit_value(e_id, fpu, upper_sep, key, v, out)?;
                 }
                 Ok(())
             }
             Value::Object(obj) => {
                 for (sub, v) in obj {
                     let composed = format!("{}/{}", key, sub);
-                    Self::emit_value(fpu, upper_sep, composed.as_str(), v, out)?;
+                    Self::emit_value(e_id, fpu, upper_sep, composed.as_str(), v, out)?;
                 }
                 Ok(())
             }

@@ -8,6 +8,7 @@ use wp_parser::WResult as ModalResult;
 impl LogicProc for GroupOpt {
     fn process(
         &self,
+        e_id: u64,
         group: &WplEvalGroup,
         ups_sep: &WplSep,
         data: &mut &str,
@@ -16,7 +17,7 @@ impl LogicProc for GroupOpt {
         if let Some(fpu) = group.field_units.first() {
             let cur_sep = group.combo_sep(ups_sep);
             let ck_point = data.checkpoint();
-            match fpu.parse(&cur_sep, data, None, out) {
+            match fpu.parse(e_id, &cur_sep, data, None, out) {
                 //match fpu.exec( data) {
                 Ok(_) => return Ok(()),
                 Err(_e) => data.reset(&ck_point),
@@ -39,7 +40,7 @@ mod tests {
         let express = wpl_express.parse(r#"opt(ip:sip),(2*_,time<[,]>)"#).assert();
         let mut data = r#"192.168.1.2 - - [06/Aug/2019:12:12:19 +0800] "#;
         let ppl = WplEvaluator::from(&express, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         println!("{}", result);
         assert_eq!(
@@ -51,7 +52,7 @@ mod tests {
         );
 
         let mut data = r#"- - [06/Aug/2019:12:12:19 +0800] "#;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         println!("{}", result);
         Ok(())
@@ -62,7 +63,7 @@ mod tests {
         let express = wpl_express.parse(r#"(ip:sip) ,opt(ip:sip)"#).assert();
         let mut data = r#"192.168.1.2"#;
         let ppl = WplEvaluator::from(&express, None)?;
-        let result = ppl.parse_groups(&mut data).assert();
+        let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         println!("{}", result);
         assert_eq!(

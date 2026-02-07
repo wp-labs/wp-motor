@@ -25,4 +25,8 @@ impl MapOperation {
     pub fn append(&mut self, mut subs: Vec<NestedBinding>) {
         self.subs.append(&mut subs)
     }
+
+    pub fn subs_mut(&mut self) -> &mut Vec<NestedBinding> {
+        &mut self.subs
+    }
 }

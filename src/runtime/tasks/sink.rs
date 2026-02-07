@@ -36,7 +36,7 @@ pub fn start_data_sinks(
             } else {
                 warn_ctrl!("no knowdb handler for {} ", sink_name);
             }
-            info_data!("spawn tokio Sink Group {}", x.conf().name());
+            info_ctrl!("spawn tokio Sink Group {}", x.conf().name());
             if let Err(e) =
                 SinkWork::async_proc(x, cur_infra, sink_cmd_sub, sink_mon, bad_sink_s, fix_sink_r)
                     .await

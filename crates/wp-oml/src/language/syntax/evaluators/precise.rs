@@ -15,6 +15,12 @@ pub struct SingleEvalExp {
     eval_way: PreciseEvaluator,
 }
 
+impl SingleEvalExp {
+    pub fn eval_way_mut(&mut self) -> &mut PreciseEvaluator {
+        &mut self.eval_way
+    }
+}
+
 impl Display for SingleEvalExp {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut first_pos = true;
@@ -44,6 +50,8 @@ pub enum PreciseEvaluator {
     Fmt(FmtOperation),
     Collect(ArrOperation),
     Val(Value),
+    /// Placeholder for static DSL symbol; resolved after parsing
+    StaticSymbol(String),
 }
 
 impl Default for PreciseEvaluator {
@@ -65,6 +73,9 @@ impl Display for PreciseEvaluator {
             PreciseEvaluator::Fmt(x) => Display::fmt(x, f),
             PreciseEvaluator::Collect(x) => Display::fmt(x, f),
             PreciseEvaluator::Val(x) => Display::fmt(x, f),
+            PreciseEvaluator::StaticSymbol(sym) => {
+                write!(f, "{}", sym)
+            }
         }
     }
 }

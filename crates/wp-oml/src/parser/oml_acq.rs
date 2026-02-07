@@ -4,6 +4,7 @@ use crate::language::PreciseEvaluator;
 use crate::language::{GenericAccessor, NestedAccessor};
 use crate::language::{SqlFnArg, SqlFnExpr};
 use crate::parser::fun_prm::oml_gw_fun;
+use crate::parser::static_ctx::parse_static_value;
 use winnow::ascii::multispace0;
 use winnow::combinator::{alt, opt, trace};
 use winnow::error::{ContextError, ErrMode};
@@ -17,12 +18,14 @@ pub fn oml_gens_acq(data: &mut &str) -> ModalResult<GenericAccessor> {
         trace("get take:", oml_aga_tdc),
         trace("get fun:", oml_gw_fun),
         trace("get value:", oml_aga_value),
+        trace("get static:", parse_static_value),
     ))
     .parse_next(data)?;
     opt(symbol_semicolon).parse_next(data)?;
     let sub_gw = match gw {
         PreciseEvaluator::Obj(x) => GenericAccessor::Field(x),
         PreciseEvaluator::Fun(x) => GenericAccessor::Fun(x),
+        PreciseEvaluator::StaticSymbol(sym) => GenericAccessor::StaticSymbol(sym),
         _ => {
             unreachable!("not support to gens aggregate")
         }
@@ -35,6 +38,7 @@ pub fn oml_sub_acq(data: &mut &str) -> ModalResult<NestedAccessor> {
         trace("get take:", oml_aga_tdc),
         trace("get fun:", oml_gw_fun),
         trace("get value:", oml_aga_value),
+        trace("get static:", parse_static_value),
     ))
     .parse_next(data)?;
     opt(symbol_semicolon).parse_next(data)?;
@@ -42,6 +46,7 @@ pub fn oml_sub_acq(data: &mut &str) -> ModalResult<NestedAccessor> {
         PreciseEvaluator::Obj(x) => NestedAccessor::Field(x),
         PreciseEvaluator::Tdc(x) => NestedAccessor::Direct(x),
         PreciseEvaluator::Fun(x) => NestedAccessor::Fun(x),
+        PreciseEvaluator::StaticSymbol(sym) => NestedAccessor::StaticSymbol(sym),
         _ => {
             unreachable!("not support to sub aggregate")
         }
