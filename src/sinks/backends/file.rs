@@ -506,10 +506,7 @@ mod tests {
         AsyncRawDataSink::sink_str(&mut sink_sync, "line1").await?;
         AsyncRawDataSink::sink_str(&mut sink_sync, "line2").await?;
         let sync_calls = super::take_sync_all_count();
-        assert_eq!(
-            sync_calls, 2,
-            "sync=true 应在每次写入后触发 fsync 确保落盘"
-        );
+        assert_eq!(sync_calls, 2, "sync=true 应在每次写入后触发 fsync 确保落盘");
         AsyncCtrl::stop(&mut sink_sync).await?;
 
         let no_sync_file = base.join("sync_false.dat.lock");
@@ -518,10 +515,7 @@ mod tests {
         AsyncRawDataSink::sink_str(&mut sink_no_sync, "line1").await?;
         AsyncRawDataSink::sink_str(&mut sink_no_sync, "line2").await?;
         let sync_calls = super::take_sync_all_count();
-        assert_eq!(
-            sync_calls, 0,
-            "sync=false 模式下不应调用 fsync"
-        );
+        assert_eq!(sync_calls, 0, "sync=false 模式下不应调用 fsync");
         AsyncCtrl::stop(&mut sink_no_sync).await?;
 
         let _ = fs::remove_dir_all(&base);
