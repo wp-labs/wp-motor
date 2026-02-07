@@ -11,10 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Sinks/File**: Add `sync` parameter to control immediate disk flushing
   - `sync: false` (default): High-performance mode with buffered writes, suitable for large data volumes
   - `sync: true`: Real-time disk writes for data safety, suitable for critical data
-- **Documentation**: Add Sink connector user guide (`docs/usage/sink/zh/`)
-  - File Sink detailed configuration documentation
-  - Supported format descriptions and usage scenarios
-  - Best practices and troubleshooting guide
 - **WPL no() Group**: Add `no()` group wrapper for negative assertion in field parsing
 - **OML Static Blocks**: Introduce `static { ... }` sections for model-scoped constants and template caching
   - Static expressions are executed only once during model loading, results stored in constant pool for reuse across records, avoiding repeated `object { ... }` construction
@@ -22,8 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **OML Enable Configuration**: Add `enable` configuration option to support disabling OML models
 
 ### Changed
-- **Documentation**: Unify all configuration examples from YAML/JSON format to TOML format
-- **Sinks/File**: Remove proto binary format support, retain proto-text text format
+- **Sinks/File**: Remove proto binary format support 
 - **Sinks/File**: Supported output formats: json, csv, kv, show, raw, proto-text
 
 ### Fixed
