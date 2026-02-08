@@ -64,6 +64,7 @@ impl FieldExtractor for GenericAccessor {
     ) -> Option<DataField> {
         match self {
             GenericAccessor::Field(x) => x.extract_one(target, src, dst),
+            GenericAccessor::FieldArc(x) => x.as_ref().extract_one(target, src, dst),
             GenericAccessor::Fun(x) => x.extract_one(target, src, dst),
             GenericAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")

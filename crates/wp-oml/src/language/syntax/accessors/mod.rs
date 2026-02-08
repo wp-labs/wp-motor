@@ -8,6 +8,7 @@ use wp_data_fmt::Json;
 use wp_data_model::cache::FieldQueryCache;
 
 use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 
 use super::functions::FunOperation;
 use super::operations::record::RecordOperation;
@@ -16,6 +17,8 @@ pub use nested::arr::ArrOperation;
 #[derive(Debug, Clone, PartialEq)]
 pub enum NestedAccessor {
     Field(DataField),
+    /// Arc-wrapped DataField for zero-copy sharing (from static symbols)
+    FieldArc(Arc<DataField>),
     Direct(RecordOperation),
     Fun(FunOperation),
     Collect(ArrOperation),
@@ -32,6 +35,7 @@ impl FieldExtractor for NestedAccessor {
     ) -> Option<DataField> {
         match self {
             NestedAccessor::Field(o) => o.extract_one(target, src, dst),
+            NestedAccessor::FieldArc(o) => o.as_ref().extract_one(target, src, dst),
             NestedAccessor::Direct(o) => o.extract_one(target, src, dst),
             NestedAccessor::Fun(o) => o.extract_one(target, src, dst),
             NestedAccessor::Collect(o) => o.extract_one(target, src, dst),
@@ -48,6 +52,7 @@ impl FieldExtractor for NestedAccessor {
     ) -> Vec<DataField> {
         match self {
             NestedAccessor::Field(o) => o.extract_more(src, dst, cache),
+            NestedAccessor::FieldArc(o) => o.as_ref().extract_more(src, dst, cache),
             NestedAccessor::Direct(o) => o.extract_more(src, dst, cache),
             NestedAccessor::Fun(o) => o.extract_more(src, dst, cache),
             NestedAccessor::Collect(o) => o.extract_more(src, dst, cache),
@@ -59,6 +64,7 @@ impl FieldExtractor for NestedAccessor {
     fn support_batch(&self) -> bool {
         match self {
             NestedAccessor::Field(o) => o.support_batch(),
+            NestedAccessor::FieldArc(o) => o.as_ref().support_batch(),
             NestedAccessor::Direct(o) => o.support_batch(),
             NestedAccessor::Fun(o) => o.support_batch(),
             NestedAccessor::Collect(o) => o.support_batch(),
@@ -73,6 +79,9 @@ impl Display for NestedAccessor {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             NestedAccessor::Field(x) => {
+                write!(f, "{}", x)
+            }
+            NestedAccessor::FieldArc(x) => {
                 write!(f, "{}", x)
             }
             NestedAccessor::Direct(x) => {
@@ -94,6 +103,10 @@ impl Display for NestedAccessor {
 impl NestedAccessor {
     pub fn replace_with_field(&mut self, field: DataField) {
         *self = NestedAccessor::Field(field);
+    }
+
+    pub fn replace_with_field_arc(&mut self, field: Arc<DataField>) {
+        *self = NestedAccessor::FieldArc(field);
     }
 
     pub fn as_static_symbol(&self) -> Option<&str> {
@@ -136,6 +149,8 @@ impl Display for DirectAccessor {
 #[derive(Debug, Clone, PartialEq)]
 pub enum GenericAccessor {
     Field(DataField),
+    /// Arc-wrapped DataField for zero-copy sharing (from static symbols)
+    FieldArc(Arc<DataField>),
     Fun(FunOperation),
     StaticSymbol(String),
 }
@@ -144,6 +159,9 @@ impl Display for GenericAccessor {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             GenericAccessor::Field(x) => {
+                write!(f, "{}", x)
+            }
+            GenericAccessor::FieldArc(x) => {
                 write!(f, "{}", x)
             }
             GenericAccessor::Fun(x) => {
@@ -159,6 +177,10 @@ impl Display for GenericAccessor {
 impl GenericAccessor {
     pub fn replace_with_field(&mut self, field: DataField) {
         *self = GenericAccessor::Field(field);
+    }
+
+    pub fn replace_with_field_arc(&mut self, field: Arc<DataField>) {
+        *self = GenericAccessor::FieldArc(field);
     }
 
     pub fn as_static_symbol(&self) -> Option<&str> {

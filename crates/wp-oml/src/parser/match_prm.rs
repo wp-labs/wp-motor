@@ -11,7 +11,6 @@ use winnow::combinator::{alt, opt, peek, repeat};
 use winnow::error::{ContextError, StrContext, StrContextValue};
 use winnow::stream::Stream;
 use winnow::token::take;
-use wp_model_core::model::DataField;
 use wp_parser::Parser;
 use wp_parser::WResult;
 use wp_parser::symbol::ctx_desc;
@@ -91,16 +90,17 @@ fn match_cond2(data: &mut &str) -> WResult<MatchCondition> {
     Ok(MatchCondition::Double(fst, sec))
 }
 
-fn tdo_val_scope(data: &mut &str) -> WResult<(DataField, DataField)> {
-    let scope = get_scope(data, '(', ')')?;
-    let mut code: &str = scope;
-    let beg_tdo = syntax::oml_value.parse_next(&mut code)?;
-    symbol_comma.parse_next(&mut code)?;
-    let end_tdo = syntax::oml_value.parse_next(&mut code)?;
-    Ok((beg_tdo, end_tdo))
-}
 fn cond_eq(data: &mut &str) -> WResult<MatchCond> {
     multispace0.parse_next(data)?;
+
+    // Try parsing static symbol first
+    let cp = data.checkpoint();
+    if let Ok(PreciseEvaluator::StaticSymbol(sym)) = parse_static_value(data) {
+        return Ok(MatchCond::EqSym(sym));
+    }
+    data.reset(&cp);
+
+    // Fall back to value expression
     let tdo = syntax::oml_value.parse_next(data)?;
     Ok(MatchCond::Eq(tdo))
 }
@@ -112,14 +112,45 @@ fn cond_default(data: &mut &str) -> WResult<MatchCond> {
 }
 fn cond_neq(data: &mut &str) -> WResult<MatchCond> {
     symbol_marvel.parse_next(data)?;
+
+    // Try parsing static symbol first
+    let cp = data.checkpoint();
+    if let Ok(PreciseEvaluator::StaticSymbol(sym)) = parse_static_value(data) {
+        return Ok(MatchCond::NeqSym(sym));
+    }
+    data.reset(&cp);
+
+    // Fall back to value expression
     let tdo = syntax::oml_value.parse_next(data)?;
     Ok(MatchCond::Neq(tdo))
 }
 fn cond_in(data: &mut &str) -> WResult<MatchCond> {
     let _ = multispace0.parse_next(data)?;
     kw_in.parse_next(data)?;
-    let (beg, end) = tdo_val_scope.parse_next(data)?;
-    Ok(MatchCond::In(beg, end))
+
+    // Extract the scope once
+    let scope = get_scope(data, '(', ')')?;
+    let mut code: &str = scope;
+
+    // Try parsing both as static symbols
+    let cp1 = code.checkpoint();
+    if let Ok(PreciseEvaluator::StaticSymbol(beg_sym)) = parse_static_value(&mut code) {
+        if symbol_comma.parse_next(&mut code).is_ok() {
+            // Try second element as symbol
+            let cp2 = code.checkpoint();
+            if let Ok(PreciseEvaluator::StaticSymbol(end_sym)) = parse_static_value(&mut code) {
+                return Ok(MatchCond::InSym(beg_sym, end_sym));
+            }
+            code.reset(&cp2);
+        }
+    }
+    code.reset(&cp1);
+
+    // Fall back to value expressions (reuse the same scope)
+    let beg_tdo = syntax::oml_value.parse_next(&mut code)?;
+    symbol_comma.parse_next(&mut code)?;
+    let end_tdo = syntax::oml_value.parse_next(&mut code)?;
+    Ok(MatchCond::In(beg_tdo, end_tdo))
 }
 
 /// Parse function-based match condition like `starts_with('prefix')`
@@ -264,6 +295,7 @@ pub fn oml_aga_match(data: &mut &str) -> WResult<PreciseEvaluator> {
 mod tests {
     use super::*;
     use orion_error::TestAssert;
+    use wp_model_core::model::DataField;
     use wp_parser::WResult as ModalResult;
 
     use crate::language::MatchCase;

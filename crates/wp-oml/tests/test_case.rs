@@ -763,3 +763,493 @@ fn test_multiple_rules_with_enable() {
     assert_eq!(*model.enable(), true);
     assert_eq!(model.rules().as_ref().len(), 3);
 }
+
+// ==================== Static Symbol Match Tests ====================
+
+#[test]
+fn test_static_symbol_eq_match() {
+    // Test static symbols in equality match conditions
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : test_static_eq
+        ---
+        static {
+            ip_local = ip(127.0.0.1);
+            status_ok = chars(success);
+        }
+
+        result = match read(src_ip) {
+            ip_local => chars(localhost);
+            _ => chars(remote);
+        };
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+
+    // Test matching case
+    let data = vec![DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.field("result"),
+        Some(&DataField::from_chars("result", "localhost"))
+    );
+
+    // Test non-matching case (default)
+    let data = vec![DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)))];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.field("result"),
+        Some(&DataField::from_chars("result", "remote"))
+    );
+}
+
+#[test]
+fn test_static_symbol_neq_match() {
+    // Test static symbols in negation match conditions
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : test_static_neq
+        ---
+        static {
+            ip_127 = ip(127.0.0.1);
+        }
+
+        result = match read(src_ip) {
+            !ip_127 => chars(external);
+            _ => chars(internal);
+        };
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+
+    // Test negation match (not 127.0.0.1)
+    let data = vec![DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)))];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.field("result"),
+        Some(&DataField::from_chars("result", "external"))
+    );
+
+    // Test negation non-match (is 127.0.0.1)
+    let data = vec![DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.field("result"),
+        Some(&DataField::from_chars("result", "internal"))
+    );
+}
+
+#[test]
+fn test_static_symbol_in_range_match() {
+    // Test static symbols in range match conditions
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : test_static_in_range
+        ---
+        static {
+            status_200 = digit(200);
+            status_299 = digit(299);
+            status_400 = digit(400);
+            status_499 = digit(499);
+        }
+
+        level = match read(http_status) {
+            in (status_200, status_299) => chars(success);
+            in (status_400, status_499) => chars(client_error);
+            _ => chars(other);
+        };
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+
+    // Test in first range
+    let data = vec![DataField::from_digit("http_status", 200)];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.field("level"),
+        Some(&DataField::from_chars("level", "success"))
+    );
+
+    let data = vec![DataField::from_digit("http_status", 250)];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.field("level"),
+        Some(&DataField::from_chars("level", "success"))
+    );
+
+    // Test in second range
+    let data = vec![DataField::from_digit("http_status", 404)];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.field("level"),
+        Some(&DataField::from_chars("level", "client_error"))
+    );
+
+    // Test outside ranges (default)
+    let data = vec![DataField::from_digit("http_status", 500)];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.field("level"),
+        Some(&DataField::from_chars("level", "other"))
+    );
+}
+
+#[test]
+fn test_static_symbol_chars_match() {
+    // Test static symbols with chars data type
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : test_static_chars
+        ---
+        static {
+            env_prod = chars(production);
+            env_dev = chars(development);
+        }
+
+        priority = match read(environment) {
+            env_prod => digit(1);
+            env_dev => digit(3);
+            _ => digit(5);
+        };
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+
+    // Test production environment
+    let data = vec![DataField::from_chars("environment", "production")];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.field("priority"),
+        Some(&DataField::from_digit("priority", 1))
+    );
+
+    // Test development environment
+    let data = vec![DataField::from_chars("environment", "development")];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.field("priority"),
+        Some(&DataField::from_digit("priority", 3))
+    );
+
+    // Test other environment
+    let data = vec![DataField::from_chars("environment", "staging")];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.field("priority"),
+        Some(&DataField::from_digit("priority", 5))
+    );
+}
+
+#[test]
+fn test_static_symbol_multiple_match_cases() {
+    // Test multiple match expressions using static symbols
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : test_multiple_static_match
+        ---
+        static {
+            localhost = chars(localhost);
+            attack_ip = chars(attack);
+            ip_127 = ip(127.0.0.1);
+            dgt_200 = digit(200);
+            dgt_400 = digit(400);
+        }
+
+        ip_type = match read(src_ip) {
+            ip_127 => localhost;
+            !ip_127 => attack_ip;
+        };
+
+        status_level = match read(status_code) {
+            in (dgt_200, dgt_400) => chars(normal);
+            _ => chars(other);
+        };
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+
+    // Test both matches
+    let data = vec![
+        DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
+        DataField::from_digit("status_code", 300),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+
+    assert_eq!(
+        target.field("ip_type"),
+        Some(&DataField::from_chars("ip_type", "localhost"))
+    );
+    assert_eq!(
+        target.field("status_level"),
+        Some(&DataField::from_chars("status_level", "normal"))
+    );
+
+    // Test with different values
+    let data = vec![
+        DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))),
+        DataField::from_digit("status_code", 500),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+
+    assert_eq!(
+        target.field("ip_type"),
+        Some(&DataField::from_chars("ip_type", "attack"))
+    );
+    assert_eq!(
+        target.field("status_level"),
+        Some(&DataField::from_chars("status_level", "other"))
+    );
+}
+
+#[test]
+fn test_static_symbol_with_result_reference() {
+    // Test static symbols in both condition and result parts
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : test_static_cond_and_result
+        ---
+        static {
+            min_threshold = digit(100);
+            max_threshold = digit(200);
+            high_label = chars(high);
+            low_label = chars(low);
+        }
+
+        level = match read(value) {
+            in (min_threshold, max_threshold) => high_label;
+            _ => low_label;
+        };
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+
+    // Test in range
+    let data = vec![DataField::from_digit("value", 150)];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.field("level"),
+        Some(&DataField::from_chars("level", "high"))
+    );
+
+    // Test below range
+    let data = vec![DataField::from_digit("value", 50)];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.field("level"),
+        Some(&DataField::from_chars("level", "low"))
+    );
+}
+
+// ==================== Arc Performance Tests ====================
+
+#[test]
+fn test_arc_optimization_parsing_performance() {
+    use std::time::Instant;
+
+    // Test with static symbols (should use Arc for zero-copy)
+    let mut conf_with_static = r#"
+        name : test_with_static
+        ---
+        static {
+            ip_127 = ip(127.0.0.1);
+            localhost = chars(localhost_value);
+            attack_ip = chars(attack_ip_value);
+            status_200 = digit(200);
+            status_400 = digit(400);
+            ok_msg = chars(ok_message);
+            err_msg = chars(error_message);
+        }
+
+        ip_type = match read(src_ip) {
+            ip_127 => localhost;
+            !ip_127 => attack_ip;
+        };
+
+        status_level = match read(status) {
+            in (status_200, status_400) => ok_msg;
+            _ => err_msg;
+        };
+    "#;
+
+    let start = Instant::now();
+    let model_with_static = oml_parse_raw(&mut conf_with_static).assert();
+    let parse_time_static = start.elapsed();
+
+    // Test without static symbols (inline values, multiple DataField clones)
+    let mut conf_without_static = r#"
+        name : test_without_static
+        ---
+        ip_type = match read(src_ip) {
+            ip(127.0.0.1) => chars(localhost_value);
+            !ip(127.0.0.1) => chars(attack_ip_value);
+        };
+
+        status_level = match read(status) {
+            in (digit(200), digit(400)) => chars(ok_message);
+            _ => chars(error_message);
+        };
+    "#;
+
+    let start = Instant::now();
+    let model_without_static = oml_parse_raw(&mut conf_without_static).assert();
+    let parse_time_no_static = start.elapsed();
+
+    println!("\n=== Parsing Performance (Arc Optimization) ===");
+    println!("With static (Arc):    {:?}", parse_time_static);
+    println!("Without static:       {:?}", parse_time_no_static);
+
+    // Arc optimization should make parsing faster or equal
+    // (Arc::clone is much cheaper than DataField clone)
+
+    // Runtime performance test - should be identical
+    let cache = &mut FieldQueryCache::default();
+    let data = vec![
+        DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
+        DataField::from_digit("status", 300),
+    ];
+    let src = DataRecord::from(data);
+
+    // Verify both produce correct results
+    let result_static = model_with_static.transform(src.clone(), cache);
+    let result_no_static = model_without_static.transform(src.clone(), cache);
+
+    assert_eq!(
+        result_static.field("ip_type").map(|f| f.get_value()),
+        result_no_static.field("ip_type").map(|f| f.get_value())
+    );
+    assert_eq!(
+        result_static.field("status_level").map(|f| f.get_value()),
+        result_no_static.field("status_level").map(|f| f.get_value())
+    );
+}
+
+#[test]
+fn test_arc_optimization_with_many_references() {
+    use std::time::Instant;
+
+    // Test with many static symbol references
+    // Each static value is used multiple times - Arc shines here
+    let mut conf_with_static = r#"
+        name : test_many_refs_static
+        ---
+        static {
+            val_100 = digit(100);
+            val_200 = digit(200);
+            val_300 = digit(300);
+            val_400 = digit(400);
+            val_500 = digit(500);
+            msg_low = chars(low_priority);
+            msg_medium = chars(medium_priority);
+            msg_high = chars(high_priority);
+            msg_critical = chars(critical_priority);
+        }
+
+        level1 = match read(score1) {
+            val_100 => msg_low;
+            val_200 => msg_medium;
+            val_300 => msg_high;
+            val_400 => msg_critical;
+            _ => msg_low;
+        };
+
+        level2 = match read(score2) {
+            val_100 => msg_low;
+            val_200 => msg_medium;
+            val_300 => msg_high;
+            val_400 => msg_critical;
+            _ => msg_low;
+        };
+
+        level3 = match read(score3) {
+            val_100 => msg_low;
+            val_200 => msg_medium;
+            val_300 => msg_high;
+            val_400 => msg_critical;
+            _ => msg_low;
+        };
+
+        level4 = match read(score4) {
+            val_100 => msg_low;
+            val_200 => msg_medium;
+            val_300 => msg_high;
+            val_400 => msg_critical;
+            _ => msg_low;
+        };
+
+        level5 = match read(score5) {
+            in (val_100, val_200) => msg_low;
+            in (val_300, val_400) => msg_high;
+            _ => msg_medium;
+        };
+    "#;
+
+    let start = Instant::now();
+    let _model_with_static = oml_parse_raw(&mut conf_with_static).assert();
+    let parse_time_static = start.elapsed();
+
+    // Same logic without static - each value is duplicated many times
+    let mut conf_without_static = r#"
+        name : test_many_refs_no_static
+        ---
+        level1 = match read(score1) {
+            digit(100) => chars(low_priority);
+            digit(200) => chars(medium_priority);
+            digit(300) => chars(high_priority);
+            digit(400) => chars(critical_priority);
+            _ => chars(low_priority);
+        };
+
+        level2 = match read(score2) {
+            digit(100) => chars(low_priority);
+            digit(200) => chars(medium_priority);
+            digit(300) => chars(high_priority);
+            digit(400) => chars(critical_priority);
+            _ => chars(low_priority);
+        };
+
+        level3 = match read(score3) {
+            digit(100) => chars(low_priority);
+            digit(200) => chars(medium_priority);
+            digit(300) => chars(high_priority);
+            digit(400) => chars(critical_priority);
+            _ => chars(low_priority);
+        };
+
+        level4 = match read(score4) {
+            digit(100) => chars(low_priority);
+            digit(200) => chars(medium_priority);
+            digit(300) => chars(high_priority);
+            digit(400) => chars(critical_priority);
+            _ => chars(low_priority);
+        };
+
+        level5 = match read(score5) {
+            in (digit(100), digit(200)) => chars(low_priority);
+            in (digit(300), digit(400)) => chars(high_priority);
+            _ => chars(medium_priority);
+        };
+    "#;
+
+    let start = Instant::now();
+    let _model_without_static = oml_parse_raw(&mut conf_without_static).assert();
+    let parse_time_no_static = start.elapsed();
+
+    println!("\n=== Parsing Performance (Many References) ===");
+    println!("With static (Arc):    {:?}", parse_time_static);
+    println!("Without static:       {:?}", parse_time_no_static);
+    println!("Speedup:              {:.2}x",
+             parse_time_no_static.as_nanos() as f64 / parse_time_static.as_nanos() as f64);
+
+    // Arc optimization shows clear benefit when values are reused
+    // Without Arc: each reference creates a new DataField (expensive)
+    // With Arc: each reference just clones Arc pointer (cheap)
+}

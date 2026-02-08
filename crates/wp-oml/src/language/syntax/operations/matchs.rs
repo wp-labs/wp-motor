@@ -4,6 +4,7 @@ use crate::types::AnyResult;
 use derive_getters::Getters;
 use orion_exp::CmpOperator;
 use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 use wp_data_model::compare::compare_datafield;
 use wp_model_core::model::{DataField, DataType};
 use wpl::DataTypeParser;
@@ -82,6 +83,21 @@ pub enum MatchCond {
     In(DataField, DataField),
     /// Function-based matching - matches if function returns non-ignore field
     Fun(MatchFun),
+
+    /// Arc-based variants for static symbols (zero-copy reference)
+    /// These are created during rewrite phase to share DataField instances
+    #[serde(skip)]
+    EqArc(Arc<DataField>),
+    #[serde(skip)]
+    NeqArc(Arc<DataField>),
+    #[serde(skip)]
+    InArc(Arc<DataField>, Arc<DataField>),
+
+    /// Static symbol reference - will be replaced with Arc variants during parse
+    /// These variants should not exist after rewrite_static_references()
+    EqSym(String),
+    NeqSym(String),
+    InSym(String, String),
 
     Default,
 }
@@ -171,6 +187,74 @@ impl MatchAble<&DataField> for MatchCond {
             MatchCond::Fun(fun) => {
                 // Execute the function and check if result is not ignore
                 match_with_function(value, fun)
+            }
+
+            // Arc-based variants (for static symbols, zero-copy)
+            MatchCond::EqArc(x) => {
+                if compare_datafield(value, x.as_ref(), CmpOperator::Eq) {
+                    return true;
+                }
+                if x.get_meta() == value.get_meta() {
+                    return false;
+                }
+                warn_data!(
+                    "not same type data: {}({}): {}, expect: {}",
+                    value.get_name(),
+                    value.get_meta(),
+                    value.get_value(),
+                    x.get_meta()
+                );
+                false
+            }
+            MatchCond::NeqArc(x) => {
+                if compare_datafield(value, x.as_ref(), CmpOperator::Ne) {
+                    return true;
+                }
+                if x.get_meta() == value.get_meta() {
+                    return false;
+                }
+                warn_data!(
+                    "not same type data: {}({}): {}, expect: {}",
+                    value.get_name(),
+                    value.get_meta(),
+                    value.get_value(),
+                    x.get_meta()
+                );
+                false
+            }
+            MatchCond::InArc(beg, end) => {
+                // Expect: value in [beg, end]  => (value >= beg) && (value <= end)
+                if compare_datafield(value, beg.as_ref(), CmpOperator::Ge)
+                    && compare_datafield(value, end.as_ref(), CmpOperator::Le)
+                {
+                    return true;
+                }
+                if beg.get_meta() == end.get_meta() && beg.get_meta() == value.get_meta() {
+                    return false;
+                }
+                warn_data!(
+                    "not same type data: {}({}): {}, expect: {}",
+                    value.get_name(),
+                    value.get_meta(),
+                    value.get_value(),
+                    beg.get_meta()
+                );
+                false
+            }
+
+            // Symbol references should have been replaced during parse
+            // If we see them here, it's a bug in the rewrite logic
+            MatchCond::EqSym(sym) | MatchCond::NeqSym(sym) => {
+                warn_data!("Unresolved static symbol '{}' in match condition", sym);
+                false
+            }
+            MatchCond::InSym(beg_sym, end_sym) => {
+                warn_data!(
+                    "Unresolved static symbols '{}', '{}' in match condition",
+                    beg_sym,
+                    end_sym
+                );
+                false
             }
 
             MatchCond::Default => true,
@@ -362,6 +446,29 @@ impl Display for MatchCond {
             MatchCond::Fun(fun) => {
                 write!(f, " {}  ", fun)?;
             }
+
+            // Arc-based variants (same display as regular variants)
+            MatchCond::EqArc(x) => {
+                write!(f, " {}  ", x)?;
+            }
+            MatchCond::NeqArc(x) => {
+                write!(f, " !{}  ", x)?;
+            }
+            MatchCond::InArc(a, b) => {
+                write!(f, "in ( {}, {} )", a, b)?;
+            }
+
+            // Static symbol references (before rewrite)
+            MatchCond::EqSym(sym) => {
+                write!(f, " {}  ", sym)?;
+            }
+            MatchCond::NeqSym(sym) => {
+                write!(f, " !{}  ", sym)?;
+            }
+            MatchCond::InSym(beg_sym, end_sym) => {
+                write!(f, "in ( {}, {} )", beg_sym, end_sym)?;
+            }
+
             MatchCond::Default => {
                 write!(f, " _ ")?;
             }
@@ -421,6 +528,9 @@ impl MatchCase {
             cond,
             result: value,
         }
+    }
+    pub fn condition_mut(&mut self) -> &mut MatchCondition {
+        &mut self.cond
     }
     pub fn result_mut(&mut self) -> &mut NestedAccessor {
         &mut self.result
