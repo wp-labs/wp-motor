@@ -7,15 +7,15 @@ mod base64;
 mod escape;
 mod extract_word;
 mod net;
-mod nlp_dict_loader;
+pub mod semantic_dict_loader;  // 公开 semantic_dict_loader 模块
 mod other;
 mod path_url;
 mod pipe_operation;
 mod time;
 
-// 导出 NLP 词典加载器供 extract_word 模块使用
+// 导出语义词典加载器供 extract_word 模块使用
 #[allow(unused_imports)]
-pub(crate) use nlp_dict_loader::NLP_DICT;
+pub(crate) use semantic_dict_loader::SEMANTIC_DICT;
 
 impl ValueProcessor for PipeFun {
     fn value_cacu(&self, in_val: DataField) -> DataField {

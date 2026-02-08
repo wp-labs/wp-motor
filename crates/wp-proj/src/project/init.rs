@@ -20,6 +20,7 @@ const MODELS_WPL_DIR: &str = "models/wpl";
 const MODELS_OML_DIR: &str = "models/oml";
 const MODELS_KNOWLEDGE_DIR: &str = "models/knowledge";
 const MODELS_KNOWLEDGE_EXAMPLE_DIR: &str = "models/knowledge/example";
+const SEMANTIC_DICT_FILE: &str = "models/knowledge/semantic_dict.toml";
 const TOPOLOGY_SOURCES_DIR: &str = "topology/sources";
 const TOPOLOGY_SINKS_DIR: &str = "topology/sinks";
 
@@ -83,6 +84,8 @@ impl WarpProject {
         // 2) 知识库目录骨架初始化（仅在模型启用时，因为知识库是模型的一部分）
         if mode.enable_model() {
             self.knowledge().init(self.work_root())?;
+            // 语义词典配置初始化（属于知识配置）
+            Self::init_semantic_dict_config(self.work_root_path())?;
         }
 
         // 3) WPL 和 OML 模型初始化（仅在模型启用时）
@@ -170,6 +173,30 @@ impl WarpProject {
             if let Err(_) = fs::write(&wpgen_config_path, wpgen_config_content) {
                 // 如果写入失败，记录警告但继续
                 eprintln!("Warning: Failed to write wpgen.toml");
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 初始化语义词典配置文件
+    fn init_semantic_dict_config<P: AsRef<Path>>(work_root: P) -> RunResult<()> {
+        use std::fs;
+
+        let work_root = work_root.as_ref();
+        let knowledge_dir = work_root.join(MODELS_KNOWLEDGE_DIR);
+        if let Err(_) = fs::create_dir_all(&knowledge_dir) {
+            eprintln!("Warning: Failed to create knowledge directory");
+        }
+
+        let semantic_dict_config_path = work_root.join(SEMANTIC_DICT_FILE);
+        if !semantic_dict_config_path.exists() {
+            // 从 wp-oml 获取默认配置内容
+            let config_content = oml::generate_default_semantic_dict_config();
+            if let Err(e) = fs::write(&semantic_dict_config_path, config_content) {
+                eprintln!("Warning: Failed to write semantic_dict.toml: {}", e);
+            } else {
+                println!("✓ 语义词典配置文件已创建: {}", semantic_dict_config_path.display());
             }
         }
 

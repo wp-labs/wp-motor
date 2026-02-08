@@ -5,4 +5,4 @@ pub use traits::*;
 mod extract;
 mod functions;
 mod query;
-mod transform;
+pub mod transform;  // 公开 transform 模块

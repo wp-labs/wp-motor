@@ -81,6 +81,8 @@ pub struct Row {
     pub wpl: Cell,
     /// OML 检查结果
     pub oml: Cell,
+    /// 语义词典配置检查结果
+    pub semantic_dict: Cell,
 }
 
 impl Row {
@@ -117,6 +119,9 @@ impl Row {
         if !self.oml.ok {
             count += 1;
         }
+        if !self.semantic_dict.ok {
+            count += 1;
+        }
         count
     }
 
@@ -140,6 +145,9 @@ impl Row {
             count += 1;
         }
         if self.oml.ok {
+            count += 1;
+        }
+        if self.semantic_dict.ok {
             count += 1;
         }
         count
@@ -179,6 +187,6 @@ mod tests {
         row.sources = Cell::failure("bad".into());
         row.oml = Cell::failure("boom".into());
         assert_eq!(row.count_failures(), 2);
-        assert_eq!(row.count_successes(), 4);
+        assert_eq!(row.count_successes(), 5);
     }
 }

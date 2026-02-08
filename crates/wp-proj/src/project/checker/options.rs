@@ -40,6 +40,7 @@ pub struct CheckComponents {
     pub sinks: bool,
     pub wpl: bool,
     pub oml: bool,
+    pub semantic_dict: bool,
 }
 
 impl CheckComponents {
@@ -50,6 +51,7 @@ impl CheckComponents {
         self.sinks = false;
         self.wpl = false;
         self.oml = false;
+        self.semantic_dict = false;
     }
 
     pub fn enable<I>(&mut self, components: I)
@@ -78,6 +80,7 @@ impl CheckComponents {
             CheckComponent::Sinks => self.sinks,
             CheckComponent::Wpl => self.wpl,
             CheckComponent::Oml => self.oml,
+            CheckComponent::SemanticDict => self.semantic_dict,
         }
     }
 
@@ -89,6 +92,7 @@ impl CheckComponents {
             CheckComponent::Sinks => self.sinks = value,
             CheckComponent::Wpl => self.wpl = value,
             CheckComponent::Oml => self.oml = value,
+            CheckComponent::SemanticDict => self.semantic_dict = value,
         }
     }
 }
@@ -102,6 +106,7 @@ impl Default for CheckComponents {
             sinks: true,
             wpl: true,
             oml: true,
+            semantic_dict: true,
         }
     }
 }
@@ -114,4 +119,5 @@ pub enum CheckComponent {
     Sinks,
     Wpl,
     Oml,
+    SemanticDict,
 }

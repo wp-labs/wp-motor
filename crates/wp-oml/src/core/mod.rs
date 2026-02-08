@@ -1,6 +1,6 @@
 pub mod diagnostics;
 mod error;
-mod evaluator;
+pub mod evaluator;  // 公开 evaluator 模块
 mod model;
 mod prelude;
 pub use error::OMLRunError;

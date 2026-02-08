@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use wp_model_core::model::types::value::ObjectValue;
 use wp_model_core::model::{DataField, Value};
 
-// 导入 NLP 词典
-use super::nlp_dict_loader::NLP_DICT;
+// 导入语义词典
+use super::semantic_dict_loader::SEMANTIC_DICT;
 
 lazy_static! {
     // Jieba 中文分词器实例（全局单例）
@@ -109,15 +109,15 @@ fn classify_eng(word: &str) -> WordRole {
     let lower = word.to_lowercase();
 
     // 优先级1：领域词典明确匹配
-    if NLP_DICT.status_words.contains(lower.as_str()) {
+    if SEMANTIC_DICT.status_words.contains(lower.as_str()) {
         return WordRole::Status;
     }
-    if NLP_DICT.action_verbs.contains(lower.as_str()) {
+    if SEMANTIC_DICT.action_verbs.contains(lower.as_str()) {
         return WordRole::Action;
     }
 
     // 优先级2：实体名词白名单（覆盖词缀规则）
-    if NLP_DICT.entity_nouns.contains(lower.as_str()) {
+    if SEMANTIC_DICT.entity_nouns.contains(lower.as_str()) {
         return WordRole::Entity;
     }
 
@@ -142,17 +142,17 @@ fn classify_eng(word: &str) -> WordRole {
 /// 中文词角色判断（根据词性）
 fn classify_cn(pos: &str, word: &str) -> Option<WordRole> {
     let lower = word.to_lowercase();
-    if NLP_DICT.status_words.contains(lower.as_str()) {
+    if SEMANTIC_DICT.status_words.contains(lower.as_str()) {
         return Some(WordRole::Status);
     }
-    if NLP_DICT.action_verbs.contains(lower.as_str()) {
+    if SEMANTIC_DICT.action_verbs.contains(lower.as_str()) {
         return Some(WordRole::Action);
     }
     match pos {
         "v" | "vn" | "vd" => Some(WordRole::Action),
         "n" | "nr" | "ns" | "nt" | "nz" | "ng" => Some(WordRole::Entity),
         _ => {
-            if NLP_DICT.domain_words.contains(lower.as_str()) {
+            if SEMANTIC_DICT.domain_words.contains(lower.as_str()) {
                 Some(WordRole::Entity)
             } else {
                 None // 停用词/虚词等，不参与分配
@@ -201,7 +201,7 @@ fn analyze_subject_object_with_debug(
             continue;
         }
         let word_lower = word.to_lowercase();
-        if NLP_DICT.stop_words.contains(word_lower.as_str()) {
+        if SEMANTIC_DICT.stop_words.contains(word_lower.as_str()) {
             continue;
         }
 
@@ -218,12 +218,12 @@ fn analyze_subject_object_with_debug(
                     if status.is_empty() {
                         status = word.to_string();
                         if let Some(ref mut d) = debug {
-                            d.status_rule = if NLP_DICT.status_words.contains(word_lower.as_str()) {
+                            d.status_rule = if SEMANTIC_DICT.status_words.contains(word_lower.as_str()) {
                                 "rule1: status_word_match".to_string()
                             } else {
                                 "rule2: cn_pos_match".to_string()
                             };
-                            d.status_confidence = if NLP_DICT.status_words.contains(word_lower.as_str()) {
+                            d.status_confidence = if SEMANTIC_DICT.status_words.contains(word_lower.as_str()) {
                                 1.0
                             } else {
                                 0.7
@@ -236,7 +236,7 @@ fn analyze_subject_object_with_debug(
                         action = word.to_string();
                         action_seen = true;
                         if let Some(ref mut d) = debug {
-                            d.action_rule = if NLP_DICT.action_verbs.contains(word_lower.as_str()) {
+                            d.action_rule = if SEMANTIC_DICT.action_verbs.contains(word_lower.as_str()) {
                                 "rule1: action_verb_match".to_string()
                             } else if pos == "eng" && word_lower.ends_with("ing") {
                                 "rule2: eng_ing_suffix".to_string()
@@ -245,7 +245,7 @@ fn analyze_subject_object_with_debug(
                             } else {
                                 format!("rule3: cn_pos({})", pos)
                             };
-                            d.action_confidence = if NLP_DICT.action_verbs.contains(word_lower.as_str()) {
+                            d.action_confidence = if SEMANTIC_DICT.action_verbs.contains(word_lower.as_str()) {
                                 1.0
                             } else {
                                 0.7
@@ -257,12 +257,12 @@ fn analyze_subject_object_with_debug(
                     if subject.is_empty() {
                         subject = word.to_string();
                         if let Some(ref mut d) = debug {
-                            d.subject_rule = if NLP_DICT.domain_words.contains(word_lower.as_str()) {
+                            d.subject_rule = if SEMANTIC_DICT.domain_words.contains(word_lower.as_str()) {
                                 "rule1: domain_entity_match".to_string()
                             } else {
                                 format!("rule2: core_pos({}) + non_stopword", pos)
                             };
-                            d.subject_confidence = if NLP_DICT.domain_words.contains(word_lower.as_str()) {
+                            d.subject_confidence = if SEMANTIC_DICT.domain_words.contains(word_lower.as_str()) {
                                 1.0
                             } else {
                                 0.8
@@ -271,12 +271,12 @@ fn analyze_subject_object_with_debug(
                     } else if action_seen && object.is_empty() {
                         object = word.to_string();
                         if let Some(ref mut d) = debug {
-                            d.object_rule = if NLP_DICT.domain_words.contains(word_lower.as_str()) {
+                            d.object_rule = if SEMANTIC_DICT.domain_words.contains(word_lower.as_str()) {
                                 "rule1: domain_entity_match (after_action)".to_string()
                             } else {
                                 format!("rule2: core_pos({}) + after_action", pos)
                             };
-                            d.object_confidence = if NLP_DICT.domain_words.contains(word_lower.as_str()) {
+                            d.object_confidence = if SEMANTIC_DICT.domain_words.contains(word_lower.as_str()) {
                                 1.0
                             } else {
                                 0.8
@@ -382,7 +382,7 @@ impl ValueProcessor for ExtractMainWord {
                     let word_lower = word.to_lowercase();
 
                     // 规则1：日志领域词（优先级最高，直接返回）
-                    if NLP_DICT.domain_words.contains(word_lower.as_str()) {
+                    if SEMANTIC_DICT.domain_words.contains(word_lower.as_str()) {
                         return DataField::from_chars(
                             in_val.get_name().to_string(),
                             word.to_string(),
@@ -390,7 +390,7 @@ impl ValueProcessor for ExtractMainWord {
                     }
 
                     // 规则2：核心词性 + 非停用词
-                    if NLP_DICT.core_pos.contains(pos) && !NLP_DICT.stop_words.contains(word_lower.as_str()) {
+                    if SEMANTIC_DICT.core_pos.contains(pos) && !SEMANTIC_DICT.stop_words.contains(word_lower.as_str()) {
                         return DataField::from_chars(
                             in_val.get_name().to_string(),
                             word.to_string(),

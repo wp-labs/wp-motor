@@ -198,7 +198,26 @@ fn evaluate_target(
         row.oml = Cell::skipped();
     }
 
+    if comps.semantic_dict {
+        row.semantic_dict = match check_semantic_dict_config() {
+            Ok(Some(msg)) => Cell::success_with_message(msg),
+            Ok(None) => Cell::success_with_message("使用内置词典".to_string()),
+            Err(e) => Cell::failure(e),
+        };
+        if !row.semantic_dict.ok && opts.fail_fast {
+            return row;
+        }
+    } else {
+        row.semantic_dict = Cell::skipped();
+    }
+
     row
+}
+
+/// 检查语义词典配置
+fn check_semantic_dict_config() -> Result<Option<String>, String> {
+    // 调用 wp-oml 提供的检查方法
+    oml::check_semantic_dict_config(None)
 }
 
 #[derive(Default, Clone, Copy)]
@@ -224,6 +243,7 @@ struct SummaryCounts {
     sinks: ComponentCount,
     wpl: ComponentCount,
     oml: ComponentCount,
+    semantic_dict: ComponentCount,
 }
 
 fn summarize_components(rows: &[Row], comps: &CheckComponents) -> SummaryCounts {
@@ -246,6 +266,9 @@ fn summarize_components(rows: &[Row], comps: &CheckComponents) -> SummaryCounts 
         }
         if comps.oml {
             stats.oml.record(r.oml.ok);
+        }
+        if comps.semantic_dict {
+            stats.semantic_dict.record(r.semantic_dict.ok);
         }
     }
     stats
@@ -279,6 +302,10 @@ fn render_output(
         );
         stat.insert("wpl".into(), component_stat_value(comps.wpl, &stats.wpl));
         stat.insert("oml".into(), component_stat_value(comps.oml, &stats.oml));
+        stat.insert(
+            "semantic_dict".into(),
+            component_stat_value(comps.semantic_dict, &stats.semantic_dict),
+        );
 
         let output = json!({
             "stat": Value::Object(stat),
@@ -338,6 +365,11 @@ fn print_text_summary(total: usize, stats: &SummaryCounts, comps: &CheckComponen
     } else {
         println!("OML models: skipped");
     }
+    if comps.semantic_dict {
+        println!("Semantic dict: {}/{} passed", stats.semantic_dict.ok, stats.semantic_dict.total);
+    } else {
+        println!("Semantic dict: skipped");
+    }
 }
 
 fn output_failure_details(rows: &[Row], comps: &CheckComponents) {
@@ -350,6 +382,7 @@ fn output_failure_details(rows: &[Row], comps: &CheckComponents) {
                 || (comps.sinks && !r.sinks.ok)
                 || (comps.wpl && !r.wpl.ok)
                 || (comps.oml && !r.oml.ok)
+                || (comps.semantic_dict && !r.semantic_dict.ok)
         })
         .collect();
 
@@ -376,6 +409,7 @@ fn has_failures(rows: &[Row], comps: &CheckComponents) -> bool {
             || (comps.sinks && !r.sinks.ok)
             || (comps.wpl && !r.wpl.ok)
             || (comps.oml && !r.oml.ok)
+            || (comps.semantic_dict && !r.semantic_dict.ok)
     })
 }
 

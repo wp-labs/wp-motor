@@ -50,9 +50,7 @@ fn bench_extract_main_word(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("extract_main_word");
     for &(label, text) in cases {
-        let src = DataRecord {
-            items: vec![DataField::from_chars("msg", text)],
-        };
+        let src = DataRecord::from(vec![DataField::from_chars("msg", text)]);
         group.bench_function(label, |b| {
             b.iter(|| {
                 let mut cache = FieldQueryCache::default();
@@ -86,9 +84,7 @@ fn bench_extract_subject_object(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("extract_subject_object");
     for &(label, text) in cases {
-        let src = DataRecord {
-            items: vec![DataField::from_chars("msg", text)],
-        };
+        let src = DataRecord::from(vec![DataField::from_chars("msg", text)]);
         group.bench_function(label, |b| {
             b.iter(|| {
                 let mut cache = FieldQueryCache::default();
@@ -126,9 +122,7 @@ fn bench_extract_subject_object_get(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("extract_subject_object_get");
     for &(label, text) in cases {
-        let src = DataRecord {
-            items: vec![DataField::from_chars("msg", text)],
-        };
+        let src = DataRecord::from(vec![DataField::from_chars("msg", text)]);
         group.bench_function(label, |b| {
             b.iter(|| {
                 let mut cache = FieldQueryCache::default();

@@ -49,9 +49,7 @@ fn bench_oml_sql(c: &mut Criterion) {
     );
 
     // 基础输入（命名参数 py）
-    let src_with_param = DataRecord {
-        items: vec![DataField::from_chars("py", "xiaolongnu")],
-    };
+    let src_with_param = DataRecord::from(vec![DataField::from_chars("py", "xiaolongnu")]);
     let empty = DataRecord::from(vec![]);
 
     let mut group = c.benchmark_group("oml_sql");
@@ -97,9 +95,7 @@ fn bench_oml_sql(c: &mut Criterion) {
         b.iter(|| {
             i = i.wrapping_add(1);
             let key = format!("py_{}", i);
-            let src = DataRecord {
-                items: vec![DataField::from_chars("py", key.as_str())],
-            };
+            let src = DataRecord::from(vec![DataField::from_chars("py", key.as_str())]);
             let _ = mdl_1_param.transform(black_box(src), &mut cache);
         })
     });
@@ -144,9 +140,7 @@ fn bench_oml_sql(c: &mut Criterion) {
         let mut seed: u64 = 0x9E3779B97F4A7C15;
         // 预热：针对前几个热点先命中
         for k in keys.iter().take(n.min(3)) {
-            let src = DataRecord {
-                items: vec![DataField::from_chars("py", *k)],
-            };
+            let src = DataRecord::from(vec![DataField::from_chars("py", *k)]);
             let _ = mdl_1_param.transform(src, &mut cache);
         }
         b.iter(|| {
@@ -159,9 +153,7 @@ fn bench_oml_sql(c: &mut Criterion) {
             while idx + 1 < n && u > cdf[idx] {
                 idx += 1;
             }
-            let src = DataRecord {
-                items: vec![DataField::from_chars("py", keys[idx])],
-            };
+            let src = DataRecord::from(vec![DataField::from_chars("py", keys[idx])]);
             let _ = mdl_1_param.transform(black_box(src), &mut cache);
         })
     });

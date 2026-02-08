@@ -1,0 +1,42 @@
+# TCP Sink 
+
+TCP sink 用于将数据输出到任意 TCP 服务端，支持按行或长度前缀（RFC6587 风格）分帧。
+
+## 连接器定义
+```toml
+[[connectors]]
+id = "tcp_sink"
+type = "tcp"
+allow_override = ["addr", "port", "framing"]
+
+[connectors.params]
+addr = "127.0.0.1"
+port = 9000
+framing = "line"   # line|len
+```
+
+## 可用参数
+
+- `addr`：目标服务器地址（IP 或主机名）。
+- `port`：目标端口（1–65535），默认 9000。
+- `framing`：分帧模式，`line` 或 `len`，默认 `line`。
+
+## 使用示例（wpgen 输出到 TCP）
+```toml
+# conf/wpgen.toml
+[generator]
+mode = "sample"
+count = 10000
+
+[output]
+connect = "tcp_sink"
+
+[output.params]
+addr = "127.0.0.1"
+port = 9000
+framing = "line"
+```
+
+## 分帧说明
+- `line`：追加 `\n` 作为消息结束符
+- `len`：发送 `<len><space><payload>`（不追加 `\n`）

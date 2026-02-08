@@ -23,3 +23,10 @@ pub mod types;
 
 pub use core::{DataRecordRef, ExpEvaluator};
 pub use parser::oml_parse_raw;
+
+// 导出语义词典相关的公开 API
+pub use core::evaluator::transform::pipe::semantic_dict_loader::{
+    check_semantic_dict_config,
+    init_semantic_dict,
+    generate_default_semantic_dict_config,
+};

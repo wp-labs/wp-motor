@@ -67,6 +67,9 @@ pub fn component_cells<'a>(row: &'a Row, comps: &CheckComponents) -> Vec<(&'stat
     if comps.oml {
         cells.push(("OML", &row.oml));
     }
+    if comps.semantic_dict {
+        cells.push(("SemanticDict", &row.semantic_dict));
+    }
     cells
 }
 
@@ -167,6 +170,14 @@ fn detail_entries_for(row: &Row, comps: &CheckComponents) -> Vec<DetailEntry> {
             item: "Models".into(),
             data: cell_data(&row.oml),
             result: status_mark(&row.oml).to_string(),
+        });
+    }
+    if comps.semantic_dict {
+        entries.push(DetailEntry {
+            category: cat("SemanticDict"),
+            item: "Config".into(),
+            data: cell_data(&row.semantic_dict),
+            result: status_mark(&row.semantic_dict).to_string(),
         });
     }
 

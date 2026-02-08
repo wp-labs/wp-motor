@@ -60,6 +60,7 @@ criterion = { workspace = true }
 env_logger = { workspace = true }
 mockall = { workspace = true }
 orion-variate = { workspace = true }
+tempfile.workspace = true
 wp_config = { workspace = true }
 
 
