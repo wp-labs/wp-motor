@@ -48,8 +48,13 @@ preproc          = "|" ws? preproc_step { ws? "|" ws? preproc_step } ws? "|" ;  
 preproc_step     = builtin_preproc | plg_pipe_step ;
 builtin_preproc  = ns "/" name ;
 plg_pipe_step    = "plg_pipe" ws? "/" ws? key ;                   ; 通过注册表查找自定义扩展
-ns               = "decode" | "unquote" ;                        ; 命名空间白名单
-name             = ("base64" | "hex") | "unescape" ;             ; 步骤名白名单
+ns               = "decode" | "unquote" | "strip" ;              ; 命名空间白名单
+name             = ("base64" | "hex") | "unescape" | "bom" ;     ; 步骤名白名单
+; 支持的预处理器：
+;   decode/base64 - Base64 解码
+;   decode/hex - 十六进制解码
+;   unquote/unescape - URL 转义解码
+;   strip/bom - 移除 BOM（字节顺序标记）
 
 group            = [ group_meta ] ws? "(" ws? field_list_opt ws? ")" [ ws? group_len ] [ ws? group_sep ] ;
 group_meta       = "alt" | "opt" | "some_of" | "seq" ;
@@ -98,8 +103,15 @@ builtin_type     = "auto" | "bool" | "chars" | "symbol" | "peek_symbol"
 
 ns_type          = path_ident ;                               ; 例如 http/request、http/status 等
 ; 注：实现层面建议对白名单前缀（如 "http/"）做校验，以避免任意路径膨胀语言面。
+; 支持的命名空间类型：
+;   http/request, http/status, http/agent (或 http/user_agent), http/method
+;   time/clf (或 time/apache, time/httpd, time/nginx)
+;   time/rfc3339 (别名 time_3339), time/rfc2822 (别名 time_2822)
+;   time/timestamp (或 time/epoch, 别名 time_timestamp)
+;   proto/text (别名 proto_text)
 
-array_type       = "array" [ "/" key ] ;                 ; 如："array" 或 "array/ip"
+array_type       = "array" [ "/" subtype ] ;                 ; 如："array" 或 "array/ip" 或 "array/chars"
+subtype          = key ;                                      ; 可以是任意已支持的类型名
 
 ; 仅当 data_type 为 symbol/peek_symbol 时允许携带内容
 symbol_content   = "(" symbol_chars ")" ;
@@ -121,8 +133,9 @@ pipe             = "|" ws? ( fun_call | group ) ;
 ; - 选择器函数：take, last
 ; - f_ 前缀表示字段集合操作（需指定字段名）
 ; - 无前缀表示活跃字段操作
-; - 转换函数：json_unescape, base64_decode
-fun_call         = selector_fun | target_fun | active_fun | transform_fun ;
+; - 转换函数：json_unescape, base64_decode, chars_replace
+; - 包装器函数：not
+fun_call         = selector_fun | target_fun | active_fun | transform_fun | wrapper_fun ;
 
 ; 选择器函数
 selector_fun     = take_fun | last_fun ;
@@ -141,20 +154,28 @@ f_digit_in       = "f_digit_in" "(" ws? key ws? "," ws? number_array ws? ")" ;
 f_ip_in          = "f_ip_in" "(" ws? key ws? "," ws? ip_array ws? ")" ;
 
 ; 活跃字段操作函数（无前缀）
-active_fun       = has_fun | chars_has | chars_not_has | chars_in
-                 | digit_has | digit_in | ip_in ;
+active_fun       = has_fun | chars_has | chars_not_has | chars_in | starts_with | regex_match
+                 | digit_has | digit_in | digit_range | ip_in ;
 has_fun          = "has" "(" ws? ")" ;
 chars_has        = "chars_has" "(" ws? path ws? ")" ;
 chars_not_has    = "chars_not_has" "(" ws? path ws? ")" ;
 chars_in         = "chars_in" "(" ws? path_array ws? ")" ;
+starts_with      = "starts_with" "(" ws? quoted_string ws? ")" ;
+regex_match      = "regex_match" "(" ws? quoted_string ws? ")" ;
 digit_has        = "digit_has" "(" ws? number ws? ")" ;
 digit_in         = "digit_in" "(" ws? number_array ws? ")" ;
+digit_range      = "digit_range" "(" ws? number ws? "," ws? number ws? ")" ;
 ip_in            = "ip_in" "(" ws? ip_array ws? ")" ;
 
 ; 转换函数
-transform_fun    = json_unescape | base64_decode ;
+transform_fun    = json_unescape | base64_decode | chars_replace ;
 json_unescape    = "json_unescape" "(" ws? ")" ;
 base64_decode    = "base64_decode" "(" ws? ")" ;
+chars_replace    = "chars_replace" "(" ws? path ws? "," ws? path ws? ")" ;
+
+; 包装器函数
+wrapper_fun      = not_fun ;
+not_fun          = "not" "(" ws? fun_call ws? ")" ;
 
 path_array       = "[" ws? path { ws? "," ws? path } ws? "]" ;
 number_array     = "[" ws? number { ws? "," ws? number } ws? "]" ;
@@ -228,6 +249,11 @@ ReservedKeyword  = "package" | "rule" | "alt" | "opt" | "some_of" | "seq" | "ord
 - 作用于整行输入，在字段解析前执行
 - 执行顺序：从左到右
 - 必须以 `|` 结尾
+- 支持的预处理器：
+  - `decode/base64` - Base64 解码
+  - `decode/hex` - 十六进制解码
+  - `unquote/unescape` - URL 转义解码
+  - `strip/bom` - 移除 BOM（字节顺序标记）
 
 ### 分组长度和分隔符
 - `group` 后可跟 `[n]` 与分隔符 `sep`
@@ -254,6 +280,14 @@ ReservedKeyword  = "package" | "rule" | "alt" | "opt" | "some_of" | "seq" | "ord
 ### 注解
 - `annotation` 可用于 `package` 与 `rule`
 - 若同时存在，会在 `rule` 侧合并（`rule` 优先）
+
+### 管道函数
+- 字段级管道函数包括：选择器、条件检查、转换、包装器
+- `not()` 包装器可反转任何管道函数的成功/失败结果
+- `starts_with()` 检查字符串字段是否以指定前缀开始
+- `regex_match()` 支持正则表达式模式匹配
+- `digit_range()` 支持数值范围检查（闭区间）
+- `chars_replace()` 执行字符串替换操作
 
 ---
 

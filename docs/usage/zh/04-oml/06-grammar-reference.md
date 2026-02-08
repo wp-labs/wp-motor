@@ -183,14 +183,16 @@ pipe_expr        = ["pipe"], var_get, "|", pipe_fun, { "|", pipe_fun } ;
 pipe_fun         = "nth",           "(", unsigned, ")"
                  | "get",           "(", ident,   ")"
                  | "base64_decode", "(", [ encode_type ], ")"
-                 | "sxf_get",       "(", alnum*,  ")"
                  | "path",          "(", ("name"|"path"), ")"
                  | "url",           "(", ("domain"|"host"|"uri"|"path"|"params"), ")"
                  | "Time::to_ts_zone", "(", [ "-" ], unsigned, ",", ("ms"|"us"|"ss"|"s"), ")"
+                 | "starts_with",   "(", string, ")"
+                 | "map_to",        "(", (string | number | bool), ")"
                  | "base64_encode" | "html_escape" | "html_unescape"
-                 | "str_escape" | "json_escape" | "json_unescape"
+                 | "str_escape" | "str_unescape" | "json_escape" | "json_unescape"
                  | "Time::to_ts" | "Time::to_ts_ms" | "Time::to_ts_us"
-                 | "to_json" | "to_str" | "skip_empty" | "ip4_to_int" ;
+                 | "to_json" | "to_str" | "skip_empty" | "ip4_to_int"
+                 | "extract_main_word" | "extract_subject_object" ;
 
 encode_type      = ident ;                     (* 例如: Utf8/Gbk/Imap/... *)
 ```
@@ -208,6 +210,21 @@ ts = read(time) | Time::to_ts_zone(0, ms) ;
 
 # URL 解析
 host = read(url) | url(host) ;
+
+# 字符串前缀检查
+is_http = read(url) | starts_with('http://') ;
+
+# 映射到常量值
+status = read(code) | map_to(200) ;
+
+# 提取主要单词
+keyword = read(message) | extract_main_word ;
+
+# 提取主客体结构
+log_struct = read(message) | extract_subject_object ;
+
+# 字符串反转义
+text = read(escaped) | str_unescape ;
 ```
 
 ### 对象聚合
@@ -473,6 +490,7 @@ pos_sn : privacy_keymsg
 | `json_escape` | `json_escape` | JSON 转义 |
 | `json_unescape` | `json_unescape` | JSON 反转义 |
 | `str_escape` | `str_escape` | 字符串转义 |
+| `str_unescape` | `str_unescape` | 字符串反转义 |
 | `Time::to_ts` | `Time::to_ts` | 时间转时间戳（秒，UTC+8） |
 | `Time::to_ts_ms` | `Time::to_ts_ms` | 时间转时间戳（毫秒，UTC+8） |
 | `Time::to_ts_us` | `Time::to_ts_us` | 时间转时间戳（微秒，UTC+8） |
@@ -481,7 +499,10 @@ pos_sn : privacy_keymsg
 | `get` | `get(字段名)` | 获取对象字段 |
 | `path` | `path(name\|path)` | 提取文件路径部分 |
 | `url` | `url(domain\|host\|uri\|path\|params)` | 提取 URL 部分 |
-| `sxf_get` | `sxf_get(字段名)` | 提取特殊格式字段 |
+| `starts_with` | `starts_with('前缀')` | 检查字符串是否以指定前缀开始 |
+| `map_to` | `map_to(值)` | 映射到指定常量值 |
+| `extract_main_word` | `extract_main_word` | 提取主要单词（第一个非空单词） |
+| `extract_subject_object` | `extract_subject_object` | 提取日志主客体结构（subject/action/object/status） |
 | `to_str` | `to_str` | 转换为字符串 |
 | `to_json` | `to_json` | 转换为 JSON |
 | `ip4_to_int` | `ip4_to_int` | IPv4 转整数 |
