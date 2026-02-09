@@ -126,7 +126,6 @@ mod tests {
     use crate::parser::wpl_rule::wpl_rule;
     use crate::types::AnyResult;
     use orion_error::TestAssert;
-    use wp_model_core::model::data::record::RecordItem;
     use wp_model_core::model::{DataRecord, DataType};
     use wp_parser::Parser;
 

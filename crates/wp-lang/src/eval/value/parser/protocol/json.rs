@@ -47,6 +47,7 @@ impl PatternParser for JsonP {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use smol_str::SmolStr;
     use wp_data_fmt::{DataFormat, KeyValue, Raw};

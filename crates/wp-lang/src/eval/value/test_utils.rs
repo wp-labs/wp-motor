@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use std::fmt::Write;
 
 use crate::ast::group::{GroupSeq, WplGroupType};
