@@ -23,7 +23,7 @@ impl FieldExtractor for MapOperation {
                 o.set_name(sub_name.clone());
                 obj.insert(
                     sub_name,
-                    FieldStorage::Owned(omlobj_meta_conv(o, sub.target())),
+                    FieldStorage::from_owned(omlobj_meta_conv(o, sub.target())),
                 );
             }
         }

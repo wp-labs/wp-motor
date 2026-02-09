@@ -3,7 +3,6 @@ use crate::core::prelude::*;
 use crate::language::BatchEvalTarget;
 use crate::language::{BatchEvalExp, BatchEvaluation, RecordOperation};
 use wp_data_model::cache::FieldQueryCache;
-use wp_model_core::model::data::record::RecordItem;
 use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 
 impl ExpEvaluator for BatchEvalExp {
@@ -25,7 +24,7 @@ impl ExpEvaluator for BatchEvalExp {
             diagnostics::push(OmlIssue::new(OmlIssueKind::BatchNoMatch, pat));
         }
         let mut wrapped_needs: Vec<FieldStorage> =
-            needs.into_iter().map(FieldStorage::Owned).collect();
+            needs.into_iter().map(FieldStorage::from_owned).collect();
         dst.items.append(&mut wrapped_needs);
     }
 }
@@ -78,10 +77,10 @@ mod tests {
         let cache = &mut FieldQueryCache::default();
 
         let data = vec![
-            FieldStorage::Owned(DataField::from_chars("details[0]/process_name", "hello1")),
-            FieldStorage::Owned(DataField::from_chars("details[1]/process_name", "hello2")),
-            FieldStorage::Owned(DataField::from_chars("details[2]/process_name", "hello3")),
-            FieldStorage::Owned(DataField::from_chars("details[3]/process_name", "hello4")),
+            FieldStorage::from_owned(DataField::from_chars("details[0]/process_name", "hello1")),
+            FieldStorage::from_owned(DataField::from_chars("details[1]/process_name", "hello2")),
+            FieldStorage::from_owned(DataField::from_chars("details[2]/process_name", "hello3")),
+            FieldStorage::from_owned(DataField::from_chars("details[3]/process_name", "hello4")),
         ];
         let src = DataRecord::from(data.clone());
 
@@ -105,16 +104,16 @@ mod tests {
         let cache = &mut FieldQueryCache::default();
 
         let data = vec![
-            FieldStorage::Owned(DataField::from_chars("details[0]/process_name", "hello1")),
-            FieldStorage::Owned(DataField::from_chars("details[1]/process_name", "hello2")),
-            FieldStorage::Owned(DataField::from_chars("details[11]/process_name", "hello2")),
-            FieldStorage::Owned(DataField::from_chars("details[2]/process_name", "hello3")),
-            FieldStorage::Owned(DataField::from_chars("details[3]/process_name", "hello4")),
+            FieldStorage::from_owned(DataField::from_chars("details[0]/process_name", "hello1")),
+            FieldStorage::from_owned(DataField::from_chars("details[1]/process_name", "hello2")),
+            FieldStorage::from_owned(DataField::from_chars("details[11]/process_name", "hello2")),
+            FieldStorage::from_owned(DataField::from_chars("details[2]/process_name", "hello3")),
+            FieldStorage::from_owned(DataField::from_chars("details[3]/process_name", "hello4")),
         ];
         let src = DataRecord::from(data.clone());
         let expect_data = vec![
-            FieldStorage::Owned(DataField::from_chars("details[1]/process_name", "hello2")),
-            FieldStorage::Owned(DataField::from_chars("details[11]/process_name", "hello2")),
+            FieldStorage::from_owned(DataField::from_chars("details[1]/process_name", "hello2")),
+            FieldStorage::from_owned(DataField::from_chars("details[11]/process_name", "hello2")),
         ];
         let expect = DataRecord::from(expect_data.clone());
 

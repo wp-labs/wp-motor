@@ -47,8 +47,8 @@ mod tests {
         let cache = &mut FieldQueryCache::default();
 
         let data = vec![
-            FieldStorage::Owned(DataField::from_chars("sport", "514")),
-            FieldStorage::Owned(DataField::from_chars("dport", "22")),
+            FieldStorage::from_owned(DataField::from_chars("sport", "514")),
+            FieldStorage::from_owned(DataField::from_chars("dport", "22")),
         ];
         let src = DataRecord::from(data);
 

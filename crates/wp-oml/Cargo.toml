@@ -74,6 +74,10 @@ harness = false
 name = "oml_sql_bench_threadclone"
 harness = false
 
+[[bench]]
+name = "oml_batch_processing"
+harness = false
+
 [lib]
 name = "oml"
 # Enable the default Rust test harness so `cargo test --workspace` works.

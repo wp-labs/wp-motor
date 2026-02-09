@@ -408,7 +408,7 @@ impl JsonProc {
                     if let Some(value) =
                         Self::proc_array_value(j_path.as_str(), v, k, depth + 1, max_depth)
                     {
-                        sub_fields.insert(k.clone(), FieldStorage::Owned(value));
+                        sub_fields.insert(k.clone(), FieldStorage::from_owned(value));
                     }
                 }
                 return Some(DataField::new_opt(DataType::Obj, None, sub_fields.into()));

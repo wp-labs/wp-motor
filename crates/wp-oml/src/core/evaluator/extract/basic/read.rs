@@ -1,5 +1,4 @@
 use crate::core::prelude::*;
-use wp_model_core::model::data::record::RecordItem;
 impl FieldExtractor for FieldRead {
     fn extract_one(
         &self,

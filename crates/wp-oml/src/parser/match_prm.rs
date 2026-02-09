@@ -511,7 +511,7 @@ A = match read(field) {
 
         // Test starts_with
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::Owned(DataField::from_chars(
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
             "Content",
             "[ERROR] System failure",
         ))];
@@ -542,7 +542,7 @@ FileType = match read(filename) {
 "#;
         let model2 = oml_parse_raw(&mut conf2).expect("Failed to parse ends_with");
         let cache2 = &mut FieldQueryCache::default();
-        let data2 = vec![FieldStorage::Owned(DataField::from_chars(
+        let data2 = vec![FieldStorage::from_owned(DataField::from_chars(
             "filename",
             "config.json",
         ))];
@@ -564,7 +564,7 @@ ErrorType = match read(message) {
 "#;
         let model3 = oml_parse_raw(&mut conf3).expect("Failed to parse contains");
         let cache3 = &mut FieldQueryCache::default();
-        let data3 = vec![FieldStorage::Owned(DataField::from_chars(
+        let data3 = vec![FieldStorage::from_owned(DataField::from_chars(
             "message",
             "Connection timeout occurred",
         ))];
@@ -586,7 +586,7 @@ LogLevel = match read(log_line) {
 "#;
         let model4 = oml_parse_raw(&mut conf4).expect("Failed to parse regex_match");
         let cache4 = &mut FieldQueryCache::default();
-        let data4 = vec![FieldStorage::Owned(DataField::from_chars(
+        let data4 = vec![FieldStorage::from_owned(DataField::from_chars(
             "log_line",
             "[ERROR] Failed",
         ))];
@@ -608,7 +608,7 @@ Status = match read(field) {
 "#;
         let model5 = oml_parse_raw(&mut conf5).expect("Failed to parse is_empty");
         let cache5 = &mut FieldQueryCache::default();
-        let data5 = vec![FieldStorage::Owned(DataField::from_chars("field", ""))];
+        let data5 = vec![FieldStorage::from_owned(DataField::from_chars("field", ""))];
         let src5 = DataRecord::from(data5);
         let target5 = model5.transform(src5, cache5);
         let expect5 = DataField::from_chars("Status".to_string(), "empty".to_string());
@@ -630,7 +630,7 @@ Level = match read(count) {
 "#;
         let model6 = oml_parse_raw(&mut conf6).expect("Failed to parse gt");
         let cache6 = &mut FieldQueryCache::default();
-        let data6 = vec![FieldStorage::Owned(DataField::from_digit("count", 150))];
+        let data6 = vec![FieldStorage::from_owned(DataField::from_digit("count", 150))];
         let src6 = DataRecord::from(data6);
         let target6 = model6.transform(src6, cache6);
         let expect6 = DataField::from_chars("Level".to_string(), "high".to_string());
@@ -646,7 +646,7 @@ Grade = match read(score) {
 "#;
         let model7 = oml_parse_raw(&mut conf7).expect("Failed to parse lt");
         let cache7 = &mut FieldQueryCache::default();
-        let data7 = vec![FieldStorage::Owned(DataField::from_digit("score", 45))];
+        let data7 = vec![FieldStorage::from_owned(DataField::from_digit("score", 45))];
         let src7 = DataRecord::from(data7);
         let target7 = model7.transform(src7, cache7);
         let expect7 = DataField::from_chars("Grade".to_string(), "fail".to_string());
@@ -662,7 +662,7 @@ Status = match read(level) {
 "#;
         let model8 = oml_parse_raw(&mut conf8).expect("Failed to parse eq");
         let cache8 = &mut FieldQueryCache::default();
-        let data8 = vec![FieldStorage::Owned(DataField::from_digit("level", 5))];
+        let data8 = vec![FieldStorage::from_owned(DataField::from_digit("level", 5))];
         let src8 = DataRecord::from(data8);
         let target8 = model8.transform(src8, cache8);
         let expect8 = DataField::from_chars("Status".to_string(), "max".to_string());
@@ -681,7 +681,7 @@ TempZone = match read(temperature) {
 "#;
         let model9 = oml_parse_raw(&mut conf9).expect("Failed to parse in_range");
         let cache9 = &mut FieldQueryCache::default();
-        let data9 = vec![FieldStorage::Owned(DataField::from_digit(
+        let data9 = vec![FieldStorage::from_owned(DataField::from_digit(
             "temperature",
             25,
         ))];
@@ -703,7 +703,7 @@ Result = match read(status) {
 "#;
         let model10 = oml_parse_raw(&mut conf10).expect("Failed to parse iequals");
         let cache10 = &mut FieldQueryCache::default();
-        let data10 = vec![FieldStorage::Owned(DataField::from_chars(
+        let data10 = vec![FieldStorage::from_owned(DataField::from_chars(
             "status", "SUCCESS",
         ))];
         let src10 = DataRecord::from(data10);
@@ -739,7 +739,7 @@ Result = match read(status) {
         let cache = &mut FieldQueryCache::default();
 
         // Test case 1: status = A
-        let data1 = vec![FieldStorage::Owned(DataField::from_chars("status", "A"))];
+        let data1 = vec![FieldStorage::from_owned(DataField::from_chars("status", "A"))];
         let src1 = DataRecord::from(data1);
         let target1 = model.transform(src1, cache);
         let expect1 = DataField::from_chars("Result".to_string(), "success message".to_string());
@@ -749,7 +749,7 @@ Result = match read(status) {
         ); // Verify the value contains space
 
         // Test case 2: status = B
-        let data2 = vec![FieldStorage::Owned(DataField::from_chars("status", "B"))];
+        let data2 = vec![FieldStorage::from_owned(DataField::from_chars("status", "B"))];
         let src2 = DataRecord::from(data2);
         let target2 = model.transform(src2, cache);
         let expect2 = DataField::from_chars("Result".to_string(), "failure message".to_string());
@@ -759,7 +759,7 @@ Result = match read(status) {
         );
 
         // Test case 3: status = C (default)
-        let data3 = vec![FieldStorage::Owned(DataField::from_chars("status", "C"))];
+        let data3 = vec![FieldStorage::from_owned(DataField::from_chars("status", "C"))];
         let src3 = DataRecord::from(data3);
         let target3 = model.transform(src3, cache);
         let expect3 = DataField::from_chars("Result".to_string(), "default message".to_string());

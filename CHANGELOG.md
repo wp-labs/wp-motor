@@ -13,12 +13,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Supports wrapping any field pipe function (f_has, f_chars_has, chars_has, etc.)
   - Preserves field value - only inverts success/failure result
   - Supports nested negation: `not(not(...))` for double negation logic
+- **WP-OML Batch Processing**: Add record-level batch processing API to DataTransformer trait
+  - New methods: `transform_batch()` and `transform_batch_ref()` for processing Vec<DataRecord>
+  - Default implementation provides backward compatibility (processes records one by one)
+  - Optimized ObjModel implementation reuses FieldQueryCache across all records
+  - Performance improvement: 12-17% faster when compared to creating fresh cache per record
+    - 100 records: 42.6µs → 37.3µs (12.4% faster with shared cache)
+    - 10 records: 4.45µs → 3.76µs (15.5% faster with shared cache)
+  - Additional 5% improvement in multi-stage pipelines with 100+ records
+  - Provides standardized batch API to prevent cache misuse patterns
 
 ### Changed
 - **Sinks/Logging**: Unify event ID naming across the codebase for end-to-end tracing
+- **Dependencies**: Upgrade wp-model-core 0.8.3 → 0.8.4
+  - Introduces FieldRef<'a> wrapper type for zero-copy, cur_name-aware field access
+  - DataRecord::get_field() now returns Option<FieldRef<'_>> instead of Option<&Field<Value>>
+  - Tests updated to use get_field_owned() where owned fields are needed
+- **WP-OML Performance**: Enable conditional zero-copy optimization in eval_proc
+  - Shared variants use cur_name overlay without cloning Arc (zero-copy)
+  - Owned variants or type conversions apply name to underlying field
+  - Performance improvement: 14-17% faster in multi-stage pipelines
+    - 2-stage: 1,151ns → 956ns (16.9% faster)
+    - 4-stage: 2,641ns → 2,277ns (13.8% faster)
 
 ### Fixed
 - **WP-OML Tests**: Fix `DataRecord` initialization for compatibility with wp-model-core 0.7.2
+- **WP-OML Zero-Copy**: Fix FieldStorage zero-copy optimization for wp-model-core 0.8.3 migration
+  - Correctly distinguish Shared vs Owned variants in eval_proc implementation
+  - Shared variants use cur_name overlay for zero-copy field name modification
+  - Owned variants directly modify underlying field to avoid name inconsistencies
+  - Performance improvement: 17-20% faster in multi-stage pipelines (2,730ns → 2,255ns for 4-stage)
 - **WPL Pipe Functions**: Fix `f_chars_not_has` and `chars_not_has` type checking bug
   - Previously: Non-Chars fields (e.g., Digit) incorrectly returned FALSE
   - Now: Non-Chars fields correctly return TRUE (they are "not the target Chars value")

@@ -89,9 +89,9 @@ mod tests {
     fn test_pipe() {
         let cache = &mut FieldQueryCache::default();
         let data = vec![
-            FieldStorage::Owned(DataField::from_chars("A1", "hello1")),
-            FieldStorage::Owned(DataField::from_chars("B2", "hello2")),
-            FieldStorage::Owned(DataField::from_chars("C3", "hello3")),
+            FieldStorage::from_owned(DataField::from_chars("A1", "hello1")),
+            FieldStorage::from_owned(DataField::from_chars("B2", "hello2")),
+            FieldStorage::from_owned(DataField::from_chars("C3", "hello3")),
         ];
         let src = DataRecord::from(data);
 

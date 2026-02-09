@@ -1,6 +1,5 @@
 use crate::core::prelude::*;
 use crate::language::{Get, Nth, PathGet, PathType, PiPeOperation, SkipEmpty, UrlGet, UrlType};
-use wp_model_core::model::data::record::RecordItem;
 
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
@@ -220,7 +219,7 @@ mod tests {
     #[test]
     fn test_pipe_path_get() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::Owned(DataField::from_chars(
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
             "A1",
             "C:\\Users\\wplab\\AppData\\Local\\Temp\\B8A93152-2B59-426D-BE5F-5521D4D2D957\\api-ms-win-core-file-l1-2-1.dll",
         ))];
@@ -245,7 +244,7 @@ mod tests {
     #[test]
     fn test_pipe_url_get() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::Owned(DataField::from_chars(
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
             "A1",
             "https://a.b.com:8888/OneCollector/1.0?cors=true&content-type=application/x-json-stream#id1",
         ))];
@@ -286,12 +285,12 @@ mod tests {
     fn test_pipe_base64() {
         let cache = &mut FieldQueryCache::default();
         let data = vec![
-            FieldStorage::Owned(DataField::from_chars("A1", "hello1")),
-            FieldStorage::Owned(DataField::from_chars(
+            FieldStorage::from_owned(DataField::from_chars("A1", "hello1")),
+            FieldStorage::from_owned(DataField::from_chars(
                 "B2",
                 "UE9TVCAvYWNjb3VudCBIVFRQLzEuMQ0KSG9zdDogZnRwLXh0by5lbmVyZ3ltb3N0LmNvbTo2MTIyMg0KVXNlci1BZ2VudDogTW96aWxsYS81LjAgKE1hY2ludG9zaDsgSW50ZWwgTWFjIE9TIFggMTBfMTVfNykgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lLzEwMS4wLjAuMCBTYWZhcmkvNTM3LjM2DQpDb250ZW50LUxlbmd0aDogMTE0DQpDb25uZWN0aW9uOiBjbG9zZQ0KQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi94LXd3dy1mb3JtLXVybGVuY29kZWQNCkFjY2VwdC1FbmNvZGluZzogZ3ppcA0KDQo=",
             )),
-            FieldStorage::Owned(DataField::from_chars(
+            FieldStorage::from_owned(DataField::from_chars(
                 "C3",
                 "U1NILTIuMC1tb2Rfc2Z0cA0KAAADVAcUUhSdWEFUvYFEugJ7xA68OgAAAT1jdXJ2ZTI1NTE5LXNoYTI1NixjdXJ2ZTI1NTE5LXNoYTI1NkBsaWJzc2gub3JnLGVjZGgtc2hhMi1uaXN0cDUyMSxlY2RoLXNoYTItbmlzdHAzODQsZWNkaC1zaGEyLW5pc3RwMjU2LGRpZmZpZS1oZWxsbWFuLWdyb3VwMTgtc2hhNTEyLGRpZmZpZS1oZWxsbWFuLWdyb3VwMTYtc2hhNTEyLGRpZmZpZS1oZWxsbWFuLWdyb3VwMTQtc2hhMjU2LGRpZmZpZS1oZWxsbWFuLWdyb3VwLWV4Y2hhbmdlLXNoYTI1NixkaWZmaWUtaGVsbG1hbi1ncm91cC1leGNoYW5nZS1zaGExLGRpZmZpZS1oZWxsbWFuLWdyb3VwMTQtc2hhMSxyc2ExMDI0LXNoYTEsZXh0LWluZm8tcwAAAClyc2Etc2hhMi01MTIscnNhLXNoYTItMjU2LHNzaC1yc2Esc3NoLWRzcwAAAF9hZXMyNTYtY3RyLGFlczE5Mi1jdHIsYWVzMTI4LWN0cixhZXMyNTYtY2JjLGFlczE5Mi1jYmMsYWVzMTI4LWNiYyxjYXN0MTI4LWNiYywzZGVzLWN0ciwzZGVzLWNiYwAAAF9hZXMyNTYtY3RyLGFlczE5Mi1jdHIsYWVzMTI4LWN0cixhZXMyNTYtY2JjLGFlczE5Mi1jYmMsYWVzMTI4LWNiYyxjYXN0MTI4LWNiYywzZGVzLWN0ciwzZGVzLWNiYwAAAFtobWFjLXNoYTItMjU2LGhtYWMtc2hhMi01MTIsaG1hYy1zaGExLGhtYWMtc2hhMS05Nix1bWFjLTY0QG9wZW5zc2guY29tLHVtYWMtMTI4QG9wZW5zc2guY29tAAAAW2htYWMtc2hhMi0yNTYsaG1hYy1zaGEyLTUxMixobWFjLXNoYTEsaG1hYy1zaGExLTk2LHVtYWMtNjRAb3BlbnNzaC5jb20sdW1hYy0xMjhAb3BlbnNzaC5jb20AAAAaemxpYkBvcGVuc3NoLmNvbSx6bGliLG5vbmUAAAAaemxpYkBvcGVuc3NoLmNvbSx6bGliLG5vbmUAAAAAAAAAAAAAAAAAXuQ3JWG631Byb3RvY29sIG1pc21hdGNoLgo=",
             )),
@@ -322,7 +321,7 @@ mod tests {
     #[test]
     fn test_html_escape() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::Owned(DataField::from_chars("A1", "<html>"))];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars("A1", "<html>"))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -341,7 +340,7 @@ mod tests {
     #[test]
     fn test_str_escape() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::Owned(DataField::from_chars("A1", "html\"1_"))];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars("A1", "html\"1_"))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -360,7 +359,7 @@ mod tests {
     #[test]
     fn test_json_escape() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::Owned(DataField::from_chars(
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
             "A1",
             "This is a crab: 🦀",
         ))];
@@ -382,7 +381,7 @@ mod tests {
     #[test]
     fn test_pipe_time() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::Owned(DataField::from_chars("A1", "<html>"))];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars("A1", "<html>"))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -409,8 +408,8 @@ mod tests {
     fn test_pipe_skip() {
         let cache = &mut FieldQueryCache::default();
         let data = vec![
-            FieldStorage::Owned(DataField::from_digit("A1", 0)),
-            FieldStorage::Owned(DataField::from_arr("A2", vec![])),
+            FieldStorage::from_owned(DataField::from_digit("A1", 0)),
+            FieldStorage::from_owned(DataField::from_arr("A2", vec![])),
         ];
         let src = DataRecord::from(data.clone());
 
@@ -465,7 +464,7 @@ mod tests {
     fn test_pipe_start_with() {
         // 测试匹配的情况
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::Owned(DataField::from_chars(
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
             "url",
             "https://example.com",
         ))];
@@ -484,7 +483,7 @@ mod tests {
 
         // 测试不匹配的情况 - 使用独立的 cache 和 model
         let cache2 = &mut FieldQueryCache::default();
-        let data2 = vec![FieldStorage::Owned(DataField::from_chars(
+        let data2 = vec![FieldStorage::from_owned(DataField::from_chars(
             "url",
             "http://example.com",
         ))];
@@ -510,7 +509,7 @@ mod tests {
         let cache = &mut FieldQueryCache::default();
 
         // 测试映射到字符串
-        let data = vec![FieldStorage::Owned(DataField::from_chars("status", "200"))];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars("status", "200"))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -526,7 +525,7 @@ mod tests {
 
         // 测试映射到整数
         let cache2 = &mut FieldQueryCache::default();
-        let data2 = vec![FieldStorage::Owned(DataField::from_chars("level", "ERROR"))];
+        let data2 = vec![FieldStorage::from_owned(DataField::from_chars("level", "ERROR"))];
         let src2 = DataRecord::from(data2);
 
         let mut conf2 = r#"
@@ -542,7 +541,7 @@ mod tests {
 
         // 测试映射到浮点数
         let cache3 = &mut FieldQueryCache::default();
-        let data3 = vec![FieldStorage::Owned(DataField::from_chars("temp", "high"))];
+        let data3 = vec![FieldStorage::from_owned(DataField::from_chars("temp", "high"))];
         let src3 = DataRecord::from(data3);
 
         let mut conf3 = r#"
@@ -558,7 +557,7 @@ mod tests {
 
         // 测试映射到布尔值
         let cache4 = &mut FieldQueryCache::default();
-        let data4 = vec![FieldStorage::Owned(DataField::from_chars("flag", "yes"))];
+        let data4 = vec![FieldStorage::from_owned(DataField::from_chars("flag", "yes"))];
         let src4 = DataRecord::from(data4);
 
         let mut conf4 = r#"
@@ -574,7 +573,7 @@ mod tests {
 
         // 测试 ignore 字段保持不变
         let cache5 = &mut FieldQueryCache::default();
-        let data5 = vec![FieldStorage::Owned(DataField::from_chars(
+        let data5 = vec![FieldStorage::from_owned(DataField::from_chars(
             "url",
             "http://example.com",
         ))];

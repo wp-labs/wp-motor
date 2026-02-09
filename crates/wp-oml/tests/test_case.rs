@@ -38,8 +38,8 @@ fn test_crate_get() {
     let target = model.transform(src.clone(), cache);
 
     assert_eq!(
-        target.get_field("A10"),
-        Some(&DataField::from_chars("A10", "hello1"))
+        target.get_field_owned("A10"),
+        Some(DataField::from_chars("A10", "hello1"))
     );
 
     let mut conf = r#"
@@ -50,7 +50,7 @@ fn test_crate_get() {
     let model = oml_parse_raw(&mut conf).assert();
     let target = model.transform(src.clone(), cache);
     let expect = DataField::from_chars("A1", "hello2");
-    assert_eq!(target.get_field("A1"), Some(&expect));
+    assert_eq!(target.get_field_owned("A1"), Some(expect));
 
     let mut conf = r#"
         name : test
@@ -60,7 +60,7 @@ fn test_crate_get() {
     let model = oml_parse_raw(&mut conf).assert();
     let target = model.transform(src.clone(), cache);
     let expect = DataField::from_chars("A3", "hello3");
-    assert_eq!(target.get_field("A3"), Some(&expect));
+    assert_eq!(target.get_field_owned("A3"), Some(expect));
 }
 
 #[test]
@@ -147,8 +147,8 @@ fn test_wild_get() {
     let target = model.transform(src.clone(), cache);
 
     assert_eq!(target.items.len(), 5);
-    assert_eq!(target.get_field("A1/path"), expect.get_field("A1/path"));
-    assert_eq!(target.get_field("B2/path"), expect.get_field("B2/path"));
+    assert_eq!(target.get_field_owned("A1/path"), expect.get_field_owned("A1/path"));
+    assert_eq!(target.get_field_owned("B2/path"), expect.get_field_owned("B2/path"));
 
     let mut conf = r#"
         name : test
@@ -161,8 +161,8 @@ fn test_wild_get() {
     let target = model.transform(src.clone(), cache);
 
     assert_eq!(target.items.len(), 2);
-    assert_eq!(target.get_field("A1/path"), expect.get_field("A1/path"));
-    assert_eq!(target.get_field("B2/path"), expect.get_field("B2/path"));
+    assert_eq!(target.get_field_owned("A1/path"), expect.get_field_owned("A1/path"));
+    assert_eq!(target.get_field_owned("B2/path"), expect.get_field_owned("B2/path"));
 
     let mut conf = r#"
         name : test
@@ -175,7 +175,7 @@ fn test_wild_get() {
     let target = model.transform(src.clone(), cache);
 
     assert_eq!(target.items.len(), 1);
-    assert_eq!(target.get_field("A1/path"), expect.get_field("A1/path"));
+    assert_eq!(target.get_field_owned("A1/path"), expect.get_field_owned("A1/path"));
 
     let mut conf = r#"
         name : test
@@ -188,7 +188,7 @@ fn test_wild_get() {
     let target = model.transform(src.clone(), cache);
 
     assert_eq!(target.items.len(), 3);
-    assert_eq!(target.get_field("A2/name"), expect.get_field("A2/name"));
+    assert_eq!(target.get_field_owned("A2/name"), expect.get_field_owned("A2/name"));
 }
 
 #[test]
@@ -212,8 +212,8 @@ fn test_crate_move() {
     let expect = src.clone();
     let target = model.transform(src, cache);
 
-    assert_eq!(target.get_field("A1"), expect.get_field("A1"));
-    assert!(target.get_field("A2").is_none())
+    assert_eq!(target.get_field_owned("A1"), expect.get_field_owned("A1"));
+    assert!(target.get_field_owned("A2").is_none())
 }
 
 #[test]
@@ -236,7 +236,7 @@ fn test_value_get() {
     let target = model.transform(src, cache);
 
     let expect = DataField::from_chars("A4", "hello4");
-    assert_eq!(target.get_field("A4"), Some(&expect));
+    assert_eq!(target.get_field_owned("A4"), Some(expect));
 }
 #[test]
 fn test_map_get() {
@@ -269,8 +269,8 @@ fn test_map_get() {
         expect_obj.insert(i.get_name().to_string(), DataField::from(i));
     }
     assert_eq!(
-        target.get_field("X"),
-        Some(&DataField::from_obj("X", expect_obj))
+        target.get_field_owned("X"),
+        Some(DataField::from_obj("X", expect_obj))
     );
 }
 
@@ -296,9 +296,9 @@ fn test_match_get() {
     let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
-    let one = target.get_field("X");
+    let one = target.get_field_owned("X");
 
-    assert_eq!(one, Some(&DataField::from_chars("X", "cs")));
+    assert_eq!(one, Some(DataField::from_chars("X", "cs")));
 
     let data = vec![
         DataField::from_ip("ip", IpAddr::V4(Ipv4Addr::new(10, 0, 10, 1))),
@@ -308,9 +308,9 @@ fn test_match_get() {
     let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
-    let one = target.get_field("X");
+    let one = target.get_field_owned("X");
 
-    assert_eq!(one, Some(&DataField::from_chars("X", "hk")));
+    assert_eq!(one, Some(DataField::from_chars("X", "hk")));
 
     let data = vec![
         DataField::from_ip("ip", IpAddr::V4(Ipv4Addr::new(10, 0, 10, 2))),
@@ -320,9 +320,9 @@ fn test_match_get() {
     let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
-    let one = target.get_field("X");
+    let one = target.get_field_owned("X");
 
-    assert_eq!(one, Some(&DataField::from_chars("X", "bj")));
+    assert_eq!(one, Some(DataField::from_chars("X", "bj")));
 }
 
 #[test]
@@ -348,9 +348,9 @@ fn test_match2_get() -> ModalResult<()> {
     let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
-    let one = target.get_field("X");
+    let one = target.get_field_owned("X");
 
-    assert_eq!(one, Some(&DataField::from_chars("X", "cs")));
+    assert_eq!(one, Some(DataField::from_chars("X", "cs")));
 
     let data = vec![
         DataField::from_ip("ip", IpAddr::V4(Ipv4Addr::new(10, 0, 0, 3))),
@@ -361,9 +361,9 @@ fn test_match2_get() -> ModalResult<()> {
     let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
-    let one = target.get_field("X");
+    let one = target.get_field_owned("X");
 
-    assert_eq!(one, Some(&DataField::from_chars("X", "bj")));
+    assert_eq!(one, Some(DataField::from_chars("X", "bj")));
 
     let data = vec![
         DataField::from_ip("ip", IpAddr::V4(Ipv4Addr::new(10, 0, 10, 1))),
@@ -374,9 +374,9 @@ fn test_match2_get() -> ModalResult<()> {
     let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
-    let one = target.get_field("X");
+    let one = target.get_field_owned("X");
 
-    assert_eq!(one, Some(&DataField::from_chars("X", "hk")));
+    assert_eq!(one, Some(DataField::from_chars("X", "hk")));
 
     let data = vec![
         DataField::from_ip("ip", IpAddr::V4(Ipv4Addr::new(10, 0, 10, 2))),
@@ -386,9 +386,9 @@ fn test_match2_get() -> ModalResult<()> {
     let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
-    let one = target.get_field("X");
+    let one = target.get_field_owned("X");
 
-    assert_eq!(one, Some(&DataField::from_chars("X", "bj")));
+    assert_eq!(one, Some(DataField::from_chars("X", "bj")));
     Ok(())
 }
 
@@ -409,14 +409,14 @@ fn test_match3_get() -> ModalResult<()> {
     let data = vec![DataField::from_bool("key1", true)];
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
-    let one = target.get_field("X");
-    assert_eq!(one, Some(&DataField::from_digit("X", 1)));
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_digit("X", 1)));
 
     let data = vec![DataField::from_bool("key1", false)];
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
-    let one = target.get_field("X");
-    assert_eq!(one, Some(&DataField::from_digit("X", 2)));
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_digit("X", 2)));
     Ok(())
 }
 
@@ -447,22 +447,22 @@ X: chars = match  read(month) {
     let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
-    let one = target.get_field("X");
-    assert_eq!(one, Some(&DataField::from_chars("X", "Q1")));
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_chars("X", "Q1")));
 
     let data = vec![DataField::from_digit("month", 6)];
     let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
-    let one = target.get_field("X");
-    assert_eq!(one, Some(&DataField::from_chars("X", "Q2")));
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_chars("X", "Q2")));
 
     let data = vec![DataField::from_digit("month", 10)];
     let src = DataRecord::from(data);
 
     let target = model.transform(src, cache);
-    let one = target.get_field("X");
-    assert_eq!(one, Some(&DataField::from_chars("X", "Q4")));
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_chars("X", "Q4")));
     println!("{}", target);
     Ok(())
 }
@@ -489,7 +489,7 @@ fn test_value_arr() {
     let target = model.transform(src, cache);
 
     let expect = DataField::from_arr("X1".to_string(), data);
-    assert_eq!(target.get_field("X1"), Some(&expect));
+    assert_eq!(target.get_field_owned("X1"), Some(expect));
     let json_out = Json.fmt_record(&target).to_string();
     println!("{}", json_out);
     println!("{}", ProtoTxt.fmt_record(&target));
@@ -571,14 +571,14 @@ fn test_value_arr1() {
 
     println!("{}", Json.fmt_record(&target));
     let expect = DataField::from_arr("X1".to_string(), data);
-    assert_eq!(target.get_field("X1"), Some(&expect));
+    assert_eq!(target.get_field_owned("X1"), Some(expect));
     assert_eq!(
-        target.get_field("X2"),
-        Some(&DataField::from_chars("X2", "hello1"))
+        target.get_field_owned("X2"),
+        Some(DataField::from_chars("X2", "hello1"))
     );
     assert_eq!(
-        target.get_field("X3"),
-        Some(&DataField::from_chars("X3", "hello3"))
+        target.get_field_owned("X3"),
+        Some(DataField::from_chars("X3", "hello3"))
     );
 }
 //}
@@ -669,8 +669,8 @@ fn test_enabled_model_transforms_data() {
     let src = DataRecord::default();
     let target = model.transform(src, cache);
     assert_eq!(
-        target.get_field("result"),
-        Some(&DataField::from_chars("result", "transformed"))
+        target.get_field_owned("result"),
+        Some(DataField::from_chars("result", "transformed"))
     );
 }
 
@@ -693,8 +693,8 @@ fn test_disabled_model_still_parses() {
     let src = DataRecord::default();
     let target = model.transform(src, cache);
     assert_eq!(
-        target.get_field("result"),
-        Some(&DataField::from_chars("result", "should_not_run"))
+        target.get_field_owned("result"),
+        Some(DataField::from_chars("result", "should_not_run"))
     );
 }
 
@@ -725,12 +725,12 @@ fn test_enable_with_complex_config() {
     let target = model.transform(src, cache);
 
     assert_eq!(
-        target.get_field("result"),
-        Some(&DataField::from_chars("result", "default"))
+        target.get_field_owned("result"),
+        Some(DataField::from_chars("result", "default"))
     );
     assert_eq!(
-        target.get_field("field1"),
-        Some(&DataField::from_chars("field1", "v1"))
+        target.get_field_owned("field1"),
+        Some(DataField::from_chars("field1", "v1"))
     );
 }
 
@@ -792,8 +792,8 @@ fn test_static_symbol_eq_match() {
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
-        target.get_field("result"),
-        Some(&DataField::from_chars("result", "localhost"))
+        target.get_field_owned("result"),
+        Some(DataField::from_chars("result", "localhost"))
     );
 
     // Test non-matching case (default)
@@ -804,8 +804,8 @@ fn test_static_symbol_eq_match() {
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
-        target.get_field("result"),
-        Some(&DataField::from_chars("result", "remote"))
+        target.get_field_owned("result"),
+        Some(DataField::from_chars("result", "remote"))
     );
 }
 
@@ -835,8 +835,8 @@ fn test_static_symbol_neq_match() {
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
-        target.get_field("result"),
-        Some(&DataField::from_chars("result", "external"))
+        target.get_field_owned("result"),
+        Some(DataField::from_chars("result", "external"))
     );
 
     // Test negation non-match (is 127.0.0.1)
@@ -847,8 +847,8 @@ fn test_static_symbol_neq_match() {
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
-        target.get_field("result"),
-        Some(&DataField::from_chars("result", "internal"))
+        target.get_field_owned("result"),
+        Some(DataField::from_chars("result", "internal"))
     );
 }
 
@@ -879,16 +879,16 @@ fn test_static_symbol_in_range_match() {
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
-        target.get_field("level"),
-        Some(&DataField::from_chars("level", "success"))
+        target.get_field_owned("level"),
+        Some(DataField::from_chars("level", "success"))
     );
 
     let data = vec![DataField::from_digit("http_status", 250)];
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
-        target.get_field("level"),
-        Some(&DataField::from_chars("level", "success"))
+        target.get_field_owned("level"),
+        Some(DataField::from_chars("level", "success"))
     );
 
     // Test in second range
@@ -896,8 +896,8 @@ fn test_static_symbol_in_range_match() {
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
-        target.get_field("level"),
-        Some(&DataField::from_chars("level", "client_error"))
+        target.get_field_owned("level"),
+        Some(DataField::from_chars("level", "client_error"))
     );
 
     // Test outside ranges (default)
@@ -905,8 +905,8 @@ fn test_static_symbol_in_range_match() {
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
-        target.get_field("level"),
-        Some(&DataField::from_chars("level", "other"))
+        target.get_field_owned("level"),
+        Some(DataField::from_chars("level", "other"))
     );
 }
 
@@ -935,8 +935,8 @@ fn test_static_symbol_chars_match() {
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
-        target.get_field("priority"),
-        Some(&DataField::from_digit("priority", 1))
+        target.get_field_owned("priority"),
+        Some(DataField::from_digit("priority", 1))
     );
 
     // Test development environment
@@ -944,8 +944,8 @@ fn test_static_symbol_chars_match() {
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
-        target.get_field("priority"),
-        Some(&DataField::from_digit("priority", 3))
+        target.get_field_owned("priority"),
+        Some(DataField::from_digit("priority", 3))
     );
 
     // Test other environment
@@ -953,8 +953,8 @@ fn test_static_symbol_chars_match() {
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
-        target.get_field("priority"),
-        Some(&DataField::from_digit("priority", 5))
+        target.get_field_owned("priority"),
+        Some(DataField::from_digit("priority", 5))
     );
 }
 
@@ -994,12 +994,12 @@ fn test_static_symbol_multiple_match_cases() {
     let target = model.transform(src, cache);
 
     assert_eq!(
-        target.get_field("ip_type"),
-        Some(&DataField::from_chars("ip_type", "localhost"))
+        target.get_field_owned("ip_type"),
+        Some(DataField::from_chars("ip_type", "localhost"))
     );
     assert_eq!(
-        target.get_field("status_level"),
-        Some(&DataField::from_chars("status_level", "normal"))
+        target.get_field_owned("status_level"),
+        Some(DataField::from_chars("status_level", "normal"))
     );
 
     // Test with different values
@@ -1011,12 +1011,12 @@ fn test_static_symbol_multiple_match_cases() {
     let target = model.transform(src, cache);
 
     assert_eq!(
-        target.get_field("ip_type"),
-        Some(&DataField::from_chars("ip_type", "attack"))
+        target.get_field_owned("ip_type"),
+        Some(DataField::from_chars("ip_type", "attack"))
     );
     assert_eq!(
-        target.get_field("status_level"),
-        Some(&DataField::from_chars("status_level", "other"))
+        target.get_field_owned("status_level"),
+        Some(DataField::from_chars("status_level", "other"))
     );
 }
 
@@ -1046,8 +1046,8 @@ fn test_static_symbol_with_result_reference() {
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
-        target.get_field("level"),
-        Some(&DataField::from_chars("level", "high"))
+        target.get_field_owned("level"),
+        Some(DataField::from_chars("level", "high"))
     );
 
     // Test below range
@@ -1055,8 +1055,8 @@ fn test_static_symbol_with_result_reference() {
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
-        target.get_field("level"),
-        Some(&DataField::from_chars("level", "low"))
+        target.get_field_owned("level"),
+        Some(DataField::from_chars("level", "low"))
     );
 }
 
@@ -1134,16 +1134,12 @@ fn test_arc_optimization_parsing_performance() {
     let result_no_static = model_without_static.transform(src.clone(), cache);
 
     assert_eq!(
-        result_static.get_field("ip_type").map(|f| f.get_value()),
-        result_no_static.get_field("ip_type").map(|f| f.get_value())
+        result_static.get_field_owned("ip_type"),
+        result_no_static.get_field_owned("ip_type")
     );
     assert_eq!(
-        result_static
-            .get_field("status_level")
-            .map(|f| f.get_value()),
-        result_no_static
-            .get_field("status_level")
-            .map(|f| f.get_value())
+        result_static.get_field_owned("status_level"),
+        result_no_static.get_field_owned("status_level")
     );
 }
 

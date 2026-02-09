@@ -253,7 +253,6 @@ pub fn oml_aga_sql(data: &mut &str) -> WResult<PreciseEvaluator> {
 #[cfg(test)]
 mod tests {
     use wp_data_model::cache::FieldQueryCache;
-    use wp_model_core::model::data::record::RecordItem;
     use wp_model_core::model::{DataField, DataRecord, FieldStorage};
     use wp_parser::WResult as ModalResult;
 
@@ -349,7 +348,7 @@ zone : chars = select zone from zone where ip_start_int <= ip4_int(read(src_ip))
         let model = oml_parse_raw(&mut conf).assert();
 
         // 3) transform with src_ip within range
-        let src = DataRecord::from(vec![FieldStorage::Owned(DataField::from_chars(
+        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars(
             "src_ip", "10.1.2.3",
         ))]);
         let cache = &mut FieldQueryCache::default();

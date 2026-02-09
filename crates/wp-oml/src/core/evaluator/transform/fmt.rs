@@ -63,7 +63,7 @@ where
     fn display_str(&self, f: &mut Formatter) -> strfmt::Result<()> {
         let raw_fmt = Raw;
         let str = raw_fmt
-            .fmt_field(&FieldStorage::Owned(self.0.clone()))
+            .fmt_field(&FieldStorage::from_owned(self.0.clone()))
             .to_string();
         f.str(str.as_str())
     }
@@ -80,9 +80,9 @@ mod tests {
     #[test]
     fn test_fmt() {
         let data = vec![
-            FieldStorage::Owned(DataField::from_chars("A1", "h1")),
-            FieldStorage::Owned(DataField::from_chars("B2", "h2")),
-            FieldStorage::Owned(DataField::from_chars("C3", "h3")),
+            FieldStorage::from_owned(DataField::from_chars("A1", "h1")),
+            FieldStorage::from_owned(DataField::from_chars("B2", "h2")),
+            FieldStorage::from_owned(DataField::from_chars("C3", "h3")),
         ];
         let src = DataRecord::from(data);
         let mut cache = FieldQueryCache::default();

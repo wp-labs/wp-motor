@@ -15,7 +15,7 @@ use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 #[cfg(test)]
 #[allow(dead_code)]
 pub fn test_record(fields: Vec<DataField>) -> DataRecord {
-    let storage: Vec<FieldStorage> = fields.into_iter().map(FieldStorage::Owned).collect();
+    let storage: Vec<FieldStorage> = fields.into_iter().map(FieldStorage::from_owned).collect();
     DataRecord::from(storage)
 }
 

@@ -29,7 +29,7 @@ mod tests {
     #[test]
     fn test_pipe_ip4_int() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::Owned(DataField::from_ip(
+        let data = vec![FieldStorage::from_owned(DataField::from_ip(
             "src_ip",
             IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         ))];

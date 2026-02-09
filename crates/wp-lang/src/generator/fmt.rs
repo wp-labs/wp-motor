@@ -54,7 +54,7 @@ pub fn record_from_fmt_fields(fields: FmtFieldVec) -> DataRecord {
     let mut data_fields = Vec::new();
 
     for field in fields {
-        data_fields.push(wp_model_core::model::FieldStorage::Owned(field.data_field));
+        data_fields.push(wp_model_core::model::FieldStorage::from_owned(field.data_field));
     }
     DataRecord::from(data_fields)
 }
@@ -105,12 +105,12 @@ mod field_vec_fmt {
                     match fmt_field.meta {
                         DataType::KV => {
                             // Wrap DataField as FieldStorage for fmt_field
-                            let storage = FieldStorage::Owned(fmt_field.data_field.clone());
+                            let storage = FieldStorage::from_owned(fmt_field.data_field.clone());
                             write!(f, "{}", kvfmt.fmt_field(&storage))?;
                         }
                         _ => {
                             // Wrap DataField as FieldStorage for fmt_field
-                            let storage = FieldStorage::Owned(fmt_field.data_field.clone());
+                            let storage = FieldStorage::from_owned(fmt_field.data_field.clone());
                             write!(f, "{}", rawfmt.fmt_field(&storage))?;
                         }
                     }

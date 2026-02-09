@@ -10,7 +10,6 @@ use wp_data_model::cache::FieldQueryCache;
 use wp_error::parse_error::{OMLCodeError, OMLCodeReason, OMLCodeResult};
 use wp_model_core::model::DataRecord;
 use wp_model_core::model::FieldStorage;
-use wp_model_core::model::data::record::RecordItem;
 use wp_parser::comment::CommentParser;
 
 impl DataTransformer for ObjModel {
@@ -33,7 +32,7 @@ impl DataTransformer for ObjModel {
             // Convert fields starting with "__" to ignore type
             for field in &mut out.items {
                 if field.get_name().starts_with("__") {
-                    *field = FieldStorage::Owned(DataField::from_ignore(field.get_name()));
+                    *field = FieldStorage::from_owned(DataField::from_ignore(field.get_name()));
                 }
             }
         }
@@ -48,6 +47,74 @@ impl DataTransformer for ObjModel {
         for ado in &self.items {
             ado.eval_proc(&mut src, data, &mut cache);
         }
+    }
+
+    /// Optimized batch processing that reuses cache and model across all records
+    fn transform_batch(
+        &self,
+        records: Vec<DataRecord>,
+        cache: &mut FieldQueryCache,
+    ) -> Vec<DataRecord> {
+        // Pre-allocate result vector for better performance
+        let mut results = Vec::with_capacity(records.len());
+
+        // Process each record with shared cache
+        for record in records {
+            let mut out = DataRecord::default();
+            let mut tdo_ref = DataRecordRef::from(&record);
+
+            // Reuse the same cache across all records (key optimization)
+            for ado in &self.items {
+                ado.eval_proc(&mut tdo_ref, &mut out, cache);
+            }
+
+            // Filter temporary fields if needed
+            if self.has_temp_fields() {
+                for field in &mut out.items {
+                    if field.get_name().starts_with("__") {
+                        *field = FieldStorage::from_owned(DataField::from_ignore(field.get_name()));
+                    }
+                }
+            }
+
+            results.push(out);
+        }
+
+        results
+    }
+
+    /// Optimized batch processing (reference version)
+    fn transform_batch_ref(
+        &self,
+        records: &[DataRecord],
+        cache: &mut FieldQueryCache,
+    ) -> Vec<DataRecord> {
+        // Pre-allocate result vector for better performance
+        let mut results = Vec::with_capacity(records.len());
+
+        // Process each record with shared cache
+        for record in records {
+            let mut out = DataRecord::default();
+            let mut tdo_ref = DataRecordRef::from(record);
+
+            // Reuse the same cache across all records (key optimization)
+            for ado in &self.items {
+                ado.eval_proc(&mut tdo_ref, &mut out, cache);
+            }
+
+            // Filter temporary fields if needed
+            if self.has_temp_fields() {
+                for field in &mut out.items {
+                    if field.get_name().starts_with("__") {
+                        *field = FieldStorage::from_owned(DataField::from_ignore(field.get_name()));
+                    }
+                }
+            }
+
+            results.push(out);
+        }
+
+        results
     }
 }
 
