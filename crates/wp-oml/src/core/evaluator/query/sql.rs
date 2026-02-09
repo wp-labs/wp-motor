@@ -3,6 +3,7 @@ use crate::language::EvaluationTarget;
 use crate::language::SqlQuery;
 use wp_know::mem::{SqlNamedParam, ToSqlParams};
 use wp_knowledge::facade as kdb;
+use wp_model_core::model::FieldStorage;
 
 impl FieldExtractor for SqlQuery {
     #[allow(unused_variables)]
@@ -16,6 +17,16 @@ impl FieldExtractor for SqlQuery {
         None
     }
 
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
+    }
+
     fn extract_more(
         &self,
         src: &mut DataRecordRef<'_>,
@@ -25,7 +36,9 @@ impl FieldExtractor for SqlQuery {
         let mut params = Vec::with_capacity(5);
         let target = EvaluationTarget::auto_default();
         for (v, acq) in self.vars() {
-            if let Some(mut tdo) = acq.extract_one(&target, src, dst) {
+            // Use extract_storage to preserve zero-copy for Arc variants
+            if let Some(storage) = acq.extract_storage(&target, src, dst) {
+                let mut tdo = storage.into_owned();
                 tdo.set_name(format!(":{}", v));
                 params.push(tdo);
             }

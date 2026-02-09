@@ -4,7 +4,8 @@ use crate::language::{Get, Nth, PathGet, PathType, PiPeOperation, SkipEmpty, Url
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use url::{Position, Url};
-use wp_model_core::model::{DataField, DataRecord, Value};
+use wp_model_core::model::{DataField, DataRecord, Value, FieldStorage};
+use wp_model_core::model::types::value::ObjectValue;
 impl FieldExtractor for PiPeOperation {
     fn extract_one(
         &self,
@@ -17,6 +18,22 @@ impl FieldExtractor for PiPeOperation {
                 from = pipe.value_cacu(from);
             }
             return Some(from);
+        }
+        None
+    }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        // Use extract_storage to preserve zero-copy for Shared variants
+        if let Some(mut from_storage) = self.from().extract_storage(target, src, dst) {
+            for pipe in self.items() {
+                from_storage = pipe.value_cacu_storage(from_storage);
+            }
+            return Some(from_storage);
         }
         None
     }
@@ -85,6 +102,47 @@ impl ValueProcessor for Get {
         }
         in_val
     }
+
+    fn value_cacu_storage(&self, in_val: FieldStorage) -> FieldStorage {
+        // Zero-copy path: extract field from Shared object without cloning the object
+        if in_val.is_shared() {
+            let field = in_val.as_field();  // Returns &Field
+            if let Value::Obj(obj) = field.get_value() {  // obj is &ObjectValue
+                let keys: Vec<&str> = self.name.split('/').collect();
+                if let Some(result) = get_from_obj(obj, &keys) {  // Pass obj directly
+                    // ✅ Preserve FieldStorage type (Shared or Owned)
+                    return result.clone();
+                }
+            }
+        }
+
+        // Fallback: use default implementation
+        let field = in_val.into_owned();
+        let result = self.value_cacu(field);
+        FieldStorage::from_owned(result)
+    }
+}
+
+// Helper function to navigate nested objects
+fn get_from_obj<'a>(mut obj: &'a ObjectValue, keys: &[&str]) -> Option<&'a FieldStorage> {
+    for (i, key) in keys.iter().enumerate() {
+        if let Some(val) = obj.get(*key) {
+            if i == keys.len() - 1 {
+                // Last key: return the field
+                return Some(val);
+            } else {
+                // Intermediate key: navigate deeper
+                if let Value::Obj(nested) = val.get_value() {
+                    obj = nested;
+                } else {
+                    return None;
+                }
+            }
+        } else {
+            return None;
+        }
+    }
+    None
 }
 
 impl ValueProcessor for crate::language::StartsWith {

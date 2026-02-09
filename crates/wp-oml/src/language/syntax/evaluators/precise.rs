@@ -8,6 +8,7 @@ use crate::language::syntax::operations::pipe::PiPeOperation;
 use crate::language::syntax::operations::record::RecordOperation;
 use crate::language::syntax::operations::sql::SqlQuery;
 use std::sync::Arc;
+use wp_model_core::model::FieldStorage;
 
 #[derive(Default, Builder, Clone, Getters, Debug)]
 #[builder(setter(into))]
@@ -94,5 +95,15 @@ impl FieldExtractor for DataField {
         let obj = self.clone();
         //obj.set_name(target.safe_name());
         Some(obj)
+    }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
     }
 }

@@ -3,7 +3,7 @@ use crate::core::prelude::*;
 use crate::language::EvaluationTarget;
 use crate::language::FieldTake;
 use wildmatch::WildMatch;
-use wp_model_core::model::{DataField, DataRecord};
+use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 
 impl FieldExtractor for FieldTake {
     fn extract_one(
@@ -26,6 +26,16 @@ impl FieldExtractor for FieldTake {
             }
         }
         None
+    }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
     }
 }
 

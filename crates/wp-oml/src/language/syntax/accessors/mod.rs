@@ -6,6 +6,7 @@ use crate::language::prelude::*;
 
 use wp_data_fmt::Json;
 use wp_data_model::cache::FieldQueryCache;
+use wp_model_core::model::FieldStorage;
 
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
@@ -27,6 +28,23 @@ pub enum NestedAccessor {
 }
 
 impl FieldExtractor for NestedAccessor {
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        match self {
+            // Static symbol: return Shared variant (zero-copy)
+            // Skip extract_one to avoid unnecessary clone
+            NestedAccessor::FieldArc(arc) => Some(FieldStorage::from_shared(arc.clone())),
+            // Other variants: use default implementation
+            _ => self
+                .extract_one(target, src, dst)
+                .map(FieldStorage::from_owned),
+        }
+    }
+
     fn extract_one(
         &self,
         target: &EvaluationTarget,
@@ -216,6 +234,17 @@ impl FieldExtractor for CondAccessor {
             CondAccessor::SqlFn(_x) => None, // SQL function is printed inline; params are collected separately
         }
     }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
+    }
+
     fn extract_more(
         &self,
         src: &mut DataRecordRef<'_>,
@@ -293,6 +322,16 @@ impl FieldExtractor for Value {
             target.safe_name(),
             self.clone(),
         ))
+    }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
     }
 }
 // ---------------- SQL Function Expression (for WHERE) ----------------

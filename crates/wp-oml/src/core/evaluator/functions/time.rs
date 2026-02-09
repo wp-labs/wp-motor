@@ -2,6 +2,7 @@ use crate::core::FieldExtractor;
 use crate::core::prelude::*;
 use crate::language::{BuiltinFunction, FunOperation, NowDate, NowHour, NowTime};
 use chrono::{Datelike, Local, Timelike};
+use wp_model_core::model::FieldStorage;
 impl FieldExtractor for NowTime {
     fn extract_one(
         &self,
@@ -13,6 +14,16 @@ impl FieldExtractor for NowTime {
         let name = target.name().clone().unwrap_or("_".to_string());
         Some(DataField::from_time(name, now.naive_local()))
     }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
+    }
 }
 
 impl FieldExtractor for FunOperation {
@@ -23,6 +34,16 @@ impl FieldExtractor for FunOperation {
         dst: &DataRecord,
     ) -> Option<DataField> {
         self.fun().extract_one(target, src, dst)
+    }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
     }
 }
 
@@ -39,6 +60,16 @@ impl FieldExtractor for BuiltinFunction {
             BuiltinFunction::NowHour(x) => x.extract_one(target, src, dst),
         }
     }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
+    }
 }
 impl FieldExtractor for NowDate {
     fn extract_one(
@@ -54,6 +85,16 @@ impl FieldExtractor for NowDate {
             name,
             now.year() as i64 * 10000 + now.month() as i64 * 100 + now.day() as i64,
         ))
+    }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
     }
 }
 
@@ -74,6 +115,16 @@ impl FieldExtractor for NowHour {
                 + now.day() as i64 * 100
                 + now.hour() as i64,
         ))
+    }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::core::prelude::*;
+use wp_model_core::model::FieldStorage;
 impl FieldExtractor for FieldRead {
     fn extract_one(
         &self,
@@ -28,6 +29,16 @@ impl FieldExtractor for FieldRead {
             }
         }
         None
+    }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
     }
 }
 

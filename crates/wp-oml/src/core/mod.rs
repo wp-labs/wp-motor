@@ -32,17 +32,15 @@ pub trait FieldExtractor {
 
     /// Extract field as FieldStorage (Shared or Owned variant)
     ///
-    /// Default implementation wraps extract_one result using FieldStorage::from_owned().
-    /// Override this for zero-copy behavior (return Shared variant for Arc-based fields).
+    /// Implementations MUST explicitly handle this method.
+    /// - For types without Arc variants: call extract_one and wrap with FieldStorage::from_owned
+    /// - For types with Arc variants: return FieldStorage::from_shared for zero-copy optimization
     fn extract_storage(
         &self,
         target: &EvaluationTarget,
         src: &mut DataRecordRef<'_>,
         dst: &DataRecord,
-    ) -> Option<FieldStorage> {
-        self.extract_one(target, src, dst)
-            .map(FieldStorage::from_owned)
-    }
+    ) -> Option<FieldStorage>;
 
     #[allow(unused_variables)]
     fn extract_more(
@@ -90,10 +88,8 @@ impl FieldExtractor for PreciseEvaluator {
     ) -> Option<FieldStorage> {
         match self {
             // Static symbol reference: return Shared variant (zero-copy)
-            PreciseEvaluator::ObjArc(arc) => arc
-                .as_ref()
-                .extract_one(target, src, dst)
-                .map(|_| FieldStorage::from_shared(arc.clone())),
+            // Skip extract_one to avoid unnecessary clone
+            PreciseEvaluator::ObjArc(arc) => Some(FieldStorage::from_shared(arc.clone())),
 
             // Regular fields: delegate to default implementation (calls extract_one and wraps in Owned)
             _ => self

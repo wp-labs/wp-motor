@@ -1,5 +1,6 @@
 use crate::core::prelude::*;
 use crate::{core::FieldCollector, language::DirectAccessor};
+use wp_model_core::model::FieldStorage;
 mod batch;
 mod read;
 mod take;
@@ -29,6 +30,16 @@ impl FieldExtractor for DirectAccessor {
             DirectAccessor::Take(o) => o.extract_one(target, src, dst),
             DirectAccessor::Read(o) => o.extract_one(target, src, dst),
         }
+    }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
     }
 
     fn extract_more(

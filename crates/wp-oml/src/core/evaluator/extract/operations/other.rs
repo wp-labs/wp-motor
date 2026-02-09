@@ -103,10 +103,8 @@ impl FieldExtractor for GenericAccessor {
     ) -> Option<FieldStorage> {
         match self {
             // Static symbol: return Shared variant (zero-copy)
-            GenericAccessor::FieldArc(arc) => arc
-                .as_ref()
-                .extract_one(target, src, dst)
-                .map(|_| FieldStorage::from_shared(arc.clone())),
+            // Skip extract_one to avoid unnecessary clone
+            GenericAccessor::FieldArc(arc) => Some(FieldStorage::from_shared(arc.clone())),
             // Regular field: return Owned variant
             GenericAccessor::Field(x) => x
                 .extract_one(target, src, dst)

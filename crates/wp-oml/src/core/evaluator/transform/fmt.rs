@@ -21,8 +21,9 @@ impl FieldExtractor for FmtOperation {
                     .unwrap_or("_fmt_".to_string()),
                 DataType::Auto,
             );
-            if let Some(obj) = item.extract_one(&cur, src, dst) {
-                args.insert(obj.get_name().to_string(), FmtVal(obj));
+            // Use extract_storage to preserve zero-copy for Arc variants
+            if let Some(storage) = item.extract_storage(&cur, src, dst) {
+                args.insert(storage.get_name().to_string(), FmtVal(storage));
             } else {
                 not_find_items.push(item.dat_get());
             }
@@ -52,19 +53,28 @@ impl FieldExtractor for FmtOperation {
         let name = target.safe_name();
         Some(DataField::from_chars(name, data))
     }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
+    }
 }
 
 #[derive(Debug)]
-pub struct FmtVal(pub DataField);
+pub struct FmtVal(pub FieldStorage);
 impl DisplayStr for FmtVal
 where
 //for<'a> RawFmt<&'a T>: Display,
 {
     fn display_str(&self, f: &mut Formatter) -> strfmt::Result<()> {
         let raw_fmt = Raw;
-        let str = raw_fmt
-            .fmt_field(&FieldStorage::from_owned(self.0.clone()))
-            .to_string();
+        // Directly use the FieldStorage without cloning
+        let str = raw_fmt.fmt_field(&self.0).to_string();
         f.str(str.as_str())
     }
 }

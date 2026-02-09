@@ -1,4 +1,5 @@
 use wp_error::parse_error::OMLCodeResult;
+use wp_model_core::model::FieldStorage;
 
 use crate::core::prelude::*;
 
@@ -28,6 +29,15 @@ pub trait BatchFetcher {
 #[enum_dispatch]
 pub trait ValueProcessor {
     fn value_cacu(&self, in_val: DataField) -> DataField;
+
+    /// Process value with FieldStorage support for zero-copy optimization.
+    /// Default implementation converts to DataField and uses value_cacu.
+    /// Override this for operations that can preserve FieldStorage::Shared.
+    fn value_cacu_storage(&self, in_val: FieldStorage) -> FieldStorage {
+        let field = in_val.into_owned();
+        let result = self.value_cacu(field);
+        FieldStorage::from_owned(result)
+    }
 }
 
 impl ExpEvaluator for EvalExp {
