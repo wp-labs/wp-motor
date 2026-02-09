@@ -134,15 +134,15 @@ fn cond_in(data: &mut &str) -> WResult<MatchCond> {
 
     // Try parsing both as static symbols
     let cp1 = code.checkpoint();
-    if let Ok(PreciseEvaluator::StaticSymbol(beg_sym)) = parse_static_value(&mut code) {
-        if symbol_comma.parse_next(&mut code).is_ok() {
-            // Try second element as symbol
-            let cp2 = code.checkpoint();
-            if let Ok(PreciseEvaluator::StaticSymbol(end_sym)) = parse_static_value(&mut code) {
-                return Ok(MatchCond::InSym(beg_sym, end_sym));
-            }
-            code.reset(&cp2);
+    if let Ok(PreciseEvaluator::StaticSymbol(beg_sym)) = parse_static_value(&mut code)
+        && symbol_comma.parse_next(&mut code).is_ok()
+    {
+        // Try second element as symbol
+        let cp2 = code.checkpoint();
+        if let Ok(PreciseEvaluator::StaticSymbol(end_sym)) = parse_static_value(&mut code) {
+            return Ok(MatchCond::InSym(beg_sym, end_sym));
         }
+        code.reset(&cp2);
     }
     code.reset(&cp1);
 
