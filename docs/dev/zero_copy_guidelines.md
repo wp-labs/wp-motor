@@ -282,6 +282,15 @@ match self {
 
 ## Changelog
 
+### 2026-02-10 - Version 2.0.5
+
+- **Enhanced**: FieldRead now uses extract_storage to preserve FieldStorage from DataRecord
+  - Previously: Called find_tdc_target() which did .as_field().clone(), breaking zero-copy
+  - Now: Calls find_tdc_target_storage() which clones FieldStorage (Arc clone if Shared)
+  - Affects: read() operations that extract fields from dst (processed record)
+  - Impact: `read(__target) | get(field)` pipeline now preserves zero-copy end-to-end
+  - Critical fix: Closes the zero-copy gap in read operations on static fields
+
 ### 2026-02-09 - Version 2.0.4
 
 - **Enhanced**: FmtOperation now uses extract_storage for collecting format arguments

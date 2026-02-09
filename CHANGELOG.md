@@ -45,6 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - SqlQuery now uses extract_storage() when collecting SQL parameters
   - Both operations now avoid cloning Arc variants during parameter collection
   - Completes zero-copy coverage across all operations that collect sub-expressions
+- **wp-oml**: Enhanced FieldRead with FieldStorage preservation
+  - FieldRead now uses extract_storage() to preserve FieldStorage from DataRecord
+  - Added find_tdc_target_storage() and find_tdr_target_storage() for zero-copy extraction
+  - Previously: Called .as_field().clone() on FieldStorage, breaking zero-copy chain
+  - Now: Clones FieldStorage directly (Arc clone if Shared, no DataField clone)
+  - Critical fix: Enables end-to-end zero-copy in `read(__target) | get(field)` pipelines
 
 ### Fixed
 - **WP-OML Zero-Copy**: Fix MatchOperation to preserve zero-copy for Arc variants in match branches

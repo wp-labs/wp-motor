@@ -37,8 +37,32 @@ impl FieldExtractor for FieldRead {
         src: &mut DataRecordRef<'_>,
         dst: &DataRecord,
     ) -> Option<FieldStorage> {
-        self.extract_one(target, src, dst)
-            .map(FieldStorage::from_owned)
+        let key_string = self
+            .get()
+            .clone()
+            .or(target.name().clone())
+            .unwrap_or("_".to_string());
+        let key = key_string.as_str();
+
+        // Try to find in dst first (with FieldStorage preservation)
+        if let Some(storage) = find_tdc_target_storage(dst, key, false) {
+            return Some(storage);
+        }
+        // Try to find in src (with FieldStorage preservation)
+        if let Some(storage) = find_tdr_target_storage(src, key, false) {
+            return Some(storage);
+        }
+
+        // Try options
+        for option in self.option() {
+            if let Some(storage) = find_tdc_target_storage(dst, option, true) {
+                return Some(storage);
+            }
+            if let Some(storage) = find_tdr_target_storage(src, option, true) {
+                return Some(storage);
+            }
+        }
+        None
     }
 }
 
@@ -56,6 +80,20 @@ fn find_tdc_target(
     None
 }
 
+// Zero-copy version: returns FieldStorage directly
+fn find_tdc_target_storage(src: &DataRecord, key: &str, option: bool) -> Option<FieldStorage> {
+    // Directly search in items to preserve FieldStorage
+    for item in &src.items {
+        if item.get_name() == key {
+            if option && item.as_field().value.is_empty() {
+                return None;
+            }
+            return Some(item.clone()); // ✅ Clone FieldStorage (Arc clone if Shared)
+        }
+    }
+    None
+}
+
 fn find_tdr_target(
     _target: &EvaluationTarget,
     src: &DataRecordRef,
@@ -67,6 +105,20 @@ fn find_tdr_target(
     {
         let obj = (*found).clone();
         return Some(obj);
+    }
+    None
+}
+
+// Zero-copy version: returns FieldStorage directly
+fn find_tdr_target_storage(src: &DataRecordRef, key: &str, option: bool) -> Option<FieldStorage> {
+    // Search in source record with FieldStorage preservation
+    for item in src.iter() {
+        if item.get_name() == key {
+            if option && item.value.is_empty() {
+                return None;
+            }
+            return Some(FieldStorage::from_owned((*item).clone()));
+        }
     }
     None
 }
