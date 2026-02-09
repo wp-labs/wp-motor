@@ -88,7 +88,10 @@ mod tests {
         let result = ppl.parse_groups(0, &mut data).assert();
         assert_eq!(data, "");
         println!("{}", result);
-        assert_eq!(result.get_field("id"), Some(&DataField::from_digit("id", 2002)));
+        assert_eq!(
+            result.get_field("id"),
+            Some(&DataField::from_digit("id", 2002))
+        );
 
         let mut data = r#"bad - - [06/Aug/2019:12:12:19 +0800] "#;
         let result = ppl.parse_groups(0, &mut data);

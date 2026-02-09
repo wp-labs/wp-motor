@@ -1,9 +1,9 @@
 use crate::core::FieldExtractor;
-use wp_model_core::model::data::record::RecordItem;
 use crate::core::prelude::*;
 use crate::language::EvaluationTarget;
 use crate::language::FieldTake;
 use wildmatch::WildMatch;
+use wp_model_core::model::data::record::RecordItem;
 use wp_model_core::model::{DataField, DataRecord};
 
 impl FieldExtractor for FieldTake {

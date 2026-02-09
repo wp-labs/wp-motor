@@ -284,16 +284,16 @@ mod tests {
         let parser = ParserTUnit::new(KvArrP::default(), conf);
         let fields = parser.verify_parse_suc(&mut data).assert();
         let record = DataRecord::from(fields);
-        let expected_sip = DataField::from_ip(
-            "sip",
-            IpAddr::from_str("192.168.1.1").unwrap()
-        );
+        let expected_sip = DataField::from_ip("sip", IpAddr::from_str("192.168.1.1").unwrap());
         assert_eq!(
             record.field("sip").map(|s| s.as_field()),
             Some(&expected_sip)
         );
         let expected_cnt = DataField::from_digit("cnt", 42);
-        assert_eq!(record.field("cnt").map(|s| s.as_field()), Some(&expected_cnt));
+        assert_eq!(
+            record.field("cnt").map(|s| s.as_field()),
+            Some(&expected_cnt)
+        );
         Ok(())
     }
 
@@ -316,7 +316,10 @@ mod tests {
             Some(&expected_msg)
         );
         let expected_cnt = DataField::from_digit("cnt", 42);
-        assert_eq!(record.field("cnt").map(|s| s.as_field()), Some(&expected_cnt));
+        assert_eq!(
+            record.field("cnt").map(|s| s.as_field()),
+            Some(&expected_cnt)
+        );
 
         let arr = vec![
             Field::from_ip("c/[0]", IpAddr::from_str("1.1.1.1").unwrap()),
@@ -338,10 +341,7 @@ mod tests {
         let expected_a = DataField::from_chars("a", "foo");
         assert_eq!(record.field("a").map(|s| s.as_field()), Some(&expected_a));
         let expected_b = DataField::from_chars("b", "bar x");
-        assert_eq!(
-            record.field("b").map(|s| s.as_field()),
-            Some(&expected_b)
-        );
+        assert_eq!(record.field("b").map(|s| s.as_field()), Some(&expected_b));
         let expected_c = DataField::from_digit("c", 1);
         assert_eq!(record.field("c").map(|s| s.as_field()), Some(&expected_c));
         Ok(())
@@ -444,7 +444,10 @@ mod tests {
         let fields = parser.verify_parse_suc(&mut data).assert();
         let record = DataRecord::from(fields);
         let expected_note = DataField::from_ignore("note");
-        assert_eq!(record.field("note").map(|s| s.as_field()), Some(&expected_note));
+        assert_eq!(
+            record.field("note").map(|s| s.as_field()),
+            Some(&expected_note)
+        );
         let expected_count = DataField::from_digit("count", 7);
         assert_eq!(
             record.field("count").map(|s| s.as_field()),

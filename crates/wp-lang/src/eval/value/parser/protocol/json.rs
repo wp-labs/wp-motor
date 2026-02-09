@@ -471,10 +471,7 @@ mod tests {
         let dr = DataRecord::from(out);
         // 路径中的反斜杠数量符合预期；txt 中包含实际换行
         let expected_path = DataField::from_chars("path", "c:\\users\\fc\\file");
-        assert_eq!(
-            dr.field("path").map(|s| s.as_field()),
-            Some(&expected_path)
-        );
+        assert_eq!(dr.field("path").map(|s| s.as_field()), Some(&expected_path));
         if let Some(v) = dr.field("txt") {
             if let wp_model_core::model::Value::Chars(s) = v.as_field().get_value() {
                 assert!(s.contains('\n'));
@@ -612,7 +609,7 @@ mod tests {
         if let Some(i) = tdc.field("file_path") {
             let expected = DataField::from_chars(
                 "file_path",
-                r#"c:\\users\\fc\\desktop\\tr-shopbot\\7e5432f32a3b6f25666e0cc9acff00bf"#
+                r#"c:\\users\\fc\\desktop\\tr-shopbot\\7e5432f32a3b6f25666e0cc9acff00bf"#,
             );
             assert_eq!(i.as_field(), &expected);
         } else {
@@ -682,7 +679,7 @@ mod tests {
         if let Some(i) = tdc.field("event_detail") {
             let expected_field = DataField::from_arr(
                 "event_detail".to_string(),
-                vec![DataField::new_opt(DataType::Obj, None, expected.into())]
+                vec![DataField::new_opt(DataType::Obj, None, expected.into())],
             );
             assert_eq!(i.as_field(), &expected_field);
         } else {
@@ -733,7 +730,7 @@ mod tests {
         if let Some(i) = tdc.field("event_detail[0]/alert_id") {
             let expected = DataField::from_chars(
                 "event_detail[0]/alert_id".to_string(),
-                "94882787-9505-49d4-9024-20DC93AF579B".to_string()
+                "94882787-9505-49d4-9024-20DC93AF579B".to_string(),
             );
             assert_eq!(i.as_field(), &expected);
         } else {

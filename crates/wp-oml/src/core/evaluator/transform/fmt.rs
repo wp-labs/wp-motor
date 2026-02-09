@@ -2,7 +2,7 @@ use crate::core::diagnostics::{self, OmlIssue, OmlIssueKind};
 use crate::core::prelude::*;
 use std::collections::HashMap;
 use strfmt::{DisplayStr, Formatter, strfmt};
-use wp_data_fmt::{RecordFormatter, Raw};
+use wp_data_fmt::{Raw, RecordFormatter};
 use wp_model_core::model::FieldStorage;
 impl FieldExtractor for FmtOperation {
     fn extract_one(
@@ -62,7 +62,9 @@ where
 {
     fn display_str(&self, f: &mut Formatter) -> strfmt::Result<()> {
         let raw_fmt = Raw;
-        let str = raw_fmt.fmt_field(&FieldStorage::Owned(self.0.clone())).to_string();
+        let str = raw_fmt
+            .fmt_field(&FieldStorage::Owned(self.0.clone()))
+            .to_string();
         f.str(str.as_str())
     }
 }

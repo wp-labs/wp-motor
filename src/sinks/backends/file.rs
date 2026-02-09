@@ -17,7 +17,7 @@ use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio_async_drop::tokio_async_drop;
 use wp_connector_api::{SinkBuildCtx, SinkReason, SinkResult, SinkSpec as ResolvedSinkSpec};
-use wp_data_fmt::{RecordFormatter, FormatType};
+use wp_data_fmt::{FormatType, RecordFormatter};
 use wp_model_core::model::fmt_def::TextFmt;
 
 #[cfg(test)]

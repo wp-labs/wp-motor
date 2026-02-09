@@ -1,5 +1,4 @@
 use crate::core::DataRecordRef;
-use wp_model_core::model::data::record::RecordItem;
 use crate::core::ExpEvaluator;
 use crate::language::{EvalExp, ObjModel, PreciseEvaluator};
 use crate::parser::error::OMLCodeErrorTait;
@@ -14,6 +13,7 @@ use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
 use winnow::stream::Stream;
 use wp_data_model::cache::FieldQueryCache;
 use wp_error::{OMLCodeError, OMLCodeResult};
+use wp_model_core::model::data::record::RecordItem;
 use wp_model_core::model::{DataField, DataRecord};
 use wp_parser::Parser;
 use wp_parser::WResult;

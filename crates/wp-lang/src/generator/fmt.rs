@@ -66,7 +66,9 @@ mod field_vec_fmt {
     use crate::ast::GenFmt;
     use crate::eval::vof;
     use crate::generator::{FmtFieldVec, record_from_fmt_fields};
-    use wp_data_fmt::{Csv, RecordFormatter, ValueFormatter, FormatType, Json, KeyValue, ProtoTxt, Raw};
+    use wp_data_fmt::{
+        Csv, FormatType, Json, KeyValue, ProtoTxt, Raw, RecordFormatter, ValueFormatter,
+    };
     use wp_model_core::model::{DataType, FieldStorage};
 
     impl Display for KVGenFmt<&FmtFieldVec> {

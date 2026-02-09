@@ -374,7 +374,7 @@ mod tests {
     fn asert_kv_x_obj(tdc: DataRecord) {
         let expected = vec![
             DataField::from_chars("x.a".to_string(), "hello".to_string()),
-            DataField::from_digit("x.b", 18,),
+            DataField::from_digit("x.b", 18),
             DataField::from_digit("x.c".to_string(), 20),
         ];
         assert_eq!(

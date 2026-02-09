@@ -3,7 +3,7 @@ use crate::language::{
     HtmlEscape, HtmlUnescape, JsonEscape, JsonUnescape, StrEscape, ToJson, ToStr,
 };
 
-use wp_data_fmt::{ValueFormatter, Json};
+use wp_data_fmt::{Json, ValueFormatter};
 use wp_model_core::model::{DataField, DataType, FNameStr, Value};
 
 impl ValueProcessor for StrEscape {
@@ -138,7 +138,10 @@ mod tests {
     #[test]
     fn test_json_escape() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::Owned(DataField::from_chars("A1", "This is a crab: 🦀"))];
+        let data = vec![FieldStorage::Owned(DataField::from_chars(
+            "A1",
+            "This is a crab: 🦀",
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"

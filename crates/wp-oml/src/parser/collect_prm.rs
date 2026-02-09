@@ -69,6 +69,9 @@ mod tests {
                 DataField::from_digit("dport", 22),
             ],
         );
-        assert_eq!(target.field("port_list").map(|s| s.as_field()), Some(&expect));
+        assert_eq!(
+            target.field("port_list").map(|s| s.as_field()),
+            Some(&expect)
+        );
     }
 }

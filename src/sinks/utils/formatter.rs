@@ -4,7 +4,7 @@ use crate::{core::sinks::sync_sink::traits::SyncCtrl, sinks::pdm_outer::TDMDataA
 
 use async_trait::async_trait;
 use orion_error::ErrorOwe;
-use wp_data_fmt::{RecordFormatter, FormatType};
+use wp_data_fmt::{FormatType, RecordFormatter};
 use wp_model_core::model::fmt_def::TextFmt;
 use wp_parse_api::RawData;
 use wpl::generator::{CSVGenFmt, JsonGenFmt, KVGenFmt, ProtoGenFmt, RAWGenFmt};

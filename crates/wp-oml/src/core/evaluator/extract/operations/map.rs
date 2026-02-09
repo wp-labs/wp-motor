@@ -21,7 +21,10 @@ impl FieldExtractor for MapOperation {
             let sub_name = sub.target().safe_name();
             if let Some(mut o) = one {
                 o.set_name(sub_name.clone());
-                obj.insert(sub_name, FieldStorage::Owned(omlobj_meta_conv(o, sub.target())));
+                obj.insert(
+                    sub_name,
+                    FieldStorage::Owned(omlobj_meta_conv(o, sub.target())),
+                );
             }
         }
         Some(DataField::from_obj(name, obj))

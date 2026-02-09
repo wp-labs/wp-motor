@@ -4,7 +4,7 @@ use wp_stat::StatRecorder;
 use wp_stat::StatReq;
 
 use tokio::sync::mpsc::error::SendError;
-use wp_data_fmt::{RecordFormatter, Raw};
+use wp_data_fmt::{Raw, RecordFormatter};
 use wp_model_core::model::DataRecord;
 use wp_stat::ReportVariant;
 use wp_stat::StatCollector;

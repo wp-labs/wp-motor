@@ -92,7 +92,10 @@ mod tests {
         let result = ppl.parse_groups(0, &mut data).assert();
         println!("{}", result);
         // Check that test field exists and is ignore type
-        assert_eq!(result.get_field("test"), Some(&DataField::from_ignore("test")));
+        assert_eq!(
+            result.get_field("test"),
+            Some(&DataField::from_ignore("test"))
+        );
 
         Ok(())
     }

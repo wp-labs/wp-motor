@@ -16,9 +16,9 @@ pub use evaluator::traits::BatchFetcher;
 pub use evaluator::traits::ExpEvaluator;
 pub use evaluator::traits::FieldCollector;
 pub use evaluator::traits::ValueProcessor;
+use std::sync::Arc;
 use wp_data_model::cache::FieldQueryCache;
 use wp_model_core::model::{DataField, DataRecord, FieldStorage};
-use std::sync::Arc;
 
 pub trait FieldExtractor {
     /// Extract field as owned DataField
@@ -41,8 +41,7 @@ pub trait FieldExtractor {
         src: &mut DataRecordRef<'_>,
         dst: &DataRecord,
     ) -> Option<FieldStorage> {
-        self.extract_one(target, src, dst)
-            .map(FieldStorage::Owned)
+        self.extract_one(target, src, dst).map(FieldStorage::Owned)
     }
 
     #[allow(unused_variables)]
@@ -91,17 +90,13 @@ impl FieldExtractor for PreciseEvaluator {
     ) -> Option<FieldStorage> {
         match self {
             // Static symbol reference: return Shared variant (zero-copy)
-            PreciseEvaluator::ObjArc(arc) => {
-                arc.as_ref()
-                    .extract_one(target, src, dst)
-                    .map(|_| FieldStorage::Shared(Arc::clone(arc)))
-            }
+            PreciseEvaluator::ObjArc(arc) => arc
+                .as_ref()
+                .extract_one(target, src, dst)
+                .map(|_| FieldStorage::Shared(Arc::clone(arc))),
 
             // Regular fields: delegate to default implementation (calls extract_one and wraps in Owned)
-            _ => {
-                self.extract_one(target, src, dst)
-                    .map(FieldStorage::Owned)
-            }
+            _ => self.extract_one(target, src, dst).map(FieldStorage::Owned),
         }
     }
 

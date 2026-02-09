@@ -4,11 +4,10 @@ use oml::parser::oml_parse_raw;
 use oml::types::AnyResult;
 use orion_error::TestAssert;
 use std::net::{IpAddr, Ipv4Addr};
-use wp_data_fmt::DataFormat;
 use wp_data_fmt::Json;
 use wp_data_fmt::KeyValue;
 use wp_data_fmt::ProtoTxt;
-use wp_data_fmt::StaticDataFormatter;
+use wp_data_fmt::RecordFormatter;
 use wp_data_model::cache::FieldQueryCache;
 use wp_know::mem::memdb::MemDB;
 use wp_log::conf::log_for_test;
@@ -491,10 +490,10 @@ fn test_value_arr() {
 
     let expect = DataField::from_arr("X1".to_string(), data);
     assert_eq!(target.get_field("X1"), Some(&expect));
-    let json_out = Json::stdfmt_record(&target).to_string();
+    let json_out = Json.fmt_record(&target).to_string();
     println!("{}", json_out);
-    println!("{}", ProtoTxt.format_record(&target));
-    println!("{}", KeyValue::default().format_record(&target));
+    println!("{}", ProtoTxt.fmt_record(&target));
+    println!("{}", KeyValue::default().fmt_record(&target));
     assert_eq!(
         json_out,
         r#"{"X1":["hello1","hello2","hello3","hello4"],"X2":"[\"hello1\",\"hello2\",\"hello3\",\"hello4\"]"}"#
@@ -519,7 +518,7 @@ fn test_sql_1() -> AnyResult<()> {
         "#;
     let model = oml_parse_raw(&mut conf).assert();
     let target = model.transform(src, cache);
-    let result = Json::stdfmt_record(&target).to_string();
+    let result = Json.fmt_record(&target).to_string();
     let expect = r#"{"A2":"小龙女","B2":"xiaolongnu","name":"小龙女","pinying":"xiaolongnu"}"#;
     assert_eq!(result, expect);
     Ok(())
@@ -541,7 +540,7 @@ fn test_sql_debug() -> AnyResult<()> {
         "#;
     let model = oml_parse_raw(&mut conf).assert();
     let target = model.transform(src, cache);
-    let result = Json::stdfmt_record(&target).to_string();
+    let result = Json.fmt_record(&target).to_string();
     let expect = r#"{"name":"小龙女","pinying":"xiaolongnu"}"#;
     assert_eq!(result, expect);
     Ok(())
@@ -570,7 +569,7 @@ fn test_value_arr1() {
 
     let target = model.transform(src, cache);
 
-    println!("{}", Json::stdfmt_record(&target));
+    println!("{}", Json.fmt_record(&target));
     let expect = DataField::from_arr("X1".to_string(), data);
     assert_eq!(target.get_field("X1"), Some(&expect));
     assert_eq!(
@@ -786,7 +785,10 @@ fn test_static_symbol_eq_match() {
     let model = oml_parse_raw(&mut conf).assert();
 
     // Test matching case
-    let data = vec![DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))];
+    let data = vec![DataField::from_ip(
+        "src_ip",
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+    )];
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
@@ -795,7 +797,10 @@ fn test_static_symbol_eq_match() {
     );
 
     // Test non-matching case (default)
-    let data = vec![DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)))];
+    let data = vec![DataField::from_ip(
+        "src_ip",
+        IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
+    )];
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
@@ -823,7 +828,10 @@ fn test_static_symbol_neq_match() {
     let model = oml_parse_raw(&mut conf).assert();
 
     // Test negation match (not 127.0.0.1)
-    let data = vec![DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)))];
+    let data = vec![DataField::from_ip(
+        "src_ip",
+        IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+    )];
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
@@ -832,7 +840,10 @@ fn test_static_symbol_neq_match() {
     );
 
     // Test negation non-match (is 127.0.0.1)
-    let data = vec![DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)))];
+    let data = vec![DataField::from_ip(
+        "src_ip",
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+    )];
     let src = DataRecord::from(data);
     let target = model.transform(src, cache);
     assert_eq!(
@@ -1127,8 +1138,12 @@ fn test_arc_optimization_parsing_performance() {
         result_no_static.get_field("ip_type").map(|f| f.get_value())
     );
     assert_eq!(
-        result_static.get_field("status_level").map(|f| f.get_value()),
-        result_no_static.get_field("status_level").map(|f| f.get_value())
+        result_static
+            .get_field("status_level")
+            .map(|f| f.get_value()),
+        result_no_static
+            .get_field("status_level")
+            .map(|f| f.get_value())
     );
 }
 
@@ -1246,8 +1261,10 @@ fn test_arc_optimization_with_many_references() {
     println!("\n=== Parsing Performance (Many References) ===");
     println!("With static (Arc):    {:?}", parse_time_static);
     println!("Without static:       {:?}", parse_time_no_static);
-    println!("Speedup:              {:.2}x",
-             parse_time_no_static.as_nanos() as f64 / parse_time_static.as_nanos() as f64);
+    println!(
+        "Speedup:              {:.2}x",
+        parse_time_no_static.as_nanos() as f64 / parse_time_static.as_nanos() as f64
+    );
 
     // Arc optimization shows clear benefit when values are reused
     // Without Arc: each reference creates a new DataField (expensive)

@@ -2,9 +2,9 @@ use crate::core::evaluator::transform::omlobj_meta_conv;
 use crate::core::prelude::*;
 use crate::language::GenericAccessor;
 use crate::language::{GenericBinding, NestedBinding, SingleEvalExp};
+use std::sync::Arc;
 use wp_data_model::cache::FieldQueryCache;
 use wp_model_core::model::{DataField, DataRecord, FieldStorage};
-use std::sync::Arc;
 
 use crate::core::FieldExtractor;
 
@@ -22,14 +22,16 @@ impl ExpEvaluator for SingleEvalExp {
                     if let Some(name) = target.name() {
                         v.set_name(name.clone());
                     }
-                    dst.items.push(FieldStorage::Owned(omlobj_meta_conv(v, target)));
+                    dst.items
+                        .push(FieldStorage::Owned(omlobj_meta_conv(v, target)));
                 }
             }
         } else if let Some(target) = self.target().first()
             && let Some(mut obj) = self.eval_way().extract_one(target, src, dst)
         {
             obj.set_name(target.safe_name());
-            dst.items.push(FieldStorage::Owned(omlobj_meta_conv(obj, target)));
+            dst.items
+                .push(FieldStorage::Owned(omlobj_meta_conv(obj, target)));
         }
     }
 }
@@ -83,11 +85,10 @@ impl FieldExtractor for GenericAccessor {
     ) -> Option<FieldStorage> {
         match self {
             // Static symbol: return Shared variant (zero-copy)
-            GenericAccessor::FieldArc(arc) => {
-                arc.as_ref()
-                    .extract_one(target, src, dst)
-                    .map(|_| FieldStorage::Shared(Arc::clone(arc)))
-            }
+            GenericAccessor::FieldArc(arc) => arc
+                .as_ref()
+                .extract_one(target, src, dst)
+                .map(|_| FieldStorage::Shared(Arc::clone(arc))),
             // Regular field: return Owned variant
             GenericAccessor::Field(x) => x.extract_one(target, src, dst).map(FieldStorage::Owned),
             GenericAccessor::Fun(x) => x.extract_one(target, src, dst).map(FieldStorage::Owned),

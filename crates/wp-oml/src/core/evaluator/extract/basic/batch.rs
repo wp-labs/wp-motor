@@ -1,9 +1,9 @@
 use crate::core::diagnostics::{self, OmlIssue, OmlIssueKind};
-use wp_model_core::model::data::record::RecordItem;
 use crate::core::prelude::*;
 use crate::language::BatchEvalTarget;
 use crate::language::{BatchEvalExp, BatchEvaluation, RecordOperation};
 use wp_data_model::cache::FieldQueryCache;
+use wp_model_core::model::data::record::RecordItem;
 use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 
 impl ExpEvaluator for BatchEvalExp {
@@ -24,10 +24,8 @@ impl ExpEvaluator for BatchEvalExp {
                 .unwrap_or_else(|| "_".to_string());
             diagnostics::push(OmlIssue::new(OmlIssueKind::BatchNoMatch, pat));
         }
-        let mut wrapped_needs: Vec<FieldStorage> = needs
-            .into_iter()
-            .map(FieldStorage::Owned)
-            .collect();
+        let mut wrapped_needs: Vec<FieldStorage> =
+            needs.into_iter().map(FieldStorage::Owned).collect();
         dst.items.append(&mut wrapped_needs);
     }
 }

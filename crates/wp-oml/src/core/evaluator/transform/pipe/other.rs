@@ -1,6 +1,6 @@
 use crate::core::prelude::*;
-use wp_model_core::model::data::record::RecordItem;
 use crate::language::{Get, Nth, PathGet, PathType, PiPeOperation, SkipEmpty, UrlGet, UrlType};
+use wp_model_core::model::data::record::RecordItem;
 
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
@@ -360,7 +360,10 @@ mod tests {
     #[test]
     fn test_json_escape() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::Owned(DataField::from_chars("A1", "This is a crab: 🦀"))];
+        let data = vec![FieldStorage::Owned(DataField::from_chars(
+            "A1",
+            "This is a crab: 🦀",
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -420,10 +423,13 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).assert();
         let target = model.transform(src, cache);
-        let expect = DataField::from_arr("X".to_string(), vec![
-            DataField::from_digit("A1", 0),
-            DataField::from_arr("A2", vec![]),
-        ]);
+        let expect = DataField::from_arr(
+            "X".to_string(),
+            vec![
+                DataField::from_digit("A1", 0),
+                DataField::from_arr("A2", vec![]),
+            ],
+        );
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
         assert_eq!(
             target.field("Y").map(|s| s.as_field()),
@@ -450,19 +456,19 @@ mod tests {
         let target = model.transform(src, cache);
         let expect = DataField::from_chars(
             "Y",
-            r#"c:\\users\\administrator\\desktop\\domaintool\\x64\\childproc\\test_le9mwv.exe"#
+            r#"c:\\users\\administrator\\desktop\\domaintool\\x64\\childproc\\test_le9mwv.exe"#,
         );
-        assert_eq!(
-            target.field("Y").map(|s| s.as_field()),
-            Some(&expect)
-        );
+        assert_eq!(target.field("Y").map(|s| s.as_field()), Some(&expect));
     }
 
     #[test]
     fn test_pipe_start_with() {
         // 测试匹配的情况
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::Owned(DataField::from_chars("url", "https://example.com"))];
+        let data = vec![FieldStorage::Owned(DataField::from_chars(
+            "url",
+            "https://example.com",
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -478,7 +484,10 @@ mod tests {
 
         // 测试不匹配的情况 - 使用独立的 cache 和 model
         let cache2 = &mut FieldQueryCache::default();
-        let data2 = vec![FieldStorage::Owned(DataField::from_chars("url", "http://example.com"))];
+        let data2 = vec![FieldStorage::Owned(DataField::from_chars(
+            "url",
+            "http://example.com",
+        ))];
         let src2 = DataRecord::from(data2);
 
         let mut conf2 = r#"
@@ -565,7 +574,10 @@ mod tests {
 
         // 测试 ignore 字段保持不变
         let cache5 = &mut FieldQueryCache::default();
-        let data5 = vec![FieldStorage::Owned(DataField::from_chars("url", "http://example.com"))];
+        let data5 = vec![FieldStorage::Owned(DataField::from_chars(
+            "url",
+            "http://example.com",
+        ))];
         let src5 = DataRecord::from(data5);
 
         let mut conf5 = r#"

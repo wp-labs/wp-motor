@@ -296,7 +296,7 @@ mod tests {
     use super::*;
     use orion_error::TestAssert;
     use wp_model_core::model::{DataField, FieldStorage};
-    
+
     use wp_parser::WResult as ModalResult;
 
     use crate::language::MatchCase;
@@ -511,7 +511,10 @@ A = match read(field) {
 
         // Test starts_with
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::Owned(DataField::from_chars("Content", "[ERROR] System failure"))];
+        let data = vec![FieldStorage::Owned(DataField::from_chars(
+            "Content",
+            "[ERROR] System failure",
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"name : test
@@ -524,7 +527,10 @@ EventType = match read(Content) {
         let model = oml_parse_raw(&mut conf).expect("Failed to parse starts_with");
         let target = model.transform(src, cache);
         let expect = DataField::from_chars("EventType".to_string(), "error".to_string());
-        assert_eq!(target.field("EventType").map(|s| s.as_field()), Some(&expect));
+        assert_eq!(
+            target.field("EventType").map(|s| s.as_field()),
+            Some(&expect)
+        );
 
         // Test ends_with
         let mut conf2 = r#"name : test
@@ -536,11 +542,17 @@ FileType = match read(filename) {
 "#;
         let model2 = oml_parse_raw(&mut conf2).expect("Failed to parse ends_with");
         let cache2 = &mut FieldQueryCache::default();
-        let data2 = vec![FieldStorage::Owned(DataField::from_chars("filename", "config.json"))];
+        let data2 = vec![FieldStorage::Owned(DataField::from_chars(
+            "filename",
+            "config.json",
+        ))];
         let src2 = DataRecord::from(data2);
         let target2 = model2.transform(src2, cache2);
         let expect2 = DataField::from_chars("FileType".to_string(), "json".to_string());
-        assert_eq!(target2.field("FileType").map(|s| s.as_field()), Some(&expect2));
+        assert_eq!(
+            target2.field("FileType").map(|s| s.as_field()),
+            Some(&expect2)
+        );
 
         // Test contains
         let mut conf3 = r#"name : test
@@ -559,7 +571,10 @@ ErrorType = match read(message) {
         let src3 = DataRecord::from(data3);
         let target3 = model3.transform(src3, cache3);
         let expect3 = DataField::from_chars("ErrorType".to_string(), "timeout".to_string());
-        assert_eq!(target3.field("ErrorType").map(|s| s.as_field()), Some(&expect3));
+        assert_eq!(
+            target3.field("ErrorType").map(|s| s.as_field()),
+            Some(&expect3)
+        );
 
         // Test regex_match
         let mut conf4 = r#"name : test
@@ -571,11 +586,17 @@ LogLevel = match read(log_line) {
 "#;
         let model4 = oml_parse_raw(&mut conf4).expect("Failed to parse regex_match");
         let cache4 = &mut FieldQueryCache::default();
-        let data4 = vec![FieldStorage::Owned(DataField::from_chars("log_line", "[ERROR] Failed"))];
+        let data4 = vec![FieldStorage::Owned(DataField::from_chars(
+            "log_line",
+            "[ERROR] Failed",
+        ))];
         let src4 = DataRecord::from(data4);
         let target4 = model4.transform(src4, cache4);
         let expect4 = DataField::from_chars("LogLevel".to_string(), "error".to_string());
-        assert_eq!(target4.field("LogLevel").map(|s| s.as_field()), Some(&expect4));
+        assert_eq!(
+            target4.field("LogLevel").map(|s| s.as_field()),
+            Some(&expect4)
+        );
 
         // Test is_empty - empty case
         let mut conf5 = r#"name : test
@@ -591,7 +612,10 @@ Status = match read(field) {
         let src5 = DataRecord::from(data5);
         let target5 = model5.transform(src5, cache5);
         let expect5 = DataField::from_chars("Status".to_string(), "empty".to_string());
-        assert_eq!(target5.field("Status").map(|s| s.as_field()), Some(&expect5));
+        assert_eq!(
+            target5.field("Status").map(|s| s.as_field()),
+            Some(&expect5)
+        );
 
         // Test iequals (moved to end, after gt/lt/eq/in_range)
         // Already tested in conf11 below
@@ -642,7 +666,10 @@ Status = match read(level) {
         let src8 = DataRecord::from(data8);
         let target8 = model8.transform(src8, cache8);
         let expect8 = DataField::from_chars("Status".to_string(), "max".to_string());
-        assert_eq!(target8.field("Status").map(|s| s.as_field()), Some(&expect8));
+        assert_eq!(
+            target8.field("Status").map(|s| s.as_field()),
+            Some(&expect8)
+        );
 
         // Test in_range
         let mut conf9 = r#"name : test
@@ -654,11 +681,17 @@ TempZone = match read(temperature) {
 "#;
         let model9 = oml_parse_raw(&mut conf9).expect("Failed to parse in_range");
         let cache9 = &mut FieldQueryCache::default();
-        let data9 = vec![FieldStorage::Owned(DataField::from_digit("temperature", 25))];
+        let data9 = vec![FieldStorage::Owned(DataField::from_digit(
+            "temperature",
+            25,
+        ))];
         let src9 = DataRecord::from(data9);
         let target9 = model9.transform(src9, cache9);
         let expect9 = DataField::from_chars("TempZone".to_string(), "comfortable".to_string());
-        assert_eq!(target9.field("TempZone").map(|s| s.as_field()), Some(&expect9));
+        assert_eq!(
+            target9.field("TempZone").map(|s| s.as_field()),
+            Some(&expect9)
+        );
 
         // Test iequals
         let mut conf10 = r#"name : test
@@ -670,11 +703,16 @@ Result = match read(status) {
 "#;
         let model10 = oml_parse_raw(&mut conf10).expect("Failed to parse iequals");
         let cache10 = &mut FieldQueryCache::default();
-        let data10 = vec![FieldStorage::Owned(DataField::from_chars("status", "SUCCESS"))];
+        let data10 = vec![FieldStorage::Owned(DataField::from_chars(
+            "status", "SUCCESS",
+        ))];
         let src10 = DataRecord::from(data10);
         let target10 = model10.transform(src10, cache10);
         let expect10 = DataField::from_chars("Result".to_string(), "ok".to_string());
-        assert_eq!(target10.field("Result").map(|s| s.as_field()), Some(&expect10));
+        assert_eq!(
+            target10.field("Result").map(|s| s.as_field()),
+            Some(&expect10)
+        );
     }
 
     #[test]
@@ -705,21 +743,30 @@ Result = match read(status) {
         let src1 = DataRecord::from(data1);
         let target1 = model.transform(src1, cache);
         let expect1 = DataField::from_chars("Result".to_string(), "success message".to_string());
-        assert_eq!(target1.field("Result").map(|s| s.as_field()), Some(&expect1)); // Verify the value contains space
+        assert_eq!(
+            target1.field("Result").map(|s| s.as_field()),
+            Some(&expect1)
+        ); // Verify the value contains space
 
         // Test case 2: status = B
         let data2 = vec![FieldStorage::Owned(DataField::from_chars("status", "B"))];
         let src2 = DataRecord::from(data2);
         let target2 = model.transform(src2, cache);
         let expect2 = DataField::from_chars("Result".to_string(), "failure message".to_string());
-        assert_eq!(target2.field("Result").map(|s| s.as_field()), Some(&expect2));
+        assert_eq!(
+            target2.field("Result").map(|s| s.as_field()),
+            Some(&expect2)
+        );
 
         // Test case 3: status = C (default)
         let data3 = vec![FieldStorage::Owned(DataField::from_chars("status", "C"))];
         let src3 = DataRecord::from(data3);
         let target3 = model.transform(src3, cache);
         let expect3 = DataField::from_chars("Result".to_string(), "default message".to_string());
-        assert_eq!(target3.field("Result").map(|s| s.as_field()), Some(&expect3));
+        assert_eq!(
+            target3.field("Result").map(|s| s.as_field()),
+            Some(&expect3)
+        );
     }
 
     #[test]
