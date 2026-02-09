@@ -4,8 +4,8 @@ use crate::language::{Get, Nth, PathGet, PathType, PiPeOperation, SkipEmpty, Url
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use url::{Position, Url};
-use wp_model_core::model::{DataField, DataRecord, Value, FieldStorage};
 use wp_model_core::model::types::value::ObjectValue;
+use wp_model_core::model::{DataField, DataRecord, FieldStorage, Value};
 impl FieldExtractor for PiPeOperation {
     fn extract_one(
         &self,
@@ -106,10 +106,12 @@ impl ValueProcessor for Get {
     fn value_cacu_storage(&self, in_val: FieldStorage) -> FieldStorage {
         // Zero-copy path: extract field from Shared object without cloning the object
         if in_val.is_shared() {
-            let field = in_val.as_field();  // Returns &Field
-            if let Value::Obj(obj) = field.get_value() {  // obj is &ObjectValue
+            let field = in_val.as_field(); // Returns &Field
+            if let Value::Obj(obj) = field.get_value() {
+                // obj is &ObjectValue
                 let keys: Vec<&str> = self.name.split('/').collect();
-                if let Some(result) = get_from_obj(obj, &keys) {  // Pass obj directly
+                if let Some(result) = get_from_obj(obj, &keys) {
+                    // Pass obj directly
                     // ✅ Preserve FieldStorage type (Shared or Owned)
                     return result.clone();
                 }
@@ -126,7 +128,7 @@ impl ValueProcessor for Get {
 // Helper function to navigate nested objects
 fn get_from_obj<'a>(mut obj: &'a ObjectValue, keys: &[&str]) -> Option<&'a FieldStorage> {
     for (i, key) in keys.iter().enumerate() {
-        if let Some(val) = obj.get(*key) {
+        if let Some(val) = obj.get(key) {
             if i == keys.len() - 1 {
                 // Last key: return the field
                 return Some(val);

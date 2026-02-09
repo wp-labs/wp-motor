@@ -22,8 +22,7 @@ impl FieldExtractor for MapOperation {
             let sub_name = sub.target().safe_name();
 
             if let Some(mut storage) = storage_opt {
-                let needs_conversion =
-                    sub.target().data_type() != storage.get_meta()
+                let needs_conversion = sub.target().data_type() != storage.get_meta()
                     && sub.target().data_type() != &DataType::Auto;
 
                 if storage.is_shared() && !needs_conversion {
