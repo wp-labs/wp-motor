@@ -5,23 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.15.1 latest ]
+## [1.15.4 Unreleased]
 
 ### Added
-- **WPL Pipe Functions**: Add `not()` wrapper function for inverting pipe function results
-  - Syntax: `| not(f_chars_has(dev_type, NDS))` succeeds when dev_type ≠ NDS
-  - Supports wrapping any field pipe function (f_has, f_chars_has, chars_has, etc.)
-  - Preserves field value - only inverts success/failure result
-  - Supports nested negation: `not(not(...))` for double negation logic
-- **WP-OML Batch Processing**: Add record-level batch processing API to DataTransformer trait
-  - New methods: `transform_batch()` and `transform_batch_ref()` for processing Vec<DataRecord>
-  - Default implementation provides backward compatibility (processes records one by one)
-  - Optimized ObjModel implementation reuses FieldQueryCache across all records
-  - Performance improvement: 12-17% faster when compared to creating fresh cache per record
-    - 100 records: 42.6µs → 37.3µs (12.4% faster with shared cache)
-    - 10 records: 4.45µs → 3.76µs (15.5% faster with shared cache)
-  - Additional 5% improvement in multi-stage pipelines with 100+ records
-  - Provides standardized batch API to prevent cache misuse patterns
 - **WP-OML Zero-Copy Validation**: Add comprehensive zero-copy validation test suite
   - Validates static field references use true zero-copy (Arc::clone only)
   - Tests all static reference forms: direct assignment, match branches, nested objects, multi-stage
@@ -59,7 +45,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - SqlQuery now uses extract_storage() when collecting SQL parameters
   - Both operations now avoid cloning Arc variants during parameter collection
   - Completes zero-copy coverage across all operations that collect sub-expressions
-- **Sinks/Logging**: Unify event ID naming across the codebase for end-to-end tracing
+
+### Fixed
+- **WP-OML Zero-Copy**: Fix MatchOperation to preserve zero-copy for Arc variants in match branches
+  - Previously: Match result branches called extract_one(), cloning Arc<Field> even for static field references
+  - Now: Match result branches call extract_storage(), preserving FieldStorage::Shared for FieldArc/ObjArc
+  - Impact: apache_e1_static.oml and similar match-based static mappings now truly zero-copy
+  - Eliminates residual DataField::clone in match scenarios with static branches
+- **WP-OML Zero-Copy**: Fix Arc<Field> extraction path to eliminate redundant clones
+  - Previously: MatchOperation called result().extract_one() and discarded cloned result
+  - Now: Direct Arc::clone → FieldStorage::Shared without intermediate DataField::clone
+  - Performance: Static field advantage improved from baseline to 29.7% faster
+
+
+## [1.15.3] - 2026-02-09
+
+### Added
+- **WP-OML Batch Processing**: Add record-level batch processing API to DataTransformer trait
+  - New methods: `transform_batch()` and `transform_batch_ref()` for processing Vec<DataRecord>
+  - Default implementation provides backward compatibility (processes records one by one)
+  - Optimized ObjModel implementation reuses FieldQueryCache across all records
+  - Performance improvement: 12-17% faster when compared to creating fresh cache per record
+    - 100 records: 42.6µs → 37.3µs (12.4% faster with shared cache)
+    - 10 records: 4.45µs → 3.76µs (15.5% faster with shared cache)
+  - Additional 5% improvement in multi-stage pipelines with 100+ records
+  - Provides standardized batch API to prevent cache misuse patterns
+
+### Changed
 - **Dependencies**: Upgrade wp-model-core 0.8.3 → 0.8.4
   - Introduces FieldRef<'a> wrapper type for zero-copy, cur_name-aware field access
   - DataRecord::get_field() now returns Option<FieldRef<'_>> instead of Option<&Field<Value>>
@@ -71,13 +83,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - 2-stage: 1,151ns → 956ns (16.9% faster)
     - 4-stage: 2,641ns → 2,277ns (13.8% faster)
 
+
+## [1.15.2] - 2026-02-08
+
+### Added
+- **Documentation**: Add complete English WPL grammar reference documentation
+  - Comprehensive syntax reference for all WPL language features
+  - Examples and usage patterns for field operations
+
+
+## [1.15.1] - 2026-02-07
+
+### Added
+- **WPL Pipe Functions**: Add `not()` wrapper function for inverting pipe function results
+  - Syntax: `| not(f_chars_has(dev_type, NDS))` succeeds when dev_type ≠ NDS
+  - Supports wrapping any field pipe function (f_has, f_chars_has, chars_has, etc.)
+  - Preserves field value - only inverts success/failure result
+  - Supports nested negation: `not(not(...))` for double negation logic
+
+### Changed
+- **Sinks/Logging**: Unify event ID naming across the codebase for end-to-end tracing
+
 ### Fixed
-- **WP-OML Zero-Copy**: Fix MatchOperation to preserve zero-copy for Arc variants in match branches
-  - Previously: Match result branches called extract_one(), cloning Arc<Field> even for static field references
-  - Now: Match result branches call extract_storage(), preserving FieldStorage::Shared for FieldArc/ObjArc
-  - Impact: apache_e1_static.oml and similar match-based static mappings now truly zero-copy
-  - Eliminates residual DataField::clone in match scenarios with static branches
-- **WP-OML Zero-Copy**: Fix Arc<Field> extraction path to eliminate redundant clones
+- **WP-OML Tests**: Fix `DataRecord` initialization for compatibility with wp-model-core 0.7.2
+- **WP-OML Zero-Copy**: Fix FieldStorage zero-copy optimization for wp-model-core 0.8.3 migration
+  - Correctly distinguish Shared vs Owned variants in eval_proc implementation
+  - Shared variants use cur_name overlay for zero-copy field name modification
+  - Owned variants directly modify underlying field to avoid name inconsistencies
+  - Performance improvement: 17-20% faster in multi-stage pipelines (2,730ns → 2,255ns for 4-stage)
+- **WPL Pipe Functions**: Fix `f_chars_not_has` and `chars_not_has` type checking bug
+  - Previously: Non-Chars fields (e.g., Digit) incorrectly returned FALSE
+  - Now: Non-Chars fields correctly return TRUE (they are "not the target Chars value")
+  - Semantics: Missing field OR non-Chars type OR value ≠ target → TRUE; value == target → FALSE
   - Previously: `extract_storage()` called `extract_one()` which cloned DataField, then discarded result
   - Now: Direct `Arc::clone()` for PreciseEvaluator::ObjArc, GenericAccessor::FieldArc, NestedAccessor::FieldArc
   - Each static field per stage: eliminated 1× DataField::clone + reduced to single Arc::clone
