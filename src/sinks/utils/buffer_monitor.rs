@@ -10,7 +10,6 @@ use async_trait::async_trait;
 use orion_error::ErrorOwe;
 use wp_connector_api::{SinkError, SinkReason, SinkResult};
 use wp_model_core::model::Value;
-use wp_model_core::model::data::record::RecordItem;
 
 use crate::sinks::SinkRecUnit;
 // SinkResult comes from connector API now

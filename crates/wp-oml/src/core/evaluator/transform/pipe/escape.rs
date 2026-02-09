@@ -100,7 +100,9 @@ mod tests {
     #[test]
     fn test_html_escape() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::from_owned(DataField::from_chars("A1", "<html>"))];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "A1", "<html>",
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -119,7 +121,9 @@ mod tests {
     #[test]
     fn test_str_escape() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::from_owned(DataField::from_chars("A1", "html\"1_"))];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "A1", "html\"1_",
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"

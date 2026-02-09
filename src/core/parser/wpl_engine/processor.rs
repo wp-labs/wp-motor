@@ -137,7 +137,6 @@ mod tests {
     use crate::sinks::{InfraSinkAgent, SinkGroupAgent};
     use std::sync::Arc;
     use wp_connector_api::{SourceEvent, Tags};
-    use wp_model_core::model::data::record::RecordItem;
     use wp_parse_api::RawData;
     use wpl::{WplEvaluator, gen_pkg_id};
 

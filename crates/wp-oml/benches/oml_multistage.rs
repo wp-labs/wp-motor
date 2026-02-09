@@ -354,5 +354,10 @@ v10 = chars("constant_value_that_is_reused_many_times");
     });
 }
 
-criterion_group!(benches, bench_single_stage, bench_multi_stage, bench_high_reuse);
+criterion_group!(
+    benches,
+    bench_single_stage,
+    bench_multi_stage,
+    bench_high_reuse
+);
 criterion_main!(benches);

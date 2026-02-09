@@ -314,15 +314,15 @@ mod tests {
         let (tdc, _) = pipe.proc(0, RawData::from_string(data.to_string()), 0)?;
         println!("{}", tdc);
         assert_eq!(
-            tdc.get_field("content"),
-            Some(&DataField::from_chars(
+            tdc.get_field_owned("content"),
+            Some(DataField::from_chars(
                 "content",
                 r#"主机172.16.12.20存在可疑进程参数问题，进程fscan_amd64的启动参数为./fscan_amd64 -h 172.16.12.0/24，符合可疑进程参数的特性。"#
             ))
         );
         assert_eq!(
-            tdc.get_field("event_content"),
-            Some(&DataField::from_chars(
+            tdc.get_field_owned("event_content"),
+            Some(DataField::from_chars(
                 "event_content",
                 r#"主机172.16.12.20存在可疑进程参数问题，进程fscan_amd64的启动参数为./fscan_amd64 -h 172.16.12.0/24，符合可疑进程参数的特性。"#
             ))
@@ -341,15 +341,15 @@ mod tests {
         let (tdc, _) = pipe.proc(0, RawData::from_string(data.to_string()), 0)?;
         println!("{}", tdc);
         assert_eq!(
-            tdc.get_field("b"),
-            Some(&DataField::from_chars(
+            tdc.get_field_owned("b"),
+            Some(DataField::from_chars(
                 "b",
                 r#"sddD:\招标项目\6-MSS\mss日志映射表"#
             ))
         );
         assert_eq!(
-            tdc.get_field("c"),
-            Some(&DataField::from_chars(
+            tdc.get_field_owned("c"),
+            Some(DataField::from_chars(
                 "c",
                 r#"sddD:\\招标项目\\6-MSS\\mss日志映射表"#
             ))

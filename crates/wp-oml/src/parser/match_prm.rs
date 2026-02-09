@@ -630,7 +630,9 @@ Level = match read(count) {
 "#;
         let model6 = oml_parse_raw(&mut conf6).expect("Failed to parse gt");
         let cache6 = &mut FieldQueryCache::default();
-        let data6 = vec![FieldStorage::from_owned(DataField::from_digit("count", 150))];
+        let data6 = vec![FieldStorage::from_owned(DataField::from_digit(
+            "count", 150,
+        ))];
         let src6 = DataRecord::from(data6);
         let target6 = model6.transform(src6, cache6);
         let expect6 = DataField::from_chars("Level".to_string(), "high".to_string());
@@ -739,7 +741,9 @@ Result = match read(status) {
         let cache = &mut FieldQueryCache::default();
 
         // Test case 1: status = A
-        let data1 = vec![FieldStorage::from_owned(DataField::from_chars("status", "A"))];
+        let data1 = vec![FieldStorage::from_owned(DataField::from_chars(
+            "status", "A",
+        ))];
         let src1 = DataRecord::from(data1);
         let target1 = model.transform(src1, cache);
         let expect1 = DataField::from_chars("Result".to_string(), "success message".to_string());
@@ -749,7 +753,9 @@ Result = match read(status) {
         ); // Verify the value contains space
 
         // Test case 2: status = B
-        let data2 = vec![FieldStorage::from_owned(DataField::from_chars("status", "B"))];
+        let data2 = vec![FieldStorage::from_owned(DataField::from_chars(
+            "status", "B",
+        ))];
         let src2 = DataRecord::from(data2);
         let target2 = model.transform(src2, cache);
         let expect2 = DataField::from_chars("Result".to_string(), "failure message".to_string());
@@ -759,7 +765,9 @@ Result = match read(status) {
         );
 
         // Test case 3: status = C (default)
-        let data3 = vec![FieldStorage::from_owned(DataField::from_chars("status", "C"))];
+        let data3 = vec![FieldStorage::from_owned(DataField::from_chars(
+            "status", "C",
+        ))];
         let src3 = DataRecord::from(data3);
         let target3 = model.transform(src3, cache);
         let expect3 = DataField::from_chars("Result".to_string(), "default message".to_string());

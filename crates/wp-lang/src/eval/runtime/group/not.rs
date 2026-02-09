@@ -93,8 +93,8 @@ mod tests {
         println!("{}", result);
         // Check that test field exists and is ignore type
         assert_eq!(
-            result.get_field("test"),
-            Some(&DataField::from_ignore("test"))
+            result.get_field_owned("test"),
+            Some(DataField::from_ignore("test"))
         );
 
         Ok(())
@@ -127,8 +127,8 @@ mod tests {
         println!("{}", result);
         // peek_symbol doesn't consume, so chars should get "INFO"
         assert_eq!(
-            result.get_field("msg"),
-            Some(&DataField::from_chars("msg", "INFO"))
+            result.get_field_owned("msg"),
+            Some(DataField::from_chars("msg", "INFO"))
         );
 
         Ok(())

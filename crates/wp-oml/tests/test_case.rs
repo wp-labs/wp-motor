@@ -147,8 +147,14 @@ fn test_wild_get() {
     let target = model.transform(src.clone(), cache);
 
     assert_eq!(target.items.len(), 5);
-    assert_eq!(target.get_field_owned("A1/path"), expect.get_field_owned("A1/path"));
-    assert_eq!(target.get_field_owned("B2/path"), expect.get_field_owned("B2/path"));
+    assert_eq!(
+        target.get_field_owned("A1/path"),
+        expect.get_field_owned("A1/path")
+    );
+    assert_eq!(
+        target.get_field_owned("B2/path"),
+        expect.get_field_owned("B2/path")
+    );
 
     let mut conf = r#"
         name : test
@@ -161,8 +167,14 @@ fn test_wild_get() {
     let target = model.transform(src.clone(), cache);
 
     assert_eq!(target.items.len(), 2);
-    assert_eq!(target.get_field_owned("A1/path"), expect.get_field_owned("A1/path"));
-    assert_eq!(target.get_field_owned("B2/path"), expect.get_field_owned("B2/path"));
+    assert_eq!(
+        target.get_field_owned("A1/path"),
+        expect.get_field_owned("A1/path")
+    );
+    assert_eq!(
+        target.get_field_owned("B2/path"),
+        expect.get_field_owned("B2/path")
+    );
 
     let mut conf = r#"
         name : test
@@ -175,7 +187,10 @@ fn test_wild_get() {
     let target = model.transform(src.clone(), cache);
 
     assert_eq!(target.items.len(), 1);
-    assert_eq!(target.get_field_owned("A1/path"), expect.get_field_owned("A1/path"));
+    assert_eq!(
+        target.get_field_owned("A1/path"),
+        expect.get_field_owned("A1/path")
+    );
 
     let mut conf = r#"
         name : test
@@ -188,7 +203,10 @@ fn test_wild_get() {
     let target = model.transform(src.clone(), cache);
 
     assert_eq!(target.items.len(), 3);
-    assert_eq!(target.get_field_owned("A2/name"), expect.get_field_owned("A2/name"));
+    assert_eq!(
+        target.get_field_owned("A2/name"),
+        expect.get_field_owned("A2/name")
+    );
 }
 
 #[test]

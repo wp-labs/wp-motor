@@ -353,7 +353,7 @@ mod tests {
         let fmt = Csv::default();
         let tdos = db.query_row("select * from example;")?;
         for obj in tdos {
-            println!("{}", fmt.format_field(&obj));
+            println!("{}", fmt.format_field(&obj.into()));
         }
         Ok(())
     }

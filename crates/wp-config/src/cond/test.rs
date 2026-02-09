@@ -95,7 +95,7 @@ pub fn test_isset_with_spaces_eval() -> ModalResult<()> {
     let mut rec = DataRecord::default();
     assert!(!evaluate_expression(&expr, &rec)); // missing
 
-    rec.items.push(DataField::from_chars("FLAG", "yes"));
+    rec.items.push(DataField::from_chars("FLAG", "yes").into());
     assert!(evaluate_expression(&expr, &rec)); // exists
     Ok(())
 }

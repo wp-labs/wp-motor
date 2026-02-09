@@ -105,7 +105,9 @@ mod tests {
     #[test]
     fn test_pipe_time() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::from_owned(DataField::from_chars("A1", "<html>"))];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "A1", "<html>",
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"

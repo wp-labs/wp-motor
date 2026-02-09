@@ -40,7 +40,8 @@ pub trait FieldExtractor {
         src: &mut DataRecordRef<'_>,
         dst: &DataRecord,
     ) -> Option<FieldStorage> {
-        self.extract_one(target, src, dst).map(FieldStorage::from_owned)
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
     }
 
     #[allow(unused_variables)]
@@ -95,7 +96,9 @@ impl FieldExtractor for PreciseEvaluator {
                 .map(|_| FieldStorage::from_shared(arc.clone())),
 
             // Regular fields: delegate to default implementation (calls extract_one and wraps in Owned)
-            _ => self.extract_one(target, src, dst).map(FieldStorage::from_owned),
+            _ => self
+                .extract_one(target, src, dst)
+                .map(FieldStorage::from_owned),
         }
     }
 

@@ -242,7 +242,7 @@ impl WplEvaluator {
         // Convert Vec<DataField> to Vec<FieldStorage>
         let storage_items: Vec<_> = result
             .into_iter()
-            .map(|field| wp_model_core::model::FieldStorage::from_owned(field))
+            .map(wp_model_core::model::FieldStorage::from_owned)
             .collect();
         Ok(DataRecord::from(storage_items))
     }

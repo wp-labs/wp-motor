@@ -55,8 +55,8 @@ mod test {
         }
         let result = &tdc[0];
         assert_eq!(
-            result.get_field("value"),
-            Some(&DataField::from_chars("value", "a"))
+            result.get_field_owned("value"),
+            Some(DataField::from_chars("value", "a"))
         );
         Ok(())
     }

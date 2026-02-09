@@ -321,7 +321,9 @@ mod tests {
     #[test]
     fn test_html_escape() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::from_owned(DataField::from_chars("A1", "<html>"))];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "A1", "<html>",
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -340,7 +342,9 @@ mod tests {
     #[test]
     fn test_str_escape() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::from_owned(DataField::from_chars("A1", "html\"1_"))];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "A1", "html\"1_",
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -381,7 +385,9 @@ mod tests {
     #[test]
     fn test_pipe_time() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![FieldStorage::from_owned(DataField::from_chars("A1", "<html>"))];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "A1", "<html>",
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -509,7 +515,9 @@ mod tests {
         let cache = &mut FieldQueryCache::default();
 
         // 测试映射到字符串
-        let data = vec![FieldStorage::from_owned(DataField::from_chars("status", "200"))];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "status", "200",
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -525,7 +533,9 @@ mod tests {
 
         // 测试映射到整数
         let cache2 = &mut FieldQueryCache::default();
-        let data2 = vec![FieldStorage::from_owned(DataField::from_chars("level", "ERROR"))];
+        let data2 = vec![FieldStorage::from_owned(DataField::from_chars(
+            "level", "ERROR",
+        ))];
         let src2 = DataRecord::from(data2);
 
         let mut conf2 = r#"
@@ -541,7 +551,9 @@ mod tests {
 
         // 测试映射到浮点数
         let cache3 = &mut FieldQueryCache::default();
-        let data3 = vec![FieldStorage::from_owned(DataField::from_chars("temp", "high"))];
+        let data3 = vec![FieldStorage::from_owned(DataField::from_chars(
+            "temp", "high",
+        ))];
         let src3 = DataRecord::from(data3);
 
         let mut conf3 = r#"
@@ -557,7 +569,9 @@ mod tests {
 
         // 测试映射到布尔值
         let cache4 = &mut FieldQueryCache::default();
-        let data4 = vec![FieldStorage::from_owned(DataField::from_chars("flag", "yes"))];
+        let data4 = vec![FieldStorage::from_owned(DataField::from_chars(
+            "flag", "yes",
+        ))];
         let src4 = DataRecord::from(data4);
 
         let mut conf4 = r#"

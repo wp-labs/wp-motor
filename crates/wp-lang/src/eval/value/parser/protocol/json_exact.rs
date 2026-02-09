@@ -53,7 +53,6 @@ mod tests {
     use orion_error::TestAssert;
 
     use crate::types::AnyResult;
-    use wp_model_core::model::data::record::RecordItem;
 
     #[test]
     fn test_json() -> AnyResult<()> {

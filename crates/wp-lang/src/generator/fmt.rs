@@ -54,7 +54,9 @@ pub fn record_from_fmt_fields(fields: FmtFieldVec) -> DataRecord {
     let mut data_fields = Vec::new();
 
     for field in fields {
-        data_fields.push(wp_model_core::model::FieldStorage::from_owned(field.data_field));
+        data_fields.push(wp_model_core::model::FieldStorage::from_owned(
+            field.data_field,
+        ));
     }
     DataRecord::from(data_fields)
 }

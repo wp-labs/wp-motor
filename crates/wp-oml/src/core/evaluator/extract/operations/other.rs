@@ -31,8 +31,8 @@ impl ExpEvaluator for SingleEvalExp {
             // wp-model-core 0.8.4: FieldRef supports cur_name overlay
             // We can now use zero-copy for Shared variants!
 
-            let needs_conversion = target.data_type() != storage.get_meta()
-                                && target.data_type() != &DataType::Auto;
+            let needs_conversion =
+                target.data_type() != storage.get_meta() && target.data_type() != &DataType::Auto;
 
             if storage.is_shared() && !needs_conversion {
                 // ✅ Shared + no conversion: Zero-copy optimization
@@ -108,8 +108,12 @@ impl FieldExtractor for GenericAccessor {
                 .extract_one(target, src, dst)
                 .map(|_| FieldStorage::from_shared(arc.clone())),
             // Regular field: return Owned variant
-            GenericAccessor::Field(x) => x.extract_one(target, src, dst).map(FieldStorage::from_owned),
-            GenericAccessor::Fun(x) => x.extract_one(target, src, dst).map(FieldStorage::from_owned),
+            GenericAccessor::Field(x) => x
+                .extract_one(target, src, dst)
+                .map(FieldStorage::from_owned),
+            GenericAccessor::Fun(x) => x
+                .extract_one(target, src, dst)
+                .map(FieldStorage::from_owned),
             GenericAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }
