@@ -17,6 +17,9 @@ extern crate wp_knowledge as wp_know;
 pub mod core;
 pub mod language;
 pub mod parser;
+
+#[cfg(test)]
+pub(crate) mod test_helpers;
 #[cfg(test)]
 mod test_utils;
 pub mod types;

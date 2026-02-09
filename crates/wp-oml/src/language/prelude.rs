@@ -7,5 +7,5 @@ pub use derive_builder::Builder;
 pub use derive_getters::Getters;
 pub use parse_display::Display;
 pub use std::fmt::{Display, Formatter};
-pub use wp_data_fmt::DataFormat;
+pub use wp_data_fmt::ValueFormatter;
 pub use wp_model_core::model::{DataField, DataRecord, DataType, Value};

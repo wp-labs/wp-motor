@@ -44,7 +44,7 @@ mod tests {
         assert_eq!(data, "");
         println!("{}", result);
         assert_eq!(
-            result.field("sip"),
+            result.get_field("sip"),
             Some(&DataField::from_ip(
                 "sip",
                 IpAddr::V4(Ipv4Addr::new(192, 168, 1, 2))
@@ -67,7 +67,7 @@ mod tests {
         assert_eq!(data, "");
         println!("{}", result);
         assert_eq!(
-            result.field("sip"),
+            result.get_field("sip"),
             Some(&DataField::from_ip(
                 "sip",
                 IpAddr::V4(Ipv4Addr::new(192, 168, 1, 2))

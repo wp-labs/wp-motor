@@ -7,7 +7,7 @@ use wp_connector_api::{
     AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkBuildCtx, SinkFactory, SinkHandle,
     SinkSpec as ResolvedSinkSpec,
 };
-use wp_data_fmt::DataFormat; // for format_record
+use wp_data_fmt::RecordFormatter; // for fmt_record
 
 type AnyResult<T> = anyhow::Result<T>;
 use crate::sinks::net::transport::{BackoffMode, NetSendPolicy, NetWriter, net_backoff_adaptive};
@@ -127,7 +127,7 @@ impl AsyncCtrl for TcpSink {
 impl AsyncRecordSink for TcpSink {
     async fn sink_record(&mut self, data: &wp_model_core::model::DataRecord) -> SinkResult<()> {
         // 复用 Raw 格式化，随后走 raw 路径
-        let raw = wp_data_fmt::Raw::new().format_record(data);
+        let raw = wp_data_fmt::Raw::new().fmt_record(data);
         AsyncRawDataSink::sink_str(self, raw.as_str()).await
     }
 

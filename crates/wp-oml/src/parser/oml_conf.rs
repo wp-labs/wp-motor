@@ -1,4 +1,5 @@
 use crate::core::DataRecordRef;
+use wp_model_core::model::data::record::RecordItem;
 use crate::core::ExpEvaluator;
 use crate::language::{EvalExp, ObjModel, PreciseEvaluator};
 use crate::parser::error::OMLCodeErrorTait;
@@ -221,7 +222,7 @@ fn materialize_static_items(
 
     let mut const_map = HashMap::new();
     for field in dst.items.into_iter() {
-        const_map.insert(field.get_name().to_string(), Arc::new(field));
+        const_map.insert(field.get_name().to_string(), Arc::new(field.into_owned()));
     }
     Ok(const_map)
 }
@@ -486,6 +487,7 @@ pub fn oml_conf_enable(data: &mut &str) -> WResult<bool> {
 mod tests {
     use crate::parser::oml_conf::oml_parse_raw;
     use crate::parser::utils::for_test::{assert_oml_parse, assert_oml_parse_ext};
+    use wp_model_core::model::data::record::RecordItem;
     use wp_parser::Parser;
     use wp_parser::WResult as ModalResult;
     use wp_parser::comment::CommentParser;

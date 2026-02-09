@@ -13,6 +13,7 @@ use std::sync::Arc;
 use wp_conf::TCondParser;
 use wp_conf::structure::SinkInstanceConf;
 use wp_conf::structure::{FlexGroup, SinkGroupConf};
+use wp_model_core::model::data::record::RecordItem;
 use wp_data_model::cache::FieldQueryCache;
 use wp_model_core::model::fmt_def::TextFmt;
 use wp_model_core::model::{DataRecord, Value};

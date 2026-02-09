@@ -1,9 +1,10 @@
 use crate::core::diagnostics::{self, OmlIssue, OmlIssueKind};
+use wp_model_core::model::data::record::RecordItem;
 use crate::core::prelude::*;
 use crate::language::BatchEvalTarget;
 use crate::language::{BatchEvalExp, BatchEvaluation, RecordOperation};
 use wp_data_model::cache::FieldQueryCache;
-use wp_model_core::model::{DataField, DataRecord};
+use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 
 impl ExpEvaluator for BatchEvalExp {
     fn eval_proc(
@@ -12,7 +13,7 @@ impl ExpEvaluator for BatchEvalExp {
         dst: &mut DataRecord,
         _cache: &mut FieldQueryCache,
     ) {
-        let mut needs = self.eval_way().extract_batch(self.target(), src, dst);
+        let needs = self.eval_way().extract_batch(self.target(), src, dst);
         if needs.is_empty() {
             // 诊断：批量匹配 0 命中
             let pat = self
@@ -23,7 +24,11 @@ impl ExpEvaluator for BatchEvalExp {
                 .unwrap_or_else(|| "_".to_string());
             diagnostics::push(OmlIssue::new(OmlIssueKind::BatchNoMatch, pat));
         }
-        dst.items.append(&mut needs);
+        let mut wrapped_needs: Vec<FieldStorage> = needs
+            .into_iter()
+            .map(FieldStorage::Owned)
+            .collect();
+        dst.items.append(&mut wrapped_needs);
     }
 }
 
@@ -68,17 +73,17 @@ mod tests {
     use crate::core::evaluator::traits::ExpEvaluator;
     use crate::language::BatchEvalExp;
     use wp_data_model::cache::FieldQueryCache;
-    use wp_model_core::model::{DataField, DataRecord, DataType};
+    use wp_model_core::model::{DataField, DataRecord, DataType, FieldStorage};
 
     #[test]
     fn test_value_arr1() {
         let cache = &mut FieldQueryCache::default();
 
         let data = vec![
-            DataField::from_chars("details[0]/process_name", "hello1"),
-            DataField::from_chars("details[1]/process_name", "hello2"),
-            DataField::from_chars("details[2]/process_name", "hello3"),
-            DataField::from_chars("details[3]/process_name", "hello4"),
+            FieldStorage::Owned(DataField::from_chars("details[0]/process_name", "hello1")),
+            FieldStorage::Owned(DataField::from_chars("details[1]/process_name", "hello2")),
+            FieldStorage::Owned(DataField::from_chars("details[2]/process_name", "hello3")),
+            FieldStorage::Owned(DataField::from_chars("details[3]/process_name", "hello4")),
         ];
         let src = DataRecord::from(data.clone());
 
@@ -102,16 +107,16 @@ mod tests {
         let cache = &mut FieldQueryCache::default();
 
         let data = vec![
-            DataField::from_chars("details[0]/process_name", "hello1"),
-            DataField::from_chars("details[1]/process_name", "hello2"),
-            DataField::from_chars("details[11]/process_name", "hello2"),
-            DataField::from_chars("details[2]/process_name", "hello3"),
-            DataField::from_chars("details[3]/process_name", "hello4"),
+            FieldStorage::Owned(DataField::from_chars("details[0]/process_name", "hello1")),
+            FieldStorage::Owned(DataField::from_chars("details[1]/process_name", "hello2")),
+            FieldStorage::Owned(DataField::from_chars("details[11]/process_name", "hello2")),
+            FieldStorage::Owned(DataField::from_chars("details[2]/process_name", "hello3")),
+            FieldStorage::Owned(DataField::from_chars("details[3]/process_name", "hello4")),
         ];
         let src = DataRecord::from(data.clone());
         let expect_data = vec![
-            DataField::from_chars("details[1]/process_name", "hello2"),
-            DataField::from_chars("details[11]/process_name", "hello2"),
+            FieldStorage::Owned(DataField::from_chars("details[1]/process_name", "hello2")),
+            FieldStorage::Owned(DataField::from_chars("details[11]/process_name", "hello2")),
         ];
         let expect = DataRecord::from(expect_data.clone());
 

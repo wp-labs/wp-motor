@@ -2,7 +2,8 @@ use crate::core::diagnostics::{self, OmlIssue, OmlIssueKind};
 use crate::core::prelude::*;
 use std::collections::HashMap;
 use strfmt::{DisplayStr, Formatter, strfmt};
-use wp_data_fmt::{DataFormat, Raw};
+use wp_data_fmt::{RecordFormatter, Raw};
+use wp_model_core::model::FieldStorage;
 impl FieldExtractor for FmtOperation {
     fn extract_one(
         &self,
@@ -61,7 +62,7 @@ where
 {
     fn display_str(&self, f: &mut Formatter) -> strfmt::Result<()> {
         let raw_fmt = Raw;
-        let str = raw_fmt.format_field(&self.0).to_string();
+        let str = raw_fmt.fmt_field(&FieldStorage::Owned(self.0.clone())).to_string();
         f.str(str.as_str())
     }
 }
@@ -72,15 +73,14 @@ mod tests {
     use crate::parser::oml_parse_raw;
     use orion_error::TestAssertWithMsg;
     use wp_data_model::cache::FieldQueryCache;
-    use wp_model_core::model::DataField;
-    use wp_model_core::model::DataRecord;
+    use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 
     #[test]
     fn test_fmt() {
         let data = vec![
-            DataField::from_chars("A1", "h1"),
-            DataField::from_chars("B2", "h2"),
-            DataField::from_chars("C3", "h3"),
+            FieldStorage::Owned(DataField::from_chars("A1", "h1")),
+            FieldStorage::Owned(DataField::from_chars("B2", "h2")),
+            FieldStorage::Owned(DataField::from_chars("C3", "h3")),
         ];
         let src = DataRecord::from(data);
         let mut cache = FieldQueryCache::default();
@@ -96,6 +96,6 @@ mod tests {
         let target = model.transform(src, &mut cache);
 
         let expect = DataField::from_chars("X".to_string(), "wplab:h1-h2_h3".to_string());
-        assert_eq!(target.field("X"), Some(&expect));
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 }

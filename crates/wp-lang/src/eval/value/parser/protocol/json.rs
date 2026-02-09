@@ -212,7 +212,7 @@ mod tests {
         for i in out {
             if i.get_name().eq("alarm_sip") {
                 assert_eq!(
-                    KV_FMT.format_field(&i),
+                    KV_FMT.format_field(&i.into()),
                     "alarm_sip: 10.111.6.136".to_string()
                 );
                 no_ignore += 1;
@@ -221,7 +221,7 @@ mod tests {
 
             if i.get_name().eq("_origin/sip") {
                 assert_eq!(
-                    KV_FMT.format_field(&i),
+                    KV_FMT.format_field(&i.into()),
                     "_origin/sip: 10.111.134.201".to_string()
                 );
                 no_ignore += 1;
@@ -247,7 +247,7 @@ mod tests {
         for i in out {
             if i.get_name().eq("action/text") {
                 assert_eq!(
-                    KV_FMT.format_field(&i),
+                    KV_FMT.format_field(&i.into()),
                     r#"action/text: "父进程 /bin/bash（pid：105123）创建进程 /usr/bin/curl（pid：105129）启动参数：-fsL http://localhost:8080/api/health/ 。来源：进程创建监控""#.to_string());
                 continue;
             }
@@ -269,7 +269,7 @@ mod tests {
         for i in out {
             if i.get_name().eq("action/text") {
                 assert_eq!(
-                    KV_FMT.format_field(&i),
+                    KV_FMT.format_field(&i.into()),
                     r#"action/text: "父进程 /bin/bash（pid：105123）创建进程 /usr/bin/curl（pid：105129）启动参数：-fsL http://localhost:8080/api/health/ 。来源：进程创建监控""#
                 );
                 continue;
@@ -285,7 +285,8 @@ mod tests {
         let pipe = WplEvaluator::from_code(rule)?;
         let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("cpu") {
-            assert_eq!(*i, DataField::from_digit("cpu", 96));
+            let expected = DataField::from_digit("cpu", 96);
+            assert_eq!(i.as_field(), &expected);
         }
         Ok(())
     }
@@ -298,7 +299,8 @@ mod tests {
         let pipe = WplEvaluator::from_code(rule)?;
         let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("cpu") {
-            assert_eq!(*i, DataField::from_digit("cpu", 96));
+            let expected = DataField::from_digit("cpu", 96);
+            assert_eq!(i.as_field(), &expected);
         }
         Ok(())
     }
@@ -309,7 +311,8 @@ mod tests {
         let pipe = WplEvaluator::from_code(rule)?;
         let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("cpu") {
-            assert_eq!(*i, DataField::from_digit("cpu", 96));
+            let expected = DataField::from_digit("cpu", 96);
+            assert_eq!(i.as_field(), &expected);
         }
         Ok(())
     }
@@ -382,10 +385,8 @@ mod tests {
         let pipe = WplEvaluator::from_code(rule)?;
         let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(field) = tdc.field("logs") {
-            assert_eq!(
-                field,
-                &DataField::from_chars("logs".to_string(), "[10]:\"sys\"".to_string())
-            );
+            let expected = DataField::from_chars("logs".to_string(), "[10]:\"sys\"".to_string());
+            assert_eq!(field.as_field(), &expected);
         } else {
             panic!("logs field missing");
         }
@@ -400,7 +401,7 @@ mod tests {
         let pipe = WplEvaluator::from_code(rule)?;
         let (tdc, _) = pipe.proc(0, data, 0)?;
         assert_eq!(
-            tdc.field("b"),
+            tdc.field("b").map(|s| s.as_field()),
             Some(&DataField::from_chars(
                 "b".to_string(),
                 "line1\nline2".to_string()
@@ -430,7 +431,7 @@ mod tests {
             .assert();
         let tdc = DataRecord::from(obj);
         let expect = DataField::from_chars("big".to_string(), (i64::MAX as u128 + 1).to_string());
-        assert_eq!(tdc.field("big"), Some(&expect));
+        assert_eq!(tdc.field("big").map(|s| s.as_field()), Some(&expect));
         Ok(())
     }
 
@@ -442,9 +443,11 @@ mod tests {
             .verify_parse_suc(&mut data)
             .assert();
         let tdc = DataRecord::from(obj);
-        assert_eq!(tdc.field("i"), Some(&DataField::from_digit("i", -42)));
-        if let Some(DataField { .. }) = tdc.field("f") {
-            // 不强约束小数舍入，仅校验存在
+        let expected_i = DataField::from_digit("i", -42);
+        assert_eq!(tdc.field("i").map(|s| s.as_field()), Some(&expected_i));
+        if let Some(storage) = tdc.field("f") {
+            let _field = storage.as_field();
+            // 不强约束小数舍入,仅校验存在
             // presence assertion only
         } else {
             panic!("float field missing");
@@ -467,12 +470,13 @@ mod tests {
         fpu.parse(0, &ups_sep, &mut data, None, &mut out).assert();
         let dr = DataRecord::from(out);
         // 路径中的反斜杠数量符合预期；txt 中包含实际换行
+        let expected_path = DataField::from_chars("path", "c:\\users\\fc\\file");
         assert_eq!(
-            dr.field("path"),
-            Some(&DataField::from_chars("path", "c:\\users\\fc\\file"))
+            dr.field("path").map(|s| s.as_field()),
+            Some(&expected_path)
         );
         if let Some(v) = dr.field("txt") {
-            if let wp_model_core::model::Value::Chars(s) = v.get_value() {
+            if let wp_model_core::model::Value::Chars(s) = v.as_field().get_value() {
                 assert!(s.contains('\n'));
             } else {
                 panic!("txt not chars")
@@ -606,13 +610,11 @@ mod tests {
         let pipe = WplEvaluator::from_code(rule)?;
         let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("file_path") {
-            assert_eq!(
-                *i,
-                DataField::from_chars(
-                    "file_path",
-                    r#"c:\\users\\fc\\desktop\\tr-shopbot\\7e5432f32a3b6f25666e0cc9acff00bf"#
-                )
+            let expected = DataField::from_chars(
+                "file_path",
+                r#"c:\\users\\fc\\desktop\\tr-shopbot\\7e5432f32a3b6f25666e0cc9acff00bf"#
             );
+            assert_eq!(i.as_field(), &expected);
         } else {
             panic!("json parse error");
         }
@@ -678,13 +680,11 @@ mod tests {
                         DataField::from_chars( "command".to_string(),
                                              r#"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.EXE -ep bypass -eSQuAGIAZQA="#.to_string()));
         if let Some(i) = tdc.field("event_detail") {
-            assert_eq!(
-                *i,
-                DataField::from_arr(
-                    "event_detail".to_string(),
-                    vec![DataField::new_opt(DataType::Obj, None, expected.into())]
-                )
+            let expected_field = DataField::from_arr(
+                "event_detail".to_string(),
+                vec![DataField::new_opt(DataType::Obj, None, expected.into())]
             );
+            assert_eq!(i.as_field(), &expected_field);
         } else {
             panic!("json parse error");
         }
@@ -731,13 +731,11 @@ mod tests {
         ];
 
         if let Some(i) = tdc.field("event_detail[0]/alert_id") {
-            assert_eq!(
-                *i,
-                DataField::from_chars(
-                    "event_detail[0]/alert_id".to_string(),
-                    "94882787-9505-49d4-9024-20DC93AF579B".to_string()
-                )
+            let expected = DataField::from_chars(
+                "event_detail[0]/alert_id".to_string(),
+                "94882787-9505-49d4-9024-20DC93AF579B".to_string()
             );
+            assert_eq!(i.as_field(), &expected);
         } else {
             panic!("json parse error");
         }
@@ -760,7 +758,8 @@ mod tests {
         let pipe = WplEvaluator::from_code(rule)?;
         let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("key") {
-            assert_eq!(*i, DataField::from_chars("key", "hello boy"));
+            let expected = DataField::from_chars("key", "hello boy");
+            assert_eq!(i.as_field(), &expected);
         } else {
             panic!("json parse error");
         }
@@ -774,13 +773,11 @@ mod tests {
         let pipe = WplEvaluator::from_code(rule)?;
         let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("action") {
-            assert_eq!(
-                *i,
-                DataField::from_chars(
-                    "action",
-                    r#"{\"text\": \"10.91.7.38(局域网) 访问 已知Webshell 10.48.116.32:8080/newShell/hello.jsp（物理路径：/usr/local/apache-tomcat-8.0.23/webapps/newShell/hello.jsp）。来源：网页浏览实时防护\", \"html\": \"<span class='ip'>10.91.7.38</span><span class='ipAddr'>(局域网)</span> 访问 <span class='type'>已知Webshell</span> <span class='url'>10.48.116.32:8080/newShell/hello.jsp</span><span class='webPagePhysicalPath'>（物理路径：/usr/local/apache-tomcat-8.0.23/webapps/newShell/hello.jsp）</span>。来源：<span class='source'> 网页浏览实时防护</span>\"}"#,
-                )
+            let expected = DataField::from_chars(
+                "action",
+                r#"{\"text\": \"10.91.7.38(局域网) 访问 已知Webshell 10.48.116.32:8080/newShell/hello.jsp（物理路径：/usr/local/apache-tomcat-8.0.23/webapps/newShell/hello.jsp）。来源：网页浏览实时防护\", \"html\": \"<span class='ip'>10.91.7.38</span><span class='ipAddr'>(局域网)</span> 访问 <span class='type'>已知Webshell</span> <span class='url'>10.48.116.32:8080/newShell/hello.jsp</span><span class='webPagePhysicalPath'>（物理路径：/usr/local/apache-tomcat-8.0.23/webapps/newShell/hello.jsp）</span>。来源：<span class='source'> 网页浏览实时防护</span>\"}"#,
             );
+            assert_eq!(i.as_field(), &expected);
         } else {
             panic!("json parse error");
         }
@@ -793,7 +790,8 @@ mod tests {
         let pipe = WplEvaluator::from_code(rule)?;
         let (tdc, _) = pipe.proc(0, data, 0)?;
         if let Some(i) = tdc.field("key") {
-            assert_eq!(*i, DataField::from_symbol("key", "boy"));
+            let expected = DataField::from_symbol("key", "boy");
+            assert_eq!(i.as_field(), &expected);
         } else {
             panic!("json parse error");
         }

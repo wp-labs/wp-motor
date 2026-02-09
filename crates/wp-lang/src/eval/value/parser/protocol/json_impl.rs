@@ -6,7 +6,7 @@ use wp_model_core::model::FNameStr;
 // 使用 String 动态拼接路径，避免固定容量 ArrayString 在深层或长 key 时 panic
 use serde_json::{Map, Value};
 use wp_model_core::model::types::value::ObjectValue;
-use wp_model_core::model::{DataField, DataType};
+use wp_model_core::model::{DataField, DataType, FieldStorage};
 
 pub struct JsonProc {}
 
@@ -408,7 +408,7 @@ impl JsonProc {
                     if let Some(value) =
                         Self::proc_array_value(j_path.as_str(), v, k, depth + 1, max_depth)
                     {
-                        sub_fields.insert(k.clone(), value);
+                        sub_fields.insert(k.clone(), FieldStorage::Owned(value));
                     }
                 }
                 return Some(DataField::new_opt(DataType::Obj, None, sub_fields.into()));

@@ -17,15 +17,33 @@ pub use evaluator::traits::ExpEvaluator;
 pub use evaluator::traits::FieldCollector;
 pub use evaluator::traits::ValueProcessor;
 use wp_data_model::cache::FieldQueryCache;
-use wp_model_core::model::{DataField, DataRecord};
+use wp_model_core::model::{DataField, DataRecord, FieldStorage};
+use std::sync::Arc;
 
 pub trait FieldExtractor {
+    /// Extract field as owned DataField
+    ///
+    /// This is the base method that all implementations must provide.
     fn extract_one(
         &self,
         target: &EvaluationTarget,
         src: &mut DataRecordRef<'_>,
         dst: &DataRecord,
     ) -> Option<DataField>;
+
+    /// Extract field as FieldStorage (Shared or Owned variant)
+    ///
+    /// Default implementation wraps extract_one result in FieldStorage::Owned.
+    /// Override this for zero-copy behavior (return Shared variant for Arc-based fields).
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::Owned)
+    }
 
     #[allow(unused_variables)]
     fn extract_more(
@@ -48,11 +66,9 @@ impl FieldExtractor for PreciseEvaluator {
         dst: &DataRecord,
     ) -> Option<DataField> {
         match self {
-            //PreciseEvaluator::Query(o) => o.extract_one(target, src, dst),
             PreciseEvaluator::Sql(o) => o.extract_one(target, src, dst),
             PreciseEvaluator::Match(o) => o.extract_one(target, src, dst),
             PreciseEvaluator::Obj(o) => o.extract_one(target, src, dst),
-            PreciseEvaluator::ObjArc(o) => o.as_ref().extract_one(target, src, dst),
             PreciseEvaluator::Tdc(o) => o.extract_one(target, src, dst),
             PreciseEvaluator::Map(o) => o.extract_one(target, src, dst),
             PreciseEvaluator::Pipe(o) => o.extract_one(target, src, dst),
@@ -60,8 +76,31 @@ impl FieldExtractor for PreciseEvaluator {
             PreciseEvaluator::Fmt(o) => o.extract_one(target, src, dst),
             PreciseEvaluator::Collect(o) => o.extract_one(target, src, dst),
             PreciseEvaluator::Val(o) => o.extract_one(target, src, dst),
+            PreciseEvaluator::ObjArc(arc) => arc.as_ref().extract_one(target, src, dst),
             PreciseEvaluator::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
+            }
+        }
+    }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        match self {
+            // Static symbol reference: return Shared variant (zero-copy)
+            PreciseEvaluator::ObjArc(arc) => {
+                arc.as_ref()
+                    .extract_one(target, src, dst)
+                    .map(|_| FieldStorage::Shared(Arc::clone(arc)))
+            }
+
+            // Regular fields: delegate to default implementation (calls extract_one and wraps in Owned)
+            _ => {
+                self.extract_one(target, src, dst)
+                    .map(FieldStorage::Owned)
             }
         }
     }

@@ -151,6 +151,7 @@ mod tests {
     use crate::types::AnyResult;
     use wp_model_core::model::DataType;
     use wp_model_core::model::Value;
+    use wp_model_core::model::data::record::RecordItem;
 
     #[test]
     fn test_pipeline() -> AnyResult<()> {

@@ -249,7 +249,7 @@ impl Display for CondAccessor {
             }
             CondAccessor::Val(x) => {
                 let json_fmt = Json;
-                write!(f, "{}", json_fmt.fmt_value(x))
+                write!(f, "{}", json_fmt.format_value(x))
             }
             CondAccessor::SqlFn(x) => {
                 let (sql, _params) = x.to_sql_and_params();
@@ -260,11 +260,11 @@ impl Display for CondAccessor {
 }
 
 impl CondAccessor {
-    pub fn diy_fmt(&self, fmt: &impl DataFormat<Output = String>) -> String {
+    pub fn diy_fmt(&self, fmt: &impl ValueFormatter<Output = String>) -> String {
         match self {
             CondAccessor::Tdc(x) => format!("{}", x),
             CondAccessor::Fun(x) => format!("{}", x),
-            CondAccessor::Val(x) => fmt.fmt_value(x),
+            CondAccessor::Val(x) => fmt.format_value(x),
             CondAccessor::SqlFn(x) => {
                 let (sql, _params) = x.to_sql_and_params();
                 sql

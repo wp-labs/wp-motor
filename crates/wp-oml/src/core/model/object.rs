@@ -1,4 +1,6 @@
 use super::super::{ConfADMExt, DataTransformer};
+use wp_model_core::model::FieldStorage;
+use wp_model_core::model::data::record::RecordItem;
 use crate::core::diagnostics;
 use crate::core::evaluator::traits::ExpEvaluator;
 use crate::core::prelude::*;
@@ -31,7 +33,7 @@ impl DataTransformer for ObjModel {
             // Convert fields starting with "__" to ignore type
             for field in &mut out.items {
                 if field.get_name().starts_with("__") {
-                    *field = DataField::from_ignore(field.get_name());
+                    *field = FieldStorage::Owned(DataField::from_ignore(field.get_name()));
                 }
             }
         }

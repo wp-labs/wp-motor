@@ -1,4 +1,5 @@
 use crate::core::FieldExtractor;
+use wp_model_core::model::data::record::RecordItem;
 use crate::core::prelude::*;
 use crate::language::EvaluationTarget;
 use crate::language::FieldTake;
@@ -63,7 +64,7 @@ impl FieldCollector for FieldTake {
         for i in &dst.items {
             for key in &self.collect {
                 if WildMatch::new(key.as_str()).matches(i.get_name().trim()) {
-                    result.push(i.clone())
+                    result.push(i.as_field().clone())
                 }
             }
         }

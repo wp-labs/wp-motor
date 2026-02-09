@@ -3,7 +3,7 @@ use crate::core::prelude::*;
 
 use crate::language::MapOperation;
 use wp_model_core::model::types::value::ObjectValue;
-use wp_model_core::model::{DataField, DataRecord};
+use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 
 use crate::core::FieldExtractor;
 
@@ -21,7 +21,7 @@ impl FieldExtractor for MapOperation {
             let sub_name = sub.target().safe_name();
             if let Some(mut o) = one {
                 o.set_name(sub_name.clone());
-                obj.insert(sub_name, omlobj_meta_conv(o, sub.target()));
+                obj.insert(sub_name, FieldStorage::Owned(omlobj_meta_conv(o, sub.target())));
             }
         }
         Some(DataField::from_obj(name, obj))

@@ -4,7 +4,7 @@ use wp_stat::StatRecorder;
 use wp_stat::StatReq;
 
 use tokio::sync::mpsc::error::SendError;
-use wp_data_fmt::{DataFormat, Raw};
+use wp_data_fmt::{RecordFormatter, Raw};
 use wp_model_core::model::DataRecord;
 use wp_stat::ReportVariant;
 use wp_stat::StatCollector;
@@ -19,7 +19,7 @@ pub fn extract_metric_dimensions(tdo: &DataRecord, collects: &Vec<String>) -> Da
     let formatter = Raw;
     for key in collects {
         let value = tdo.field(key.as_str());
-        data.push(value.map(|x| formatter.format_field(x).to_string()));
+        data.push(value.map(|x| formatter.fmt_field(x).to_string()));
     }
     data
 }

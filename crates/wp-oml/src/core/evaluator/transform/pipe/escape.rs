@@ -3,7 +3,7 @@ use crate::language::{
     HtmlEscape, HtmlUnescape, JsonEscape, JsonUnescape, StrEscape, ToJson, ToStr,
 };
 
-use wp_data_fmt::{DataFormat, Json};
+use wp_data_fmt::{ValueFormatter, Json};
 use wp_model_core::model::{DataField, DataType, FNameStr, Value};
 
 impl ValueProcessor for StrEscape {
@@ -84,7 +84,7 @@ impl ValueProcessor for ToJson {
     fn value_cacu(&self, in_val: DataField) -> DataField {
         let meta = DataType::Json;
         let json_fmt = Json;
-        let json_str = json_fmt.fmt_value(in_val.get_value()).to_string();
+        let json_str = json_fmt.format_value(in_val.get_value()).to_string();
         DataField::new(meta, in_val.clone_name(), Value::Chars(json_str.into()))
     }
 }
@@ -95,12 +95,12 @@ mod tests {
     use crate::parser::oml_parse_raw;
     use orion_error::TestAssert;
     use wp_data_model::cache::FieldQueryCache;
-    use wp_model_core::model::{DataField, DataRecord};
+    use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 
     #[test]
     fn test_html_escape() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![DataField::from_chars("A1", "<html>")];
+        let data = vec![FieldStorage::Owned(DataField::from_chars("A1", "<html>"))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -113,13 +113,13 @@ mod tests {
         let target = model.transform(src, cache);
 
         let expect = DataField::from_chars("X".to_string(), "<html>".to_string());
-        assert_eq!(target.field("X"), Some(&expect));
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 
     #[test]
     fn test_str_escape() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![DataField::from_chars("A1", "html\"1_")];
+        let data = vec![FieldStorage::Owned(DataField::from_chars("A1", "html\"1_"))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -132,13 +132,13 @@ mod tests {
         let target = model.transform(src, cache);
 
         let expect = DataField::from_chars("X".to_string(), r#"html\"1_"#.to_string());
-        assert_eq!(target.field("X"), Some(&expect));
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 
     #[test]
     fn test_json_escape() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![DataField::from_chars("A1", "This is a crab: 🦀")];
+        let data = vec![FieldStorage::Owned(DataField::from_chars("A1", "This is a crab: 🦀"))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -151,6 +151,6 @@ mod tests {
         let target = model.transform(src, cache);
 
         let expect = DataField::from_chars("X".to_string(), "This is a crab: 🦀".to_string());
-        assert_eq!(target.field("X"), Some(&expect));
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 }

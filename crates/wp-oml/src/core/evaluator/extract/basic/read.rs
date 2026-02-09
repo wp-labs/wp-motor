@@ -1,4 +1,5 @@
 use crate::core::prelude::*;
+use wp_model_core::model::data::record::RecordItem;
 impl FieldExtractor for FieldRead {
     fn extract_one(
         &self,
@@ -38,10 +39,9 @@ fn find_tdc_target(
     option: bool,
 ) -> Option<DataField> {
     if let Some(found) = src.field(key)
-        && !(option && found.value.is_empty())
+        && !(option && found.as_field().value.is_empty())
     {
-        let obj = (*found).clone();
-        return Some(obj);
+        return Some(found.as_field().clone());
     }
     None
 }
@@ -72,7 +72,7 @@ impl FieldCollector for FieldRead {
         'outer: for cw in self.collect_wild() {
             for i in &dst.items {
                 if cw.matches(i.get_name().trim()) {
-                    result.push(i.clone());
+                    result.push(i.as_field().clone());
                     continue 'outer;
                 }
             }

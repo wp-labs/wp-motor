@@ -294,13 +294,14 @@ mod tests {
         let pipe = WplEvaluator::from_code(rule)?;
 
         let (tdc, _) = pipe.proc(0, RawData::from_string(data.to_string()), 0)?;
+        let expected = vec![
+            DataField::from_chars("y.a".to_string(), "hello".to_string()),
+            DataField::from_chars("x.b".to_string(), "18".to_string()),
+            DataField::from_digit("x.c".to_string(), 20),
+        ];
         assert_eq!(
-            tdc.items,
-            vec![
-                DataField::from_chars("y.a".to_string(), "hello".to_string()),
-                DataField::from_chars("x.b".to_string(), "18".to_string()),
-                DataField::from_digit("x.c".to_string(), 20),
-            ]
+            tdc.items.iter().map(|s| s.as_field()).collect::<Vec<_>>(),
+            expected.iter().collect::<Vec<_>>()
         );
         Ok(())
     }
@@ -313,14 +314,14 @@ mod tests {
         let (tdc, _) = pipe.proc(0, RawData::from_string(data.to_string()), 0)?;
         println!("{}", tdc);
         assert_eq!(
-            tdc.field("content"),
+            tdc.get_field("content"),
             Some(&DataField::from_chars(
                 "content",
                 r#"主机172.16.12.20存在可疑进程参数问题，进程fscan_amd64的启动参数为./fscan_amd64 -h 172.16.12.0/24，符合可疑进程参数的特性。"#
             ))
         );
         assert_eq!(
-            tdc.field("event_content"),
+            tdc.get_field("event_content"),
             Some(&DataField::from_chars(
                 "event_content",
                 r#"主机172.16.12.20存在可疑进程参数问题，进程fscan_amd64的启动参数为./fscan_amd64 -h 172.16.12.0/24，符合可疑进程参数的特性。"#
@@ -340,14 +341,14 @@ mod tests {
         let (tdc, _) = pipe.proc(0, RawData::from_string(data.to_string()), 0)?;
         println!("{}", tdc);
         assert_eq!(
-            tdc.field("b"),
+            tdc.get_field("b"),
             Some(&DataField::from_chars(
                 "b",
                 r#"sddD:\招标项目\6-MSS\mss日志映射表"#
             ))
         );
         assert_eq!(
-            tdc.field("c"),
+            tdc.get_field("c"),
             Some(&DataField::from_chars(
                 "c",
                 r#"sddD:\\招标项目\\6-MSS\\mss日志映射表"#
@@ -371,13 +372,14 @@ mod tests {
     }
 
     fn asert_kv_x_obj(tdc: DataRecord) {
+        let expected = vec![
+            DataField::from_chars("x.a".to_string(), "hello".to_string()),
+            DataField::from_digit("x.b", 18,),
+            DataField::from_digit("x.c".to_string(), 20),
+        ];
         assert_eq!(
-            tdc.items,
-            vec![
-                DataField::from_chars("x.a".to_string(), "hello".to_string()),
-                DataField::from_digit("x.b", 18,),
-                DataField::from_digit("x.c".to_string(), 20),
-            ]
+            tdc.items.iter().map(|s| s.as_field()).collect::<Vec<_>>(),
+            expected.iter().collect::<Vec<_>>()
         );
     }
 }

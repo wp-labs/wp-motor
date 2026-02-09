@@ -254,6 +254,8 @@ pub fn oml_aga_sql(data: &mut &str) -> WResult<PreciseEvaluator> {
 mod tests {
     use wp_data_model::cache::FieldQueryCache;
     use wp_parser::WResult as ModalResult;
+    use wp_model_core::model::{FieldStorage, DataField, DataRecord};
+    use wp_model_core::model::data::record::RecordItem;
 
     use crate::parser::utils::for_test::assert_oml_parse;
     use crate::parser::{sql_prm::oml_sql, utils::for_test::err_of_oml};
@@ -323,8 +325,6 @@ mod tests {
     use orion_error::TestAssert;
     use wp_know::mem::memdb::MemDB;
     use wp_knowledge::facade as kdb;
-    use wp_model_core::model::{DataField, DataRecord};
-
     #[test]
     fn test_sql_udf_ip4_between_exec() -> ModalResult<()> {
         // 1) init in-memory provider and prepare table with an IPv4 range
@@ -349,7 +349,7 @@ zone : chars = select zone from zone where ip_start_int <= ip4_int(read(src_ip))
         let model = oml_parse_raw(&mut conf).assert();
 
         // 3) transform with src_ip within range
-        let src = DataRecord::from(vec![DataField::from_chars("src_ip", "10.1.2.3")]);
+        let src = DataRecord::from(vec![FieldStorage::Owned(DataField::from_chars("src_ip", "10.1.2.3"))]);
         let cache = &mut FieldQueryCache::default();
         let out = model.transform(src, cache);
         use wp_model_core::model::Value;

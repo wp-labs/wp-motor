@@ -176,7 +176,7 @@ mod tests {
             DataField::new_opt(DataType::Digit, Some("array_val/[2]".into()), 3.into()),
         ];
         let expected = DataField::from_arr("array_val".to_string(), expected);
-        assert_eq!(tdc.field("array_val"), Some(&expected));
+        assert_eq!(tdc.get_field("array_val"), Some(&expected));
 
         let data = r#"["hello", "_F]fe", "!@#$*&^\"123"]"#;
         let rule = r#" rule x { (array/chars:array)}"#;
@@ -193,7 +193,7 @@ mod tests {
             ),
         ];
         let expected = DataField::from_arr("array".to_string(), expected);
-        assert_eq!(tdc.field("array"), Some(&expected));
+        assert_eq!(tdc.get_field("array"), Some(&expected));
 
         // 尾随逗号
         let data = r#"[1,2,3,]"#;
@@ -206,7 +206,7 @@ mod tests {
             DataField::new_opt(DataType::Digit, Some("nums/[2]".into()), 3.into()),
         ];
         let expected = DataField::from_arr("nums".to_string(), expected);
-        assert_eq!(tdc.field("nums"), Some(&expected));
+        assert_eq!(tdc.get_field("nums"), Some(&expected));
 
         // 空数组
         let data = r#"[]"#;
@@ -215,7 +215,7 @@ mod tests {
         let (tdc, _) = pipe.proc(0, data, 0)?;
         let expected: Vec<DataField> = vec![];
         let expected = DataField::from_arr("empty".to_string(), expected);
-        assert_eq!(tdc.field("empty"), Some(&expected));
+        assert_eq!(tdc.get_field("empty"), Some(&expected));
         Ok(())
     }
 
@@ -230,7 +230,7 @@ mod tests {
             DataField::from_ip("ips/[1]", IpAddr::from_str("2.2.2.2")?),
         ];
         let expected = DataField::from_arr("ips".to_string(), expected);
-        assert_eq!(tdc.field("ips"), Some(&expected));
+        assert_eq!(tdc.get_field("ips"), Some(&expected));
         Ok(())
     }
 
@@ -257,7 +257,7 @@ mod tests {
             ],
         );
         assert_eq!(
-            tdc.field("array"),
+            tdc.get_field("array"),
             Some(&DataField::from_arr("array".to_string(), vec![obj, obj1]))
         );
         Ok(())
@@ -286,7 +286,7 @@ mod tests {
         ];
         //let obj2 = TDOEnum::new_opt(Meta::Obj, None, obj.into());
         let expected = DataField::from_arr("array", obj);
-        assert_eq!(tdc.field("array"), Some(&expected));
+        assert_eq!(tdc.get_field("array"), Some(&expected));
         Ok(())
     }
     #[test]

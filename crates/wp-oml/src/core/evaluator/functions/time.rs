@@ -83,15 +83,15 @@ mod tests {
     use crate::parser::oml_parse_raw;
     use orion_error::TestAssertWithMsg;
     use wp_data_model::cache::FieldQueryCache;
-    use wp_model_core::model::{DataField, DataRecord};
+    use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 
     #[test]
     fn test_pipe() {
         let cache = &mut FieldQueryCache::default();
         let data = vec![
-            DataField::from_chars("A1", "hello1"),
-            DataField::from_chars("B2", "hello2"),
-            DataField::from_chars("C3", "hello3"),
+            FieldStorage::Owned(DataField::from_chars("A1", "hello1")),
+            FieldStorage::Owned(DataField::from_chars("B2", "hello2")),
+            FieldStorage::Owned(DataField::from_chars("C3", "hello3")),
         ];
         let src = DataRecord::from(data);
 
