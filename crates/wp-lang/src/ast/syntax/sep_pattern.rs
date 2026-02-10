@@ -1,11 +1,31 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
 
-// ── Error constants ──────────────────────────────────────────────────
-const ERR_MULTI_STAR: &str = "sep pattern: at most one * allowed";
-const ERR_PRESERVE_NOT_END: &str = "sep pattern: (...) must be at the end";
-const ERR_STAR_IN_PRESERVE: &str = "sep pattern: * not allowed inside (...)";
-const ERR_EMPTY_PATTERN: &str = "sep pattern: empty pattern";
+// ── Error formatting helpers ─────────────────────────────────────────
+
+/// Build a user-friendly error message with a visual pointer to the problematic position.
+///
+/// Example output:
+/// ```text
+/// sep pattern error: at most one * allowed
+///   {*a*}
+///      ^
+/// ```
+fn fmt_err(raw: &str, pos: usize, msg: &str) -> String {
+    let display = format!("{{{}}}", raw);
+    // pos is relative to raw; in display string `{raw}`, offset by 1 for the leading `{`
+    let pointer_offset = pos + 1;
+    let pointer_line: String = " ".repeat(pointer_offset) + "^";
+    format!(
+        "sep pattern error: {}\n  {}\n  {}",
+        msg, display, pointer_line
+    )
+}
+
+/// Build an error message without position (for structural issues).
+fn fmt_err_no_pos(raw: &str, msg: &str) -> String {
+    format!("sep pattern error: {} in {{{}}}", msg, raw)
+}
 
 // ── Data structures ──────────────────────────────────────────────────
 
@@ -61,21 +81,20 @@ pub struct SepPattern {
 /// Build a `SepPattern` from the raw content inside `{…}`.
 pub fn build_pattern(raw: &str) -> Result<SepPattern, String> {
     if raw.is_empty() {
-        return Err(ERR_EMPTY_PATTERN.to_string());
+        return Err("sep pattern error: pattern is empty, expected content inside {}".to_string());
     }
 
     // 1. Separate preserve portion: find un-escaped `(` … `)` at the very end.
     let (main_raw, preserve_raw) = split_preserve(raw)?;
 
     // 2. Parse main body segments.
-    let (segments, star_count) = parse_segments(main_raw, false)?;
+    let main_offset = 0;
+    let (segments, star_count) = parse_segments(raw, main_raw, main_offset, false)?;
 
     // 3. Parse preserve segments (if any).
     let preserve = if let Some(pr) = preserve_raw {
-        let (psegs, pstar) = parse_segments(pr, true)?;
-        if pstar > 0 {
-            return Err(ERR_STAR_IN_PRESERVE.to_string());
-        }
+        let preserve_offset = main_raw.len() + 1; // +1 for '('
+        let (psegs, _) = parse_segments(raw, pr, preserve_offset, true)?;
         Some(psegs)
     } else {
         None
@@ -83,12 +102,18 @@ pub fn build_pattern(raw: &str) -> Result<SepPattern, String> {
 
     // 4. Validate star count.
     if star_count > 1 {
-        return Err(ERR_MULTI_STAR.to_string());
+        // Find position of the second `*` for the error pointer.
+        let second_star_pos = find_nth_unescaped(raw, b'*', 2).unwrap_or(raw.len() - 1);
+        return Err(fmt_err(
+            raw,
+            second_star_pos,
+            "at most one * allowed",
+        ));
     }
 
     // 5. Ensure non-empty after parsing.
     if segments.is_empty() && preserve.as_ref().is_none_or(|p| p.is_empty()) {
-        return Err(ERR_EMPTY_PATTERN.to_string());
+        return Err(fmt_err_no_pos(raw, "pattern resolves to empty after parsing"));
     }
 
     // 6. Choose matcher.
@@ -122,6 +147,21 @@ pub fn build_pattern(raw: &str) -> Result<SepPattern, String> {
         raw: SmolStr::from(raw),
         compiled,
     })
+}
+
+/// Find the byte position of the n-th un-escaped occurrence of `target` in `s`.
+fn find_nth_unescaped(s: &str, target: u8, n: usize) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let mut count = 0;
+    for i in 0..bytes.len() {
+        if bytes[i] == target && !is_escaped(bytes, i) {
+            count += 1;
+            if count == n {
+                return Some(i);
+            }
+        }
+    }
+    None
 }
 
 /// Split raw pattern into (main, Option<preserve>).
@@ -170,7 +210,11 @@ fn split_preserve(raw: &str) -> Result<(&str, Option<&str>), String> {
         let mb = main_part.as_bytes();
         for j in 0..mb.len() {
             if mb[j] == b'(' && !is_escaped(mb, j) {
-                return Err(ERR_PRESERVE_NOT_END.to_string());
+                return Err(fmt_err(
+                    raw,
+                    j,
+                    "(...) must appear only at the end; found earlier '(' here",
+                ));
             }
         }
     }
@@ -195,7 +239,14 @@ fn is_escaped(bytes: &[u8], pos: usize) -> bool {
 }
 
 /// Parse a segment string into `Vec<GlobSegment>` and count of `*`.
-fn parse_segments(s: &str, forbid_star: bool) -> Result<(Vec<GlobSegment>, usize), String> {
+/// `raw` is the full original pattern (for error messages), `s` is the slice being parsed,
+/// `base_offset` is the byte offset of `s` within `raw`.
+fn parse_segments(
+    raw: &str,
+    s: &str,
+    base_offset: usize,
+    forbid_star: bool,
+) -> Result<(Vec<GlobSegment>, usize), String> {
     let mut segs = Vec::new();
     let mut lit_buf = String::new();
     let mut star_count = 0usize;
@@ -239,21 +290,30 @@ fn parse_segments(s: &str, forbid_star: bool) -> Result<(Vec<GlobSegment>, usize
                     i += 2;
                 }
                 _ => {
-                    // Unknown escape – treat backslash + char as literal
-                    lit_buf.push(b'\\' as char);
+                    // Unknown escape: treat as literal character (e.g. \: → ':').
+                    // This preserves backward compatibility with existing configs
+                    // that use non-standard escapes like \:, \= etc.
                     lit_buf.push(next as char);
                     i += 2;
                 }
             }
         } else if b == b'*' {
             if forbid_star {
-                return Err(ERR_STAR_IN_PRESERVE.to_string());
+                return Err(fmt_err(
+                    raw,
+                    base_offset + i,
+                    "* is not allowed inside (...) preserve group",
+                ));
             }
             flush_literal(&mut lit_buf, &mut segs);
             segs.push(GlobSegment::Star);
             star_count += 1;
             if star_count > 1 {
-                return Err(ERR_MULTI_STAR.to_string());
+                return Err(fmt_err(
+                    raw,
+                    base_offset + i,
+                    "at most one * allowed; use \\* to match a literal asterisk",
+                ));
             }
             i += 1;
         } else if b == b'?' {
@@ -261,8 +321,14 @@ fn parse_segments(s: &str, forbid_star: bool) -> Result<(Vec<GlobSegment>, usize
             segs.push(GlobSegment::Any);
             i += 1;
         } else if b == b'(' || b == b')' {
-            // Un-escaped parentheses in main body indicate misplaced preserve
-            return Err(ERR_PRESERVE_NOT_END.to_string());
+            return Err(fmt_err(
+                raw,
+                base_offset + i,
+                &format!(
+                    "unexpected '{}'; (...) preserve must be at the end, use \\{} for literal",
+                    b as char, b as char
+                ),
+            ));
         } else {
             // Regular character – but must handle UTF-8 properly.
             let ch = s[i..].chars().next().unwrap();
@@ -332,6 +398,31 @@ impl SepPattern {
     }
 }
 
+/// For a Star-at-start pattern, find how many bytes Star consumes (non-greedy)
+/// and how many bytes the remaining main segments consume.
+/// Returns `(star_bytes, rest_bytes)`.
+fn try_match_star_split(segments: &[GlobSegment], s: &str) -> Option<(usize, usize)> {
+    debug_assert!(matches!(segments.first(), Some(GlobSegment::Star)));
+    let remaining = &segments[1..];
+    // Non-greedy: try expanding Star from 0 chars upwards.
+    if let Some(rest_len) = try_match_segments(remaining, s) {
+        return Some((0, rest_len));
+    }
+    let mut char_iter = s.char_indices();
+    while let Some((_, _)) = char_iter.next() {
+        let byte_pos = char_iter
+            .clone()
+            .next()
+            .map(|(p, _)| p)
+            .unwrap_or(s.len());
+        let after = &s[byte_pos..];
+        if let Some(rest_len) = try_match_segments(remaining, after) {
+            return Some((byte_pos, rest_len));
+        }
+    }
+    None
+}
+
 /// Find first occurrence of glob pattern in haystack.
 fn glob_find(glob: &GlobPattern, haystack: &str) -> Option<(usize, SepMatch)> {
     let segs = &glob.segments;
@@ -350,19 +441,23 @@ fn glob_find(glob: &GlobPattern, haystack: &str) -> Option<(usize, SepMatch)> {
         return None;
     }
 
-    // Optimization: if first segment is Star, match at pos 0 (Star expands to scan).
+    // Star-at-start: Star's consumed bytes = field content (offset),
+    // remaining segments' consumed bytes = separator (consumed).
     if matches!(segs.first(), Some(GlobSegment::Star)) {
-        if let Some(total) = glob_match_at(glob, haystack, 0) {
-            let main_len = try_match_segments(segs, haystack)?;
-            return Some((
-                0,
-                SepMatch {
-                    consumed: main_len,
-                    matched: total,
-                },
-            ));
-        }
-        return None;
+        let (star_bytes, rest_bytes) = try_match_star_split(segs, haystack)?;
+        let preserve_bytes = if let Some(preserve) = &glob.preserve {
+            let after_main = &haystack[star_bytes + rest_bytes..];
+            try_match_segments(preserve, after_main)?
+        } else {
+            0
+        };
+        return Some((
+            star_bytes,
+            SepMatch {
+                consumed: rest_bytes,
+                matched: rest_bytes + preserve_bytes,
+            },
+        ));
     }
 
     // Optimization: if first segment is Literal, use str::find for fast skip.
@@ -383,8 +478,13 @@ fn glob_find(glob: &GlobPattern, haystack: &str) -> Option<(usize, SepMatch)> {
                         },
                     ));
                 }
-                // Advance past this position.
-                search_start = abs_pos + lit.len();
+                // Advance by one char (not lit.len()) to avoid skipping overlapping positions.
+                let next_char_len = haystack[abs_pos..]
+                    .chars()
+                    .next()
+                    .map(|c| c.len_utf8())
+                    .unwrap_or(1);
+                search_start = abs_pos + next_char_len;
             } else {
                 break;
             }
@@ -698,25 +798,84 @@ mod tests {
     #[test]
     fn test_err_multi_star() {
         let e = build_pattern("*a*").unwrap_err();
-        assert_eq!(e, ERR_MULTI_STAR);
+        assert!(e.contains("at most one * allowed"), "got: {}", e);
+        // Verify visual pointer is present
+        assert!(e.contains("{*a*}"), "should show the full pattern, got: {}", e);
+        assert!(e.contains("^"), "should have a pointer, got: {}", e);
     }
 
     #[test]
     fn test_err_preserve_not_end() {
         let e = build_pattern("(key)*=").unwrap_err();
-        assert_eq!(e, ERR_PRESERVE_NOT_END);
+        assert!(
+            e.contains("(...)") || e.contains("preserve") || e.contains("unexpected '('"),
+            "got: {}",
+            e
+        );
     }
 
     #[test]
     fn test_err_star_in_preserve() {
         let e = build_pattern("*(key*)").unwrap_err();
-        assert_eq!(e, ERR_STAR_IN_PRESERVE);
+        assert!(
+            e.contains("not allowed inside") || e.contains("preserve"),
+            "got: {}",
+            e
+        );
     }
 
     #[test]
     fn test_err_empty() {
         let e = build_pattern("").unwrap_err();
-        assert_eq!(e, ERR_EMPTY_PATTERN);
+        assert!(e.contains("empty"), "got: {}", e);
+    }
+
+    #[test]
+    fn test_unknown_escape_as_literal() {
+        // Unknown escapes like \x, \z, \:, \= are treated as literal characters
+        // for backward compatibility with existing configs.
+        let p = build_pattern("ab\\x").unwrap();
+        assert_eq!(p.compiled, SepMatcher::Literal("abx".into()));
+
+        let p = build_pattern("field\\:=").unwrap();
+        assert_eq!(p.compiled, SepMatcher::Literal("field:=".into()));
+
+        let p = build_pattern("\\z").unwrap();
+        assert_eq!(p.compiled, SepMatcher::Literal("z".into()));
+    }
+
+    #[test]
+    fn test_err_visual_pointer_position() {
+        // In `{*a*}`, the second `*` is at raw position 2 → display position 3
+        let e = build_pattern("*a*").unwrap_err();
+        let lines: Vec<&str> = e.lines().collect();
+        assert!(lines.len() >= 3, "expected 3 lines, got: {}", e);
+        // Line 2: `  {*a*}`
+        assert!(lines[1].contains("{*a*}"), "got line1: {}", lines[1]);
+        // Line 3: pointer `     ^` — the `^` should be under the second `*`
+        let pointer_line = lines[2];
+        let caret_pos = pointer_line.find('^').expect("no ^ found");
+        // In `  {*a*}`, second `*` is at display col 4 (2 spaces + { + * + a + *)
+        // base_offset=0 in main body, i=2 for second star → pointer_offset=2+1=3
+        // with 2 leading spaces: col 5
+        assert_eq!(caret_pos, 5, "caret at wrong position in: {:?}", pointer_line);
+    }
+
+    #[test]
+    fn test_err_messages_display() {
+        // This test prints all error messages for visual inspection.
+        // Run with: cargo test -p wp-lang -- test_err_messages_display --nocapture
+        let cases = vec![
+            ("", "empty pattern"),
+            ("*a*", "multiple stars"),
+            ("(key)*=", "preserve not at end"),
+            ("*(key*)", "star in preserve"),
+            ("test(mid)abc", "paren not at end"),
+        ];
+        for (input, label) in cases {
+            let err = build_pattern(input).unwrap_err();
+            println!("--- {} ---\n{}\n", label, err);
+        }
     }
 
     // ── Matching ─────────────────────────────────────────────────────
@@ -738,12 +897,14 @@ mod tests {
 
     #[test]
     fn test_match_star_eq_non_greedy() {
-        // `{*=}` on "a=b=c" → non-greedy: offset=0, match "a=", consumed=2
+        // `{*=}` on "a=b=c" → non-greedy: Star matches "a", "=" is separator
+        // offset = 1 (Star consumed "a" = field content)
+        // consumed = 1 ("=" = separator)
         let p = build_pattern("*=").unwrap();
         let (off, m) = p.find("a=b=c").unwrap();
-        assert_eq!(off, 0);
-        assert_eq!(m.consumed, 2);
-        assert_eq!(m.matched, 2);
+        assert_eq!(off, 1);
+        assert_eq!(m.consumed, 1);
+        assert_eq!(m.matched, 1);
     }
 
     #[test]
@@ -759,14 +920,14 @@ mod tests {
     #[test]
     fn test_match_preserve() {
         // `{*\s(key=)}` on "hello  key=value"
-        // Star matches "hello", \s matches "  ", preserve matches "key="
-        // consumed = 5 + 2 = 7 ("hello  ")
-        // matched = 7 + 4 = 11 ("hello  key=")
+        // Star matches "hello" (5 bytes = field content = offset)
+        // \s matches "  " (2 bytes = separator consumed)
+        // preserve "key=" (4 bytes, not consumed)
         let p = build_pattern("*\\s(key=)").unwrap();
         let (off, m) = p.find("hello  key=value").unwrap();
-        assert_eq!(off, 0);
-        assert_eq!(m.consumed, 7);
-        assert_eq!(m.matched, 11);
+        assert_eq!(off, 5);
+        assert_eq!(m.consumed, 2);
+        assert_eq!(m.matched, 6); // 2 (\s) + 4 (preserve "key=")
     }
 
     #[test]

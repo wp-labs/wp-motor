@@ -56,9 +56,11 @@ pub fn wpl_sep(data: &mut &str) -> ModalResult<Option<WplSep>> {
         let scope_content = get_scope(data, '{', '}').err_reset(data, &cp)?;
         match build_pattern(scope_content) {
             Ok(pattern) => Ok(Some(WplSep::field_sep_pattern(pattern))),
-            Err(_msg) => {
-                fail.context(ctx_desc("sep pattern error"))
-                    .parse_next(data)
+            Err(msg) => {
+                // Leak the dynamic error message to satisfy winnow's &'static str requirement.
+                // This is acceptable since pattern parsing errors are rare and happen at config time.
+                let leaked: &'static str = Box::leak(msg.into_boxed_str());
+                fail.context(ctx_desc(leaked)).parse_next(data)
             }
         }
     } else {

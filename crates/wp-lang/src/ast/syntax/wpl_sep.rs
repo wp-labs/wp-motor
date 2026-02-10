@@ -111,6 +111,10 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
         if other.prio > self.prio || self.cur_val.is_none() {
             self.prio = other.prio;
             self.cur_val = other.cur_val;
+            // Pattern separators do not support ups_val; clear it to avoid stale state.
+            if matches!(&self.cur_val, Some(SepEnum::Pattern(_))) {
+                self.ups_val = None;
+            }
         }
     }
     pub fn set_current<S: Into<SmolStr>>(&mut self, sep: S) {
@@ -130,6 +134,10 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
         if other.prio > self.prio {
             self.prio = other.prio;
             self.cur_val = other.cur_val.clone();
+            // Pattern separators do not support ups_val; clear it to avoid stale state.
+            if matches!(&self.cur_val, Some(SepEnum::Pattern(_))) {
+                self.ups_val = None;
+            }
         }
     }
     pub fn sep_str(&self) -> &str {
@@ -311,9 +319,11 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
                 return Ok(buf.to_string());
             }
             return match pattern.find(s) {
-                Some((offset, sep_match)) => {
+                Some((offset, _sep_match)) => {
                     let content = &s[..offset];
-                    *data = &s[offset + sep_match.consumed..];
+                    // Only advance past field content; leave the separator
+                    // in the input stream for consume_sep to handle.
+                    *data = &s[offset..];
                     Ok(content.to_string())
                 }
                 None => Ok(take_to_end.parse_next(data)?.to_string()),
@@ -362,6 +372,12 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
         Ok(buf.to_string())
     }
     pub fn read_until_sep_repeat(&self, num: usize, data: &mut &str) -> WResult<String> {
+        // Pattern separators are not supported in repeat mode.
+        if self.is_pattern() {
+            return winnow::combinator::fail
+                .context(ctx_desc("sep pattern not supported in repeat mode"))
+                .parse_next(data);
+        }
         let buffer: Vec<&str> = separated(
             Range::from(num),
             take_until(1.., self.sep_str()),
@@ -489,7 +505,8 @@ mod tests {
         let mut data = "xyzabcdef";
         let result = sep.read_until_sep(&mut data).unwrap();
         assert_eq!(result, "xyz");
-        assert_eq!(data, "def");
+        // data stops AT the separator, not past it
+        assert_eq!(data, "abcdef");
     }
 
     #[test]
@@ -499,16 +516,10 @@ mod tests {
         let sep = WplSep::field_sep_pattern(pat);
         let mut data = "key=value";
         let result = sep.read_until_sep(&mut data).unwrap();
-        // Star non-greedy: "*=" at offset 0 matches "k" + "=", so consumed="k=", offset=0
-        // Actually: star matches "", then "=" matches "=" at pos 0? No.
-        // Pattern "*=" means: Star(non-greedy) + Literal("=")
-        // find scans from pos 0: star tries 0 chars → remaining "=" tries to match "key=value" starting with "=" → no
-        // star tries 1 char "k" → remaining "=" tries to match "ey=value" starting with "=" → no
-        // star tries 2 chars "ke" → remaining "=" tries to match "y=value" starting with "=" → no
-        // star tries 3 chars "key" → remaining "=" tries to match "=value" starting with "=" → yes!
-        // So consumed = 3 + 1 = 4 ("key="), offset = 0
-        assert_eq!(result, "");
-        assert_eq!(data, "value");
+        // Star non-greedy: "*=" → Star matches "key" (field content), "=" is separator
+        // data stops AT the separator "=value"
+        assert_eq!(result, "key");
+        assert_eq!(data, "=value");
     }
 
     #[test]
@@ -594,8 +605,44 @@ mod tests {
         let sep = WplSep::field_sep_pattern(pat);
         let mut data = "hello  key=value";
         let result = sep.read_until_sep(&mut data).unwrap();
-        // Star consumes "hello", \s consumes "  ", preserve "key=" not consumed
-        assert_eq!(result, "");
-        assert_eq!(data, "key=value");
+        // Star matches "hello" (field content), data stops AT separator "  key=value"
+        assert_eq!(result, "hello");
+        assert_eq!(data, "  key=value");
+    }
+
+    #[test]
+    fn test_pattern_read_then_consume() {
+        // Verify read_until_sep + consume_sep round-trip works correctly.
+        use crate::ast::syntax::sep_pattern::build_pattern;
+
+        // Literal pattern
+        let pat = build_pattern(",").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        let mut data = "aaa,bbb";
+        let f1 = sep.read_until_sep(&mut data).unwrap();
+        assert_eq!(f1, "aaa");
+        assert_eq!(data, ",bbb");
+        sep.consume_sep(&mut data).unwrap();
+        assert_eq!(data, "bbb");
+
+        // Glob pattern with Star
+        let pat = build_pattern("*=").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        let mut data = "key=value";
+        let f1 = sep.read_until_sep(&mut data).unwrap();
+        assert_eq!(f1, "key");
+        assert_eq!(data, "=value");
+        sep.consume_sep(&mut data).unwrap();
+        assert_eq!(data, "value");
+
+        // Whitespace glob pattern
+        let pat = build_pattern("\\s=").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        let mut data = "key  =value";
+        let f1 = sep.read_until_sep(&mut data).unwrap();
+        assert_eq!(f1, "key");
+        assert_eq!(data, "  =value");
+        sep.consume_sep(&mut data).unwrap();
+        assert_eq!(data, "value");
     }
 }
