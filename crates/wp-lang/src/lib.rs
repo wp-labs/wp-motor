@@ -23,6 +23,7 @@ pub mod util;
 pub use ast::WplCode;
 pub use ast::WplRule;
 pub use ast::WplSep;
+pub use ast::{SepPattern, build_pattern};
 pub use ast::WplStatementType;
 pub use ast::ann_func::{AnnotationFunc, AnnotationType};
 pub use ast::{WplExpress, WplPackage, WplPkgMeta};

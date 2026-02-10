@@ -42,6 +42,7 @@
 
 **`\s` 匹配空白区域**：`\s` 匹配一个或多个连续空白字符，而非恰好一个。
 在分隔符场景中，"跳过一段空白"远比"恰好匹配一个空白"常见。`\h` 同理，匹配一个或多个空格/制表符。
+> 兼容性：上述扩展语义仅在 `{}` 模式内部生效；`{}` 之外沿用现有 `\\s`/`\\S` 定义，确保旧配置保持原样。
 
 **`()` 保留标记（Preserve）**：`()` 内的内容参与匹配以确认分隔位置，但不从输入流中消费。
 匹配结束后，输入流的读取位置停留在 `()` 内容的起始处，供下一阶段继续读取。
@@ -100,6 +101,19 @@ pub struct SepPattern {
 }
 ```
 
+### 与既有 `WplSep` API 的关系
+
+- `SepEnum::Str` 与 `SepEnum::Pattern` 统一暴露 `match_next(&mut &str) -> SepMatch` 能力；原有 `sep_str()` 只在字面量场景实现，保持旧版 `Display`/`Serialize` 语义。
+- 依赖确定字符串的特性（`field_sep_until`、`ups_val`、“最近结束优先”策略等）限定仅接受 `Str`。若用户在这些位置写 `{}`，解析阶段直接报错或提示“请改用固定分隔符”。
+- `infer_*`、`apply_default`、`override_with` 只复制模式对象，不做降级；上游推断出的 `{...}` 可按优先级原样覆盖下游。
+- 需要输出给 UI/日志时，`Pattern` 通过 `raw` 原样回显 `{...}`，而非伪造 `sep_str()`。
+
+### 实现约束（延续 winnow 管线）
+
+- 现有 `WplSep` 的解析、消费与 `read_until_sep` 均基于 `winnow` 组合器，新增模式也保持同样的组合式解析；禁止引入正则引擎或 `regex` crate，以免造成额外开销。
+- `build_pattern` 负责把 `{}` 字面量解析成 `GlobSegment`，其语法分析同样使用 `winnow`/手写状态机，保证与 `wpl_field` 其余 DSL 共享错误上下文与性能特征。
+- 运行期 matcher 使用 `memchr`/双指针遍历，不调用正则；`winnow` 只负责前置的语法解析，确保 runtime 与旧实现的热点（`read_until_sep`）同属一条代码路径。
+
 ### SepMatcher
 
 ```rust
@@ -150,7 +164,7 @@ pub struct SepMatch {
 }
 ```
 
-`read_until_sep` 在找到匹配后，只推进 `consumed` 字节，而非 `matched` 字节。
+约定：matcher 覆盖的分隔片段完全由 `consumed` 描述，调用方始终按 `consumed` 推进输入；若存在 preserve，则 `matched - consumed` 表示“匹配但保留”的长度。`matched` 仅用于调试/告警，便于复刻命中路径。
 
 ## 解析流程
 
@@ -175,10 +189,16 @@ pub struct SepMatch {
 - `WplSep::read_until_sep` 根据 `SepEnum` 分派：
   - `Str`：沿用原逻辑。
   - `Pattern`：调用 matcher 的 `find(haystack)`，返回 `SepMatch`。
-    - 无 preserve：推进 `matched` 字节。
-    - 有 preserve：只推进 `consumed` 字节，preserve 部分留在输入流。
+    - 无论是否存在 preserve，`read_until_sep` 都仅推进 `consumed` 字节；`matched` 仅用于日志/调试定位。
 - `SepPattern` 可缓存编译结果，避免多次重复解析；`WplSep` 已经是 `Clone`，可复用 compiled 状态。
 - 对支持 `infer` 的场景（上游传入字面量），若该字面量用 `{}` 定义，则 infer 也保存 `Pattern`，但 `apply_default` 时按优先级处理即可。
+
+### 匹配流程与语义保护
+
+1. 依序处理：`is_to_end` → `Whitespace` → `ups_val` / 单字符快路径 → 引号/原始字符串跳过 → 模式/字面 matcher。
+2. `Pattern` 仅在 `ups_val.is_none()` 时生效；若用户同时配置 `{}` 与次级结束符，解析阶段报错提示“请选择固定分隔符”。
+3. `find(haystack)` 只在“已排除引号段”的切片上执行，避免把引号内的分隔符提前截断，保持与旧逻辑相同的保护级别。
+4. matcher 返回的 `SepMatch` 由 `read_until_sep` 统一转换为 `String`，因此调用方无需感知是 `Str` 还是 `Pattern`。
 
 ## 兼容性
 
@@ -209,10 +229,12 @@ pub struct SepMatch {
   - 通配符：`{*=}`, `{key=*}`, `{field?:}` 匹配正确性。
   - 空白匹配：`{\s=}`, `{\h:\h}` 对连续空白的匹配行为。
   - Preserve：`{*(key=)}`, `{*\s(next)}` 消费/保留边界验证。
+  - 兼容性：`\\s` 在 `{}` 外仍解析为单空格，`\\S` 保持“空白宏”语义。
   - 约束校验：多个 `*` 报错、`()` 非末尾报错、`()` 内含 `*` 报错。
   - `SepMatch` 的 `consumed` / `matched` 值正确性。
-- 集成测试：
+- 集成/性能测试：
   - 构造 WPL 模型使用 `{}` 分隔符，验证解析输出。
   - 与旧配置比较性能，确保新 matcher 无明显回退。
+  - 基准：对 `take_field`、`pipe take(...)`、`wparse` CLI 等热点路径分组 benchmark，比较旧版 winnow 字面分隔符与新 `Pattern` 的性能，确保不出现回退并记录阈值。
   - `*` 非贪婪行为：`"a=b=c"` + `{*=}` → 匹配 `"a="`。
   - 空白区域匹配：`"key  \t  =val"` + `{\s=}` → 空白段正确消费。

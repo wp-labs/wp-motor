@@ -1,6 +1,7 @@
 use super::wpl_fun;
 use crate::ast::WplSep;
 use crate::ast::fld_fmt::WplFieldFmt;
+use crate::ast::build_pattern;
 use crate::ast::{DEFAULT_FIELD_KEY, WplField, WplFieldSet, WplPipe};
 use crate::parser::datatype::take_datatype;
 use crate::parser::utils::{
@@ -50,6 +51,16 @@ pub fn wpl_sep(data: &mut &str) -> ModalResult<Option<WplSep>> {
             fail.context(ctx_desc("end sep less")).parse_next(data)?;
         }
         Ok(Some(WplSep::field_sep(sep)))
+    } else if peek_str("{", data).is_ok() {
+        let cp = data.checkpoint();
+        let scope_content = get_scope(data, '{', '}').err_reset(data, &cp)?;
+        match build_pattern(scope_content) {
+            Ok(pattern) => Ok(Some(WplSep::field_sep_pattern(pattern))),
+            Err(_msg) => {
+                fail.context(ctx_desc("sep pattern error"))
+                    .parse_next(data)
+            }
+        }
     } else {
         Ok(None)
     }

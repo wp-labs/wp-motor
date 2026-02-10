@@ -26,3 +26,4 @@ pub use rule::meta::WplTag;
 pub use rule::types::{WplExpress, WplRule, WplStatementType};
 pub use syntax::tag::{AnnEnum, AnnFun, TagKvs};
 pub use syntax::wpl_sep::{DefaultSep, WplSep, WplSepT};
+pub use syntax::sep_pattern::{SepPattern, build_pattern};
