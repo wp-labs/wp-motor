@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0 Unreleased]
+
+### Added
+- **wp-lang**: Add separator pattern syntax `{…}` with wildcards (`*`, `?`), whitespace matchers (`\s`, `\h`) and preserve groups `(…)` for expressing complex separator logic in a single declaration
+  - Literal patterns use `str::find` fast-path, **2.7x faster** than winnow `take_until`
+  - See design doc `docs/design/wpl_sep_pattern.md`
+
+
 ## [1.15.4 Unreleased]
 
 ### Added
