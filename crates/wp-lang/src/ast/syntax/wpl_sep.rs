@@ -1,3 +1,4 @@
+use crate::ast::syntax::sep_pattern::SepPattern;
 use crate::ast::{GenFmt, WplFmt};
 use crate::parser::utils::{quot_r_str, quot_str, take_to_end};
 use derive_getters::Getters;
@@ -51,6 +52,7 @@ pub enum SepEnum {
     Str(SmolStr),
     End,
     Whitespace, // Matches space or tab
+    Pattern(SepPattern),
 }
 impl From<&str> for SepEnum {
     fn from(value: &str) -> Self {
@@ -109,6 +111,10 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
         if other.prio > self.prio || self.cur_val.is_none() {
             self.prio = other.prio;
             self.cur_val = other.cur_val;
+            // Pattern separators do not support ups_val; clear it to avoid stale state.
+            if matches!(&self.cur_val, Some(SepEnum::Pattern(_))) {
+                self.ups_val = None;
+            }
         }
     }
     pub fn set_current<S: Into<SmolStr>>(&mut self, sep: S) {
@@ -128,6 +134,10 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
         if other.prio > self.prio {
             self.prio = other.prio;
             self.cur_val = other.cur_val.clone();
+            // Pattern separators do not support ups_val; clear it to avoid stale state.
+            if matches!(&self.cur_val, Some(SepEnum::Pattern(_))) {
+                self.ups_val = None;
+            }
         }
     }
     pub fn sep_str(&self) -> &str {
@@ -136,6 +146,7 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
                 SepEnum::Str(str) => str.as_str(),
                 SepEnum::End => "\n",
                 SepEnum::Whitespace => " ", // Default to space for display
+                SepEnum::Pattern(p) => p.raw(),
             }
         } else {
             T::sep_str()
@@ -207,6 +218,19 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
             ..Default::default()
         }
     }
+    pub fn field_sep_pattern(pattern: SepPattern) -> Self {
+        Self {
+            prio: 3,
+            cur_val: Some(SepEnum::Pattern(pattern)),
+            ups_val: None,
+            infer: false,
+            is_take: true,
+            _phant: PhantomData,
+        }
+    }
+    pub fn is_pattern(&self) -> bool {
+        matches!(&self.cur_val, Some(SepEnum::Pattern(_)))
+    }
 
     pub fn consume_sep(&self, input: &mut &str) -> WResult<()> {
         if self.is_take {
@@ -215,6 +239,17 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
                 alt((literal(" "), literal("\t")))
                     .context(ctx_desc("take <whitespace>"))
                     .parse_next(input)?;
+            } else if let Some(SepEnum::Pattern(pattern)) = &self.cur_val {
+                match pattern.match_at_start(input) {
+                    Some(m) => {
+                        *input = &input[m.consumed..];
+                    }
+                    None => {
+                        winnow::combinator::fail
+                            .context(ctx_desc("take <sep pattern>"))
+                            .parse_next(input)?;
+                    }
+                }
             } else {
                 literal(self.sep_str())
                     .context(ctx_desc("take <sep>"))
@@ -228,6 +263,10 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
             if let Some(SepEnum::Whitespace) = &self.cur_val {
                 // For Whitespace, optionally accept either space or tab
                 opt(alt((literal(" "), literal("\t")))).parse_next(input)?;
+            } else if let Some(SepEnum::Pattern(pattern)) = &self.cur_val {
+                if let Some(m) = pattern.match_at_start(input) {
+                    *input = &input[m.consumed..];
+                }
             } else {
                 opt(literal(self.sep_str())).parse_next(input)?;
             }
@@ -235,7 +274,7 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
         Ok(())
     }
     pub fn is_space_sep(&self) -> bool {
-        self.sep_str() == " "
+        !self.is_pattern() && self.sep_str() == " "
     }
 
     pub fn need_take_sep(&self) -> bool {
@@ -269,6 +308,26 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
             // Take until space or tab
             let buf = take_while(0.., |c: char| c != ' ' && c != '\t').parse_next(data)?;
             return Ok(buf.to_string());
+        }
+
+        // Handle Pattern separator
+        if let Some(SepEnum::Pattern(pattern)) = &self.cur_val {
+            let s = *data;
+            // Exclude quoted segments (consistent with existing logic)
+            if s.starts_with('"') || s.starts_with("r#\"") || s.starts_with("r\"") {
+                let buf = alt((quot_r_str, quot_str)).parse_next(data)?;
+                return Ok(buf.to_string());
+            }
+            return match pattern.find(s) {
+                Some((offset, _sep_match)) => {
+                    let content = &s[..offset];
+                    // Only advance past field content; leave the separator
+                    // in the input stream for consume_sep to handle.
+                    *data = &s[offset..];
+                    Ok(content.to_string())
+                }
+                None => Ok(take_to_end.parse_next(data)?.to_string()),
+            };
         }
 
         if let Some(ups) = &self.ups_val {
@@ -313,6 +372,12 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
         Ok(buf.to_string())
     }
     pub fn read_until_sep_repeat(&self, num: usize, data: &mut &str) -> WResult<String> {
+        // Pattern separators are not supported in repeat mode.
+        if self.is_pattern() {
+            return winnow::combinator::fail
+                .context(ctx_desc("sep pattern not supported in repeat mode"))
+                .parse_next(data);
+        }
         let buffer: Vec<&str> = separated(
             Range::from(num),
             take_until(1.., self.sep_str()),
@@ -328,9 +393,13 @@ impl<T: DefaultSep + Clone> WplSepT<T> {
 impl Display for WplFmt<&WplSep> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if !self.0.infer {
-            for c in self.0.sep_str().chars() {
-                if c != ' ' {
-                    write!(f, "\\{}", c)?;
+            if let Some(SepEnum::Pattern(p)) = &self.0.cur_val {
+                write!(f, "{{{}}}", p.raw())?;
+            } else {
+                for c in self.0.sep_str().chars() {
+                    if c != ' ' {
+                        write!(f, "\\{}", c)?;
+                    }
                 }
             }
         }
@@ -340,7 +409,11 @@ impl Display for WplFmt<&WplSep> {
 
 impl Display for GenFmt<&WplSep> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.sep_str())?;
+        if let Some(SepEnum::Pattern(p)) = &self.0.cur_val {
+            write!(f, "{{{}}}", p.raw())?;
+        } else {
+            write!(f, "{}", self.0.sep_str())?;
+        }
         Ok(())
     }
 }
@@ -420,5 +493,156 @@ mod tests {
         let sep = WplSep::field_sep("\\t");
         sep.consume_sep(&mut data).unwrap();
         assert_eq!(data, "field2");
+    }
+
+    // ── Pattern integration tests ────────────────────────────────────
+
+    #[test]
+    fn test_pattern_read_until_sep_literal() {
+        use crate::ast::syntax::sep_pattern::build_pattern;
+        let pat = build_pattern("abc").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        let mut data = "xyzabcdef";
+        let result = sep.read_until_sep(&mut data).unwrap();
+        assert_eq!(result, "xyz");
+        // data stops AT the separator, not past it
+        assert_eq!(data, "abcdef");
+    }
+
+    #[test]
+    fn test_pattern_read_until_sep_glob() {
+        use crate::ast::syntax::sep_pattern::build_pattern;
+        let pat = build_pattern("*=").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        let mut data = "key=value";
+        let result = sep.read_until_sep(&mut data).unwrap();
+        // Star non-greedy: "*=" → Star matches "key" (field content), "=" is separator
+        // data stops AT the separator "=value"
+        assert_eq!(result, "key");
+        assert_eq!(data, "=value");
+    }
+
+    #[test]
+    fn test_pattern_read_until_sep_no_match() {
+        use crate::ast::syntax::sep_pattern::build_pattern;
+        let pat = build_pattern("xyz").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        let mut data = "abcdef";
+        let result = sep.read_until_sep(&mut data).unwrap();
+        assert_eq!(result, "abcdef");
+        assert_eq!(data, "");
+    }
+
+    #[test]
+    fn test_pattern_consume_sep() {
+        use crate::ast::syntax::sep_pattern::build_pattern;
+        let pat = build_pattern("\\s=").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        let mut data = "  =value";
+        sep.consume_sep(&mut data).unwrap();
+        assert_eq!(data, "value");
+    }
+
+    #[test]
+    fn test_pattern_try_consume_sep() {
+        use crate::ast::syntax::sep_pattern::build_pattern;
+        let pat = build_pattern("\\s=").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        // When it matches
+        let mut data = " =value";
+        sep.try_consume_sep(&mut data).unwrap();
+        assert_eq!(data, "value");
+        // When it doesn't match — input unchanged
+        let mut data = "value";
+        sep.try_consume_sep(&mut data).unwrap();
+        assert_eq!(data, "value");
+    }
+
+    #[test]
+    fn test_pattern_is_pattern() {
+        use crate::ast::syntax::sep_pattern::build_pattern;
+        let pat = build_pattern("abc").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        assert!(sep.is_pattern());
+        assert!(!sep.is_space_sep());
+
+        let sep2 = WplSep::field_sep(",");
+        assert!(!sep2.is_pattern());
+    }
+
+    #[test]
+    fn test_pattern_display_wpl_fmt() {
+        use crate::ast::syntax::sep_pattern::build_pattern;
+        let pat = build_pattern("*\\s(key=)").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        let display = format!("{}", WplFmt(&sep));
+        assert_eq!(display, "{*\\s(key=)}");
+    }
+
+    #[test]
+    fn test_pattern_display_gen_fmt() {
+        use crate::ast::syntax::sep_pattern::build_pattern;
+        let pat = build_pattern("abc").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        let display = format!("{}", GenFmt(&sep));
+        assert_eq!(display, "{abc}");
+    }
+
+    #[test]
+    fn test_pattern_serde_roundtrip() {
+        use crate::ast::syntax::sep_pattern::build_pattern;
+        let pat = build_pattern("*=").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        let json = serde_json::to_string(&sep).unwrap();
+        let sep2: WplSep = serde_json::from_str(&json).unwrap();
+        assert_eq!(sep, sep2);
+    }
+
+    #[test]
+    fn test_pattern_preserve_read_until() {
+        use crate::ast::syntax::sep_pattern::build_pattern;
+        let pat = build_pattern("*\\s(key=)").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        let mut data = "hello  key=value";
+        let result = sep.read_until_sep(&mut data).unwrap();
+        // Star matches "hello" (field content), data stops AT separator "  key=value"
+        assert_eq!(result, "hello");
+        assert_eq!(data, "  key=value");
+    }
+
+    #[test]
+    fn test_pattern_read_then_consume() {
+        // Verify read_until_sep + consume_sep round-trip works correctly.
+        use crate::ast::syntax::sep_pattern::build_pattern;
+
+        // Literal pattern
+        let pat = build_pattern(",").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        let mut data = "aaa,bbb";
+        let f1 = sep.read_until_sep(&mut data).unwrap();
+        assert_eq!(f1, "aaa");
+        assert_eq!(data, ",bbb");
+        sep.consume_sep(&mut data).unwrap();
+        assert_eq!(data, "bbb");
+
+        // Glob pattern with Star
+        let pat = build_pattern("*=").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        let mut data = "key=value";
+        let f1 = sep.read_until_sep(&mut data).unwrap();
+        assert_eq!(f1, "key");
+        assert_eq!(data, "=value");
+        sep.consume_sep(&mut data).unwrap();
+        assert_eq!(data, "value");
+
+        // Whitespace glob pattern
+        let pat = build_pattern("\\s=").unwrap();
+        let sep = WplSep::field_sep_pattern(pat);
+        let mut data = "key  =value";
+        let f1 = sep.read_until_sep(&mut data).unwrap();
+        assert_eq!(f1, "key");
+        assert_eq!(data, "  =value");
+        sep.consume_sep(&mut data).unwrap();
+        assert_eq!(data, "value");
     }
 }

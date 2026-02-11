@@ -128,13 +128,18 @@ impl KvArrP {
                 .context(ctx_desc("kvarr value missing"))
                 .parse_next(input);
         }
-        let data = if sep.is_to_end() {
-            take_to_end.parse_next(input)?
+        if sep.is_to_end() {
+            let data = take_to_end.parse_next(input)?;
+            Ok(data.to_string())
+        } else if sep.is_pattern() {
+            // Pattern separators use the compiled matching engine via read_until_sep,
+            // not raw sep_str() literal matching.
+            sep.read_until_sep(input)
         } else {
             let sep = sep.sep_str();
-            alt((take_until(0.., sep), rest)).parse_next(input)?
-        };
-        Ok(data.to_string())
+            let data = alt((take_until(0.., sep), rest)).parse_next(input)?;
+            Ok(data.to_string())
+        }
     }
 
     fn scalar_value(raw: &str) -> Value {
@@ -164,7 +169,11 @@ impl KvArrP {
     fn consume_trailing(data: &mut &str, sep: &WplSepT<Self>) -> ModalResult<()> {
         multispace0.parse_next(data)?;
         if !sep.is_to_end() {
-            opt(sep.sep_str()).parse_next(data)?;
+            if sep.is_pattern() {
+                sep.try_consume_sep(data)?;
+            } else {
+                opt(sep.sep_str()).parse_next(data)?;
+            }
         }
         Ok(())
     }
@@ -452,6 +461,54 @@ mod tests {
         assert_eq!(
             record.field("count").map(|s| s.as_field()),
             Some(&expected_count)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_kvarr_pattern_sep() -> AnyResult<()> {
+        // kvarr with pattern separator {\s(\S=)} for space-containing values
+        let conf = WplField::try_parse("kvarr{\\s(\\S=)}").assert();
+        let mut data = "msg=Test message externalId=0";
+        let parser = ParserTUnit::new(KvArrP::default(), conf);
+        let fields = parser.verify_parse_suc(&mut data).assert();
+        let record = DataRecord::from(fields);
+        let expected_msg = DataField::from_chars("msg", "Test message");
+        assert_eq!(
+            record.field("msg").map(|s| s.as_field()),
+            Some(&expected_msg)
+        );
+        let expected_ext = DataField::from_digit("externalId", 0);
+        assert_eq!(
+            record.field("externalId").map(|s| s.as_field()),
+            Some(&expected_ext)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_kvarr_pattern_sep_multi_pairs() -> AnyResult<()> {
+        // Multiple kv pairs with space-containing values
+        let conf = WplField::try_parse("kvarr{\\s(\\S=)}").assert();
+        let mut data = "msg=This is a long message severity=high source=firewall action=allow";
+        let parser = ParserTUnit::new(KvArrP::default(), conf);
+        let fields = parser.verify_parse_suc(&mut data).assert();
+        let record = DataRecord::from(fields);
+        assert_eq!(
+            record.field("msg").map(|s| s.as_field()),
+            Some(&DataField::from_chars("msg", "This is a long message"))
+        );
+        assert_eq!(
+            record.field("severity").map(|s| s.as_field()),
+            Some(&DataField::from_chars("severity", "high"))
+        );
+        assert_eq!(
+            record.field("source").map(|s| s.as_field()),
+            Some(&DataField::from_chars("source", "firewall"))
+        );
+        assert_eq!(
+            record.field("action").map(|s| s.as_field()),
+            Some(&DataField::from_chars("action", "allow"))
         );
         Ok(())
     }

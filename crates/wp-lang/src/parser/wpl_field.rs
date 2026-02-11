@@ -1,5 +1,6 @@
 use super::wpl_fun;
 use crate::ast::WplSep;
+use crate::ast::build_pattern;
 use crate::ast::fld_fmt::WplFieldFmt;
 use crate::ast::{DEFAULT_FIELD_KEY, WplField, WplFieldSet, WplPipe};
 use crate::parser::datatype::take_datatype;
@@ -50,6 +51,18 @@ pub fn wpl_sep(data: &mut &str) -> ModalResult<Option<WplSep>> {
             fail.context(ctx_desc("end sep less")).parse_next(data)?;
         }
         Ok(Some(WplSep::field_sep(sep)))
+    } else if peek_str("{", data).is_ok() {
+        let cp = data.checkpoint();
+        let scope_content = get_scope(data, '{', '}').err_reset(data, &cp)?;
+        match build_pattern(scope_content) {
+            Ok(pattern) => Ok(Some(WplSep::field_sep_pattern(pattern))),
+            Err(msg) => {
+                // Leak the dynamic error message to satisfy winnow's &'static str requirement.
+                // This is acceptable since pattern parsing errors are rare and happen at config time.
+                let leaked: &'static str = Box::leak(msg.into_boxed_str());
+                fail.context(ctx_desc(leaked)).parse_next(data)
+            }
+        }
     } else {
         Ok(None)
     }
@@ -402,6 +415,19 @@ mod tests {
 
         let sep = wpl_sep.parse("\\!\\,").assert();
         assert_eq!(sep, Some(WplSep::field_sep("!,")));
+
+        // Pattern separator: preserve-only
+        let sep = wpl_sep.parse("{(command=)}").assert();
+        assert!(sep.unwrap().is_pattern());
+    }
+
+    #[test]
+    fn test_field_with_pattern_sep_and_pipe() {
+        // chars{(command=)}|(kvarr\s)
+        let conf = wpl_field.parse("chars{(command=)}|(kvarr\\s)").assert();
+        assert_eq!(conf.meta_name.as_str(), "chars");
+        assert!(conf.separator.as_ref().unwrap().is_pattern());
+        assert!(!conf.pipe.is_empty());
     }
 
     #[test]

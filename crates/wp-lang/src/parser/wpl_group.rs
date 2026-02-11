@@ -144,6 +144,15 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_group_pattern_sep_with_pipe() {
+        // chars{(command=)}|(kvarr\s) inside a group
+        let group = wpl_group.parse("(chars{(command=)}|(kvarr\\s))").assert();
+        assert_eq!(group.fields.len(), 1);
+        assert!(group.fields[0].separator.as_ref().unwrap().is_pattern());
+        assert!(!group.fields[0].pipe.is_empty());
+    }
+
+    #[test]
     fn test_parse_group_pipe3() {
         let pipe_expect = wpl_pipe.parse(r#"|(time,ip)"#).assert();
         let group = wpl_group

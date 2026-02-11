@@ -18,11 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Design follows `knowdb.toml` pattern (versioning, enabled flags, default values)
   - 100% backward compatible: all 74 tests pass with 100% accuracy rate
 
-### Changed
-- **OML NLP**: Migrate NLP dictionaries from hardcoded `lazy_static!` HashSets to TOML configuration
-  - Remove ~270 lines of hardcoded dictionary definitions from `extract_word.rs`
-  - Replace static references (e.g., `STATUS_WORDS`) with dynamic lookups (e.g., `NLP_DICT.status_words`)
-  - No API changes: function signatures and behavior remain identical
+- **wp-lang**: Add separator pattern syntax `{…}` with wildcards (`*`, `?`), whitespace matchers (`\s`, `\h`, `\S`, `\H`) and preserve groups `(…)` for expressing complex separator logic in a single declaration
+  - `\S` (non-whitespace) and `\H` (non-horizontal-whitespace) complement `\s` / `\h`, enabling patterns like `{\s(\S=)}` for kvarr with space-containing values
+  - All character-class matchers (`\s`, `\S`, `\h`, `\H`) use greedy-with-backtrack strategy
+  - Preserve groups scan full haystack for match position (not just position 0)
+  - `*` allowed inside preserve groups for anchored patterns like `{(c*=)}`
+  - Literal patterns use `str::find` fast-path, **2.7x faster** than winnow `take_until`
+  - See design doc `docs/design/wpl_sep_pattern.md`
+
 
 ## [1.15.4 Unreleased]
 
