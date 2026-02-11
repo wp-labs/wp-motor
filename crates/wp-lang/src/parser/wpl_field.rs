@@ -1,7 +1,7 @@
 use super::wpl_fun;
 use crate::ast::WplSep;
-use crate::ast::fld_fmt::WplFieldFmt;
 use crate::ast::build_pattern;
+use crate::ast::fld_fmt::WplFieldFmt;
 use crate::ast::{DEFAULT_FIELD_KEY, WplField, WplFieldSet, WplPipe};
 use crate::parser::datatype::take_datatype;
 use crate::parser::utils::{

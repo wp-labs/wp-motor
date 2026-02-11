@@ -108,16 +108,15 @@ pub fn build_pattern(raw: &str) -> Result<SepPattern, String> {
     if star_count > 1 {
         // Find position of the second `*` for the error pointer.
         let second_star_pos = find_nth_unescaped(raw, b'*', 2).unwrap_or(raw.len() - 1);
-        return Err(fmt_err(
-            raw,
-            second_star_pos,
-            "at most one * allowed",
-        ));
+        return Err(fmt_err(raw, second_star_pos, "at most one * allowed"));
     }
 
     // 5. Ensure non-empty after parsing.
     if segments.is_empty() && preserve.as_ref().is_none_or(|p| p.is_empty()) {
-        return Err(fmt_err_no_pos(raw, "pattern resolves to empty after parsing"));
+        return Err(fmt_err_no_pos(
+            raw,
+            "pattern resolves to empty after parsing",
+        ));
     }
 
     // 6. Choose matcher.
@@ -143,10 +142,7 @@ pub fn build_pattern(raw: &str) -> Result<SepPattern, String> {
             .collect();
         SepMatcher::Literal(SmolStr::from(lit))
     } else {
-        SepMatcher::Glob(GlobPattern {
-            segments,
-            preserve,
-        })
+        SepMatcher::Glob(GlobPattern { segments, preserve })
     };
 
     Ok(SepPattern {
@@ -418,11 +414,7 @@ fn try_match_star_split(segments: &[GlobSegment], s: &str) -> Option<(usize, usi
     }
     let mut char_iter = s.char_indices();
     while let Some((_, _)) = char_iter.next() {
-        let byte_pos = char_iter
-            .clone()
-            .next()
-            .map(|(p, _)| p)
-            .unwrap_or(s.len());
+        let byte_pos = char_iter.clone().next().map(|(p, _)| p).unwrap_or(s.len());
         let after = &s[byte_pos..];
         if let Some(rest_len) = try_match_segments(remaining, after) {
             return Some((byte_pos, rest_len));
@@ -445,9 +437,7 @@ fn glob_find(glob: &GlobPattern, haystack: &str) -> Option<(usize, SepMatch)> {
                 while search_start <= haystack.len() {
                     if let Some(pos) = haystack[search_start..].find(lit) {
                         let abs_pos = search_start + pos;
-                        if let Some(plen) =
-                            try_match_segments(preserve, &haystack[abs_pos..])
-                        {
+                        if let Some(plen) = try_match_segments(preserve, &haystack[abs_pos..]) {
                             return Some((
                                 abs_pos,
                                 SepMatch {
@@ -512,8 +502,7 @@ fn glob_find(glob: &GlobPattern, haystack: &str) -> Option<(usize, SepMatch)> {
             if let Some(pos) = haystack[search_start..].find(lit) {
                 let abs_pos = search_start + pos;
                 if let Some(total) = glob_match_at(glob, haystack, abs_pos) {
-                    let main_len =
-                        try_match_segments(segs, &haystack[abs_pos..]).unwrap_or(0);
+                    let main_len = try_match_segments(segs, &haystack[abs_pos..]).unwrap_or(0);
                     return Some((
                         abs_pos,
                         SepMatch {
@@ -539,8 +528,7 @@ fn glob_find(glob: &GlobPattern, haystack: &str) -> Option<(usize, SepMatch)> {
     // General case: scan char by char.
     for (pos, _) in haystack.char_indices() {
         if let Some(total) = glob_match_at(glob, haystack, pos) {
-            let main_len =
-                try_match_segments(segs, &haystack[pos..]).unwrap_or(0);
+            let main_len = try_match_segments(segs, &haystack[pos..]).unwrap_or(0);
             return Some((
                 pos,
                 SepMatch {
@@ -611,11 +599,7 @@ fn try_match_segments(segments: &[GlobSegment], s: &str) -> Option<usize> {
             }
             // Expand one char at a time.
             while let Some((_, ch)) = char_iter.next() {
-                let byte_pos = char_iter
-                    .clone()
-                    .next()
-                    .map(|(p, _)| p)
-                    .unwrap_or(s.len());
+                let byte_pos = char_iter.clone().next().map(|(p, _)| p).unwrap_or(s.len());
                 // byte_pos points to start of next char (or end).
                 // But we need to account for the current char's UTF-8 length:
                 let after = &s[byte_pos..];
@@ -909,10 +893,7 @@ mod tests {
         let p = build_pattern("*\\s(next)").unwrap();
         match &p.compiled {
             SepMatcher::Glob(g) => {
-                assert_eq!(
-                    g.segments,
-                    vec![GlobSegment::Star, GlobSegment::Whitespace]
-                );
+                assert_eq!(g.segments, vec![GlobSegment::Star, GlobSegment::Whitespace]);
                 let preserve = g.preserve.as_ref().unwrap();
                 assert_eq!(preserve.len(), 1);
                 assert_eq!(preserve[0], GlobSegment::Literal("next".into()));
@@ -928,7 +909,11 @@ mod tests {
         let e = build_pattern("*a*").unwrap_err();
         assert!(e.contains("at most one * allowed"), "got: {}", e);
         // Verify visual pointer is present
-        assert!(e.contains("{*a*}"), "should show the full pattern, got: {}", e);
+        assert!(
+            e.contains("{*a*}"),
+            "should show the full pattern, got: {}",
+            e
+        );
         assert!(e.contains("^"), "should have a pointer, got: {}", e);
     }
 
@@ -993,7 +978,11 @@ mod tests {
         // In `  {*a*}`, second `*` is at display col 4 (2 spaces + { + * + a + *)
         // base_offset=0 in main body, i=2 for second star → pointer_offset=2+1=3
         // with 2 leading spaces: col 5
-        assert_eq!(caret_pos, 5, "caret at wrong position in: {:?}", pointer_line);
+        assert_eq!(
+            caret_pos, 5,
+            "caret at wrong position in: {:?}",
+            pointer_line
+        );
     }
 
     #[test]
