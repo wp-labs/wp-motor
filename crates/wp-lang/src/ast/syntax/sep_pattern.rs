@@ -49,8 +49,12 @@ pub enum GlobSegment {
     Any,
     /// `\s` — one or more whitespace characters `[ \t\r\n]+`.
     Whitespace,
+    /// `\S` — one or more non-whitespace characters `[^ \t\r\n]+`.
+    NonWhitespace,
     /// `\h` — one or more horizontal whitespace `[ \t]+`.
     HorizontalWhitespace,
+    /// `\H` — one or more non-horizontal-whitespace `[^ \t]+`.
+    NonHorizontalWhitespace,
 }
 
 /// A compiled glob pattern with optional preserve tail.
@@ -89,12 +93,12 @@ pub fn build_pattern(raw: &str) -> Result<SepPattern, String> {
 
     // 2. Parse main body segments.
     let main_offset = 0;
-    let (segments, star_count) = parse_segments(raw, main_raw, main_offset, false)?;
+    let (segments, star_count) = parse_segments(raw, main_raw, main_offset)?;
 
     // 3. Parse preserve segments (if any).
     let preserve = if let Some(pr) = preserve_raw {
         let preserve_offset = main_raw.len() + 1; // +1 for '('
-        let (psegs, _) = parse_segments(raw, pr, preserve_offset, true)?;
+        let (psegs, _) = parse_segments(raw, pr, preserve_offset)?;
         Some(psegs)
     } else {
         None
@@ -123,7 +127,9 @@ pub fn build_pattern(raw: &str) -> Result<SepPattern, String> {
             GlobSegment::Star
                 | GlobSegment::Any
                 | GlobSegment::Whitespace
+                | GlobSegment::NonWhitespace
                 | GlobSegment::HorizontalWhitespace
+                | GlobSegment::NonHorizontalWhitespace
         )
     });
     let compiled = if !has_wildcard && preserve.is_none() {
@@ -245,7 +251,6 @@ fn parse_segments(
     raw: &str,
     s: &str,
     base_offset: usize,
-    forbid_star: bool,
 ) -> Result<(Vec<GlobSegment>, usize), String> {
     let mut segs = Vec::new();
     let mut lit_buf = String::new();
@@ -284,9 +289,19 @@ fn parse_segments(
                     segs.push(GlobSegment::Whitespace);
                     i += 2;
                 }
+                b'S' => {
+                    flush_literal(&mut lit_buf, &mut segs);
+                    segs.push(GlobSegment::NonWhitespace);
+                    i += 2;
+                }
                 b'h' => {
                     flush_literal(&mut lit_buf, &mut segs);
                     segs.push(GlobSegment::HorizontalWhitespace);
+                    i += 2;
+                }
+                b'H' => {
+                    flush_literal(&mut lit_buf, &mut segs);
+                    segs.push(GlobSegment::NonHorizontalWhitespace);
                     i += 2;
                 }
                 _ => {
@@ -298,13 +313,6 @@ fn parse_segments(
                 }
             }
         } else if b == b'*' {
-            if forbid_star {
-                return Err(fmt_err(
-                    raw,
-                    base_offset + i,
-                    "* is not allowed inside (...) preserve group",
-                ));
-            }
             flush_literal(&mut lit_buf, &mut segs);
             segs.push(GlobSegment::Star);
             star_count += 1;
@@ -427,16 +435,52 @@ fn try_match_star_split(segments: &[GlobSegment], s: &str) -> Option<(usize, usi
 fn glob_find(glob: &GlobPattern, haystack: &str) -> Option<(usize, SepMatch)> {
     let segs = &glob.segments;
     if segs.is_empty() {
-        // Only preserve – match at position 0 if preserve matches.
+        // Only preserve – scan haystack for the first position where preserve matches.
+        // The offset is the field content length; consumed is 0 (preserve is not consumed).
         if let Some(preserve) = &glob.preserve {
-            let plen = try_match_segments(preserve, haystack)?;
-            return Some((
-                0,
-                SepMatch {
-                    consumed: 0,
-                    matched: plen,
-                },
-            ));
+            // Optimization: if first preserve segment is Literal, use str::find for fast skip.
+            if let Some(GlobSegment::Literal(first_lit)) = preserve.first() {
+                let lit = first_lit.as_str();
+                let mut search_start = 0;
+                while search_start <= haystack.len() {
+                    if let Some(pos) = haystack[search_start..].find(lit) {
+                        let abs_pos = search_start + pos;
+                        if let Some(plen) =
+                            try_match_segments(preserve, &haystack[abs_pos..])
+                        {
+                            return Some((
+                                abs_pos,
+                                SepMatch {
+                                    consumed: 0,
+                                    matched: plen,
+                                },
+                            ));
+                        }
+                        let next_char_len = haystack[abs_pos..]
+                            .chars()
+                            .next()
+                            .map(|c| c.len_utf8())
+                            .unwrap_or(1);
+                        search_start = abs_pos + next_char_len;
+                    } else {
+                        break;
+                    }
+                }
+                return None;
+            }
+            // General case: scan char by char.
+            for (pos, _) in haystack.char_indices() {
+                if let Some(plen) = try_match_segments(preserve, &haystack[pos..]) {
+                    return Some((
+                        pos,
+                        SepMatch {
+                            consumed: 0,
+                            matched: plen,
+                        },
+                    ));
+                }
+            }
+            return None;
         }
         return None;
     }
@@ -546,23 +590,16 @@ fn try_match_segments(segments: &[GlobSegment], s: &str) -> Option<usize> {
             Some(clen + tail)
         }
         GlobSegment::Whitespace => {
-            // Consume 1+ whitespace characters.
-            let consumed = consume_whitespace(s);
-            if consumed == 0 {
-                return None;
-            }
-            let rest = &s[consumed..];
-            let tail = try_match_segments(&segments[1..], rest)?;
-            Some(consumed + tail)
+            match_char_class_backtrack(consume_whitespace, s, &segments[1..])
+        }
+        GlobSegment::NonWhitespace => {
+            match_char_class_backtrack(consume_non_whitespace, s, &segments[1..])
         }
         GlobSegment::HorizontalWhitespace => {
-            let consumed = consume_horizontal_whitespace(s);
-            if consumed == 0 {
-                return None;
-            }
-            let rest = &s[consumed..];
-            let tail = try_match_segments(&segments[1..], rest)?;
-            Some(consumed + tail)
+            match_char_class_backtrack(consume_horizontal_whitespace, s, &segments[1..])
+        }
+        GlobSegment::NonHorizontalWhitespace => {
+            match_char_class_backtrack(consume_non_horizontal_whitespace, s, &segments[1..])
         }
         GlobSegment::Star => {
             // Non-greedy: try expanding from 0 chars upwards.
@@ -593,6 +630,44 @@ fn try_match_segments(segments: &[GlobSegment], s: &str) -> Option<usize> {
     }
 }
 
+/// Match a character-class segment (like `\s`, `\S`, `\h`, `\H`) with greedy-then-backtrack.
+///
+/// `consume_fn` returns the maximum number of bytes that the character class matches at the
+/// start of `s`. We try that maximum first (fast path); if the remaining segments don't match,
+/// we backtrack one character at a time until we find a length that works (minimum 1 character).
+fn match_char_class_backtrack(
+    consume_fn: fn(&str) -> usize,
+    s: &str,
+    remaining: &[GlobSegment],
+) -> Option<usize> {
+    let max = consume_fn(s);
+    if max == 0 {
+        return None;
+    }
+    // Fast path: greedy consumption (covers most cases like \s followed by non-ws literal).
+    let rest = &s[max..];
+    if let Some(tail) = try_match_segments(remaining, rest) {
+        return Some(max + tail);
+    }
+    // Slow path: backtrack from (max - 1 char) down to 1 char.
+    // Walk backwards through char boundaries within consumed range.
+    let consumed_slice = &s[..max];
+    let mut pos = max;
+    for (i, _) in consumed_slice.char_indices().rev() {
+        // `i` is the start of the last char; skip it to try one less char.
+        pos = i;
+        if pos == 0 {
+            break; // Must consume at least 1 char.
+        }
+        let rest = &s[pos..];
+        if let Some(tail) = try_match_segments(remaining, rest) {
+            return Some(pos + tail);
+        }
+    }
+    let _ = pos;
+    None
+}
+
 fn consume_whitespace(s: &str) -> usize {
     let mut n = 0;
     for ch in s.chars() {
@@ -605,10 +680,34 @@ fn consume_whitespace(s: &str) -> usize {
     n
 }
 
+fn consume_non_whitespace(s: &str) -> usize {
+    let mut n = 0;
+    for ch in s.chars() {
+        if ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n' {
+            n += ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+    n
+}
+
 fn consume_horizontal_whitespace(s: &str) -> usize {
     let mut n = 0;
     for ch in s.chars() {
         if ch == ' ' || ch == '\t' {
+            n += ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+    n
+}
+
+fn consume_non_horizontal_whitespace(s: &str) -> usize {
+    let mut n = 0;
+    for ch in s.chars() {
+        if ch != ' ' && ch != '\t' {
             n += ch.len_utf8();
         } else {
             break;
@@ -763,6 +862,35 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_non_whitespace() {
+        let p = build_pattern("\\s\\S=").unwrap();
+        match &p.compiled {
+            SepMatcher::Glob(g) => {
+                assert_eq!(g.segments.len(), 3);
+                assert_eq!(g.segments[0], GlobSegment::Whitespace);
+                assert_eq!(g.segments[1], GlobSegment::NonWhitespace);
+                assert_eq!(g.segments[2], GlobSegment::Literal("=".into()));
+            }
+            _ => panic!("expected Glob"),
+        }
+    }
+
+    #[test]
+    fn test_parse_non_horizontal_whitespace() {
+        let p = build_pattern("\\h\\H:\\H").unwrap();
+        match &p.compiled {
+            SepMatcher::Glob(g) => {
+                assert_eq!(g.segments.len(), 4);
+                assert_eq!(g.segments[0], GlobSegment::HorizontalWhitespace);
+                assert_eq!(g.segments[1], GlobSegment::NonHorizontalWhitespace);
+                assert_eq!(g.segments[2], GlobSegment::Literal(":".into()));
+                assert_eq!(g.segments[3], GlobSegment::NonHorizontalWhitespace);
+            }
+            _ => panic!("expected Glob"),
+        }
+    }
+
+    #[test]
     fn test_parse_preserve() {
         let p = build_pattern("*(key=)").unwrap();
         match &p.compiled {
@@ -815,13 +943,20 @@ mod tests {
     }
 
     #[test]
-    fn test_err_star_in_preserve() {
-        let e = build_pattern("*(key*)").unwrap_err();
-        assert!(
-            e.contains("not allowed inside") || e.contains("preserve"),
-            "got: {}",
-            e
-        );
+    fn test_parse_star_in_preserve() {
+        // `*(c*=)` — Star in main + anchored Star in preserve
+        let p = build_pattern("*(c*=)").unwrap();
+        match &p.compiled {
+            SepMatcher::Glob(g) => {
+                assert_eq!(g.segments, vec![GlobSegment::Star]);
+                let preserve = g.preserve.as_ref().unwrap();
+                assert_eq!(preserve.len(), 3);
+                assert_eq!(preserve[0], GlobSegment::Literal("c".into()));
+                assert_eq!(preserve[1], GlobSegment::Star);
+                assert_eq!(preserve[2], GlobSegment::Literal("=".into()));
+            }
+            _ => panic!("expected Glob"),
+        }
     }
 
     #[test]
@@ -869,7 +1004,6 @@ mod tests {
             ("", "empty pattern"),
             ("*a*", "multiple stars"),
             ("(key)*=", "preserve not at end"),
-            ("*(key*)", "star in preserve"),
             ("test(mid)abc", "paren not at end"),
         ];
         for (input, label) in cases {
@@ -951,6 +1085,41 @@ mod tests {
     }
 
     #[test]
+    fn test_match_non_whitespace() {
+        // `{\s\S=}` on "msg=Test message externalId=0"
+        // \s matches at first space (pos 8), but \S then consumes "message"
+        // and "=" doesn't match " externalId..." → fail at pos 8.
+        // At pos 16: \s matches " ", \S matches "externalId", "=" matches → success
+        let p = build_pattern("\\s\\S=").unwrap();
+        let (off, m) = p.find("msg=Test message externalId=0").unwrap();
+        assert_eq!(off, 16); // split before " externalId="
+        assert_eq!(m.consumed, 12); // " " + "externalId" + "="
+        assert_eq!(m.matched, 12);
+    }
+
+    #[test]
+    fn test_match_non_whitespace_preserve_kvarr() {
+        // `{\s(\S=)}` — the kvarr separator pattern:
+        // \s consumed (separator), \S= preserved (lookahead for next key=)
+        let p = build_pattern("\\s(\\S=)").unwrap();
+        let (off, m) = p.find("msg=Test message externalId=0").unwrap();
+        assert_eq!(off, 16); // field content: "msg=Test message"
+        assert_eq!(m.consumed, 1); // consumed: " " (space)
+        assert_eq!(m.matched, 12); // matched: " " + "externalId" + "="
+    }
+
+    #[test]
+    fn test_match_non_horizontal_whitespace() {
+        // `{\h\H=}` on "key\t:\tval\texternalId=0"
+        let p = build_pattern("\\H=").unwrap();
+        let (off, m) = p.find("key\t:\tval\texternalId=0").unwrap();
+        // \H matches "key" (stops at \t), then "=" doesn't match "\t:..." → fail
+        // Scanning... \H at "externalId=0": matches "externalId", "=" matches → success
+        assert_eq!(off, 10);
+        assert_eq!(m.consumed, 11); // "externalId="
+    }
+
+    #[test]
     fn test_match_no_match() {
         let p = build_pattern("\\s=").unwrap();
         assert!(p.find("key=val").is_none());
@@ -1005,10 +1174,53 @@ mod tests {
             }
             _ => panic!("expected Glob"),
         }
+        // Match at position 0
         let (off, m) = p.find("abcdef").unwrap();
         assert_eq!(off, 0);
         assert_eq!(m.consumed, 0);
         assert_eq!(m.matched, 3);
+
+        // Match at non-zero offset: field content is "xyz", preserve "abc" found at pos 3
+        let (off, m) = p.find("xyzabcdef").unwrap();
+        assert_eq!(off, 3);
+        assert_eq!(m.consumed, 0);
+        assert_eq!(m.matched, 3);
+
+        // No match
+        assert!(p.find("xyzdef").is_none());
+    }
+
+    #[test]
+    fn test_match_preserve_only_command() {
+        // Real-world pattern: `{(command=)}` — find "command=" as lookahead separator
+        let p = build_pattern("(command=)").unwrap();
+        let (off, m) = p.find("hello command=value").unwrap();
+        assert_eq!(off, 6); // "hello " is field content
+        assert_eq!(m.consumed, 0); // separator is zero-width
+        assert_eq!(m.matched, 8); // "command=".len()
+
+        // Match at start
+        let (off, m) = p.find("command=value").unwrap();
+        assert_eq!(off, 0);
+        assert_eq!(m.consumed, 0);
+        assert_eq!(m.matched, 8);
+    }
+
+    #[test]
+    fn test_match_preserve_with_star() {
+        // `{(c*=)}` — preserve-only with anchored Star
+        // On "hello cmd=value": find first position where c*= matches
+        let p = build_pattern("(c*=)").unwrap();
+        let (off, m) = p.find("hello cmd=value").unwrap();
+        assert_eq!(off, 6); // "hello " is field content
+        assert_eq!(m.consumed, 0);
+        assert_eq!(m.matched, 4); // "cmd=" matched by c + Star("md") + =
+
+        // Multiple candidates: picks first
+        let (off, m) = p.find("hello cat=1 cmd=2").unwrap();
+        assert_eq!(off, 6); // first "c" at position 6
+        assert_eq!(m.consumed, 0);
+        assert_eq!(m.matched, 4); // "cat="
     }
 
     // ── Serde round-trip ─────────────────────────────────────────────

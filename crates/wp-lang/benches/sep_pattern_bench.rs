@@ -165,6 +165,49 @@ fn bench_find_star_long_input(c: &mut Criterion) {
     });
 }
 
+// ── \S / \H benchmarks ──────────────────────────────────────────────
+
+fn bench_build_non_whitespace(c: &mut Criterion) {
+    c.bench_function("build_pattern/non_ws", |b| {
+        b.iter(|| build_pattern(black_box("\\s(\\S=)")))
+    });
+}
+
+fn bench_find_non_whitespace_kvarr(c: &mut Criterion) {
+    // Real-world kvarr pattern: \s consumed, \S= preserved
+    let pat = build("\\s(\\S=)");
+    let haystack = "msg=Test message externalId=0";
+    c.bench_function("find/non_ws_kvarr", |b| {
+        b.iter(|| pat.find(black_box(haystack)))
+    });
+}
+
+fn bench_find_non_whitespace_long(c: &mut Criterion) {
+    // Long kvarr-style input
+    let pat = build("\\s(\\S=)");
+    let haystack = "msg=This is a very long message with many words externalId=12345 severity=high source=firewall action=allow proto=tcp srcip=192.168.1.1 dstip=10.0.0.1";
+    c.bench_function("find/non_ws_kvarr_long", |b| {
+        b.iter(|| pat.find(black_box(haystack)))
+    });
+}
+
+fn bench_find_non_horizontal_whitespace(c: &mut Criterion) {
+    let pat = build("\\H=");
+    let haystack = "key\t:\tval\texternalId=0";
+    c.bench_function("find/non_h_ws", |b| {
+        b.iter(|| pat.find(black_box(haystack)))
+    });
+}
+
+fn bench_find_non_whitespace_backtrack(c: &mut Criterion) {
+    // Pattern where \S must backtrack: \S consumes greedily then shrinks
+    let pat = build("\\s\\S=");
+    let haystack = "msg=Test message externalId=0";
+    c.bench_function("find/non_ws_backtrack", |b| {
+        b.iter(|| pat.find(black_box(haystack)))
+    });
+}
+
 fn bench_find_literal_vs_pattern(c: &mut Criterion) {
     // Compare raw str::find vs Pattern literal on same data
     let data = "field1,field2,field3,field4,field5,field6,field7,field8";
@@ -194,6 +237,7 @@ criterion_group!(
     bench_build_literal,
     bench_build_glob,
     bench_build_complex,
+    bench_build_non_whitespace,
     bench_find_literal_short,
     bench_find_literal_long,
     bench_find_star_non_greedy,
@@ -201,6 +245,10 @@ criterion_group!(
     bench_find_preserve,
     bench_find_field_any,
     bench_find_no_match,
+    bench_find_non_whitespace_kvarr,
+    bench_find_non_whitespace_long,
+    bench_find_non_horizontal_whitespace,
+    bench_find_non_whitespace_backtrack,
     bench_match_at_start_literal,
     bench_match_at_start_glob,
     bench_read_until_sep_str,

@@ -8,7 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.16.0 Unreleased]
 
 ### Added
-- **wp-lang**: Add separator pattern syntax `{…}` with wildcards (`*`, `?`), whitespace matchers (`\s`, `\h`) and preserve groups `(…)` for expressing complex separator logic in a single declaration
+- **wp-lang**: Add separator pattern syntax `{…}` with wildcards (`*`, `?`), whitespace matchers (`\s`, `\h`, `\S`, `\H`) and preserve groups `(…)` for expressing complex separator logic in a single declaration
+  - `\S` (non-whitespace) and `\H` (non-horizontal-whitespace) complement `\s` / `\h`, enabling patterns like `{\s(\S=)}` for kvarr with space-containing values
+  - All character-class matchers (`\s`, `\S`, `\h`, `\H`) use greedy-with-backtrack strategy
+  - Preserve groups scan full haystack for match position (not just position 0)
+  - `*` allowed inside preserve groups for anchored patterns like `{(c*=)}`
   - Literal patterns use `str::find` fast-path, **2.7x faster** than winnow `take_until`
   - See design doc `docs/design/wpl_sep_pattern.md`
 

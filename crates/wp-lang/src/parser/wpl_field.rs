@@ -415,6 +415,19 @@ mod tests {
 
         let sep = wpl_sep.parse("\\!\\,").assert();
         assert_eq!(sep, Some(WplSep::field_sep("!,")));
+
+        // Pattern separator: preserve-only
+        let sep = wpl_sep.parse("{(command=)}").assert();
+        assert!(sep.unwrap().is_pattern());
+    }
+
+    #[test]
+    fn test_field_with_pattern_sep_and_pipe() {
+        // chars{(command=)}|(kvarr\s)
+        let conf = wpl_field.parse("chars{(command=)}|(kvarr\\s)").assert();
+        assert_eq!(conf.meta_name.as_str(), "chars");
+        assert!(conf.separator.as_ref().unwrap().is_pattern());
+        assert!(!conf.pipe.is_empty());
     }
 
     #[test]
