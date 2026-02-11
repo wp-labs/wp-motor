@@ -221,7 +221,7 @@ fn materialize_static_items(
 
     let mut const_map = HashMap::new();
     for field in dst.items.into_iter() {
-        const_map.insert(field.get_name().to_string(), Arc::new(field));
+        const_map.insert(field.get_name().to_string(), Arc::new(field.into_owned()));
     }
     Ok(const_map)
 }
@@ -250,7 +250,8 @@ fn rewrite_precise_evaluator(
                 err.push(StrContext::Label("symbol not found"));
                 ErrMode::Cut(err)
             })?;
-            *eval = PreciseEvaluator::Obj((**field).clone());
+            // Use Arc::clone instead of DataField clone for zero-copy sharing
+            *eval = PreciseEvaluator::ObjArc(Arc::clone(field));
             Ok(())
         }
         PreciseEvaluator::Match(op) => rewrite_match_operation(op, const_fields),
@@ -308,11 +309,85 @@ fn rewrite_match_operation(
     op: &mut crate::language::MatchOperation,
     const_fields: &HashMap<String, Arc<DataField>>,
 ) -> Result<(), ErrMode<ContextError>> {
+    // Rewrite result part (already exists)
     for case in op.items_mut() {
         rewrite_nested_accessor(case.result_mut(), const_fields)?;
     }
     if let Some(default_case) = op.default_mut() {
         rewrite_nested_accessor(default_case.result_mut(), const_fields)?;
+    }
+
+    // Rewrite condition part (new)
+    for case in op.items_mut() {
+        rewrite_match_condition(case.condition_mut(), const_fields)?;
+    }
+
+    Ok(())
+}
+
+fn rewrite_match_condition(
+    cond: &mut crate::language::MatchCondition,
+    const_fields: &HashMap<String, Arc<DataField>>,
+) -> Result<(), ErrMode<ContextError>> {
+    use crate::language::MatchCondition;
+    match cond {
+        MatchCondition::Single(c) => rewrite_single_match_cond(c, const_fields)?,
+        MatchCondition::Double(c1, c2) => {
+            rewrite_single_match_cond(c1, const_fields)?;
+            rewrite_single_match_cond(c2, const_fields)?;
+        }
+        MatchCondition::Default => {}
+    }
+    Ok(())
+}
+
+fn rewrite_single_match_cond(
+    cond: &mut crate::language::MatchCond,
+    const_fields: &HashMap<String, Arc<DataField>>,
+) -> Result<(), ErrMode<ContextError>> {
+    use crate::language::MatchCond;
+    match cond {
+        MatchCond::EqSym(sym) => {
+            let sym_str = sym.clone(); // Clone to avoid borrow conflict
+            let field = const_fields.get(&sym_str).ok_or_else(|| {
+                let mut err = ContextError::new();
+                err.push(StrContext::Label("match condition"));
+                err.push(StrContext::Label("static symbol not found"));
+                ErrMode::Cut(err)
+            })?;
+            // Use Arc::clone instead of DataField clone for zero-copy sharing
+            *cond = MatchCond::EqArc(Arc::clone(field));
+        }
+        MatchCond::NeqSym(sym) => {
+            let sym_str = sym.clone(); // Clone to avoid borrow conflict
+            let field = const_fields.get(&sym_str).ok_or_else(|| {
+                let mut err = ContextError::new();
+                err.push(StrContext::Label("match condition"));
+                err.push(StrContext::Label("static symbol not found"));
+                ErrMode::Cut(err)
+            })?;
+            // Use Arc::clone instead of DataField clone for zero-copy sharing
+            *cond = MatchCond::NeqArc(Arc::clone(field));
+        }
+        MatchCond::InSym(beg_sym, end_sym) => {
+            let beg_str = beg_sym.clone(); // Clone to avoid borrow conflict
+            let end_str = end_sym.clone(); // Clone to avoid borrow conflict
+            let beg_field = const_fields.get(&beg_str).ok_or_else(|| {
+                let mut err = ContextError::new();
+                err.push(StrContext::Label("match condition"));
+                err.push(StrContext::Label("static symbol not found"));
+                ErrMode::Cut(err)
+            })?;
+            let end_field = const_fields.get(&end_str).ok_or_else(|| {
+                let mut err = ContextError::new();
+                err.push(StrContext::Label("match condition"));
+                err.push(StrContext::Label("static symbol not found"));
+                ErrMode::Cut(err)
+            })?;
+            // Use Arc::clone instead of DataField clone for zero-copy sharing
+            *cond = MatchCond::InArc(Arc::clone(beg_field), Arc::clone(end_field));
+        }
+        _ => {}
     }
     Ok(())
 }
@@ -328,7 +403,8 @@ fn rewrite_nested_accessor(
             err.push(StrContext::Label("symbol not found"));
             ErrMode::Cut(err)
         })?;
-        accessor.replace_with_field((**field).clone());
+        // Use Arc::clone instead of DataField clone for zero-copy sharing
+        accessor.replace_with_field_arc(Arc::clone(field));
     }
     Ok(())
 }
@@ -344,7 +420,8 @@ fn rewrite_generic_accessor(
             err.push(StrContext::Label("symbol not found"));
             ErrMode::Cut(err)
         })?;
-        accessor.replace_with_field((**field).clone());
+        // Use Arc::clone instead of DataField clone for zero-copy sharing
+        accessor.replace_with_field_arc(Arc::clone(field));
     }
     Ok(())
 }
@@ -517,7 +594,7 @@ target_template = template;
         assert_eq!(model.items.len(), 1);
         match &model.items[0] {
             EvalExp::Single(single) => match single.eval_way() {
-                PreciseEvaluator::Obj(field) => {
+                PreciseEvaluator::ObjArc(field) => {
                     assert_eq!(field.get_name(), "template");
                 }
                 other => panic!("unexpected evaluator: {:?}", other),
@@ -554,8 +631,8 @@ result = object {
                     let subs = map.subs();
                     assert_eq!(subs.len(), 1);
                     match subs[0].acquirer() {
-                        NestedAccessor::Field(_) => {}
-                        other => panic!("expected field accessor, got {:?}", other),
+                        NestedAccessor::FieldArc(_) => {}
+                        other => panic!("expected field arc accessor, got {:?}", other),
                     }
                 }
                 other => panic!("unexpected evaluator: {:?}", other),
@@ -589,10 +666,10 @@ value = take(Value) { _ : fallback };
                 PreciseEvaluator::Tdc(op) => {
                     let default = op.default_val().as_ref().expect("default binding");
                     match default.accessor() {
-                        GenericAccessor::Field(field) => {
+                        GenericAccessor::FieldArc(field) => {
                             assert_eq!(field.get_name(), "fallback");
                         }
-                        other => panic!("expected field accessor, got {:?}", other),
+                        other => panic!("expected field arc accessor, got {:?}", other),
                     }
                 }
                 other => panic!("unexpected evaluator: {:?}", other),
@@ -629,18 +706,18 @@ target = match read(Content) {
                 PreciseEvaluator::Match(op) => {
                     for case in op.items() {
                         match case.result() {
-                            NestedAccessor::Field(field) => {
+                            NestedAccessor::FieldArc(field) => {
                                 assert_eq!(field.get_name(), "tpl");
                             }
-                            other => panic!("expected field accessor, got {:?}", other),
+                            other => panic!("expected field arc accessor, got {:?}", other),
                         }
                     }
                     if let Some(default_case) = op.default() {
                         match default_case.result() {
-                            NestedAccessor::Field(field) => {
+                            NestedAccessor::FieldArc(field) => {
                                 assert_eq!(field.get_name(), "tpl");
                             }
-                            other => panic!("expected field accessor, got {:?}", other),
+                            other => panic!("expected field arc accessor, got {:?}", other),
                         }
                     } else {
                         panic!("match should have default case");

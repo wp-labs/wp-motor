@@ -12,7 +12,7 @@ use wp_connector_api::{
     AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkBuildCtx, SinkFactory, SinkHandle,
     SinkSpec as ResolvedSinkSpec,
 };
-use wp_data_fmt::DataFormat; // for format_record
+use wp_data_fmt::RecordFormatter; // for fmt_record
 // no extra orion-error/conf helpers needed after route-builder removal
 
 type AnyResult<T> = anyhow::Result<T>;
@@ -160,7 +160,7 @@ impl AsyncCtrl for SyslogSink {
 impl AsyncRecordSink for SyslogSink {
     async fn sink_record(&mut self, data: &wp_model_core::model::DataRecord) -> SinkResult<()> {
         // Format record to raw text then reuse raw path
-        let raw = wp_data_fmt::Raw::new().format_record(data);
+        let raw = wp_data_fmt::Raw::new().fmt_record(data);
         AsyncRawDataSink::sink_str(self, raw.as_str()).await
     }
 

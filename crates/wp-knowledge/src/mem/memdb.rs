@@ -337,7 +337,7 @@ mod tests {
     use orion_variate::EnvDict;
     use serde::Serialize;
     use std::fs;
-    use wp_data_fmt::{Csv, DataFormat};
+    use wp_data_fmt::{Csv, RecordFormatter};
 
     #[test]
     fn test_load() -> AnyResult<()> {
@@ -353,7 +353,7 @@ mod tests {
         let fmt = Csv::default();
         let tdos = db.query_row("select * from example;")?;
         for obj in tdos {
-            println!("{}", fmt.format_field(&obj));
+            println!("{}", fmt.fmt_field(&obj.into()));
         }
         Ok(())
     }

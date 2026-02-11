@@ -1,4 +1,5 @@
 use wp_error::parse_error::OMLCodeResult;
+use wp_model_core::model::FieldStorage;
 
 use crate::core::prelude::*;
 
@@ -28,6 +29,15 @@ pub trait BatchFetcher {
 #[enum_dispatch]
 pub trait ValueProcessor {
     fn value_cacu(&self, in_val: DataField) -> DataField;
+
+    /// Process value with FieldStorage support for zero-copy optimization.
+    /// Default implementation converts to DataField and uses value_cacu.
+    /// Override this for operations that can preserve FieldStorage::Shared.
+    fn value_cacu_storage(&self, in_val: FieldStorage) -> FieldStorage {
+        let field = in_val.into_owned();
+        let result = self.value_cacu(field);
+        FieldStorage::from_owned(result)
+    }
 }
 
 impl ExpEvaluator for EvalExp {
@@ -63,4 +73,32 @@ pub trait DataTransformer {
         self.transform(data.clone(), cache)
     }
     fn append(&self, data: &mut DataRecord);
+
+    /// Batch transform multiple records with shared cache (default implementation)
+    ///
+    /// This default implementation provides backward compatibility by processing
+    /// records one by one. Implementations can override this for better performance
+    /// by reusing the cache and compiled model across all records.
+    fn transform_batch(
+        &self,
+        records: Vec<DataRecord>,
+        cache: &mut FieldQueryCache,
+    ) -> Vec<DataRecord> {
+        records
+            .into_iter()
+            .map(|record| self.transform(record, cache))
+            .collect()
+    }
+
+    /// Batch transform multiple records (reference version)
+    fn transform_batch_ref(
+        &self,
+        records: &[DataRecord],
+        cache: &mut FieldQueryCache,
+    ) -> Vec<DataRecord> {
+        records
+            .iter()
+            .map(|record| self.transform_ref(record, cache))
+            .collect()
+    }
 }

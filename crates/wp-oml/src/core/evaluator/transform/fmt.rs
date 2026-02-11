@@ -2,7 +2,8 @@ use crate::core::diagnostics::{self, OmlIssue, OmlIssueKind};
 use crate::core::prelude::*;
 use std::collections::HashMap;
 use strfmt::{DisplayStr, Formatter, strfmt};
-use wp_data_fmt::{DataFormat, Raw};
+use wp_data_fmt::{Raw, RecordFormatter};
+use wp_model_core::model::FieldStorage;
 impl FieldExtractor for FmtOperation {
     fn extract_one(
         &self,
@@ -20,8 +21,9 @@ impl FieldExtractor for FmtOperation {
                     .unwrap_or("_fmt_".to_string()),
                 DataType::Auto,
             );
-            if let Some(obj) = item.extract_one(&cur, src, dst) {
-                args.insert(obj.get_name().to_string(), FmtVal(obj));
+            // Use extract_storage to preserve zero-copy for Arc variants
+            if let Some(storage) = item.extract_storage(&cur, src, dst) {
+                args.insert(storage.get_name().to_string(), FmtVal(storage));
             } else {
                 not_find_items.push(item.dat_get());
             }
@@ -51,17 +53,28 @@ impl FieldExtractor for FmtOperation {
         let name = target.safe_name();
         Some(DataField::from_chars(name, data))
     }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
+    }
 }
 
 #[derive(Debug)]
-pub struct FmtVal(pub DataField);
+pub struct FmtVal(pub FieldStorage);
 impl DisplayStr for FmtVal
 where
 //for<'a> RawFmt<&'a T>: Display,
 {
     fn display_str(&self, f: &mut Formatter) -> strfmt::Result<()> {
         let raw_fmt = Raw;
-        let str = raw_fmt.format_field(&self.0).to_string();
+        // Directly use the FieldStorage without cloning
+        let str = raw_fmt.fmt_field(&self.0).to_string();
         f.str(str.as_str())
     }
 }
@@ -72,15 +85,14 @@ mod tests {
     use crate::parser::oml_parse_raw;
     use orion_error::TestAssertWithMsg;
     use wp_data_model::cache::FieldQueryCache;
-    use wp_model_core::model::DataField;
-    use wp_model_core::model::DataRecord;
+    use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 
     #[test]
     fn test_fmt() {
         let data = vec![
-            DataField::from_chars("A1", "h1"),
-            DataField::from_chars("B2", "h2"),
-            DataField::from_chars("C3", "h3"),
+            FieldStorage::from_owned(DataField::from_chars("A1", "h1")),
+            FieldStorage::from_owned(DataField::from_chars("B2", "h2")),
+            FieldStorage::from_owned(DataField::from_chars("C3", "h3")),
         ];
         let src = DataRecord::from(data);
         let mut cache = FieldQueryCache::default();
@@ -96,6 +108,6 @@ mod tests {
         let target = model.transform(src, &mut cache);
 
         let expect = DataField::from_chars("X".to_string(), "wplab:h1-h2_h3".to_string());
-        assert_eq!(target.field("X"), Some(&expect));
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 }

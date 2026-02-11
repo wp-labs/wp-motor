@@ -120,20 +120,20 @@ mod tests {
     fn test_sep_get_field() -> AnyResult<()> {
         let mut data = "kv=val;kv2=val2 ";
         assert_eq!(
-            CharSep::new(',').get_field(&mut data),
+            CharSep::new(',').get_field_owned(&mut data),
             Ok("kv=val;kv2=val2 ")
         );
 
         let mut data = "kv=val;kv2=val2,";
         assert_eq!(
-            CharSep::new(',').get_field(&mut data),
+            CharSep::new(',').get_field_owned(&mut data),
             Ok("kv=val;kv2=val2")
         );
         assert_eq!(data, ",");
 
         let mut data = "kv=val;kv2=val2, ";
         assert_eq!(
-            CharSep::new(',').get_field(&mut data),
+            CharSep::new(',').get_field_owned(&mut data),
             Ok("kv=val;kv2=val2")
         );
 
@@ -141,19 +141,19 @@ mod tests {
 
         let mut data = "kv=val;kv2=val2,xyz ";
         assert_eq!(
-            CharSep::new('0').get_field(&mut data),
+            CharSep::new('0').get_field_owned(&mut data),
             Ok("kv=val;kv2=val2,xyz ")
         );
 
         let mut data = "kv=val;kv2=val2, xxx";
         assert_eq!(
-            CharSep::new(',').get_field(&mut data),
+            CharSep::new(',').get_field_owned(&mut data),
             Ok("kv=val;kv2=val2")
         );
         assert_eq!(data, ", xxx");
 
         let mut data = "";
-        assert_eq!(CharSep::new(',').get_field(&mut data), Ok(""));
+        assert_eq!(CharSep::new(',').get_field_owned(&mut data), Ok(""));
         assert_eq!(data, "");
         Ok(())
     }
@@ -181,28 +181,28 @@ mod tests {
     fn test_diysep() -> AnyResult<()> {
         let mut data = "kv=val;kv2=val2, xxx";
         assert_eq!(
-            StrSep::new(";".to_string()).get_field(&mut data),
+            StrSep::new(";".to_string()).get_field_owned(&mut data),
             Ok("kv=val")
         );
         assert_eq!(data, ";kv2=val2, xxx");
 
         let mut data = "hello";
         assert_eq!(
-            StrSep::new(";".to_string()).get_field(&mut data),
+            StrSep::new(";".to_string()).get_field_owned(&mut data),
             Ok("hello")
         );
         assert_eq!(data, "");
 
         let mut data = "hello|!";
         assert_eq!(
-            StrSep::new("|!".to_string()).get_field(&mut data),
+            StrSep::new("|!".to_string()).get_field_owned(&mut data),
             Ok("hello")
         );
         assert_eq!(data, "|!");
 
         let mut data = "hello|!hello|!|";
         assert_eq!(
-            StrSep::new("|!|".to_string()).get_field(&mut data),
+            StrSep::new("|!|".to_string()).get_field_owned(&mut data),
             Ok("hello|!hello")
         );
         assert_eq!(data, "|!|");

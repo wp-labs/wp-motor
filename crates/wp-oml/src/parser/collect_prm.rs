@@ -31,7 +31,7 @@ mod tests {
     use crate::parser::oml_parse_raw;
     use orion_error::TestAssert;
     use wp_data_model::cache::FieldQueryCache;
-    use wp_model_core::model::{DataField, DataRecord};
+    use wp_model_core::model::{DataField, DataRecord, FieldStorage};
     use wp_parser::WResult as ModalResult;
 
     #[test]
@@ -47,8 +47,8 @@ mod tests {
         let cache = &mut FieldQueryCache::default();
 
         let data = vec![
-            DataField::from_chars("sport", "514"),
-            DataField::from_chars("dport", "22"),
+            FieldStorage::from_owned(DataField::from_chars("sport", "514")),
+            FieldStorage::from_owned(DataField::from_chars("dport", "22")),
         ];
         let src = DataRecord::from(data);
 
@@ -69,6 +69,9 @@ mod tests {
                 DataField::from_digit("dport", 22),
             ],
         );
-        assert_eq!(target.field("port_list"), Some(&expect));
+        assert_eq!(
+            target.field("port_list").map(|s| s.as_field()),
+            Some(&expect)
+        );
     }
 }

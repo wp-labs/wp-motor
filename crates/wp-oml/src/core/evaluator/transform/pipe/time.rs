@@ -100,12 +100,14 @@ mod tests {
     use crate::parser::oml_parse_raw;
     use orion_error::TestAssert;
     use wp_data_model::cache::FieldQueryCache;
-    use wp_model_core::model::{DataField, DataRecord};
+    use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 
     #[test]
     fn test_pipe_time() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![DataField::from_chars("A1", "<html>")];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "A1", "<html>",
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -120,11 +122,11 @@ mod tests {
         let target = model.transform(src, cache);
         //let expect = TDOEnum::from_digit("X".to_string(), 971136000);
         let expect = DataField::from_digit("X".to_string(), 971107200);
-        assert_eq!(target.field("X"), Some(&expect));
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
         let expect = DataField::from_digit("Z".to_string(), 971107200000);
-        assert_eq!(target.field("Z"), Some(&expect));
+        assert_eq!(target.field("Z").map(|s| s.as_field()), Some(&expect));
 
         let expect = DataField::from_digit("U".to_string(), 971107200000000);
-        assert_eq!(target.field("U"), Some(&expect));
+        assert_eq!(target.field("U").map(|s| s.as_field()), Some(&expect));
     }
 }

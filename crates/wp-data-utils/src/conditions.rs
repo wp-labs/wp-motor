@@ -11,7 +11,7 @@ pub struct RecordGetter<'a>(pub &'a DataRecord);
 
 impl<'a> ValueGetter<DataField> for RecordGetter<'a> {
     fn get_value(&self, var: &str) -> Option<&DataField> {
-        self.0.field(var)
+        self.0.field(var).map(|storage| storage.as_field())
     }
 }
 

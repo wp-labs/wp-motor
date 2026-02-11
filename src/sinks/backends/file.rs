@@ -17,7 +17,7 @@ use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio_async_drop::tokio_async_drop;
 use wp_connector_api::{SinkBuildCtx, SinkReason, SinkResult, SinkSpec as ResolvedSinkSpec};
-use wp_data_fmt::{DataFormat, FormatType};
+use wp_data_fmt::{FormatType, RecordFormatter};
 use wp_model_core::model::fmt_def::TextFmt;
 
 #[cfg(test)]
@@ -185,7 +185,7 @@ impl RecSyncSink for FileSink {
     fn send_to_sink(&self, data: SinkRecUnit) -> SinkResult<()> {
         if let Ok(mut out_io) = self.out_io.write() {
             let formatted = FormatType::from(&wp_model_core::model::fmt_def::TextFmt::Raw)
-                .format_record(data.data());
+                .fmt_record(data.data());
             out_io
                 .write_all(format!("{}\n", formatted).as_bytes())
                 .owe(SinkReason::sink("file out fail"))?;

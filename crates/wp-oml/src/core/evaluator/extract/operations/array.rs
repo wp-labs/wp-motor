@@ -1,7 +1,7 @@
 use crate::core::prelude::*;
 use crate::language::ArrOperation;
 
-use wp_model_core::model::{DataField, DataRecord};
+use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 
 use crate::core::FieldExtractor;
 
@@ -19,5 +19,15 @@ impl FieldExtractor for ArrOperation {
         } else {
             None
         }
+    }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
     }
 }

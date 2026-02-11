@@ -54,7 +54,9 @@ pub fn record_from_fmt_fields(fields: FmtFieldVec) -> DataRecord {
     let mut data_fields = Vec::new();
 
     for field in fields {
-        data_fields.push(field.data_field);
+        data_fields.push(wp_model_core::model::FieldStorage::from_owned(
+            field.data_field,
+        ));
     }
     DataRecord::from(data_fields)
 }
@@ -66,8 +68,10 @@ mod field_vec_fmt {
     use crate::ast::GenFmt;
     use crate::eval::vof;
     use crate::generator::{FmtFieldVec, record_from_fmt_fields};
-    use wp_data_fmt::{Csv, DataFormat, FormatType, Json, KeyValue, ProtoTxt, Raw};
-    use wp_model_core::model::DataType;
+    use wp_data_fmt::{
+        Csv, FormatType, Json, KeyValue, ProtoTxt, Raw, RecordFormatter, ValueFormatter,
+    };
+    use wp_model_core::model::{DataType, FieldStorage};
 
     impl Display for KVGenFmt<&FmtFieldVec> {
         fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -75,7 +79,7 @@ mod field_vec_fmt {
             write!(
                 f,
                 "{}",
-                fmt.format_record(&record_from_fmt_fields(self.0.clone()))
+                fmt.fmt_record(&record_from_fmt_fields(self.0.clone()))
             )
         }
     }
@@ -97,15 +101,19 @@ mod field_vec_fmt {
                     write!(
                         f,
                         "{}",
-                        formatter.fmt_value(fmt_field.data_field.get_value())
+                        formatter.format_value(fmt_field.data_field.get_value())
                     )?;
                 } else {
                     match fmt_field.meta {
                         DataType::KV => {
-                            write!(f, "{}", kvfmt.format_field(&fmt_field.data_field))?;
+                            // Wrap DataField as FieldStorage for fmt_field
+                            let storage = FieldStorage::from_owned(fmt_field.data_field.clone());
+                            write!(f, "{}", kvfmt.fmt_field(&storage))?;
                         }
                         _ => {
-                            write!(f, "{}", rawfmt.format_field(&fmt_field.data_field))?;
+                            // Wrap DataField as FieldStorage for fmt_field
+                            let storage = FieldStorage::from_owned(fmt_field.data_field.clone());
+                            write!(f, "{}", rawfmt.fmt_field(&storage))?;
                         }
                     }
                 }
@@ -125,7 +133,7 @@ mod field_vec_fmt {
             write!(
                 f,
                 "{}",
-                fmt.format_record(&record_from_fmt_fields(self.0.clone()))
+                fmt.fmt_record(&record_from_fmt_fields(self.0.clone()))
             )
         }
     }
@@ -136,7 +144,7 @@ mod field_vec_fmt {
             write!(
                 f,
                 "{}",
-                fmt.format_record(&record_from_fmt_fields(self.0.clone()))
+                fmt.fmt_record(&record_from_fmt_fields(self.0.clone()))
             )
         }
     }
@@ -147,7 +155,7 @@ mod field_vec_fmt {
             write!(
                 f,
                 "{}",
-                fmt.format_record(&record_from_fmt_fields(self.0.clone()))
+                fmt.fmt_record(&record_from_fmt_fields(self.0.clone()))
             )
         }
     }

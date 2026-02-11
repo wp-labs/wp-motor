@@ -1,7 +1,8 @@
 use crate::core::prelude::*;
 use crate::language::{Get, Nth, SkipEmpty};
 use std::collections::VecDeque;
-use wp_model_core::model::{DataField, Value};
+use wp_model_core::model::types::value::ObjectValue;
+use wp_model_core::model::{DataField, FieldStorage, Value};
 
 /// 数组索引访问 - nth(index)
 impl ValueProcessor for Nth {
@@ -9,7 +10,7 @@ impl ValueProcessor for Nth {
         match in_val.get_value() {
             Value::Array(arr) => {
                 if let Some(found) = arr.get(self.index) {
-                    return found.clone();
+                    return found.as_field().clone();
                 }
                 in_val
             }
@@ -65,13 +66,51 @@ impl ValueProcessor for Get {
                             *obj = o.clone();
                         }
                     } else {
-                        return val.clone();
+                        return val.as_field().clone();
                     }
                 }
             }
         }
         in_val
     }
+
+    fn value_cacu_storage(&self, in_val: FieldStorage) -> FieldStorage {
+        // Zero-copy path: extract field from Shared object without cloning the object
+        if in_val.is_shared() {
+            let field = in_val.as_field();
+            if let Value::Obj(obj) = field.get_value() {
+                let keys: Vec<&str> = self.name.split('/').collect();
+                if let Some(result) = get_from_obj(obj, &keys) {
+                    return result.clone();
+                }
+            }
+        }
+
+        // Fallback: use default implementation
+        let field = in_val.into_owned();
+        let result = self.value_cacu(field);
+        FieldStorage::from_owned(result)
+    }
+}
+
+// Helper function to navigate nested objects
+fn get_from_obj<'a>(mut obj: &'a ObjectValue, keys: &[&str]) -> Option<&'a FieldStorage> {
+    for (i, key) in keys.iter().enumerate() {
+        if let Some(val) = obj.get(key) {
+            if i == keys.len() - 1 {
+                return Some(val);
+            } else {
+                if let Value::Obj(nested) = val.get_value() {
+                    obj = nested;
+                } else {
+                    return None;
+                }
+            }
+        } else {
+            return None;
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -101,13 +140,13 @@ mod tests {
         let model = oml_parse_raw(&mut conf).assert();
         let target = model.transform(src, cache);
         let expect = DataField::from_arr("X".to_string(), data);
-        assert_eq!(target.field("X"), Some(&expect));
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
         assert_eq!(
-            target.field("Y"),
+            target.field("Y").map(|s| s.as_field()),
             Some(DataField::from_ignore("Y")).as_ref()
         );
         assert_eq!(
-            target.field("Z"),
+            target.field("Z").map(|s| s.as_field()),
             Some(DataField::from_ignore("Z")).as_ref()
         );
     }
@@ -126,7 +165,7 @@ mod tests {
         let model = oml_parse_raw(&mut conf).assert();
         let target = model.transform(src, cache);
         assert_eq!(
-            target.field("Y"),
+            target.field("Y").map(|s| s.as_field()),
             Some(DataField::from_chars(
                 "Y",
                 r#"c:\\users\\administrator\\desktop\\domaintool\\x64\\childproc\\test_le9mwv.exe"#

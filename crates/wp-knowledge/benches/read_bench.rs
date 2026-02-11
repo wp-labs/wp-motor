@@ -2,8 +2,8 @@ use criterion::{
     BenchmarkId, Criterion, SamplingMode, Throughput, criterion_group, criterion_main,
 };
 use rand::Rng;
-use rand::distributions::{Distribution, WeightedIndex};
-use rand::seq::SliceRandom;
+use rand::distr::{Distribution, weighted::WeightedIndex};
+use rand::seq::IndexedRandom;
 use std::hint::black_box;
 use std::sync::Arc;
 use std::thread;
@@ -12,7 +12,7 @@ use wp_knowledge::DBQuery;
 use wp_knowledge::facade as kdb;
 use wp_knowledge::mem::memdb::{MDBEnum, MemDB, cache_query};
 use wp_knowledge::mem::thread_clone::ThreadClonedMDB;
-use wp_model_core::cache::FieldQueryCache;
+use wp_data_model::cache::FieldQueryCache;
 use wp_model_core::model::DataField;
 
 fn env_usize(key: &str, default: usize) -> usize {
@@ -114,7 +114,7 @@ fn bench_read_with_cache(c: &mut Criterion) {
         let mut rng = rand::rng();
         b.iter(|| {
             for _ in 0..cfg_reads() {
-                let k = &keys[rng.gen_range(0..cfg_n_rows())];
+                let k = &keys[rng.random_range(0..cfg_n_rows())];
                 let params = [DataField::from_chars(":k", k.as_str())];
                 let row = cache_query(
                     &mdb,

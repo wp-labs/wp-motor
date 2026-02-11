@@ -6,8 +6,10 @@ use crate::language::prelude::*;
 
 use wp_data_fmt::Json;
 use wp_data_model::cache::FieldQueryCache;
+use wp_model_core::model::FieldStorage;
 
 use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 
 use super::functions::FunOperation;
 use super::operations::record::RecordOperation;
@@ -16,6 +18,8 @@ pub use nested::arr::ArrOperation;
 #[derive(Debug, Clone, PartialEq)]
 pub enum NestedAccessor {
     Field(DataField),
+    /// Arc-wrapped DataField for zero-copy sharing (from static symbols)
+    FieldArc(Arc<DataField>),
     Direct(RecordOperation),
     Fun(FunOperation),
     Collect(ArrOperation),
@@ -24,6 +28,23 @@ pub enum NestedAccessor {
 }
 
 impl FieldExtractor for NestedAccessor {
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        match self {
+            // Static symbol: return Shared variant (zero-copy)
+            // Skip extract_one to avoid unnecessary clone
+            NestedAccessor::FieldArc(arc) => Some(FieldStorage::from_shared(arc.clone())),
+            // Other variants: use default implementation
+            _ => self
+                .extract_one(target, src, dst)
+                .map(FieldStorage::from_owned),
+        }
+    }
+
     fn extract_one(
         &self,
         target: &EvaluationTarget,
@@ -32,6 +53,7 @@ impl FieldExtractor for NestedAccessor {
     ) -> Option<DataField> {
         match self {
             NestedAccessor::Field(o) => o.extract_one(target, src, dst),
+            NestedAccessor::FieldArc(o) => o.as_ref().extract_one(target, src, dst),
             NestedAccessor::Direct(o) => o.extract_one(target, src, dst),
             NestedAccessor::Fun(o) => o.extract_one(target, src, dst),
             NestedAccessor::Collect(o) => o.extract_one(target, src, dst),
@@ -48,6 +70,7 @@ impl FieldExtractor for NestedAccessor {
     ) -> Vec<DataField> {
         match self {
             NestedAccessor::Field(o) => o.extract_more(src, dst, cache),
+            NestedAccessor::FieldArc(o) => o.as_ref().extract_more(src, dst, cache),
             NestedAccessor::Direct(o) => o.extract_more(src, dst, cache),
             NestedAccessor::Fun(o) => o.extract_more(src, dst, cache),
             NestedAccessor::Collect(o) => o.extract_more(src, dst, cache),
@@ -59,6 +82,7 @@ impl FieldExtractor for NestedAccessor {
     fn support_batch(&self) -> bool {
         match self {
             NestedAccessor::Field(o) => o.support_batch(),
+            NestedAccessor::FieldArc(o) => o.as_ref().support_batch(),
             NestedAccessor::Direct(o) => o.support_batch(),
             NestedAccessor::Fun(o) => o.support_batch(),
             NestedAccessor::Collect(o) => o.support_batch(),
@@ -73,6 +97,9 @@ impl Display for NestedAccessor {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             NestedAccessor::Field(x) => {
+                write!(f, "{}", x)
+            }
+            NestedAccessor::FieldArc(x) => {
                 write!(f, "{}", x)
             }
             NestedAccessor::Direct(x) => {
@@ -94,6 +121,10 @@ impl Display for NestedAccessor {
 impl NestedAccessor {
     pub fn replace_with_field(&mut self, field: DataField) {
         *self = NestedAccessor::Field(field);
+    }
+
+    pub fn replace_with_field_arc(&mut self, field: Arc<DataField>) {
+        *self = NestedAccessor::FieldArc(field);
     }
 
     pub fn as_static_symbol(&self) -> Option<&str> {
@@ -136,6 +167,8 @@ impl Display for DirectAccessor {
 #[derive(Debug, Clone, PartialEq)]
 pub enum GenericAccessor {
     Field(DataField),
+    /// Arc-wrapped DataField for zero-copy sharing (from static symbols)
+    FieldArc(Arc<DataField>),
     Fun(FunOperation),
     StaticSymbol(String),
 }
@@ -144,6 +177,9 @@ impl Display for GenericAccessor {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             GenericAccessor::Field(x) => {
+                write!(f, "{}", x)
+            }
+            GenericAccessor::FieldArc(x) => {
                 write!(f, "{}", x)
             }
             GenericAccessor::Fun(x) => {
@@ -159,6 +195,10 @@ impl Display for GenericAccessor {
 impl GenericAccessor {
     pub fn replace_with_field(&mut self, field: DataField) {
         *self = GenericAccessor::Field(field);
+    }
+
+    pub fn replace_with_field_arc(&mut self, field: Arc<DataField>) {
+        *self = GenericAccessor::FieldArc(field);
     }
 
     pub fn as_static_symbol(&self) -> Option<&str> {
@@ -194,6 +234,17 @@ impl FieldExtractor for CondAccessor {
             CondAccessor::SqlFn(_x) => None, // SQL function is printed inline; params are collected separately
         }
     }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
+    }
+
     fn extract_more(
         &self,
         src: &mut DataRecordRef<'_>,
@@ -227,7 +278,7 @@ impl Display for CondAccessor {
             }
             CondAccessor::Val(x) => {
                 let json_fmt = Json;
-                write!(f, "{}", json_fmt.fmt_value(x))
+                write!(f, "{}", json_fmt.format_value(x))
             }
             CondAccessor::SqlFn(x) => {
                 let (sql, _params) = x.to_sql_and_params();
@@ -238,11 +289,11 @@ impl Display for CondAccessor {
 }
 
 impl CondAccessor {
-    pub fn diy_fmt(&self, fmt: &impl DataFormat<Output = String>) -> String {
+    pub fn diy_fmt(&self, fmt: &impl ValueFormatter<Output = String>) -> String {
         match self {
             CondAccessor::Tdc(x) => format!("{}", x),
             CondAccessor::Fun(x) => format!("{}", x),
-            CondAccessor::Val(x) => fmt.fmt_value(x),
+            CondAccessor::Val(x) => fmt.format_value(x),
             CondAccessor::SqlFn(x) => {
                 let (sql, _params) = x.to_sql_and_params();
                 sql
@@ -271,6 +322,16 @@ impl FieldExtractor for Value {
             target.safe_name(),
             self.clone(),
         ))
+    }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
     }
 }
 // ---------------- SQL Function Expression (for WHERE) ----------------

@@ -61,15 +61,15 @@ mod tests {
     use crate::core::DataTransformer;
     use crate::parser::oml_parse_raw;
     use wp_data_model::cache::FieldQueryCache;
-    use wp_model_core::model::{DataField, DataRecord};
+    use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 
     #[test]
     fn test_pipe_path_get() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![DataField::from_chars(
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
             "A1",
             "C:\\Users\\wplab\\AppData\\Local\\Temp\\B8A93152-2B59-426D-BE5F-5521D4D2D957\\api-ms-win-core-file-l1-2-1.dll",
-        )];
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -85,16 +85,16 @@ mod tests {
             "X".to_string(),
             "api-ms-win-core-file-l1-2-1.dll".to_string(),
         );
-        assert_eq!(target.field("X"), Some(&expect));
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 
     #[test]
     fn test_pipe_url_get() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![DataField::from_chars(
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
             "A1",
             "https://a.b.com:8888/OneCollector/1.0?cors=true&content-type=application/x-json-stream#id1",
-        )];
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -111,20 +111,20 @@ mod tests {
         let target = model.transform(src, cache);
 
         let expect = DataField::from_chars("A".to_string(), "a.b.com".to_string());
-        assert_eq!(target.field("A"), Some(&expect));
+        assert_eq!(target.field("A").map(|s| s.as_field()), Some(&expect));
         let expect = DataField::from_chars("B".to_string(), "a.b.com:8888".to_string());
-        assert_eq!(target.field("B"), Some(&expect));
+        assert_eq!(target.field("B").map(|s| s.as_field()), Some(&expect));
         let expect = DataField::from_chars(
             "C".to_string(),
             "/OneCollector/1.0?cors=true&content-type=application/x-json-stream#id1".to_string(),
         );
-        assert_eq!(target.field("C"), Some(&expect));
+        assert_eq!(target.field("C").map(|s| s.as_field()), Some(&expect));
         let expect = DataField::from_chars("D".to_string(), "/OneCollector/1.0".to_string());
-        assert_eq!(target.field("D"), Some(&expect));
+        assert_eq!(target.field("D").map(|s| s.as_field()), Some(&expect));
         let expect = DataField::from_chars(
             "E".to_string(),
             "cors=true&content-type=application/x-json-stream".to_string(),
         );
-        assert_eq!(target.field("E"), Some(&expect));
+        assert_eq!(target.field("E").map(|s| s.as_field()), Some(&expect));
     }
 }

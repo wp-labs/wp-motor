@@ -7,6 +7,8 @@ use crate::language::syntax::operations::matchs::MatchOperation;
 use crate::language::syntax::operations::pipe::PiPeOperation;
 use crate::language::syntax::operations::record::RecordOperation;
 use crate::language::syntax::operations::sql::SqlQuery;
+use std::sync::Arc;
+use wp_model_core::model::FieldStorage;
 
 #[derive(Default, Builder, Clone, Getters, Debug)]
 #[builder(setter(into))]
@@ -43,6 +45,8 @@ pub enum PreciseEvaluator {
     Sql(SqlQuery),
     Match(MatchOperation),
     Obj(DataField),
+    /// Arc-wrapped DataField for zero-copy sharing (from static symbols)
+    ObjArc(Arc<DataField>),
     Tdc(RecordOperation),
     Map(MapOperation),
     Pipe(PiPeOperation),
@@ -66,6 +70,7 @@ impl Display for PreciseEvaluator {
             PreciseEvaluator::Match(x) => Display::fmt(x, f),
             PreciseEvaluator::Sql(x) => Display::fmt(x, f),
             PreciseEvaluator::Obj(x) => Display::fmt(x, f),
+            PreciseEvaluator::ObjArc(x) => Display::fmt(x.as_ref(), f),
             PreciseEvaluator::Tdc(x) => Display::fmt(x, f),
             PreciseEvaluator::Map(x) => Display::fmt(x, f),
             PreciseEvaluator::Pipe(x) => Display::fmt(x, f),
@@ -90,5 +95,15 @@ impl FieldExtractor for DataField {
         let obj = self.clone();
         //obj.set_name(target.safe_name());
         Some(obj)
+    }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        self.extract_one(target, src, dst)
+            .map(FieldStorage::from_owned)
     }
 }

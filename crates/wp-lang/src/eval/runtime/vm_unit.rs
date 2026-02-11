@@ -239,7 +239,12 @@ impl WplEvaluator {
                 }
             }
         }
-        Ok(DataRecord::from(result))
+        // Convert Vec<DataField> to Vec<FieldStorage>
+        let storage_items: Vec<_> = result
+            .into_iter()
+            .map(wp_model_core::model::FieldStorage::from_owned)
+            .collect();
+        Ok(DataRecord::from(storage_items))
     }
 }
 

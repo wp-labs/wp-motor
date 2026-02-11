@@ -140,10 +140,8 @@ mod tests {
             Tags::new().into(),
         );
         tag.first().unwrap().proc(&src, &mut data).assert();
-        assert_eq!(
-            data.field("tag_1"),
-            Some(&DataField::from_chars("tag_1", "x"))
-        );
+        let expected = DataField::from_chars("tag_1", "x");
+        assert_eq!(data.field("tag_1").map(|s| s.as_field()), Some(&expected));
     }
 
     #[test]
@@ -161,9 +159,7 @@ mod tests {
             Tags::new().into(),
         );
         tag.first().unwrap().proc(&src, &mut data).unwrap();
-        assert_eq!(
-            data.field("raw"),
-            Some(&DataField::from_chars("raw", "test"))
-        );
+        let expected = DataField::from_chars("raw", "test");
+        assert_eq!(data.field("raw").map(|s| s.as_field()), Some(&expected));
     }
 }

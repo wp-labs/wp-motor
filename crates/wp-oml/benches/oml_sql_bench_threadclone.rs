@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use wp_config::test_support::ForTest;
 use wp_data_model::cache::FieldQueryCache;
 use wp_knowledge::facade as kdb;
-use wp_model_core::model::{DataField, DataRecord};
+use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 use wp_parser::Parser;
 
 const BENCH_KEYS: [&str; 10] = [
@@ -34,8 +34,9 @@ fn init_threadclone_provider() {
         fs::create_dir_all(root.join("conf")).unwrap();
         fs::create_dir_all(root.join("models/knowledge/example")).unwrap();
         // 写 knowdb.toml
+        // base_dir 相对于 conf 文件所在目录 (conf/)，需要 "../" 回到 root
         let conf_toml = r#"version = 2
-base_dir = "./models/knowledge"
+base_dir = "../models/knowledge"
 
 [default]
 transaction = true
@@ -68,6 +69,9 @@ enabled = true
             env!("CARGO_MANIFEST_DIR")
         );
         fs::copy(csv_src, root.join("models/knowledge/example/data.csv")).unwrap();
+
+        // 转为绝对路径，避免 init_thread_cloned_from_knowdb 内部再次 join root
+        let root = fs::canonicalize(&root).expect("canonicalize bench knowdb root");
 
         let auth_uri = format!(
             "file:{}/wp_bench_authority.sqlite?mode=rwc&uri=true",
@@ -126,28 +130,28 @@ fn bench_threadclone_sql(c: &mut Criterion) {
         "#,
     );
 
-    let src1 = DataRecord::from(vec![DataField::from_chars("p1", "xiaolongnu")]);
+    let src1 = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars("p1", "xiaolongnu"))]);
     let src2 = DataRecord::from(vec![
-        DataField::from_chars("p1", "xiaolongnu"),
-        DataField::from_chars("p2", "guojing"),
+        FieldStorage::from_owned(DataField::from_chars("p1", "xiaolongnu")),
+        FieldStorage::from_owned(DataField::from_chars("p2", "guojing")),
     ]);
     let src3 = DataRecord::from(vec![
-        DataField::from_chars("p1", "xiaolongnu"),
-        DataField::from_chars("p2", "guojing"),
-        DataField::from_chars("p3", "yangguo"),
+        FieldStorage::from_owned(DataField::from_chars("p1", "xiaolongnu")),
+        FieldStorage::from_owned(DataField::from_chars("p2", "guojing")),
+        FieldStorage::from_owned(DataField::from_chars("p3", "yangguo")),
     ]);
     let src4 = DataRecord::from(vec![
-        DataField::from_chars("p1", "xiaolongnu"),
-        DataField::from_chars("p2", "guojing"),
-        DataField::from_chars("p3", "yangguo"),
-        DataField::from_chars("p4", "huangrong"),
+        FieldStorage::from_owned(DataField::from_chars("p1", "xiaolongnu")),
+        FieldStorage::from_owned(DataField::from_chars("p2", "guojing")),
+        FieldStorage::from_owned(DataField::from_chars("p3", "yangguo")),
+        FieldStorage::from_owned(DataField::from_chars("p4", "huangrong")),
     ]);
     let src5 = DataRecord::from(vec![
-        DataField::from_chars("p1", "xiaolongnu"),
-        DataField::from_chars("p2", "guojing"),
-        DataField::from_chars("p3", "yangguo"),
-        DataField::from_chars("p4", "huangrong"),
-        DataField::from_chars("p5", "zhoubo"),
+        FieldStorage::from_owned(DataField::from_chars("p1", "xiaolongnu")),
+        FieldStorage::from_owned(DataField::from_chars("p2", "guojing")),
+        FieldStorage::from_owned(DataField::from_chars("p3", "yangguo")),
+        FieldStorage::from_owned(DataField::from_chars("p4", "huangrong")),
+        FieldStorage::from_owned(DataField::from_chars("p5", "zhoubo")),
     ]);
 
     let mut group = c.benchmark_group("oml_sql_threadclone");
@@ -278,7 +282,7 @@ fn bench_threadclone_sql(c: &mut Criterion) {
         let mut seed: u64 = 0x9E3779B97F4A7C15;
         // 预热
         for k in keys.iter().take(n.min(3)) {
-            let src = DataRecord::from(vec![DataField::from_chars("p1", *k)]);
+            let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars("p1", *k))]);
             let _ = mdl_1.transform(src, &mut cache);
         }
         b.iter(|| {
@@ -290,7 +294,7 @@ fn bench_threadclone_sql(c: &mut Criterion) {
             while idx + 1 < n && u > cdf[idx] {
                 idx += 1;
             }
-            let src = DataRecord::from(vec![DataField::from_chars("p1", keys[idx])]);
+            let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars("p1", keys[idx]))]);
             let _ = mdl_1.transform(black_box(src), &mut cache);
         })
     });
@@ -330,7 +334,7 @@ fn bench_threadclone_sql(c: &mut Criterion) {
                 let mut seed: u64 = 0x9E3779B97F4A7C15u64.wrapping_add((t as u64) << 1);
                 // 预热热点
                 for k in ks.iter().take(n.min(3)) {
-                    let src = DataRecord::from(vec![DataField::from_chars("p1", *k)]);
+                    let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars("p1", *k))]);
                     let _ = m.transform(src, &mut cache);
                 }
                 for _ in 0..loops_per_thread {
@@ -342,7 +346,7 @@ fn bench_threadclone_sql(c: &mut Criterion) {
                     while idx + 1 < n && u > cdf[idx] {
                         idx += 1;
                     }
-                    let src = DataRecord::from(vec![DataField::from_chars("p1", ks[idx])]);
+                    let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars("p1", ks[idx]))]);
                     let _ = m.transform(src, &mut cache);
                 }
             }));

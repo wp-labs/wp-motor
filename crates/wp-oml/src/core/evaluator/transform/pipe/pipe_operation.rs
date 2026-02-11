@@ -1,6 +1,6 @@
 use crate::core::prelude::*;
 use crate::language::PiPeOperation;
-use wp_model_core::model::{DataField, DataRecord};
+use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 
 /// 管道操作 - pipe source | fn1 | fn2 | ...
 ///
@@ -17,6 +17,22 @@ impl FieldExtractor for PiPeOperation {
                 from = pipe.value_cacu(from);
             }
             return Some(from);
+        }
+        None
+    }
+
+    fn extract_storage(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &DataRecord,
+    ) -> Option<FieldStorage> {
+        // Use extract_storage to preserve zero-copy for Shared variants
+        if let Some(mut from_storage) = self.from().extract_storage(target, src, dst) {
+            for pipe in self.items() {
+                from_storage = pipe.value_cacu_storage(from_storage);
+            }
+            return Some(from_storage);
         }
         None
     }

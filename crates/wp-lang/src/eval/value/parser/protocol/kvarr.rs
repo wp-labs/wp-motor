@@ -284,14 +284,16 @@ mod tests {
         let parser = ParserTUnit::new(KvArrP::default(), conf);
         let fields = parser.verify_parse_suc(&mut data).assert();
         let record = DataRecord::from(fields);
+        let expected_sip = DataField::from_ip("sip", IpAddr::from_str("192.168.1.1").unwrap());
         assert_eq!(
-            record.field("sip"),
-            Some(&DataField::from_ip(
-                "sip",
-                IpAddr::from_str("192.168.1.1").unwrap()
-            ))
+            record.field("sip").map(|s| s.as_field()),
+            Some(&expected_sip)
         );
-        assert_eq!(record.field("cnt"), Some(&DataField::from_digit("cnt", 42)));
+        let expected_cnt = DataField::from_digit("cnt", 42);
+        assert_eq!(
+            record.field("cnt").map(|s| s.as_field()),
+            Some(&expected_cnt)
+        );
         Ok(())
     }
 
@@ -308,17 +310,23 @@ mod tests {
         let parser = ParserTUnit::new(KvArrP::default(), conf);
         let fields = parser.verify_parse_suc(&mut data).assert();
         let record = DataRecord::from(fields);
+        let expected_msg = DataField::from_chars("msg", "hello boy");
         assert_eq!(
-            record.field("msg"),
-            Some(&DataField::from_chars("msg", "hello boy"))
+            record.field("msg").map(|s| s.as_field()),
+            Some(&expected_msg)
         );
-        assert_eq!(record.field("cnt"), Some(&DataField::from_digit("cnt", 42)));
+        let expected_cnt = DataField::from_digit("cnt", 42);
+        assert_eq!(
+            record.field("cnt").map(|s| s.as_field()),
+            Some(&expected_cnt)
+        );
 
         let arr = vec![
             Field::from_ip("c/[0]", IpAddr::from_str("1.1.1.1").unwrap()),
             Field::from_ip("c/[1]", IpAddr::from_str("2.2.2.2").unwrap()),
         ];
-        assert_eq!(record.field("c"), Some(&DataField::from_arr("c", arr)));
+        let expected_c = DataField::from_arr("c", arr);
+        assert_eq!(record.field("c").map(|s| s.as_field()), Some(&expected_c));
 
         Ok(())
     }
@@ -330,12 +338,12 @@ mod tests {
         let parser = ParserTUnit::new(KvArrP::default(), conf);
         let fields = parser.verify_parse_suc(&mut data).assert();
         let record = DataRecord::from(fields);
-        assert_eq!(record.field("a"), Some(&DataField::from_chars("a", "foo")));
-        assert_eq!(
-            record.field("b"),
-            Some(&DataField::from_chars("b", "bar x"))
-        );
-        assert_eq!(record.field("c"), Some(&DataField::from_digit("c", 1)));
+        let expected_a = DataField::from_chars("a", "foo");
+        assert_eq!(record.field("a").map(|s| s.as_field()), Some(&expected_a));
+        let expected_b = DataField::from_chars("b", "bar x");
+        assert_eq!(record.field("b").map(|s| s.as_field()), Some(&expected_b));
+        let expected_c = DataField::from_digit("c", 1);
+        assert_eq!(record.field("c").map(|s| s.as_field()), Some(&expected_c));
         Ok(())
     }
 
@@ -345,7 +353,8 @@ mod tests {
         let data = "a=\"foo\" b=bar c=1";
         let pipe = WplEvaluator::from_code(rule)?;
         let (record, _) = pipe.proc(0, data, 0)?;
-        assert_eq!(record.field("a"), Some(&DataField::from_chars("a", "foo")));
+        let expected_a = DataField::from_chars("a", "foo");
+        assert_eq!(record.field("a").map(|s| s.as_field()), Some(&expected_a));
         let rule = r#"rule test { (kvarr(chars@a, chars@b, digit@c)\s | f_chars_has(a,foox) ) }"#;
         let pipe = WplEvaluator::from_code(rule)?;
         assert!(pipe.proc(0, data, 0).is_err());
@@ -359,17 +368,20 @@ mod tests {
         let parser = ParserTUnit::new(KvArrP::default(), conf);
         let fields = parser.verify_parse_suc(&mut data).assert();
         let record = DataRecord::from(fields);
+        let expected_tag0 = DataField::from_chars("tag[0]", "alpha");
         assert_eq!(
-            record.field("tag[0]"),
-            Some(&DataField::from_chars("tag[0]", "alpha"))
+            record.field("tag[0]").map(|s| s.as_field()),
+            Some(&expected_tag0)
         );
+        let expected_tag1 = DataField::from_chars("tag[1]", "beta");
         assert_eq!(
-            record.field("tag[1]"),
-            Some(&DataField::from_chars("tag[1]", "beta"))
+            record.field("tag[1]").map(|s| s.as_field()),
+            Some(&expected_tag1)
         );
+        let expected_count = DataField::from_digit("count", 3);
         assert_eq!(
-            record.field("count"),
-            Some(&DataField::from_digit("count", 3))
+            record.field("count").map(|s| s.as_field()),
+            Some(&expected_count)
         );
         Ok(())
     }
@@ -381,17 +393,20 @@ mod tests {
         let parser = ParserTUnit::new(KvArrP::default(), conf);
         let fields = parser.verify_parse_suc(&mut data).assert();
         let record = DataRecord::from(fields);
+        let expected_tag0 = DataField::from_chars("tag[0]", "alpha");
         assert_eq!(
-            record.field("tag[0]"),
-            Some(&DataField::from_chars("tag[0]", "alpha"))
+            record.field("tag[0]").map(|s| s.as_field()),
+            Some(&expected_tag0)
         );
+        let expected_tag1 = DataField::from_chars("tag[1]", "beta");
         assert_eq!(
-            record.field("tag[1]"),
-            Some(&DataField::from_chars("tag[1]", "beta"))
+            record.field("tag[1]").map(|s| s.as_field()),
+            Some(&expected_tag1)
         );
+        let expected_tag2 = DataField::from_chars("tag[2]", "gamma");
         assert_eq!(
-            record.field("tag[2]"),
-            Some(&DataField::from_chars("tag[2]", "gamma"))
+            record.field("tag[2]").map(|s| s.as_field()),
+            Some(&expected_tag2)
         );
         Ok(())
     }
@@ -403,17 +418,20 @@ mod tests {
         let parser = ParserTUnit::new(KvArrP::default(), conf);
         let fields = parser.verify_parse_suc(&mut data).assert();
         let record = DataRecord::from(fields);
+        let expected_flag = DataField::from_bool("flag", true);
         assert_eq!(
-            record.field("flag"),
-            Some(&DataField::from_bool("flag", true))
+            record.field("flag").map(|s| s.as_field()),
+            Some(&expected_flag)
         );
+        let expected_ratio = DataField::from_float("ratio", 1.25);
         assert_eq!(
-            record.field("ratio"),
-            Some(&DataField::from_float("ratio", 1.25))
+            record.field("ratio").map(|s| s.as_field()),
+            Some(&expected_ratio)
         );
+        let expected_raw = DataField::from_chars("raw", "value");
         assert_eq!(
-            record.field("raw"),
-            Some(&DataField::from_chars("raw", "value"))
+            record.field("raw").map(|s| s.as_field()),
+            Some(&expected_raw)
         );
         Ok(())
     }
@@ -425,10 +443,15 @@ mod tests {
         let parser = ParserTUnit::new(KvArrP::default(), conf);
         let fields = parser.verify_parse_suc(&mut data).assert();
         let record = DataRecord::from(fields);
-        assert_eq!(record.field("note"), Some(&DataField::from_ignore("note")));
+        let expected_note = DataField::from_ignore("note");
         assert_eq!(
-            record.field("count"),
-            Some(&DataField::from_digit("count", 7))
+            record.field("note").map(|s| s.as_field()),
+            Some(&expected_note)
+        );
+        let expected_count = DataField::from_digit("count", 7);
+        assert_eq!(
+            record.field("count").map(|s| s.as_field()),
+            Some(&expected_count)
         );
         Ok(())
     }

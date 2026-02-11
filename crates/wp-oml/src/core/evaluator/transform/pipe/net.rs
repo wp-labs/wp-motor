@@ -24,15 +24,15 @@ mod tests {
     use orion_error::TestAssert;
     use std::net::{IpAddr, Ipv4Addr};
     use wp_data_model::cache::FieldQueryCache;
-    use wp_model_core::model::{DataField, DataRecord};
+    use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 
     #[test]
     fn test_pipe_ip4_int() {
         let cache = &mut FieldQueryCache::default();
-        let data = vec![DataField::from_ip(
+        let data = vec![FieldStorage::from_owned(DataField::from_ip(
             "src_ip",
             IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-        )];
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -43,6 +43,6 @@ mod tests {
         let model = oml_parse_raw(&mut conf).assert();
         let target = model.transform(src, cache);
         let expect = DataField::from_digit("X".to_string(), 2130706433);
-        assert_eq!(target.field("X"), Some(&expect));
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 }

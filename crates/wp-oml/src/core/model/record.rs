@@ -1,6 +1,7 @@
 use std::slice::Iter;
 
 use crate::core::prelude::*;
+use wp_model_core::model::FieldStorage;
 use wp_model_core::model::data::Field;
 pub struct RecordRef<'a, T> {
     items: Vec<&'a Field<T>>,
@@ -36,6 +37,20 @@ impl<'a> From<&'a wp_model_core::model::data::Record<Field<wp_model_core::model:
         value: &'a wp_model_core::model::data::Record<Field<wp_model_core::model::Value>>,
     ) -> Self {
         let items = value.items.iter().collect();
+        Self { items }
+    }
+}
+
+// Support for Record<FieldStorage> (new FieldStorage-based DataRecord)
+impl<'a> From<&'a wp_model_core::model::data::Record<FieldStorage>>
+    for RecordRef<'a, wp_model_core::model::Value>
+{
+    fn from(value: &'a wp_model_core::model::data::Record<FieldStorage>) -> Self {
+        let items = value
+            .items
+            .iter()
+            .map(|storage| storage.as_field())
+            .collect();
         Self { items }
     }
 }

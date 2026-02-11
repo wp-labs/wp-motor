@@ -4,7 +4,7 @@ use crate::{core::sinks::sync_sink::traits::SyncCtrl, sinks::pdm_outer::TDMDataA
 
 use async_trait::async_trait;
 use orion_error::ErrorOwe;
-use wp_data_fmt::{DataFormat, FormatType};
+use wp_data_fmt::{FormatType, RecordFormatter};
 use wp_model_core::model::fmt_def::TextFmt;
 use wp_parse_api::RawData;
 use wpl::generator::{CSVGenFmt, JsonGenFmt, KVGenFmt, ProtoGenFmt, RAWGenFmt};
@@ -17,7 +17,7 @@ use wp_model_core::model::{DataField, DataRecord};
 
 pub fn fds_fmt_proc(fmt: TextFmt, line: DataRecord) -> AnyResult<RawData> {
     let formatter = FormatType::from(&fmt);
-    let res = RawData::String(format!("{}\n", formatter.format_record(&line)));
+    let res = RawData::String(format!("{}\n", formatter.fmt_record(&line)));
 
     Ok(res)
 }
@@ -187,7 +187,7 @@ where
     fn send_to_sink(&self, data: SinkRecUnit) -> SinkResult<()> {
         println!("FormatAdapter: send_to_sink called");
         // 直接格式化记录数据
-        let formatted = FormatType::from(&self.fmt).format_record(data.data());
+        let formatted = FormatType::from(&self.fmt).fmt_record(data.data());
         println!("FormatAdapter: formatted data = {}", formatted);
 
         // 创建一个新的记录，包含格式化后的字符串
@@ -207,7 +207,7 @@ where
     }
     fn try_send_to_sink(&self, data: SinkRecUnit) -> TrySendStatus {
         // 直接格式化记录数据
-        let formatted = FormatType::from(&self.fmt).format_record(data.data());
+        let formatted = FormatType::from(&self.fmt).fmt_record(data.data());
 
         // 创建一个新的记录，包含格式化后的字符串
         let formatted_record =

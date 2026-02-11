@@ -1,0 +1,22 @@
+version = 2
+base_dir = "../models/knowledge"
+
+[default]
+transaction = true
+batch_size  = 2000
+on_error    = "fail"
+
+[csv]
+has_header = true
+delimiter  = ","
+encoding   = "utf-8"
+trim       = true
+
+[[tables]]
+name = "example"
+dir  = "example"
+columns.by_header = ["name", "pinying"]
+[tables.expected_rows]
+min = 1
+max = 100
+enabled = true

@@ -1,7 +1,7 @@
 use crate::core::diagnostics::{self, OmlIssue, OmlIssueKind};
 use crate::language::EvaluationTarget;
 use std::net::{IpAddr, Ipv4Addr};
-use wp_data_fmt::{DataFormat, Raw};
+use wp_data_fmt::{Raw, ValueFormatter};
 use wp_model_core::model::{DataField, DataType, Value};
 
 pub fn omlobj_meta_conv(ori: DataField, target: &EvaluationTarget) -> DataField {
@@ -14,7 +14,7 @@ pub fn omlobj_meta_conv(ori: DataField, target: &EvaluationTarget) -> DataField 
         DataType::Chars => {
             return DataField::from_chars(
                 target.safe_name(),
-                raw.fmt_value(ori.get_value()).to_string(),
+                raw.format_value(ori.get_value()).to_string(),
             );
         }
         DataType::Auto => return ori,

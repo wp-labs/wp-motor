@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use std::fmt::Write;
 
 use crate::ast::group::{GroupSeq, WplGroupType};
@@ -205,7 +207,7 @@ pub fn verify_gen_parse(env: &mut ParserTestEnv, fpu: &FieldEvalUnit, conf: &Wpl
         .write_fmt(format_args!(
             "{}{}{}{}",
             vof(fmt_field.field_fmt.scope_beg, ""),
-            rawfmt.format_field(&fmt_field.data_field),
+            rawfmt.format_field(&fmt_field.data_field.into()),
             cur_sep.sep_str(),
             vof(fmt_field.field_fmt.scope_end, "")
         ))
