@@ -283,6 +283,7 @@ rand_distr = "0.5"
 ordered-float = "5.1"
 lru = "0.16"
 arrayvec = "0.7"
+smallvec = "1.15"
 unicode-segmentation = "1.12"
 ahash = "0.8"
 

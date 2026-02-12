@@ -1478,3 +1478,140 @@ fn test_arc_optimization_with_many_references() {
     // Without Arc: each reference creates a new DataField (expensive)
     // With Arc: each reference just clones Arc pointer (cheap)
 }
+
+// ==================== OR Match Tests ====================
+
+#[test]
+fn test_match_or_single_source() {
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : test
+        ---
+        X : chars = match take(city) {
+            chars(bj) | chars(sh) | chars(gz) => chars(tier1),
+            chars(cd) | chars(wh) => chars(tier2),
+            _ => chars(other),
+        };
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+
+    // Test first alternative
+    let data = vec![DataField::from_chars("city", "bj")];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "tier1"))
+    );
+
+    // Test second alternative
+    let data = vec![DataField::from_chars("city", "sh")];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "tier1"))
+    );
+
+    // Test third alternative
+    let data = vec![DataField::from_chars("city", "gz")];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "tier1"))
+    );
+
+    // Test second arm
+    let data = vec![DataField::from_chars("city", "cd")];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "tier2"))
+    );
+
+    // Test default
+    let data = vec![DataField::from_chars("city", "unknown")];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "other"))
+    );
+}
+
+#[test]
+fn test_match_or_multi_source() {
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : test
+        ---
+        X : chars = match (take(city), read(level)) {
+            (chars(bj) | chars(sh), chars(high)) => chars(priority),
+            (chars(gz), chars(low) | chars(mid)) => chars(normal),
+            _ => chars(default),
+        };
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+
+    // Test: city=bj, level=high => priority
+    let data = vec![
+        DataField::from_chars("city", "bj"),
+        DataField::from_chars("level", "high"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "priority"))
+    );
+
+    // Test: city=sh (OR alt), level=high => priority
+    let data = vec![
+        DataField::from_chars("city", "sh"),
+        DataField::from_chars("level", "high"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "priority"))
+    );
+
+    // Test: city=gz, level=low (OR alt) => normal
+    let data = vec![
+        DataField::from_chars("city", "gz"),
+        DataField::from_chars("level", "low"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "normal"))
+    );
+
+    // Test: city=gz, level=mid (second OR alt) => normal
+    let data = vec![
+        DataField::from_chars("city", "gz"),
+        DataField::from_chars("level", "mid"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "normal"))
+    );
+
+    // Test: no match => default
+    let data = vec![
+        DataField::from_chars("city", "other"),
+        DataField::from_chars("level", "high"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "default"))
+    );
+}

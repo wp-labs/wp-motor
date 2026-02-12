@@ -197,18 +197,15 @@ pub fn oml_crate_tuple(data: &mut &str) -> WResult<MatchSource> {
     let cp = data.checkpoint();
     let code = get_scope(data, '(', ')').err_reset(data, &cp)?;
     let mut code_data: &str = code;
-    let fst = oml_var_get.parse_next(&mut code_data)?;
-    symbol_comma.parse_next(&mut code_data)?;
-    let sec = oml_var_get.parse_next(&mut code_data)?;
-    if symbol_comma.parse_next(&mut code_data).is_ok() {
-        let trd = oml_var_get.parse_next(&mut code_data)?;
-        if symbol_comma.parse_next(&mut code_data).is_ok() {
-            let fth = oml_var_get.parse_next(&mut code_data)?;
-            return Ok(MatchSource::Quadruple(fst, sec, trd, fth));
-        }
-        return Ok(MatchSource::Triple(fst, sec, trd));
+
+    let mut sources: smallvec::SmallVec<[DirectAccessor; 4]> = smallvec::SmallVec::new();
+    let first = oml_var_get.parse_next(&mut code_data)?;
+    sources.push(first);
+    while symbol_comma.parse_next(&mut code_data).is_ok() {
+        let s = oml_var_get.parse_next(&mut code_data)?;
+        sources.push(s);
     }
-    Ok(MatchSource::Double(fst, sec))
+    Ok(MatchSource::Multi(sources))
 }
 
 pub fn oml_crate_calc_ref(data: &mut &str) -> WResult<MatchSource> {

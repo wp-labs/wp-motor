@@ -54,6 +54,7 @@ imap-types = { workspace = true }
 url = { workspace = true }
 jieba-rs = "0.8"
 regex = { workspace = true }
+smallvec = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

@@ -6,6 +6,7 @@ use crate::parser::collect_prm::oml_aga_collect;
 use crate::parser::keyword::{kw_gw_match, kw_in};
 use crate::parser::oml_aggregate::oml_crate_calc_ref;
 use crate::parser::static_ctx::parse_static_value;
+use smallvec::SmallVec;
 use winnow::ascii::multispace0;
 use winnow::combinator::{alt, opt, peek, repeat};
 use winnow::error::{ContextError, StrContext, StrContextValue};
@@ -16,7 +17,7 @@ use wp_parser::WResult;
 use wp_parser::symbol::ctx_desc;
 use wp_parser::symbol::{
     symbol_brace_beg, symbol_brace_end, symbol_comma, symbol_marvel, symbol_match_to,
-    symbol_semicolon, symbol_under_line,
+    symbol_pipe, symbol_semicolon, symbol_under_line,
 };
 use wp_parser::utils::get_scope;
 use wpl::parser::utils::quot_str;
@@ -24,10 +25,37 @@ use wpl::parser::utils::quot_str;
 use super::syntax;
 use super::tdc_prm::{oml_aga_tdc, oml_aga_value};
 
-fn match_cond1(data: &mut &str) -> WResult<MatchCond> {
+/// Parse a single match condition atom (the original match_cond1 logic)
+fn match_cond1_atom(data: &mut &str) -> WResult<MatchCond> {
     multispace0.parse_next(data)?;
     // Try cond_fun before cond_in to allow functions like in_range, in_*
     alt((cond_neq, cond_fun, cond_in, cond_eq)).parse_next(data)
+}
+
+/// Parse a match condition with OR support: `atom | atom | ...`
+fn match_cond1(data: &mut &str) -> WResult<MatchCond> {
+    let first = match_cond1_atom(data)?;
+    multispace0.parse_next(data)?;
+
+    // Check for pipe (OR) separator
+    let cp = data.checkpoint();
+    if symbol_pipe.parse_next(data).is_ok() {
+        let mut alternatives = vec![first];
+        loop {
+            let alt_cond = match_cond1_atom(data)?;
+            alternatives.push(alt_cond);
+            multispace0.parse_next(data)?;
+            let cp2 = data.checkpoint();
+            if symbol_pipe.parse_next(data).is_err() {
+                data.reset(&cp2);
+                break;
+            }
+        }
+        Ok(MatchCond::Or(alternatives))
+    } else {
+        data.reset(&cp);
+        Ok(first)
+    }
 }
 
 fn match_cond1_item(data: &mut &str) -> WResult<MatchCase> {
@@ -46,32 +74,10 @@ fn match_cond_default_item(data: &mut &str) -> WResult<MatchCase> {
     Ok(MatchCase::new(MatchCondition::Default, calc))
 }
 
-fn match_cond2_item(data: &mut &str) -> WResult<MatchCase> {
+fn match_cond_multi_item(data: &mut &str) -> WResult<MatchCase> {
     multispace0.parse_next(data)?;
-    let cond = match_cond2
-        .context(ctx_desc(">> (<match_value>,<match_value>) "))
-        .parse_next(data)?;
-    let calc = match_calc_target.parse_next(data)?;
-
-    Ok(MatchCase::new(cond, calc))
-}
-
-fn match_cond3_item(data: &mut &str) -> WResult<MatchCase> {
-    multispace0.parse_next(data)?;
-    let cond = match_cond3
-        .context(ctx_desc(">> (<match_value>,<match_value>,<match_value>) "))
-        .parse_next(data)?;
-    let calc = match_calc_target.parse_next(data)?;
-
-    Ok(MatchCase::new(cond, calc))
-}
-
-fn match_cond4_item(data: &mut &str) -> WResult<MatchCase> {
-    multispace0.parse_next(data)?;
-    let cond = match_cond4
-        .context(ctx_desc(
-            ">> (<match_value>,<match_value>,<match_value>,<match_value>) ",
-        ))
+    let cond = match_cond_multi
+        .context(ctx_desc(">> (<match_value>, ...) "))
         .parse_next(data)?;
     let calc = match_calc_target.parse_next(data)?;
 
@@ -101,43 +107,19 @@ fn match_calc_target(data: &mut &str) -> WResult<NestedAccessor> {
     Ok(sub_gw)
 }
 
-fn match_cond2(data: &mut &str) -> WResult<MatchCondition> {
+fn match_cond_multi(data: &mut &str) -> WResult<MatchCondition> {
     multispace0.parse_next(data)?;
     let code = get_scope(data, '(', ')')?;
     let mut code_data: &str = code;
 
-    let fst = match_cond1.parse_next(&mut code_data)?;
-    symbol_comma.parse_next(&mut code_data)?;
-    let sec = match_cond1.parse_next(&mut code_data)?;
-    Ok(MatchCondition::Double(fst, sec))
-}
-
-fn match_cond3(data: &mut &str) -> WResult<MatchCondition> {
-    multispace0.parse_next(data)?;
-    let code = get_scope(data, '(', ')')?;
-    let mut code_data: &str = code;
-
-    let a = match_cond1.parse_next(&mut code_data)?;
-    symbol_comma.parse_next(&mut code_data)?;
-    let b = match_cond1.parse_next(&mut code_data)?;
-    symbol_comma.parse_next(&mut code_data)?;
-    let c = match_cond1.parse_next(&mut code_data)?;
-    Ok(MatchCondition::Triple(a, b, c))
-}
-
-fn match_cond4(data: &mut &str) -> WResult<MatchCondition> {
-    multispace0.parse_next(data)?;
-    let code = get_scope(data, '(', ')')?;
-    let mut code_data: &str = code;
-
-    let a = match_cond1.parse_next(&mut code_data)?;
-    symbol_comma.parse_next(&mut code_data)?;
-    let b = match_cond1.parse_next(&mut code_data)?;
-    symbol_comma.parse_next(&mut code_data)?;
-    let c = match_cond1.parse_next(&mut code_data)?;
-    symbol_comma.parse_next(&mut code_data)?;
-    let d = match_cond1.parse_next(&mut code_data)?;
-    Ok(MatchCondition::Quadruple(a, b, c, d))
+    let mut conds: SmallVec<[MatchCond; 4]> = SmallVec::new();
+    let first = match_cond1.parse_next(&mut code_data)?;
+    conds.push(first);
+    while symbol_comma.parse_next(&mut code_data).is_ok() {
+        let c = match_cond1.parse_next(&mut code_data)?;
+        conds.push(c);
+    }
+    Ok(MatchCondition::Multi(conds))
 }
 
 fn cond_eq(data: &mut &str) -> WResult<MatchCond> {
@@ -305,13 +287,7 @@ pub fn oml_match(data: &mut &str) -> WResult<MatchOperation> {
         MatchSource::Single(_) => oml_match1_body
             .context(ctx_desc(">> { *<match_item> }"))
             .parse_next(data)?,
-        MatchSource::Double(_, _) => oml_match2_body
-            .context(ctx_desc(">> { *<match_item> }"))
-            .parse_next(data)?,
-        MatchSource::Triple(_, _, _) => oml_match3_body
-            .context(ctx_desc(">> { *<match_item> }"))
-            .parse_next(data)?,
-        MatchSource::Quadruple(_, _, _, _) => oml_match4_body
+        MatchSource::Multi(_) => oml_match_multi_body
             .context(ctx_desc(">> { *<match_item> }"))
             .parse_next(data)?,
     };
@@ -327,29 +303,10 @@ pub fn oml_match1_body(data: &mut &str) -> WResult<(Vec<MatchCase>, Option<Match
     Ok((item, default))
 }
 
-pub fn oml_match2_body(data: &mut &str) -> WResult<(Vec<MatchCase>, Option<MatchCase>)> {
+pub fn oml_match_multi_body(data: &mut &str) -> WResult<(Vec<MatchCase>, Option<MatchCase>)> {
     let _ = multispace0.parse_next(data)?;
     symbol_brace_beg.parse_next(data)?;
-    let item = repeat(1.., match_cond2_item).parse_next(data)?;
-    let default = opt(match_cond_default_item).parse_next(data)?;
-    //.err_reset(data, &cp)?
-    symbol_brace_end.parse_next(data)?;
-    Ok((item, default))
-}
-
-pub fn oml_match3_body(data: &mut &str) -> WResult<(Vec<MatchCase>, Option<MatchCase>)> {
-    let _ = multispace0.parse_next(data)?;
-    symbol_brace_beg.parse_next(data)?;
-    let item = repeat(1.., match_cond3_item).parse_next(data)?;
-    let default = opt(match_cond_default_item).parse_next(data)?;
-    symbol_brace_end.parse_next(data)?;
-    Ok((item, default))
-}
-
-pub fn oml_match4_body(data: &mut &str) -> WResult<(Vec<MatchCase>, Option<MatchCase>)> {
-    let _ = multispace0.parse_next(data)?;
-    symbol_brace_beg.parse_next(data)?;
-    let item = repeat(1.., match_cond4_item).parse_next(data)?;
+    let item = repeat(1.., match_cond_multi_item).parse_next(data)?;
     let default = opt(match_cond_default_item).parse_next(data)?;
     symbol_brace_end.parse_next(data)?;
     Ok((item, default))
@@ -375,7 +332,7 @@ mod tests {
 
     use crate::language::MatchCase;
     use crate::parser::match_prm::{
-        match_cond1_item, match_cond2_item, match_cond3_item, match_cond4_item, oml_aga_match,
+        match_cond1_item, match_cond_multi_item, oml_aga_match,
     };
     use crate::parser::utils::for_test::assert_oml_parse;
     use crate::types::AnyResult;
@@ -398,7 +355,7 @@ mod tests {
         assert_eq!(x, MatchCase::eq_const("ip", "127.0.0.1", "10.0.0.1")?);
 
         let mut code = r#"(ip(127.0.0.1),ip(127.0.0.100)) => ip(10.0.0.1),"#;
-        let x = match_cond2_item(&mut code).assert();
+        let x = match_cond_multi_item(&mut code).assert();
         println!("{:?}", x);
         assert_eq!(
             x,
@@ -1032,7 +989,7 @@ Result = match read(status) {
     fn test_match_cond3_item_parse() {
         // Test parsing a triple condition item
         let mut code = r#"(chars(A), chars(B), chars(C)) => chars(result),"#;
-        let x = match_cond3_item(&mut code);
+        let x = match_cond_multi_item(&mut code);
         assert!(x.is_ok(), "Should parse triple condition item: {:?}", x);
     }
 
@@ -1040,7 +997,7 @@ Result = match read(status) {
     fn test_match_cond4_item_parse() {
         // Test parsing a quadruple condition item
         let mut code = r#"(chars(A), chars(B), chars(C), chars(D)) => chars(result),"#;
-        let x = match_cond4_item(&mut code);
+        let x = match_cond_multi_item(&mut code);
         assert!(
             x.is_ok(),
             "Should parse quadruple condition item: {:?}",
@@ -1284,6 +1241,190 @@ Result = match (read(a), read(b), read(c), read(d)) {
         let expect3 = DataField::from_chars("Result".to_string(), "default".to_string());
         assert_eq!(
             target3.field("Result").map(|s| s.as_field()),
+            Some(&expect3)
+        );
+    }
+
+    // ==================== OR Support Tests ====================
+
+    #[test]
+    fn test_or_single_source_parse() {
+        // Test OR in single-source match
+        let mut code = r#" match read(city) {
+            chars(bj) | chars(sh) => chars(east),
+            chars(gz) | chars(sz) | chars(hk) => chars(south),
+            _ => chars(other),
+        }
+       "#;
+        assert_oml_parse(&mut code, oml_aga_match);
+    }
+
+    #[test]
+    fn test_or_multi_source_parse() {
+        // Test OR in multi-source match
+        let mut code = r#" match (read(city), read(level)) {
+            (chars(bj) | chars(sh), chars(high)) => chars(priority),
+            (chars(gz), chars(low) | chars(mid)) => chars(normal),
+            _ => chars(default),
+        }
+       "#;
+        assert_oml_parse(&mut code, oml_aga_match);
+    }
+
+    #[test]
+    fn test_or_round_trip() {
+        use wp_parser::Parser;
+
+        let mut code = r#" match read(city) {
+            chars(bj) | chars(sh) => chars(east),
+            _ => chars(other),
+        }
+       "#;
+        let result = oml_aga_match.parse_next(&mut code);
+        assert!(result.is_ok(), "Should parse OR match");
+
+        let parsed = result.unwrap();
+        let output = format!("{}", parsed);
+        println!("OR match Display output:\n{}", output);
+
+        // Verify round-trip
+        let mut output_slice = output.as_str();
+        let result2 = oml_aga_match.parse_next(&mut output_slice);
+        assert!(result2.is_ok(), "OR round-trip parse should succeed");
+    }
+
+    #[test]
+    fn test_or_single_source_execution() {
+        use crate::core::DataTransformer;
+        use crate::parser::oml_parse_raw;
+        use wp_data_model::cache::FieldQueryCache;
+        use wp_model_core::model::DataRecord;
+
+        let cache = &mut FieldQueryCache::default();
+        let mut conf = r#"name : test
+---
+Result = match read(city) {
+    chars(bj) | chars(sh) | chars(gz) => chars(tier1),
+    chars(cd) | chars(wh) => chars(tier2),
+    _ => chars(other),
+};
+"#;
+        let model = oml_parse_raw(&mut conf).expect("Failed to parse OR match");
+
+        // Test: first alternative matches
+        let data = vec![FieldStorage::from_owned(DataField::from_chars("city", "bj"))];
+        let src = DataRecord::from(data);
+        let target = model.transform(src, cache);
+        let expect = DataField::from_chars("Result", "tier1");
+        assert_eq!(target.field("Result").map(|s| s.as_field()), Some(&expect));
+
+        // Test: second alternative matches
+        let data = vec![FieldStorage::from_owned(DataField::from_chars("city", "sh"))];
+        let src = DataRecord::from(data);
+        let target = model.transform(src, cache);
+        assert_eq!(target.field("Result").map(|s| s.as_field()), Some(&expect));
+
+        // Test: third alternative matches
+        let data = vec![FieldStorage::from_owned(DataField::from_chars("city", "gz"))];
+        let src = DataRecord::from(data);
+        let target = model.transform(src, cache);
+        assert_eq!(target.field("Result").map(|s| s.as_field()), Some(&expect));
+
+        // Test: second arm
+        let data = vec![FieldStorage::from_owned(DataField::from_chars("city", "cd"))];
+        let src = DataRecord::from(data);
+        let target = model.transform(src, cache);
+        let expect2 = DataField::from_chars("Result", "tier2");
+        assert_eq!(
+            target.field("Result").map(|s| s.as_field()),
+            Some(&expect2)
+        );
+
+        // Test: default
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "city", "unknown",
+        ))];
+        let src = DataRecord::from(data);
+        let target = model.transform(src, cache);
+        let expect3 = DataField::from_chars("Result", "other");
+        assert_eq!(
+            target.field("Result").map(|s| s.as_field()),
+            Some(&expect3)
+        );
+    }
+
+    #[test]
+    fn test_or_multi_source_execution() {
+        use crate::core::DataTransformer;
+        use crate::parser::oml_parse_raw;
+        use wp_data_model::cache::FieldQueryCache;
+        use wp_model_core::model::DataRecord;
+
+        let cache = &mut FieldQueryCache::default();
+        let mut conf = r#"name : test
+---
+Result = match (read(city), read(level)) {
+    (chars(bj) | chars(sh), chars(high)) => chars(priority),
+    (chars(gz), chars(low) | chars(mid)) => chars(normal),
+    _ => chars(default),
+};
+"#;
+        let model = oml_parse_raw(&mut conf).expect("Failed to parse OR multi match");
+
+        // Test: city=bj, level=high => priority
+        let data = vec![
+            FieldStorage::from_owned(DataField::from_chars("city", "bj")),
+            FieldStorage::from_owned(DataField::from_chars("level", "high")),
+        ];
+        let src = DataRecord::from(data);
+        let target = model.transform(src, cache);
+        let expect = DataField::from_chars("Result", "priority");
+        assert_eq!(target.field("Result").map(|s| s.as_field()), Some(&expect));
+
+        // Test: city=sh (OR alt), level=high => priority
+        let data = vec![
+            FieldStorage::from_owned(DataField::from_chars("city", "sh")),
+            FieldStorage::from_owned(DataField::from_chars("level", "high")),
+        ];
+        let src = DataRecord::from(data);
+        let target = model.transform(src, cache);
+        assert_eq!(target.field("Result").map(|s| s.as_field()), Some(&expect));
+
+        // Test: city=gz, level=low (OR alt) => normal
+        let data = vec![
+            FieldStorage::from_owned(DataField::from_chars("city", "gz")),
+            FieldStorage::from_owned(DataField::from_chars("level", "low")),
+        ];
+        let src = DataRecord::from(data);
+        let target = model.transform(src, cache);
+        let expect2 = DataField::from_chars("Result", "normal");
+        assert_eq!(
+            target.field("Result").map(|s| s.as_field()),
+            Some(&expect2)
+        );
+
+        // Test: city=gz, level=mid (second OR alt) => normal
+        let data = vec![
+            FieldStorage::from_owned(DataField::from_chars("city", "gz")),
+            FieldStorage::from_owned(DataField::from_chars("level", "mid")),
+        ];
+        let src = DataRecord::from(data);
+        let target = model.transform(src, cache);
+        assert_eq!(
+            target.field("Result").map(|s| s.as_field()),
+            Some(&expect2)
+        );
+
+        // Test: no match => default
+        let data = vec![
+            FieldStorage::from_owned(DataField::from_chars("city", "other")),
+            FieldStorage::from_owned(DataField::from_chars("level", "high")),
+        ];
+        let src = DataRecord::from(data);
+        let target = model.transform(src, cache);
+        let expect3 = DataField::from_chars("Result", "default");
+        assert_eq!(
+            target.field("Result").map(|s| s.as_field()),
             Some(&expect3)
         );
     }

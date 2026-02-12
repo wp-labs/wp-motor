@@ -3,6 +3,7 @@ use crate::language::syntax::accessors::NestedAccessor;
 use crate::types::AnyResult;
 use derive_getters::Getters;
 use orion_exp::CmpOperator;
+use smallvec::SmallVec;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use wp_data_model::compare::compare_datafield;
@@ -83,6 +84,8 @@ pub enum MatchCond {
     In(DataField, DataField),
     /// Function-based matching - matches if function returns non-ignore field
     Fun(MatchFun),
+    /// OR matching - matches if any alternative matches
+    Or(Vec<MatchCond>),
 
     /// Arc-based variants for static symbols (zero-copy reference)
     /// These are created during rewrite phase to share DataField instances
@@ -105,9 +108,7 @@ pub enum MatchCond {
 #[derive(Clone, Debug, PartialEq)]
 pub enum MatchCondition {
     Single(MatchCond),
-    Double(MatchCond, MatchCond),
-    Triple(MatchCond, MatchCond, MatchCond),
-    Quadruple(MatchCond, MatchCond, MatchCond, MatchCond),
+    Multi(SmallVec<[MatchCond; 4]>),
     Default,
 }
 
@@ -117,14 +118,15 @@ impl Display for MatchCondition {
             MatchCondition::Single(x) => {
                 write!(f, "{}", x)?;
             }
-            MatchCondition::Double(fst, sec) => {
-                write!(f, "({}, {})", fst, sec)?;
-            }
-            MatchCondition::Triple(a, b, c) => {
-                write!(f, "({}, {}, {})", a, b, c)?;
-            }
-            MatchCondition::Quadruple(a, b, c, d) => {
-                write!(f, "({}, {}, {}, {})", a, b, c, d)?;
+            MatchCondition::Multi(conds) => {
+                write!(f, "(")?;
+                for (i, c) in conds.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", c)?;
+                }
+                write!(f, ")")?;
             }
             MatchCondition::Default => {
                 write!(f, "_")?;
@@ -196,6 +198,7 @@ impl MatchAble<&DataField> for MatchCond {
                 // Execute the function and check if result is not ignore
                 match_with_function(value, fun)
             }
+            MatchCond::Or(alternatives) => alternatives.iter().any(|alt| alt.is_match(value)),
 
             // Arc-based variants (for static symbols, zero-copy)
             MatchCond::EqArc(x) => {
@@ -455,6 +458,15 @@ impl Display for MatchCond {
                 write!(f, " {}  ", fun)?;
             }
 
+            MatchCond::Or(alternatives) => {
+                for (i, alt) in alternatives.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " | ")?;
+                    }
+                    write!(f, "{}", alt)?;
+                }
+            }
+
             // Arc-based variants (same display as regular variants)
             MatchCond::EqArc(x) => {
                 write!(f, " {}  ", x)?;
@@ -499,9 +511,7 @@ impl MatchAble<&DataField> for MatchCondition {
     fn is_match(&self, value: &DataField) -> bool {
         match self {
             MatchCondition::Single(s) => s.is_match(value),
-            MatchCondition::Double(_, _)
-            | MatchCondition::Triple(_, _, _)
-            | MatchCondition::Quadruple(_, _, _, _) => {
+            MatchCondition::Multi(_) => {
                 unreachable!()
             }
             MatchCondition::Default => true,
@@ -509,43 +519,18 @@ impl MatchAble<&DataField> for MatchCondition {
     }
 }
 
-impl MatchAble<(&DataField, &DataField)> for MatchCondition {
-    fn is_match(&self, value: (&DataField, &DataField)) -> bool {
+impl MatchAble<&[&DataField]> for MatchCondition {
+    fn is_match(&self, value: &[&DataField]) -> bool {
         match self {
-            MatchCondition::Single(_)
-            | MatchCondition::Triple(_, _, _)
-            | MatchCondition::Quadruple(_, _, _, _) => {
-                unreachable!()
-            }
-            MatchCondition::Double(fst, sec) => fst.is_match(value.0) && sec.is_match(value.1),
-            MatchCondition::Default => true,
-        }
-    }
-}
-
-impl MatchAble<(&DataField, &DataField, &DataField)> for MatchCondition {
-    fn is_match(&self, value: (&DataField, &DataField, &DataField)) -> bool {
-        match self {
-            MatchCondition::Triple(a, b, c) => {
-                a.is_match(value.0) && b.is_match(value.1) && c.is_match(value.2)
+            MatchCondition::Multi(conds) => {
+                conds.len() == value.len()
+                    && conds
+                        .iter()
+                        .zip(value.iter())
+                        .all(|(c, v)| c.is_match(*v))
             }
             MatchCondition::Default => true,
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl MatchAble<(&DataField, &DataField, &DataField, &DataField)> for MatchCondition {
-    fn is_match(&self, value: (&DataField, &DataField, &DataField, &DataField)) -> bool {
-        match self {
-            MatchCondition::Quadruple(a, b, c, d) => {
-                a.is_match(value.0)
-                    && b.is_match(value.1)
-                    && c.is_match(value.2)
-                    && d.is_match(value.3)
-            }
-            MatchCondition::Default => true,
-            _ => unreachable!(),
+            MatchCondition::Single(_) => unreachable!(),
         }
     }
 }
@@ -556,20 +541,8 @@ impl MatchAble<&DataField> for MatchCase {
     }
 }
 
-impl MatchAble<(&DataField, &DataField)> for MatchCase {
-    fn is_match(&self, value: (&DataField, &DataField)) -> bool {
-        self.cond.is_match(value)
-    }
-}
-
-impl MatchAble<(&DataField, &DataField, &DataField)> for MatchCase {
-    fn is_match(&self, value: (&DataField, &DataField, &DataField)) -> bool {
-        self.cond.is_match(value)
-    }
-}
-
-impl MatchAble<(&DataField, &DataField, &DataField, &DataField)> for MatchCase {
-    fn is_match(&self, value: (&DataField, &DataField, &DataField, &DataField)) -> bool {
+impl MatchAble<&[&DataField]> for MatchCase {
+    fn is_match(&self, value: &[&DataField]) -> bool {
         self.cond.is_match(value)
     }
 }
@@ -628,7 +601,10 @@ impl MatchCase {
         let end_obj = DataField::from_str(meta.clone(), "".to_string(), m_end.into())?;
         let target = DataField::from_str(meta, "".to_string(), t_val.into())?;
         Ok(Self::new(
-            MatchCondition::Double(MatchCond::Eq(beg_obj), MatchCond::Eq(end_obj)),
+            MatchCondition::Multi(SmallVec::from_vec(vec![
+                MatchCond::Eq(beg_obj),
+                MatchCond::Eq(end_obj),
+            ])),
             NestedAccessor::Field(target),
         ))
     }
@@ -650,9 +626,7 @@ pub struct MatchOperation {
 #[derive(Clone, Debug)]
 pub enum MatchSource {
     Single(DirectAccessor),
-    Double(DirectAccessor, DirectAccessor),
-    Triple(DirectAccessor, DirectAccessor, DirectAccessor),
-    Quadruple(DirectAccessor, DirectAccessor, DirectAccessor, DirectAccessor),
+    Multi(SmallVec<[DirectAccessor; 4]>),
 }
 
 impl MatchOperation {
@@ -679,14 +653,15 @@ impl Display for MatchOperation {
             MatchSource::Single(c) => {
                 writeln!(f, "match {} {{", c)?;
             }
-            MatchSource::Double(fst, sec) => {
-                writeln!(f, "match ({}, {}) {{", fst, sec)?;
-            }
-            MatchSource::Triple(a, b, c) => {
-                writeln!(f, "match ({}, {}, {}) {{", a, b, c)?;
-            }
-            MatchSource::Quadruple(a, b, c, d) => {
-                writeln!(f, "match ({}, {}, {}, {}) {{", a, b, c, d)?;
+            MatchSource::Multi(sources) => {
+                write!(f, "match (")?;
+                for (i, s) in sources.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", s)?;
+                }
+                writeln!(f, ") {{")?;
             }
         }
         for o in self.items.iter() {
