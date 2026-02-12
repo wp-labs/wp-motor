@@ -3,7 +3,7 @@ use crate::ast::group::WplGroupType;
 use crate::generator::{FieldGenConf, GenScopeEnum};
 use crate::generator::{GenChannel, ParserValue};
 use crate::types::AnyResult;
-use rand::Rng;
+use rand::RngExt;
 use winnow::ascii::{dec_int, float, multispace0};
 use winnow::combinator::preceded;
 use wp_model_core::model::DataField;

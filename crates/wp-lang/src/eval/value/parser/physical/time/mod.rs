@@ -18,7 +18,7 @@ pub fn gen_time(
     g_conf: Option<&crate::generator::FieldGenConf>,
 ) -> crate::types::AnyResult<DataField> {
     use chrono::TimeZone; // bring with_ymd_and_hms into scope
-    use rand::Rng as _;
+    use rand::RngExt as _;
     let y = gnc.rng.random_range(2020..2023);
     let mon = gnc.rng.random_range(1..12);
     let d = gnc.rng.random_range(1..29);

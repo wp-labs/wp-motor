@@ -1,7 +1,7 @@
 // use serial_test::serial; // 暂时注释以解决编译问题
 
 #[cfg(test)]
-use rand::{RngCore, rng};
+use rand::{Rng, rng};
 #[cfg(test)]
 use std::fs;
 #[cfg(test)]

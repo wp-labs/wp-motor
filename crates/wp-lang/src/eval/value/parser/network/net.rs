@@ -9,7 +9,7 @@ use crate::eval::runtime::field::FieldEvalUnit;
 use crate::eval::value::parse_def::*;
 use crate::generator::ParserValue;
 use crate::generator::{FieldGenConf, GenScopeEnum};
-use rand::Rng;
+use rand::RngExt;
 use winnow::ascii::digit1;
 use winnow::combinator::separated_pair;
 use wp_model_core::model::IpNetValue;
