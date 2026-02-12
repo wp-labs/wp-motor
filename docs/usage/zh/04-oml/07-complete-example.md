@@ -137,7 +137,7 @@ num_range = match read(option:[num_range]) {
     _ => digit(0);
 };
 
-// 3.3 双源 match（匹配两个字段的组合）
+// 3.3 多源 match（匹配多个字段的组合）
 location : chars = match (read(city1), read(city2)) {
     (chars(beijing), chars(shanghai)) => chars(east_region);
     (chars(chengdu), chars(chongqing)) => chars(west_region);
@@ -161,6 +161,20 @@ is_enabled : digit = match read(enabled) {
     bool(true) => digit(1);
     bool(false) => digit(0);
     _ => digit(-1);
+};
+
+// 3.6 OR 条件匹配（使用 | 表示备选条件）
+city_tier : chars = match read(city1) {
+    chars(beijing) | chars(shanghai) | chars(guangzhou) => chars(tier1);
+    chars(chengdu) | chars(wuhan) => chars(tier2);
+    _ => chars(other);
+};
+
+// 3.7 多源 + OR 组合匹配
+priority : chars = match (read(city1), read(status)) {
+    (chars(beijing) | chars(shanghai), chars(success)) => chars(high);
+    (chars(chengdu), chars(success) | chars(pending)) => chars(medium);
+    _ => chars(low);
 };
 
 // ==================== 4. 管道函数 ====================
@@ -333,8 +347,8 @@ num_range = match read(option:[num_range]) {
 };
 ```
 
-#### 3.3 双源 match
-匹配两个字段的组合：
+#### 3.3 多源 match
+匹配多个字段的组合（支持 2 个及以上源字段）：
 ```oml
 location : chars = match (read(city1), read(city2)) {
     (chars(beijing), chars(shanghai)) => chars(east_region);
@@ -360,6 +374,26 @@ is_enabled : digit = match read(enabled) {
     bool(true) => digit(1);
     bool(false) => digit(0);
     _ => digit(-1);
+};
+```
+
+#### 3.6 OR 条件匹配
+使用 `|` 分隔多个备选条件，任一匹配即成功：
+```oml
+city_tier : chars = match read(city1) {
+    chars(beijing) | chars(shanghai) | chars(guangzhou) => chars(tier1);
+    chars(chengdu) | chars(wuhan) => chars(tier2);
+    _ => chars(other);
+};
+```
+
+#### 3.7 多源 + OR 组合匹配
+多源 match 的每个条件位置都支持 OR：
+```oml
+priority : chars = match (read(city1), read(status)) {
+    (chars(beijing) | chars(shanghai), chars(success)) => chars(high);
+    (chars(chengdu), chars(success) | chars(pending)) => chars(medium);
+    _ => chars(low);
 };
 ```
 
@@ -492,7 +526,7 @@ wildcard_items : array = collect take(keys:[details[*]/process_name]);
 
 - ✅ 基础操作：字面量、取值、默认值、通配符
 - ✅ 内置函数：时间函数
-- ✅ 模式匹配：单源、双源、范围、否定、布尔
+- ✅ 模式匹配：单源、多源（任意数量）、范围、否定、布尔、OR 条件
 - ✅ 管道函数：时间、编解码、转义、转换、集合、提取
 - ✅ 字符串操作：格式化
 - ✅ 对象与数组：聚合、收集

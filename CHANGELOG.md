@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.16.0 Unreleased]
 
 ### Added
+- **OML Match**: Add OR condition syntax `cond1 | cond2 | ...` for match expressions
+  - Single-source match supports OR alternatives: `chars(bj) | chars(sh) => chars(tier1)`
+  - Multi-source match supports OR at each condition position: `(chars(bj) | chars(sh), chars(high)) => ...`
+  - OR works with both value matching and function matching (e.g., `starts_with('[ERROR]') | starts_with('[FATAL]')`)
+
 - **OML NLP**: Add configurable NLP dictionary system for `extract_main_word` and `extract_subject_object` pipe functions
   - Externalize hardcoded dictionaries (core_pos, stop_words, domain_words, status_words, action_verbs, entity_nouns) to TOML configuration file
   - Support custom dictionary via `NLP_DICT_CONFIG` environment variable
@@ -25,6 +30,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `*` allowed inside preserve groups for anchored patterns like `{(c*=)}`
   - Literal patterns use `str::find` fast-path, **2.7x faster** than winnow `take_until`
   - See design doc `docs/design/wpl_sep_pattern.md`
+
+### Changed
+- **OML Match**: Refactor multi-source match from fixed variants to dynamic `Multi(SmallVec<[T; 4]>)`
+  - Replace `MatchCondition::Double/Triple/Quadruple` with `MatchCondition::Multi(SmallVec<[MatchCond; 4]>)`
+  - Replace `MatchSource::Double/Triple/Quadruple` with `MatchSource::Multi(SmallVec<[DirectAccessor; 4]>)`
+  - Multi-source match now supports any number of source fields (no longer limited to 2/3/4)
+  - Consolidate 4 `MatchAble` tuple impls into 2 impls (`&DataField` for Single, `&[&DataField]` for Multi)
+  - Add `smallvec` dependency for inline allocation (<=4 elements, no heap)
+- **Documentation**: Update OML documentation for match OR syntax and multi-source refactoring
+  - Update Chinese docs: grammar reference, core concepts, practical guide, complete example, quickstart, match functions, README
+  - Create English `match_functions.md` with full translation; update English README, quickstart, core concepts, practical guide, complete example
 
 
 ## [1.15.4 Unreleased]

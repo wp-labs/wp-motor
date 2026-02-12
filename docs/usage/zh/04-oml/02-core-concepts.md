@@ -281,6 +281,18 @@ level = match read(status) {
 } ;
 ```
 
+支持 OR 语法（`|` 分隔多个备选条件）：
+
+```oml
+name : match_or_expr
+---
+tier = match read(city) {
+    chars(bj) | chars(sh) | chars(gz) => chars(tier1) ;
+    chars(cd) | chars(wh) => chars(tier2) ;
+    _ => chars(other) ;
+} ;
+```
+
 ### 聚合表达式
 
 创建复合数据结构：
@@ -451,9 +463,23 @@ first_user = read(users) | nth(0) | get(name) ;
 ```oml
 name : complex_match
 ---
+# 单源 match + collect
 status = match read(code) {
     in (digit(200), digit(299)) => collect read(keys:[a, b]) ;
     _ => read(default_value) ;
+} ;
+
+# 多源 match（支持任意数量源字段）
+zone = match (read(city), read(region), read(country)) {
+    (chars(bj), chars(north), chars(cn)) => chars(zone1) ;
+    _ => chars(unknown) ;
+} ;
+
+# OR + 多源 match
+priority = match (read(city), read(level)) {
+    (chars(bj) | chars(sh), chars(high)) => chars(priority) ;
+    (chars(gz), chars(low) | chars(mid)) => chars(normal) ;
+    _ => chars(default) ;
 } ;
 ```
 
