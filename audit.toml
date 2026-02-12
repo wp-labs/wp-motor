@@ -1,6 +1,2 @@
 [advisories]
-ignore = [
-    # proc-macro-error is unmaintained, transitive dep from jieba-rs -> include-flate
-    # No vulnerability, informational only. Waiting for upstream update.
-    "RUSTSEC-2024-0370",
-]
+ignore = []

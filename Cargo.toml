@@ -199,6 +199,9 @@ shadow-rs = "1.5"
 # Development Dependencies
 # ============================================================================
 
+[patch.crates-io]
+include-flate-codegen = { path = "patches/include-flate-codegen" }
+
 [dev-dependencies]
 serial_test = "3"
 httpmock = "0.8"

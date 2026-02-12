@@ -1,0 +1,35 @@
+version = 1
+mode = "replace"
+
+[stop_words]
+chinese = ["的"]
+english = ["the"]
+
+# 使用 Kubernetes 专用的自定义分类
+[domain_words]
+# Kubernetes 核心资源
+k8s_resources = ["pod", "deployment", "service", "namespace", "configmap", "daemonset", "statefulset"]
+
+# Kubernetes 网络
+k8s_network = ["ingress", "endpoint", "networkpolicy", "loadbalancer"]
+
+# Kubernetes 安全
+k8s_security = ["rbac", "serviceaccount", "secret", "rolebinding", "clusterrole"]
+
+# Kubernetes 存储
+k8s_storage = ["persistentvolume", "pvc", "storageclass"]
+
+# 容器相关
+container = ["docker", "containerd", "image", "registry"]
+
+[status_words]
+english = ["running", "pending", "failed", "succeeded", "crashloopbackoff", "imagepullbackoff", "terminating"]
+chinese = []
+
+[action_verbs]
+english = ["create", "delete", "update", "scale", "rollout", "apply", "patch", "exec"]
+chinese = []
+
+[entity_nouns]
+english = ["pod", "node", "cluster", "container", "volume", "controller"]
+chinese = []
