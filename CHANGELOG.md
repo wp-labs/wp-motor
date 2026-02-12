@@ -5,101 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.16.0 Unreleased]
+## [1.16.3 Unreleased]
 
 ### Added
 - **OML Match**: Add OR condition syntax `cond1 | cond2 | ...` for match expressions
-  - Single-source match supports OR alternatives: `chars(bj) | chars(sh) => chars(tier1)`
-  - Multi-source match supports OR at each condition position: `(chars(bj) | chars(sh), chars(high)) => ...`
-  - OR works with both value matching and function matching (e.g., `starts_with('[ERROR]') | starts_with('[FATAL]')`)
-
-- **OML NLP**: Add configurable NLP dictionary system for `extract_main_word` and `extract_subject_object` pipe functions
-  - Externalize hardcoded dictionaries (core_pos, stop_words, domain_words, status_words, action_verbs, entity_nouns) to TOML configuration file
-  - Support custom dictionary via `NLP_DICT_CONFIG` environment variable
-  - Default configuration at `crates/wp-oml/nlp_dict/nlp_dict.toml` with 6 dictionary categories
-  - Lazy loading with `once_cell::Lazy` for optimal startup performance
-  - Graceful error handling: falls back to empty dictionary on config load failure
-  - Comprehensive documentation at `crates/wp-oml/nlp_dict/README.md`
-  - Design follows `knowdb.toml` pattern (versioning, enabled flags, default values)
-  - 100% backward compatible: all 74 tests pass with 100% accuracy rate
-
-- **wp-lang**: Add separator pattern syntax `{…}` with wildcards (`*`, `?`), whitespace matchers (`\s`, `\h`, `\S`, `\H`) and preserve groups `(…)` for expressing complex separator logic in a single declaration
-  - `\S` (non-whitespace) and `\H` (non-horizontal-whitespace) complement `\s` / `\h`, enabling patterns like `{\s(\S=)}` for kvarr with space-containing values
-  - All character-class matchers (`\s`, `\S`, `\h`, `\H`) use greedy-with-backtrack strategy
-  - Preserve groups scan full haystack for match position (not just position 0)
-  - `*` allowed inside preserve groups for anchored patterns like `{(c*=)}`
-  - Literal patterns use `str::find` fast-path, **2.7x faster** than winnow `take_until`
-  - See design doc `docs/design/wpl_sep_pattern.md`
+  - Supports single-source and multi-source match
+  - Compatible with both value matching and function matching
+- **OML NLP**: Add `extract_main_word` and `extract_subject_object` pipe functions for Chinese text analysis
+- **OML NLP**: Add configurable NLP dictionary system, support custom dictionary via `NLP_DICT_CONFIG` environment variable
 
 ### Changed
-- **OML Match**: Refactor multi-source match from fixed variants to dynamic `Multi(SmallVec<[T; 4]>)`
-  - Replace `MatchCondition::Double/Triple/Quadruple` with `MatchCondition::Multi(SmallVec<[MatchCond; 4]>)`
-  - Replace `MatchSource::Double/Triple/Quadruple` with `MatchSource::Multi(SmallVec<[DirectAccessor; 4]>)`
-  - Multi-source match now supports any number of source fields (no longer limited to 2/3/4)
-  - Consolidate 4 `MatchAble` tuple impls into 2 impls (`&DataField` for Single, `&[&DataField]` for Multi)
-  - Add `smallvec` dependency for inline allocation (<=4 elements, no heap)
-- **Documentation**: Update OML documentation for match OR syntax and multi-source refactoring
-  - Update Chinese docs: grammar reference, core concepts, practical guide, complete example, quickstart, match functions, README
-  - Create English `match_functions.md` with full translation; update English README, quickstart, core concepts, practical guide, complete example
+- **OML Match**: Multi-source match now supports any number of source fields (no longer limited to 2/3/4)
+- **Documentation**: Update OML documentation (Chinese and English) for match OR syntax and multi-source support
 
 
-## [1.15.4 Unreleased]
+## [1.16.2] - 2026-02-11
+
+### Fixed
+- **wp-lang**: Fix kvarr pattern separator parsing
+
+
+## [1.16.1] - 2026-02-11
+
+### Changed
+- **wp-lang**: Extend separator pattern syntax with `\S` and `\H` matchers
+
+
+## [1.16.0] - 2026-02-11
 
 ### Added
-- **WP-OML Zero-Copy Validation**: Add comprehensive zero-copy validation test suite
-  - Validates static field references use true zero-copy (Arc::clone only)
-  - Tests all static reference forms: direct assignment, match branches, nested objects, multi-stage
-  - Location: `crates/wp-oml/tests/zero_copy_validation.rs`
-  - Run with: `cargo test --test zero_copy_validation`
-- **Zero-Copy Lint Tool**: Add automated lint check for zero-copy compliance
-  - Detects Arc<DataField> variants missing extract_storage optimization
-  - Identifies potential zero-copy regressions
-  - Location: `scripts/lint-zero-copy.sh`
-  - Run with: `./scripts/lint-zero-copy.sh`
-- **Zero-Copy Guidelines**: Add implementation guidelines document
-  - Establishes golden rule and patterns for Arc<DataField> handling
-  - Documents all current Arc variants and their purposes
-  - Provides checklist for new implementations
-  - Location: `docs/dev/zero_copy_guidelines.md`
+- **wp-lang**: Add separator pattern syntax `{…}` with wildcards (`*`, `?`), whitespace matchers (`\s`, `\h`, `\S`, `\H`) and preserve groups `(…)` for expressing complex separator logic in a single declaration
+
+
+## [1.15.5] - 2026-02-10
+
+### Changed
+- **wp-oml**: Enhanced FieldRead with zero-copy FieldStorage preservation
+
+
+## [1.15.4] - 2026-02-10
+
+### Added
+- **wp-oml**: Add zero-copy validation test suite and lint tool
+- **Documentation**: Add zero-copy implementation guidelines
 
 ### Changed
 - **wp-oml**: Refactor FieldExtractor trait to require explicit extract_storage implementation
-  - Removed default implementation to provide compile-time guarantees for zero-copy optimization
-  - All 23 implementations now explicitly handle FieldStorage (5 already optimized, 18 added standard implementations)
-  - No behavior change - purely refactoring for compile-time safety
-  - Prevents accidental bypassing of zero-copy optimizations when adding new Arc variants
-- **wp-oml**: Enhanced MapOperation and RecordOperation with zero-copy support
-  - MapOperation now calls extract_storage() for sub-expressions, enabling zero-copy for static object fields
-  - RecordOperation now uses extract_storage() for default values, enabling zero-copy for static defaults
-  - Performance improvement: Single-stage static field advantage increased from 29.7% to 31.1%
-- **wp-oml**: Enhanced PiPeOperation and ValueProcessor trait with FieldStorage support
-  - Added value_cacu_storage() method to ValueProcessor trait for preserving FieldStorage variants
-  - PiPeOperation now uses extract_storage() and value_cacu_storage() for zero-copy pipeline processing
-  - Get operation implements zero-copy for extracting fields from Shared objects
-  - Performance improvement: Single-stage static field advantage increased from 31.1% to 32.0%
-  - Multi-stage pipelines now benefit from zero-copy (2-stage: 8.2% faster, 4-stage: 6.7% faster)
-- **wp-oml**: Enhanced FmtOperation and SqlQuery with FieldStorage support
-  - FmtOperation now uses extract_storage() when collecting format arguments
-  - SqlQuery now uses extract_storage() when collecting SQL parameters
-  - Both operations now avoid cloning Arc variants during parameter collection
-  - Completes zero-copy coverage across all operations that collect sub-expressions
-- **wp-oml**: Enhanced FieldRead with FieldStorage preservation
-  - FieldRead now uses extract_storage() to preserve FieldStorage from DataRecord
-  - Added find_tdc_target_storage() and find_tdr_target_storage() for zero-copy extraction
-  - Previously: Called .as_field().clone() on FieldStorage, breaking zero-copy chain
-  - Now: Clones FieldStorage directly (Arc clone if Shared, no DataField clone)
-  - Critical fix: Enables end-to-end zero-copy in `read(__target) | get(field)` pipelines
+- **wp-oml**: Enhanced zero-copy support across MapOperation, RecordOperation, PiPeOperation, FmtOperation, SqlQuery, and FieldRead
 
 ### Fixed
-- **WP-OML Zero-Copy**: Fix MatchOperation to preserve zero-copy for Arc variants in match branches
-  - Previously: Match result branches called extract_one(), cloning Arc<Field> even for static field references
-  - Now: Match result branches call extract_storage(), preserving FieldStorage::Shared for FieldArc/ObjArc
-  - Impact: apache_e1_static.oml and similar match-based static mappings now truly zero-copy
-  - Eliminates residual DataField::clone in match scenarios with static branches
-- **WP-OML Zero-Copy**: Fix Arc<Field> extraction path to eliminate redundant clones
-  - Previously: MatchOperation called result().extract_one() and discarded cloned result
-  - Now: Direct Arc::clone → FieldStorage::Shared without intermediate DataField::clone
-  - Performance: Static field advantage improved from baseline to 29.7% faster
+- **wp-oml**: Fix MatchOperation to preserve zero-copy for Arc variants in match branches
 
 
 ## [1.15.3] - 2026-02-09
