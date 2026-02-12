@@ -108,7 +108,7 @@ pub enum MatchCond {
 #[derive(Clone, Debug, PartialEq)]
 pub enum MatchCondition {
     Single(MatchCond),
-    Multi(SmallVec<[MatchCond; 4]>),
+    Multi(Box<SmallVec<[MatchCond; 4]>>),
     Default,
 }
 
@@ -524,10 +524,7 @@ impl MatchAble<&[&DataField]> for MatchCondition {
         match self {
             MatchCondition::Multi(conds) => {
                 conds.len() == value.len()
-                    && conds
-                        .iter()
-                        .zip(value.iter())
-                        .all(|(c, v)| c.is_match(*v))
+                    && conds.iter().zip(value.iter()).all(|(c, v)| c.is_match(*v))
             }
             MatchCondition::Default => true,
             MatchCondition::Single(_) => unreachable!(),
@@ -601,10 +598,10 @@ impl MatchCase {
         let end_obj = DataField::from_str(meta.clone(), "".to_string(), m_end.into())?;
         let target = DataField::from_str(meta, "".to_string(), t_val.into())?;
         Ok(Self::new(
-            MatchCondition::Multi(SmallVec::from_vec(vec![
+            MatchCondition::Multi(Box::new(SmallVec::from_vec(vec![
                 MatchCond::Eq(beg_obj),
                 MatchCond::Eq(end_obj),
-            ])),
+            ]))),
             NestedAccessor::Field(target),
         ))
     }
@@ -626,7 +623,7 @@ pub struct MatchOperation {
 #[derive(Clone, Debug)]
 pub enum MatchSource {
     Single(DirectAccessor),
-    Multi(SmallVec<[DirectAccessor; 4]>),
+    Multi(Box<SmallVec<[DirectAccessor; 4]>>),
 }
 
 impl MatchOperation {

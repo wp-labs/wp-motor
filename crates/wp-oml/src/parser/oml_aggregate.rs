@@ -205,7 +205,7 @@ pub fn oml_crate_tuple(data: &mut &str) -> WResult<MatchSource> {
         let s = oml_var_get.parse_next(&mut code_data)?;
         sources.push(s);
     }
-    Ok(MatchSource::Multi(sources))
+    Ok(MatchSource::Multi(Box::new(sources)))
 }
 
 pub fn oml_crate_calc_ref(data: &mut &str) -> WResult<MatchSource> {

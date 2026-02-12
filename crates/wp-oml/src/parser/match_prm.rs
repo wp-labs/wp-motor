@@ -16,8 +16,8 @@ use wp_parser::Parser;
 use wp_parser::WResult;
 use wp_parser::symbol::ctx_desc;
 use wp_parser::symbol::{
-    symbol_brace_beg, symbol_brace_end, symbol_comma, symbol_marvel, symbol_match_to,
-    symbol_pipe, symbol_semicolon, symbol_under_line,
+    symbol_brace_beg, symbol_brace_end, symbol_comma, symbol_marvel, symbol_match_to, symbol_pipe,
+    symbol_semicolon, symbol_under_line,
 };
 use wp_parser::utils::get_scope;
 use wpl::parser::utils::quot_str;
@@ -119,7 +119,7 @@ fn match_cond_multi(data: &mut &str) -> WResult<MatchCondition> {
         let c = match_cond1.parse_next(&mut code_data)?;
         conds.push(c);
     }
-    Ok(MatchCondition::Multi(conds))
+    Ok(MatchCondition::Multi(Box::new(conds)))
 }
 
 fn cond_eq(data: &mut &str) -> WResult<MatchCond> {
@@ -331,9 +331,7 @@ mod tests {
     use wp_parser::WResult as ModalResult;
 
     use crate::language::MatchCase;
-    use crate::parser::match_prm::{
-        match_cond1_item, match_cond_multi_item, oml_aga_match,
-    };
+    use crate::parser::match_prm::{match_cond_multi_item, match_cond1_item, oml_aga_match};
     use crate::parser::utils::for_test::assert_oml_parse;
     use crate::types::AnyResult;
 
@@ -998,11 +996,7 @@ Result = match read(status) {
         // Test parsing a quadruple condition item
         let mut code = r#"(chars(A), chars(B), chars(C), chars(D)) => chars(result),"#;
         let x = match_cond_multi_item(&mut code);
-        assert!(
-            x.is_ok(),
-            "Should parse quadruple condition item: {:?}",
-            x
-        );
+        assert!(x.is_ok(), "Should parse quadruple condition item: {:?}", x);
     }
 
     #[test]
@@ -1161,10 +1155,7 @@ Result = match (read(city), read(level), read(zone)) {
         let src = DataRecord::from(data);
         let target = model.transform(src, cache);
         let expect = DataField::from_chars("Result".to_string(), "matched".to_string());
-        assert_eq!(
-            target.field("Result").map(|s| s.as_field()),
-            Some(&expect)
-        );
+        assert_eq!(target.field("Result").map(|s| s.as_field()), Some(&expect));
 
         // Test case 2: partial match falls to default
         let data2 = vec![
@@ -1209,10 +1200,7 @@ Result = match (read(a), read(b), read(c), read(d)) {
         let src = DataRecord::from(data);
         let target = model.transform(src, cache);
         let expect = DataField::from_chars("Result".to_string(), "all_match".to_string());
-        assert_eq!(
-            target.field("Result").map(|s| s.as_field()),
-            Some(&expect)
-        );
+        assert_eq!(target.field("Result").map(|s| s.as_field()), Some(&expect));
 
         // Test case 2: second arm matches
         let data2 = vec![
@@ -1312,33 +1300,38 @@ Result = match read(city) {
         let model = oml_parse_raw(&mut conf).expect("Failed to parse OR match");
 
         // Test: first alternative matches
-        let data = vec![FieldStorage::from_owned(DataField::from_chars("city", "bj"))];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "city", "bj",
+        ))];
         let src = DataRecord::from(data);
         let target = model.transform(src, cache);
         let expect = DataField::from_chars("Result", "tier1");
         assert_eq!(target.field("Result").map(|s| s.as_field()), Some(&expect));
 
         // Test: second alternative matches
-        let data = vec![FieldStorage::from_owned(DataField::from_chars("city", "sh"))];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "city", "sh",
+        ))];
         let src = DataRecord::from(data);
         let target = model.transform(src, cache);
         assert_eq!(target.field("Result").map(|s| s.as_field()), Some(&expect));
 
         // Test: third alternative matches
-        let data = vec![FieldStorage::from_owned(DataField::from_chars("city", "gz"))];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "city", "gz",
+        ))];
         let src = DataRecord::from(data);
         let target = model.transform(src, cache);
         assert_eq!(target.field("Result").map(|s| s.as_field()), Some(&expect));
 
         // Test: second arm
-        let data = vec![FieldStorage::from_owned(DataField::from_chars("city", "cd"))];
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "city", "cd",
+        ))];
         let src = DataRecord::from(data);
         let target = model.transform(src, cache);
         let expect2 = DataField::from_chars("Result", "tier2");
-        assert_eq!(
-            target.field("Result").map(|s| s.as_field()),
-            Some(&expect2)
-        );
+        assert_eq!(target.field("Result").map(|s| s.as_field()), Some(&expect2));
 
         // Test: default
         let data = vec![FieldStorage::from_owned(DataField::from_chars(
@@ -1347,10 +1340,7 @@ Result = match read(city) {
         let src = DataRecord::from(data);
         let target = model.transform(src, cache);
         let expect3 = DataField::from_chars("Result", "other");
-        assert_eq!(
-            target.field("Result").map(|s| s.as_field()),
-            Some(&expect3)
-        );
+        assert_eq!(target.field("Result").map(|s| s.as_field()), Some(&expect3));
     }
 
     #[test]
@@ -1398,10 +1388,7 @@ Result = match (read(city), read(level)) {
         let src = DataRecord::from(data);
         let target = model.transform(src, cache);
         let expect2 = DataField::from_chars("Result", "normal");
-        assert_eq!(
-            target.field("Result").map(|s| s.as_field()),
-            Some(&expect2)
-        );
+        assert_eq!(target.field("Result").map(|s| s.as_field()), Some(&expect2));
 
         // Test: city=gz, level=mid (second OR alt) => normal
         let data = vec![
@@ -1410,10 +1397,7 @@ Result = match (read(city), read(level)) {
         ];
         let src = DataRecord::from(data);
         let target = model.transform(src, cache);
-        assert_eq!(
-            target.field("Result").map(|s| s.as_field()),
-            Some(&expect2)
-        );
+        assert_eq!(target.field("Result").map(|s| s.as_field()), Some(&expect2));
 
         // Test: no match => default
         let data = vec![
@@ -1423,9 +1407,6 @@ Result = match (read(city), read(level)) {
         let src = DataRecord::from(data);
         let target = model.transform(src, cache);
         let expect3 = DataField::from_chars("Result", "default");
-        assert_eq!(
-            target.field("Result").map(|s| s.as_field()),
-            Some(&expect3)
-        );
+        assert_eq!(target.field("Result").map(|s| s.as_field()), Some(&expect3));
     }
 }

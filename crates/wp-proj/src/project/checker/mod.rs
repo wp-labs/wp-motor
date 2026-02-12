@@ -366,7 +366,10 @@ fn print_text_summary(total: usize, stats: &SummaryCounts, comps: &CheckComponen
         println!("OML models: skipped");
     }
     if comps.semantic_dict {
-        println!("Semantic dict: {}/{} passed", stats.semantic_dict.ok, stats.semantic_dict.total);
+        println!(
+            "Semantic dict: {}/{} passed",
+            stats.semantic_dict.ok, stats.semantic_dict.total
+        );
     } else {
         println!("Semantic dict: skipped");
     }

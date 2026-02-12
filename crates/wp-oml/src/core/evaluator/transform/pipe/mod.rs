@@ -7,10 +7,10 @@ mod base64;
 mod escape;
 mod extract_word;
 mod net;
-pub mod semantic_dict_loader;  // 公开 semantic_dict_loader 模块
 mod other;
 mod path_url;
 mod pipe_operation;
+pub mod semantic_dict_loader; // 公开 semantic_dict_loader 模块
 mod time;
 
 // 导出语义词典加载器供 extract_word 模块使用
