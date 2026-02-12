@@ -50,6 +50,47 @@ impl FieldExtractor for MatchOperation {
                     );
                 }
             }
+            MatchSource::Triple(s1, s2, s3) => {
+                let k1 = s1.field_name().clone().unwrap_or(target.to_string());
+                let k2 = s2.field_name().clone().unwrap_or(target.to_string());
+                let k3 = s3.field_name().clone().unwrap_or(target.to_string());
+                let c1 = EvaluationTarget::new(k1, DataType::Auto);
+                let c2 = EvaluationTarget::new(k2, DataType::Auto);
+                let c3 = EvaluationTarget::new(k3, DataType::Auto);
+
+                let v1 = s1.extract_one(&c1, src, dst);
+                let v2 = s2.extract_one(&c2, src, dst);
+                let v3 = s3.extract_one(&c3, src, dst);
+                if let (Some(v1), Some(v2), Some(v3)) = (v1, v2, v3) {
+                    for i in self.items() {
+                        if i.is_match((&v1, &v2, &v3)) {
+                            return i.result().extract_one(target, src, dst);
+                        }
+                    }
+                }
+            }
+            MatchSource::Quadruple(s1, s2, s3, s4) => {
+                let k1 = s1.field_name().clone().unwrap_or(target.to_string());
+                let k2 = s2.field_name().clone().unwrap_or(target.to_string());
+                let k3 = s3.field_name().clone().unwrap_or(target.to_string());
+                let k4 = s4.field_name().clone().unwrap_or(target.to_string());
+                let c1 = EvaluationTarget::new(k1, DataType::Auto);
+                let c2 = EvaluationTarget::new(k2, DataType::Auto);
+                let c3 = EvaluationTarget::new(k3, DataType::Auto);
+                let c4 = EvaluationTarget::new(k4, DataType::Auto);
+
+                let v1 = s1.extract_one(&c1, src, dst);
+                let v2 = s2.extract_one(&c2, src, dst);
+                let v3 = s3.extract_one(&c3, src, dst);
+                let v4 = s4.extract_one(&c4, src, dst);
+                if let (Some(v1), Some(v2), Some(v3), Some(v4)) = (v1, v2, v3, v4) {
+                    for i in self.items() {
+                        if i.is_match((&v1, &v2, &v3, &v4)) {
+                            return i.result().extract_one(target, src, dst);
+                        }
+                    }
+                }
+            }
         }
         if let Some(default) = self.default() {
             return default.result().extract_one(target, src, dst);
@@ -101,6 +142,47 @@ impl FieldExtractor for MatchOperation {
                         sec_val.get_name(),
                         sec_val.get_meta(),
                     );
+                }
+            }
+            MatchSource::Triple(s1, s2, s3) => {
+                let k1 = s1.field_name().clone().unwrap_or(target.to_string());
+                let k2 = s2.field_name().clone().unwrap_or(target.to_string());
+                let k3 = s3.field_name().clone().unwrap_or(target.to_string());
+                let c1 = EvaluationTarget::new(k1, DataType::Auto);
+                let c2 = EvaluationTarget::new(k2, DataType::Auto);
+                let c3 = EvaluationTarget::new(k3, DataType::Auto);
+
+                let v1 = s1.extract_one(&c1, src, dst);
+                let v2 = s2.extract_one(&c2, src, dst);
+                let v3 = s3.extract_one(&c3, src, dst);
+                if let (Some(v1), Some(v2), Some(v3)) = (v1, v2, v3) {
+                    for i in self.items() {
+                        if i.is_match((&v1, &v2, &v3)) {
+                            return i.result().extract_storage(target, src, dst);
+                        }
+                    }
+                }
+            }
+            MatchSource::Quadruple(s1, s2, s3, s4) => {
+                let k1 = s1.field_name().clone().unwrap_or(target.to_string());
+                let k2 = s2.field_name().clone().unwrap_or(target.to_string());
+                let k3 = s3.field_name().clone().unwrap_or(target.to_string());
+                let k4 = s4.field_name().clone().unwrap_or(target.to_string());
+                let c1 = EvaluationTarget::new(k1, DataType::Auto);
+                let c2 = EvaluationTarget::new(k2, DataType::Auto);
+                let c3 = EvaluationTarget::new(k3, DataType::Auto);
+                let c4 = EvaluationTarget::new(k4, DataType::Auto);
+
+                let v1 = s1.extract_one(&c1, src, dst);
+                let v2 = s2.extract_one(&c2, src, dst);
+                let v3 = s3.extract_one(&c3, src, dst);
+                let v4 = s4.extract_one(&c4, src, dst);
+                if let (Some(v1), Some(v2), Some(v3), Some(v4)) = (v1, v2, v3, v4) {
+                    for i in self.items() {
+                        if i.is_match((&v1, &v2, &v3, &v4)) {
+                            return i.result().extract_storage(target, src, dst);
+                        }
+                    }
                 }
             }
         }

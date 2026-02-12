@@ -56,6 +56,28 @@ fn match_cond2_item(data: &mut &str) -> WResult<MatchCase> {
     Ok(MatchCase::new(cond, calc))
 }
 
+fn match_cond3_item(data: &mut &str) -> WResult<MatchCase> {
+    multispace0.parse_next(data)?;
+    let cond = match_cond3
+        .context(ctx_desc(">> (<match_value>,<match_value>,<match_value>) "))
+        .parse_next(data)?;
+    let calc = match_calc_target.parse_next(data)?;
+
+    Ok(MatchCase::new(cond, calc))
+}
+
+fn match_cond4_item(data: &mut &str) -> WResult<MatchCase> {
+    multispace0.parse_next(data)?;
+    let cond = match_cond4
+        .context(ctx_desc(
+            ">> (<match_value>,<match_value>,<match_value>,<match_value>) ",
+        ))
+        .parse_next(data)?;
+    let calc = match_calc_target.parse_next(data)?;
+
+    Ok(MatchCase::new(cond, calc))
+}
+
 fn match_calc_target(data: &mut &str) -> WResult<NestedAccessor> {
     symbol_match_to.parse_next(data)?;
     let gw = alt((
@@ -88,6 +110,34 @@ fn match_cond2(data: &mut &str) -> WResult<MatchCondition> {
     symbol_comma.parse_next(&mut code_data)?;
     let sec = match_cond1.parse_next(&mut code_data)?;
     Ok(MatchCondition::Double(fst, sec))
+}
+
+fn match_cond3(data: &mut &str) -> WResult<MatchCondition> {
+    multispace0.parse_next(data)?;
+    let code = get_scope(data, '(', ')')?;
+    let mut code_data: &str = code;
+
+    let a = match_cond1.parse_next(&mut code_data)?;
+    symbol_comma.parse_next(&mut code_data)?;
+    let b = match_cond1.parse_next(&mut code_data)?;
+    symbol_comma.parse_next(&mut code_data)?;
+    let c = match_cond1.parse_next(&mut code_data)?;
+    Ok(MatchCondition::Triple(a, b, c))
+}
+
+fn match_cond4(data: &mut &str) -> WResult<MatchCondition> {
+    multispace0.parse_next(data)?;
+    let code = get_scope(data, '(', ')')?;
+    let mut code_data: &str = code;
+
+    let a = match_cond1.parse_next(&mut code_data)?;
+    symbol_comma.parse_next(&mut code_data)?;
+    let b = match_cond1.parse_next(&mut code_data)?;
+    symbol_comma.parse_next(&mut code_data)?;
+    let c = match_cond1.parse_next(&mut code_data)?;
+    symbol_comma.parse_next(&mut code_data)?;
+    let d = match_cond1.parse_next(&mut code_data)?;
+    Ok(MatchCondition::Quadruple(a, b, c, d))
 }
 
 fn cond_eq(data: &mut &str) -> WResult<MatchCond> {
@@ -258,6 +308,12 @@ pub fn oml_match(data: &mut &str) -> WResult<MatchOperation> {
         MatchSource::Double(_, _) => oml_match2_body
             .context(ctx_desc(">> { *<match_item> }"))
             .parse_next(data)?,
+        MatchSource::Triple(_, _, _) => oml_match3_body
+            .context(ctx_desc(">> { *<match_item> }"))
+            .parse_next(data)?,
+        MatchSource::Quadruple(_, _, _, _) => oml_match4_body
+            .context(ctx_desc(">> { *<match_item> }"))
+            .parse_next(data)?,
     };
     Ok(MatchOperation::new(oct, item, default))
 }
@@ -277,6 +333,24 @@ pub fn oml_match2_body(data: &mut &str) -> WResult<(Vec<MatchCase>, Option<Match
     let item = repeat(1.., match_cond2_item).parse_next(data)?;
     let default = opt(match_cond_default_item).parse_next(data)?;
     //.err_reset(data, &cp)?
+    symbol_brace_end.parse_next(data)?;
+    Ok((item, default))
+}
+
+pub fn oml_match3_body(data: &mut &str) -> WResult<(Vec<MatchCase>, Option<MatchCase>)> {
+    let _ = multispace0.parse_next(data)?;
+    symbol_brace_beg.parse_next(data)?;
+    let item = repeat(1.., match_cond3_item).parse_next(data)?;
+    let default = opt(match_cond_default_item).parse_next(data)?;
+    symbol_brace_end.parse_next(data)?;
+    Ok((item, default))
+}
+
+pub fn oml_match4_body(data: &mut &str) -> WResult<(Vec<MatchCase>, Option<MatchCase>)> {
+    let _ = multispace0.parse_next(data)?;
+    symbol_brace_beg.parse_next(data)?;
+    let item = repeat(1.., match_cond4_item).parse_next(data)?;
+    let default = opt(match_cond_default_item).parse_next(data)?;
     symbol_brace_end.parse_next(data)?;
     Ok((item, default))
 }

@@ -336,6 +336,17 @@ fn rewrite_match_condition(
             rewrite_single_match_cond(c1, const_fields)?;
             rewrite_single_match_cond(c2, const_fields)?;
         }
+        MatchCondition::Triple(c1, c2, c3) => {
+            rewrite_single_match_cond(c1, const_fields)?;
+            rewrite_single_match_cond(c2, const_fields)?;
+            rewrite_single_match_cond(c3, const_fields)?;
+        }
+        MatchCondition::Quadruple(c1, c2, c3, c4) => {
+            rewrite_single_match_cond(c1, const_fields)?;
+            rewrite_single_match_cond(c2, const_fields)?;
+            rewrite_single_match_cond(c3, const_fields)?;
+            rewrite_single_match_cond(c4, const_fields)?;
+        }
         MatchCondition::Default => {}
     }
     Ok(())

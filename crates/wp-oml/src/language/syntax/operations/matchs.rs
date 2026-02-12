@@ -106,6 +106,8 @@ pub enum MatchCond {
 pub enum MatchCondition {
     Single(MatchCond),
     Double(MatchCond, MatchCond),
+    Triple(MatchCond, MatchCond, MatchCond),
+    Quadruple(MatchCond, MatchCond, MatchCond, MatchCond),
     Default,
 }
 
@@ -117,6 +119,12 @@ impl Display for MatchCondition {
             }
             MatchCondition::Double(fst, sec) => {
                 write!(f, "({}, {})", fst, sec)?;
+            }
+            MatchCondition::Triple(a, b, c) => {
+                write!(f, "({}, {}, {})", a, b, c)?;
+            }
+            MatchCondition::Quadruple(a, b, c, d) => {
+                write!(f, "({}, {}, {}, {})", a, b, c, d)?;
             }
             MatchCondition::Default => {
                 write!(f, "_")?;
@@ -491,7 +499,9 @@ impl MatchAble<&DataField> for MatchCondition {
     fn is_match(&self, value: &DataField) -> bool {
         match self {
             MatchCondition::Single(s) => s.is_match(value),
-            MatchCondition::Double(_, _) => {
+            MatchCondition::Double(_, _)
+            | MatchCondition::Triple(_, _, _)
+            | MatchCondition::Quadruple(_, _, _, _) => {
                 unreachable!()
             }
             MatchCondition::Default => true,
@@ -502,11 +512,40 @@ impl MatchAble<&DataField> for MatchCondition {
 impl MatchAble<(&DataField, &DataField)> for MatchCondition {
     fn is_match(&self, value: (&DataField, &DataField)) -> bool {
         match self {
-            MatchCondition::Single(_) => {
+            MatchCondition::Single(_)
+            | MatchCondition::Triple(_, _, _)
+            | MatchCondition::Quadruple(_, _, _, _) => {
                 unreachable!()
             }
             MatchCondition::Double(fst, sec) => fst.is_match(value.0) && sec.is_match(value.1),
             MatchCondition::Default => true,
+        }
+    }
+}
+
+impl MatchAble<(&DataField, &DataField, &DataField)> for MatchCondition {
+    fn is_match(&self, value: (&DataField, &DataField, &DataField)) -> bool {
+        match self {
+            MatchCondition::Triple(a, b, c) => {
+                a.is_match(value.0) && b.is_match(value.1) && c.is_match(value.2)
+            }
+            MatchCondition::Default => true,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl MatchAble<(&DataField, &DataField, &DataField, &DataField)> for MatchCondition {
+    fn is_match(&self, value: (&DataField, &DataField, &DataField, &DataField)) -> bool {
+        match self {
+            MatchCondition::Quadruple(a, b, c, d) => {
+                a.is_match(value.0)
+                    && b.is_match(value.1)
+                    && c.is_match(value.2)
+                    && d.is_match(value.3)
+            }
+            MatchCondition::Default => true,
+            _ => unreachable!(),
         }
     }
 }
@@ -519,6 +558,18 @@ impl MatchAble<&DataField> for MatchCase {
 
 impl MatchAble<(&DataField, &DataField)> for MatchCase {
     fn is_match(&self, value: (&DataField, &DataField)) -> bool {
+        self.cond.is_match(value)
+    }
+}
+
+impl MatchAble<(&DataField, &DataField, &DataField)> for MatchCase {
+    fn is_match(&self, value: (&DataField, &DataField, &DataField)) -> bool {
+        self.cond.is_match(value)
+    }
+}
+
+impl MatchAble<(&DataField, &DataField, &DataField, &DataField)> for MatchCase {
+    fn is_match(&self, value: (&DataField, &DataField, &DataField, &DataField)) -> bool {
         self.cond.is_match(value)
     }
 }
@@ -600,6 +651,8 @@ pub struct MatchOperation {
 pub enum MatchSource {
     Single(DirectAccessor),
     Double(DirectAccessor, DirectAccessor),
+    Triple(DirectAccessor, DirectAccessor, DirectAccessor),
+    Quadruple(DirectAccessor, DirectAccessor, DirectAccessor, DirectAccessor),
 }
 
 impl MatchOperation {
@@ -628,6 +681,12 @@ impl Display for MatchOperation {
             }
             MatchSource::Double(fst, sec) => {
                 writeln!(f, "match ({}, {}) {{", fst, sec)?;
+            }
+            MatchSource::Triple(a, b, c) => {
+                writeln!(f, "match ({}, {}, {}) {{", a, b, c)?;
+            }
+            MatchSource::Quadruple(a, b, c, d) => {
+                writeln!(f, "match ({}, {}, {}, {}) {{", a, b, c, d)?;
             }
         }
         for o in self.items.iter() {

@@ -200,6 +200,14 @@ pub fn oml_crate_tuple(data: &mut &str) -> WResult<MatchSource> {
     let fst = oml_var_get.parse_next(&mut code_data)?;
     symbol_comma.parse_next(&mut code_data)?;
     let sec = oml_var_get.parse_next(&mut code_data)?;
+    if symbol_comma.parse_next(&mut code_data).is_ok() {
+        let trd = oml_var_get.parse_next(&mut code_data)?;
+        if symbol_comma.parse_next(&mut code_data).is_ok() {
+            let fth = oml_var_get.parse_next(&mut code_data)?;
+            return Ok(MatchSource::Quadruple(fst, sec, trd, fth));
+        }
+        return Ok(MatchSource::Triple(fst, sec, trd));
+    }
     Ok(MatchSource::Double(fst, sec))
 }
 
