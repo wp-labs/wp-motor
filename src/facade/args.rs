@@ -121,6 +121,8 @@ impl ParseArgs {
             // 阶段开关来自 EngineConfig（也可后续考虑 CLI 覆盖）
             skip_parse: conf.skip_parse(),
             skip_sink: conf.skip_sink(),
+            // 语义分析开关来自 EngineConfig [semantic].enabled
+            semantic_enabled: conf.semantic().enabled,
             ..Default::default()
         })
     }

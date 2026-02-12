@@ -8,7 +8,7 @@ use wp_model_core::model::types::value::ObjectValue;
 use wp_model_core::model::{DataField, Value};
 
 // 导入语义词典
-use super::semantic_dict_loader::SEMANTIC_DICT;
+use super::semantic_dict_loader::{SEMANTIC_DICT, is_semantic_enabled};
 
 lazy_static! {
     // Jieba 中文分词器实例（全局单例）
@@ -308,6 +308,9 @@ fn analyze_subject_object_with_debug(
 /// - debug：调试信息（仅在debug模式下）
 impl ValueProcessor for ExtractSubjectObject {
     fn value_cacu(&self, in_val: DataField) -> DataField {
+        if !is_semantic_enabled() {
+            return DataField::from_obj(in_val.get_name().to_string(), ObjectValue::default());
+        }
         match in_val.get_value() {
             Value::Chars(x) => {
                 let cleaned = x.trim();
@@ -364,6 +367,9 @@ impl ValueProcessor for ExtractSubjectObject {
 /// 3. 回退：第一个非空分词
 impl ValueProcessor for ExtractMainWord {
     fn value_cacu(&self, in_val: DataField) -> DataField {
+        if !is_semantic_enabled() {
+            return DataField::from_chars(in_val.get_name().to_string(), String::new());
+        }
         match in_val.get_value() {
             Value::Chars(x) => {
                 // 步骤1：清洗文本（去除首尾空格）
@@ -416,13 +422,20 @@ impl ValueProcessor for ExtractMainWord {
 #[cfg(test)]
 mod tests {
     use crate::core::DataTransformer;
+    use crate::core::evaluator::transform::pipe::semantic_dict_loader::set_semantic_enabled;
     use crate::parser::oml_parse_raw;
     use orion_error::TestAssert;
     use wp_data_model::cache::FieldQueryCache;
     use wp_model_core::model::{DataField, DataRecord, Value};
 
+    /// 测试前启用语义功能开关
+    fn enable_semantic() {
+        set_semantic_enabled(true);
+    }
+
     #[test]
     fn test_extract_main_word() {
+        enable_semantic();
         let cache = &mut FieldQueryCache::default();
         let data = vec![
             // 英文测试
@@ -541,6 +554,7 @@ mod tests {
 
     #[test]
     fn test_extract_main_word_english() {
+        enable_semantic();
         let cache = &mut FieldQueryCache::default();
         let data = vec![
             // 英文句子测试
@@ -709,6 +723,7 @@ mod tests {
 
     #[test]
     fn test_extract_subject_object() {
+        enable_semantic();
         let cache = &mut FieldQueryCache::default();
         let data = vec![
             // 英文：主体 + 状态
@@ -967,6 +982,7 @@ mod tests {
 
     #[test]
     fn test_accuracy() {
+        enable_semantic();
         let cache = &mut FieldQueryCache::default();
 
         let mut total = 0;
@@ -1105,6 +1121,7 @@ mod tests {
 
     #[test]
     fn test_debug_mode() {
+        enable_semantic();
         use super::analyze_subject_object_with_debug;
 
         // 测试debug信息输出

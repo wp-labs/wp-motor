@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Compatible with both value matching and function matching
 - **OML NLP**: Add `extract_main_word` and `extract_subject_object` pipe functions for Chinese text analysis
 - **OML NLP**: Add configurable NLP dictionary system, support custom dictionary via `NLP_DICT_CONFIG` environment variable
+- **Engine Config**: Add `[semantic]` section in `wparse.toml` to control NLP semantic dictionary loading (`enabled = false` by default, saves ~20MB memory when disabled)
 
 ### Changed
 - **OML Match**: Multi-source match now supports any number of source fields (no longer limited to 2/3/4)

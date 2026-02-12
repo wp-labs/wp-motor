@@ -11,6 +11,9 @@ parallel = 2
 speed_limit = 10000
 robust = "normal"
 
+[semantic]
+enabled = true
+
 [log_conf]
 level = "warn,ctrl=info,launch=info"
 output = "File"

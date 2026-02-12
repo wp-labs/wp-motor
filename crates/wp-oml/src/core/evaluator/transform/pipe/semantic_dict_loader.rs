@@ -3,6 +3,20 @@ use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// 语义功能全局开关（默认关闭）
+static SEMANTIC_ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// 设置语义功能开关（由主 crate 在启动时调用）
+pub fn set_semantic_enabled(v: bool) {
+    SEMANTIC_ENABLED.store(v, Ordering::Relaxed);
+}
+
+/// 查询语义功能是否启用
+pub fn is_semantic_enabled() -> bool {
+    SEMANTIC_ENABLED.load(Ordering::Relaxed)
+}
 
 /// 语义词典配置文件版本
 const SUPPORTED_VERSION: u32 = 1;
