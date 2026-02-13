@@ -389,28 +389,19 @@ mod tests {
         let conf = WplField::try_parse(r#"kv"#).assert();
         let field = ParserTUnit::new(KeyValP::default(), conf)
             .verify_parse_suc_meta(&mut data, DataType::Chars);
-        assert_eq!(
-            field[0],
-            DataField::from_chars("fn(arg)", "hello")
-        );
+        assert_eq!(field[0], DataField::from_chars("fn(arg)", "hello"));
 
         let mut data = r#"list<int>=100"#;
         let conf = WplField::try_parse(r#"kv"#).assert();
         let field = ParserTUnit::new(KeyValP::default(), conf)
             .verify_parse_suc_meta(&mut data, DataType::Chars);
-        assert_eq!(
-            field[0],
-            DataField::from_chars("list<int>", "100")
-        );
+        assert_eq!(field[0], DataField::from_chars("list<int>", "100"));
 
         let mut data = r#"set{a}:value"#;
         let conf = WplField::try_parse(r#"kv"#).assert();
         let field = ParserTUnit::new(KeyValP::default(), conf)
             .verify_parse_suc_meta(&mut data, DataType::Chars);
-        assert_eq!(
-            field[0],
-            DataField::from_chars("set{a}", "value")
-        );
+        assert_eq!(field[0], DataField::from_chars("set{a}", "value"));
 
         Ok(())
     }

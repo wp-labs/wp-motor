@@ -52,7 +52,10 @@ pub fn take_key<'a>(input: &mut &'a str) -> WResult<&'a str> {
 pub fn take_kv_key<'a>(input: &mut &'a str) -> WResult<&'a str> {
     take_while(1.., |c: char| {
         c.is_alphanumeric()
-            || matches!(c, '_' | '/' | '-' | '.' | '(' | ')' | '<' | '>' | '[' | ']' | '{' | '}')
+            || matches!(
+                c,
+                '_' | '/' | '-' | '.' | '(' | ')' | '<' | '>' | '[' | ']' | '{' | '}'
+            )
     })
     .parse_next(input)
 }
@@ -515,39 +518,24 @@ mod tests {
             take_kv_key.parse_peek("http/request!")
         );
         // parentheses
-        assert_eq!(
-            Ok(("=v", "fn(arg)")),
-            take_kv_key.parse_peek("fn(arg)=v")
-        );
+        assert_eq!(Ok(("=v", "fn(arg)")), take_kv_key.parse_peek("fn(arg)=v"));
         // angle brackets
         assert_eq!(
             Ok(("=1", "list<int>")),
             take_kv_key.parse_peek("list<int>=1")
         );
         // square brackets
-        assert_eq!(
-            Ok((":x", "arr[0]")),
-            take_kv_key.parse_peek("arr[0]:x")
-        );
+        assert_eq!(Ok((":x", "arr[0]")), take_kv_key.parse_peek("arr[0]:x"));
         // curly braces
-        assert_eq!(
-            Ok(("=ok", "set{a}")),
-            take_kv_key.parse_peek("set{a}=ok")
-        );
+        assert_eq!(Ok(("=ok", "set{a}")), take_kv_key.parse_peek("set{a}=ok"));
         // mixed brackets
         assert_eq!(
             Ok(("=v", "a(b)[c]<d>{e}")),
             take_kv_key.parse_peek("a(b)[c]<d>{e}=v")
         );
         // stops at '=' and ':'
-        assert_eq!(
-            Ok(("=val", "key(x)")),
-            take_kv_key.parse_peek("key(x)=val")
-        );
-        assert_eq!(
-            Ok((":val", "key(x)")),
-            take_kv_key.parse_peek("key(x):val")
-        );
+        assert_eq!(Ok(("=val", "key(x)")), take_kv_key.parse_peek("key(x)=val"));
+        assert_eq!(Ok((":val", "key(x)")), take_kv_key.parse_peek("key(x):val"));
     }
     #[test]
     fn test_quot_str() {
