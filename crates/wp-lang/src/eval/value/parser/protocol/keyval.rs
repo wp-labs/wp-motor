@@ -5,7 +5,7 @@ use crate::eval::runtime::field::FieldEvalUnit;
 use crate::eval::value::parse_def::PatternParser;
 use crate::eval::value::parser::physical::foundation::gen_chars;
 use crate::eval::value::parser::{ParserFactory, protocol};
-use crate::parser::utils::{quot_r_str, quot_str, take_key, window_path};
+use crate::parser::utils::{quot_r_str, quot_str, take_kv_key, window_path};
 use wp_model_core::model::FNameStr;
 derive_base_prs!(KeyValP);
 
@@ -25,7 +25,7 @@ impl PatternParser for KeyValP {
     ) -> ModalResult<()> {
         let _ = multispace0.parse_next(data)?;
         let (key, _, _) =
-            (take_key, multispace0, alt((literal(":"), literal("=")))).parse_next(data)?;
+            (take_kv_key, multispace0, alt((literal(":"), literal("=")))).parse_next(data)?;
         match fpu.group_enum {
             WplGroupType::SomeOf(_) => value_take(e_id, fpu, ups_sep, data, key, out),
             _ => protocol::take_sub_tdo(e_id, fpu, ups_sep, data, key, out),
@@ -381,5 +381,37 @@ mod tests {
             tdc.items.iter().map(|s| s.as_field()).collect::<Vec<_>>(),
             expected.iter().collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn test_kv_bracket_key() -> AnyResult<()> {
+        let mut data = r#"fn(arg)="hello""#;
+        let conf = WplField::try_parse(r#"kv"#).assert();
+        let field = ParserTUnit::new(KeyValP::default(), conf)
+            .verify_parse_suc_meta(&mut data, DataType::Chars);
+        assert_eq!(
+            field[0],
+            DataField::from_chars("fn(arg)", "hello")
+        );
+
+        let mut data = r#"list<int>=100"#;
+        let conf = WplField::try_parse(r#"kv"#).assert();
+        let field = ParserTUnit::new(KeyValP::default(), conf)
+            .verify_parse_suc_meta(&mut data, DataType::Chars);
+        assert_eq!(
+            field[0],
+            DataField::from_chars("list<int>", "100")
+        );
+
+        let mut data = r#"set{a}:value"#;
+        let conf = WplField::try_parse(r#"kv"#).assert();
+        let field = ParserTUnit::new(KeyValP::default(), conf)
+            .verify_parse_suc_meta(&mut data, DataType::Chars);
+        assert_eq!(
+            field[0],
+            DataField::from_chars("set{a}", "value")
+        );
+
+        Ok(())
     }
 }

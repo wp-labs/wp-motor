@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.16.0 Unreleased]
 
+### Changed
+- **wp-lang**: `kv`/`kvarr` key 解析支持括号类字符 `()`、`<>`、`[]`、`{}`，新增专用 `take_kv_key` 函数，不影响 WPL 语法层面其他模块的 key 解析
+
 ### Added
 - **OML NLP**: Add configurable NLP dictionary system for `extract_main_word` and `extract_subject_object` pipe functions
   - Externalize hardcoded dictionaries (core_pos, stop_words, domain_words, status_words, action_verbs, entity_nouns) to TOML configuration file

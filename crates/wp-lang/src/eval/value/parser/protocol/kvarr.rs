@@ -2,7 +2,7 @@ use super::super::prelude::*;
 use crate::ast::{DefaultSep, WplSepT};
 use crate::eval::runtime::field::FieldEvalUnit;
 use crate::eval::value::parse_def::PatternParser;
-use crate::parser::utils::{decode_escapes, interval_data, quot_str, take_key, take_to_end};
+use crate::parser::utils::{decode_escapes, interval_data, quot_str, take_kv_key, take_to_end};
 use serde_json::{Number, Value};
 use std::collections::HashMap;
 use winnow::token::{rest, take_until};
@@ -94,7 +94,7 @@ impl PatternParser for KvArrP {
 impl KvArrP {
     fn take_pair(data: &mut &str, sep: &WplSepT<Self>) -> ModalResult<(String, Value)> {
         multispace0.parse_next(data)?;
-        let key = take_key.parse_next(data)?;
+        let key = take_kv_key.parse_next(data)?;
         multispace0.parse_next(data)?;
         alt((literal('='), literal(':')))
             .context(ctx_desc("kv missing '=' or ':' "))
@@ -509,6 +509,28 @@ mod tests {
         assert_eq!(
             record.field("action").map(|s| s.as_field()),
             Some(&DataField::from_chars("action", "allow"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_kvarr_bracket_keys() -> AnyResult<()> {
+        let conf = WplField::try_parse("kvarr\\,").assert();
+        let mut data = "fn(arg)=\"hello\", list<int>=100, arr[0]=true";
+        let parser = ParserTUnit::new(KvArrP::default(), conf);
+        let fields = parser.verify_parse_suc(&mut data).assert();
+        let record = DataRecord::from(fields);
+        assert_eq!(
+            record.field("fn(arg)").map(|s| s.as_field()),
+            Some(&DataField::from_chars("fn(arg)", "hello"))
+        );
+        assert_eq!(
+            record.field("list<int>").map(|s| s.as_field()),
+            Some(&DataField::from_digit("list<int>", 100))
+        );
+        assert_eq!(
+            record.field("arr[0]").map(|s| s.as_field()),
+            Some(&DataField::from_bool("arr[0]", true))
         );
         Ok(())
     }

@@ -49,6 +49,14 @@ pub fn take_key<'a>(input: &mut &'a str) -> WResult<&'a str> {
     .parse_next(input)
 }
 
+pub fn take_kv_key<'a>(input: &mut &'a str) -> WResult<&'a str> {
+    take_while(1.., |c: char| {
+        c.is_alphanumeric()
+            || matches!(c, '_' | '/' | '-' | '.' | '(' | ')' | '<' | '>' | '[' | ']' | '{' | '}')
+    })
+    .parse_next(input)
+}
+
 pub fn take_var_name<'a>(input: &mut &'a str) -> WResult<&'a str> {
     take_while(1.., |c: char| {
         c.is_alphanumeric() || c == '_' || c == '.' || c == '-'
@@ -460,7 +468,7 @@ where
 mod tests {
     use super::*;
     use crate::parser::error::error_detail;
-    use crate::parser::utils::{quot_str, take_key, take_parentheses, take_to_end};
+    use crate::parser::utils::{quot_str, take_key, take_kv_key, take_parentheses, take_to_end};
     use crate::parser::wpl_pkg::wpl_package;
     use orion_error::TestAssert;
     use winnow::LocatingSlice;
@@ -495,6 +503,50 @@ mod tests {
         assert_eq!(
             Ok(("!", "123http/request")),
             take_key.parse_peek("123http/request!")
+        );
+    }
+    #[test]
+    fn test_kv_key_ident() {
+        // basic key chars (same as take_key)
+        assert_eq!(Ok(("", "key")), take_kv_key.parse_peek("key"));
+        assert_eq!(Ok(("!", "key")), take_kv_key.parse_peek("key!"));
+        assert_eq!(
+            Ok(("!", "http/request")),
+            take_kv_key.parse_peek("http/request!")
+        );
+        // parentheses
+        assert_eq!(
+            Ok(("=v", "fn(arg)")),
+            take_kv_key.parse_peek("fn(arg)=v")
+        );
+        // angle brackets
+        assert_eq!(
+            Ok(("=1", "list<int>")),
+            take_kv_key.parse_peek("list<int>=1")
+        );
+        // square brackets
+        assert_eq!(
+            Ok((":x", "arr[0]")),
+            take_kv_key.parse_peek("arr[0]:x")
+        );
+        // curly braces
+        assert_eq!(
+            Ok(("=ok", "set{a}")),
+            take_kv_key.parse_peek("set{a}=ok")
+        );
+        // mixed brackets
+        assert_eq!(
+            Ok(("=v", "a(b)[c]<d>{e}")),
+            take_kv_key.parse_peek("a(b)[c]<d>{e}=v")
+        );
+        // stops at '=' and ':'
+        assert_eq!(
+            Ok(("=val", "key(x)")),
+            take_kv_key.parse_peek("key(x)=val")
+        );
+        assert_eq!(
+            Ok((":val", "key(x)")),
+            take_kv_key.parse_peek("key(x):val")
         );
     }
     #[test]
