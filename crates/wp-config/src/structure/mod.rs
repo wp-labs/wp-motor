@@ -9,7 +9,8 @@ mod sink;
 mod source;
 
 pub use group::{
-    Basis, ExpectMode, FixedGroup, FlexGroup, GroupExpectSpec, SinkGroupConf, extend_matches,
+    Basis, ExpectMode, FixedGroup, FlexGroup, GroupExpectSpec, SinkGroupConf,
+    default_flush_interval_ms, extend_matches,
 };
 pub use io::{FileSinkConf, SyslogSinkConf, SyslogSourceConf};
 pub use sink::{SinkExpectOverride, SinkInstanceConf, SinkRouteConf};

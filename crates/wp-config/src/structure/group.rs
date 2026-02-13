@@ -33,7 +33,14 @@ pub struct FlexGroup {
     /// 组级期望（仅公共参数，值域在每个 sink 下的 `sinks.expect` 覆盖）
     #[serde(default)]
     pub expect: Option<GroupExpectSpec>,
+    /// 刷新间隔，单位：毫秒，默认 3000ms (3秒)
+    #[serde(default = "default_flush_interval_ms")]
+    pub flush_interval_ms: u64,
     pub sinks: Vec<SinkInstanceConf>,
+}
+
+pub fn default_flush_interval_ms() -> u64 {
+    3000
 }
 
 impl EnvEvaluable<FlexGroup> for FlexGroup {
@@ -175,6 +182,12 @@ impl SinkGroupConf {
             SinkGroupConf::Fixed(x) => x.append(conf),
         }
     }
+    pub fn flush_interval_ms(&self) -> u64 {
+        match self {
+            SinkGroupConf::Flexi(x) => x.flush_interval_ms,
+            SinkGroupConf::Fixed(x) => x.flush_interval_ms,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Default, Getters)]
@@ -186,6 +199,9 @@ pub struct FixedGroup {
     /// 并行度（用于 infra Fixed 组），默认 1；最大 10
     #[serde(default)]
     pub parallel: usize,
+    /// 刷新间隔，单位：毫秒，默认 3000ms (3秒)
+    #[serde(default = "default_flush_interval_ms")]
+    pub flush_interval_ms: u64,
 }
 impl EnvEvaluable<FixedGroup> for FixedGroup {
     fn env_eval(mut self, dict: &orion_variate::EnvDict) -> FixedGroup {
@@ -224,6 +240,7 @@ impl FlexGroup {
             filter: None,
             rule: WildArray::new(rule),
             expect: None,
+            flush_interval_ms: default_flush_interval_ms(),
             sinks: vec![SinkInstanceConf::null_new(
                 "test_sink".to_string(),
                 TextFmt::Raw,
@@ -241,6 +258,7 @@ impl FlexGroup {
             filter: None,
             rule: WildArray::default(),
             expect: None,
+            flush_interval_ms: default_flush_interval_ms(),
             sinks,
         }
     }
@@ -330,6 +348,7 @@ impl FlexGroup {
             filter: filter.map(|x| x.to_string()),
             rule: WildArray::default(),
             expect: None,
+            flush_interval_ms: default_flush_interval_ms(),
             sinks: vec![],
         }
     }
@@ -350,6 +369,7 @@ impl FlexGroup {
             tags: Vec::new(),
             filter: filter.map(|x| x.into()),
             rule: rule_matches,
+            flush_interval_ms: default_flush_interval_ms(),
             expect: None,
             sinks: vec![sink_conf],
         }
@@ -395,6 +415,7 @@ mod tests {
             tags: vec!["env-${TAG}".to_string()],
             filter: Some("${GROUP_FILTER}".to_string()),
             expect: None,
+            flush_interval_ms: default_flush_interval_ms(),
             sinks: vec![sink],
         };
 

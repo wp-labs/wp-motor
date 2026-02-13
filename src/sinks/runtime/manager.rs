@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
+use winnow::stream::ToUsize;
 use wp_model_core::model::{DataField, fmt_def::TextFmt};
 
 // 全局计数器，用于生成唯一的救援文件序号
@@ -16,7 +17,7 @@ static RESCUE_FILE_SEQ: AtomicU64 = AtomicU64::new(0);
 use crate::runtime::errors::err4_send_to_sink;
 use crate::sinks::RescueFileSink;
 use crate::sinks::{
-    ASinkHandle, ASinkSender, SinkBackendType, SinkDataEnum, SinkFFVPackage, SinkPackage,
+    ASinkHandle, ASinkSender, ProcMeta, SinkBackendType, SinkDataEnum, SinkFFVPackage, SinkPackage,
     SinkStrPackage,
 };
 use crate::stat::MonSend;
@@ -45,6 +46,8 @@ pub struct SinkRuntime {
     pub primary: SinkBackendType,
     rescue: String,
     cond: Option<Expression<DataField, RustSymbol>>,
+    batch_size: usize,
+    buffer: Vec<Arc<DataRecord>>,
     status: RuntimeStautus,
     normal_stat: MetricCollectors,
     backup_stat: MetricCollectors,
@@ -68,6 +71,14 @@ impl SinkRuntime {
         let backup_stat = MetricCollectors::new(backup_name.clone(), stat_reqs);
         info_ctrl!("create sink:{} ", conf.full_name());
         let pre_tags = Self::compile_tags(&conf);
+        let mut batch_size = 1024;
+        // 从配置读取缓冲区大小
+        if let Some(buffer_size) = conf.core.params.get("batch_size")
+            && let Some(size) = buffer_size.as_u64()
+        {
+            batch_size = size.to_usize();
+        }
+
         Self {
             rescue,
             //backup_name,
@@ -76,6 +87,8 @@ impl SinkRuntime {
             pre_tags,
             primary: sink,
             cond,
+            batch_size,
+            buffer: Vec::with_capacity(batch_size),
             normal_stat,
             backup_stat,
             status: RuntimeStautus::Ready,
@@ -223,6 +236,65 @@ impl SinkRuntime {
     }
 
     /// 批量发送记录数据包到 Sink
+    /// 通用的批量发送记录方法，发送 buffer 中的数据
+    async fn flush_records(
+        &mut self,
+        bad_s: Option<&ASinkSender>,
+        mon: Option<&MonSend>,
+    ) -> SinkResult<()> {
+        if self.buffer.is_empty() {
+            return Ok(());
+        }
+
+        // 提取 buffer 内容，避免借用冲突
+        let records = std::mem::take(&mut self.buffer);
+        let ids: Vec<u64> = (0..records.len() as u64).collect();
+
+        // 统计开始
+        for record in &records {
+            self.stat_beg(&SinkDataEnum::Rec(
+                ProcMeta::Rule("flush".into()),
+                record.clone(),
+            ));
+        }
+
+        loop {
+            match self.primary.sink_records(records.clone()).await {
+                Ok(()) => {
+                    // 统计结束
+                    for record in &records {
+                        self.stat_end(&SinkDataEnum::Rec(
+                            ProcMeta::Rule("flush".into()),
+                            record.clone(),
+                        ));
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    for e_id in &ids {
+                        error_edata!(*e_id, "flush sink data failed: {}", e);
+                    }
+                    if self.handle_send_error(&e, bad_s, mon).await? {
+                        continue;
+                    } else {
+                        // 失败时将数据放回 buffer
+                        self.buffer = records;
+                        // 统计结束 - 在放回 buffer 后，先克隆数据再调用 stat_end
+                        let buffer_copy: Vec<Arc<DataRecord>> = self.buffer.clone();
+                        for record in buffer_copy {
+                            self.stat_end(&SinkDataEnum::Rec(
+                                ProcMeta::Rule("flush".into()),
+                                record.clone(),
+                            ));
+                        }
+                        return Err(e);
+                    }
+                }
+            }
+        }
+    }
+
+    /// 批量发送记录数据包到 Sink
     pub async fn send_package_to_sink(
         &mut self,
         package: &SinkPackage,
@@ -232,39 +304,27 @@ impl SinkRuntime {
         if package.is_empty() {
             return Ok(());
         }
-        let mut ids: Vec<u64> = Vec::with_capacity(package.len());
 
-        self.record_package_stats_begin_rec(package);
-        loop {
-            let records: Vec<Arc<DataRecord>> = package
-                .iter()
-                .map(|unit| {
-                    ids.push(*unit.id());
-                    unit.data().clone()
-                })
-                .collect();
-            if records.is_empty() {
-                self.record_package_stats_end_rec(package);
-                return Ok(());
-            }
-            match self.primary.sink_records(records).await {
-                Ok(()) => {
-                    self.record_package_stats_end_rec(package);
-                    return Ok(());
-                }
-                Err(e) => {
-                    for e_id in &ids {
-                        error_edata!(*e_id, "sink data failed: {}", e);
-                    }
-                    if self.handle_send_error(&e, bad_s, mon).await? {
-                        continue;
-                    } else {
-                        self.record_package_stats_end_rec(package);
-                        return Err(e);
-                    }
-                }
+        // 将 package 中的数据添加到 buffer
+        for unit in package.iter() {
+            self.buffer.push(unit.data().clone());
+
+            // 当 buffer 达到批次大小时自动 flush
+            if self.buffer.len() >= self.batch_size {
+                self.flush_records(bad_s, mon).await?;
             }
         }
+
+        Ok(())
+    }
+
+    /// 公开的 flush 方法，用于手动触发 buffer 刷新
+    pub async fn flush(
+        &mut self,
+        bad_s: Option<&ASinkSender>,
+        mon: Option<&MonSend>,
+    ) -> SinkResult<()> {
+        self.flush_records(bad_s, mon).await
     }
 
     /// 批量发送 FFV 数据包到 Sink
@@ -355,13 +415,6 @@ impl SinkRuntime {
         }
     }
 
-    /// 记录包的统计开始信息
-    fn record_package_stats_begin_rec(&mut self, package: &SinkPackage) {
-        for unit in package {
-            self.stat_beg(&SinkDataEnum::Rec(unit.meta().clone(), unit.data().clone()));
-        }
-    }
-
     /// 记录 FFV 包的统计开始信息
     fn record_package_stats_begin_ffv(&mut self, package: &SinkFFVPackage) {
         for unit in package {
@@ -373,13 +426,6 @@ impl SinkRuntime {
     fn record_package_stats_begin_str(&mut self, package: &SinkStrPackage) {
         for unit in package {
             self.stat_beg(&SinkDataEnum::Raw(unit.data().clone()));
-        }
-    }
-
-    /// 记录包的统计结束信息
-    fn record_package_stats_end_rec(&mut self, package: &SinkPackage) {
-        for unit in package {
-            self.stat_end(&SinkDataEnum::Rec(unit.meta().clone(), unit.data().clone()));
         }
     }
 

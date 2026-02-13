@@ -94,34 +94,38 @@ impl InfraChannel {
         drain_state: &mut DrainState,
         run_ctrl: &mut TaskController,
     ) -> SinkResult<bool> {
-        if let Some(pkg) = pkg_opt {
-            if InfraSinkType::Default == groups && !pkg.is_empty() {
-                debug_data!("sink to default! batch size: {}", pkg.len());
-            }
+        match pkg_opt {
+            Some(pkg) => {
+                if InfraSinkType::Default == groups && !pkg.is_empty() {
+                    debug_data!("sink to default! batch size: {}", pkg.len());
+                }
 
-            // Use batch send: maintains batch data flow to underlying sinks
-            // Underlying sinks decide whether to process one-by-one (real-time) or in batch (performance)
-            let processed = self
-                .dispatcher
-                .group_sink_batch_direct(pkg, Some(&self.bad_sink_s), Some(&self.mon_send))
-                .await?;
+                // Use batch send: maintains batch data flow to underlying sinks
+                // Underlying sinks decide whether to process one-by-one (real-time) or in batch (performance)
+                let processed = self
+                    .dispatcher
+                    .group_sink_batch_direct(pkg, Some(&self.bad_sink_s), Some(&self.mon_send))
+                    .await?;
 
-            if processed > 0 {
-                run_ctrl.rec_task_suc_cnt(processed);
-            } else {
-                run_ctrl.rec_task_idle();
+                if processed > 0 {
+                    run_ctrl.rec_task_suc_cnt(processed);
+                } else {
+                    run_ctrl.rec_task_idle();
+                }
+                Ok(false)
             }
-            return Ok(false);
+            None => {
+                self.mark_closed();
+                Ok(match drain_state.channel_closed_is_drained() {
+                    DrainEvent::Drained => {
+                        info_ctrl!("infra sinks drain complete");
+                        true
+                    }
+                    DrainEvent::AllClosed => true,
+                    DrainEvent::Pending => false,
+                })
+            }
         }
-        self.mark_closed();
-        Ok(match drain_state.channel_closed_is_drained() {
-            DrainEvent::Drained => {
-                info_ctrl!("infra sinks drain complete");
-                true
-            }
-            DrainEvent::AllClosed => true,
-            DrainEvent::Pending => false,
-        })
     }
 
     fn freeze_all(&mut self) {
@@ -150,6 +154,7 @@ impl SinkWork {
         mon_send: MonSend,
         bad_sink_s: ASinkSender,
         mut fix_sink_r: ASinkReceiver,
+        flush_interval_ms: u64,
     ) -> SinkResult<()> {
         let mut ctx = OperationContext::want("sink start proc");
         let name = format!("work-sink:{:20}", sink.conf().name());
@@ -161,6 +166,8 @@ impl SinkWork {
 
         let mut stat_tick = interval(Duration::from_millis(STAT_INTERVAL_MS as u64));
         stat_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        let mut flush_tick = interval(Duration::from_millis(flush_interval_ms));
+        flush_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
         let mut need_send_stat = false;
         loop {
             tokio::select! {
@@ -175,7 +182,7 @@ impl SinkWork {
                             } else {
                                 run_ctrl.rec_task_idle();
                             }
-                            need_send_stat=true;
+                            need_send_stat = true;
                         }
                         None => {
                             match drain_state.channel_closed_is_drained() {
@@ -216,16 +223,23 @@ impl SinkWork {
                     }
                 }
                 Some(h) = fix_sink_r.recv(), if !drain_state.is_draining() => {
-                    Self::proc_fix_ex(h,&mut sink,  &mon_send).await?;
+                    Self::proc_fix_ex(h, &mut sink, &mon_send).await?;
                 }
                 _ = stat_tick.tick() => {
                     if need_send_stat {
-                        need_send_stat=false;
-                        let sinks=sink.get_sinks_mut();
+                        need_send_stat = false;
+                        let sinks = sink.get_sinks_mut();
                         for s in sinks.iter_mut() {
                             s.send_stat(&mon_send).await?;
                         }
                     }
+                }
+                _ = flush_tick.tick() => {
+                    let sinks = sink.get_sinks_mut();
+                    for s in sinks.iter_mut() {
+                        s.flush(Some(&bad_sink_s), Some(&mon_send)).await?;
+                    }
+                    need_send_stat = true;
                 }
             }
         }
@@ -418,6 +432,7 @@ impl SinkService {
         rate_limit_rps: usize,
     ) -> RunResult<SinkService> {
         let mut sink_table = SinkService::default();
+
         for group_conf in &table_conf.group {
             info_ctrl!("init SinkGroup: {}", group_conf.name());
             let p_cnt = group_conf.parallel_cnt();

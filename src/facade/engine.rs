@@ -137,7 +137,6 @@ impl WpApp {
     /// 运行主循环：处理信号与控制面热重载
     async fn engine_working(&mut self, run_mode: RunMode) -> RunResult<()> {
         let mut signals = actor::signal::stop_signals()?;
-
         let mut task_admin = self
             .start_service(run_mode.clone(), &self.env_dict.clone())
             .await?;

@@ -69,6 +69,7 @@ impl InfraSinkConf {
                             expect: g.expect.clone(),
                             sinks: g.sinks.clone(),
                             parallel: g.parallel_cnt(),
+                            flush_interval_ms: crate::structure::default_flush_interval_ms(),
                         }
                     }
                     crate::sinks::GROUP_MISS => {
@@ -77,6 +78,7 @@ impl InfraSinkConf {
                             expect: g.expect.clone(),
                             sinks: g.sinks.clone(),
                             parallel: g.parallel_cnt(),
+                            flush_interval_ms: crate::structure::default_flush_interval_ms(),
                         }
                     }
                     crate::sinks::GROUP_RESIDUE => {
@@ -85,6 +87,7 @@ impl InfraSinkConf {
                             expect: g.expect.clone(),
                             sinks: g.sinks.clone(),
                             parallel: g.parallel_cnt(),
+                            flush_interval_ms: crate::structure::default_flush_interval_ms(),
                         }
                     }
                     crate::sinks::GROUP_ERROR => {
@@ -93,6 +96,7 @@ impl InfraSinkConf {
                             expect: g.expect.clone(),
                             sinks: g.sinks.clone(),
                             parallel: g.parallel_cnt(),
+                            flush_interval_ms: crate::structure::default_flush_interval_ms(),
                         }
                     }
                     crate::sinks::GROUP_MONITOR => {

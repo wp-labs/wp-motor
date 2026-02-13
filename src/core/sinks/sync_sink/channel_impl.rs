@@ -41,7 +41,7 @@ impl RecSyncSink for SinkDatYSender {
                     SinkDataEnum::Rec(unit.meta().clone(), unit.data().clone()),
                 )
             }
-            Err(TrySendError::Closed(_package)) => TrySendStatus::Err(Arc::new(SinkError::from(
+            Err(TrySendError::Closed(_)) => TrySendStatus::Err(Arc::new(SinkError::from(
                 SinkReason::Sink("sink channel closed".to_string()),
             ))),
         }
