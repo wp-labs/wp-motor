@@ -17,7 +17,7 @@ This document introduces OML's core design philosophy and fundamental concepts, 
 | **Design Philosophy** | WPL collaboration, declarative syntax, immutable data flow |
 | **Type System** | 8 basic types, automatic inference, type conversion |
 | **Read Semantics** | read vs take, destructive vs non-destructive, read priority |
-| **Expression Types** | Value expressions, function calls, pipelines, conditionals, aggregation |
+| **Expression Types** | Value expressions, function calls, pipelines, conditionals (incl. OR), aggregation |
 | **Default Value Mechanism** | Default value syntax, function defaults, limitations |
 | **Wildcards** | Wildcard syntax, batch targets, usage restrictions |
 | **Parameterized Reading** | option priority, keys collection, JSON paths |

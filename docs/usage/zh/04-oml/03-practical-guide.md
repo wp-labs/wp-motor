@@ -332,6 +332,60 @@ traffic_type = match (read(protocol), read(port)) {
 
 ---
 
+### 任务：OR 条件匹配
+
+**场景**：在 match 分支中使用 `|` 表示多个备选条件
+
+```oml
+name : or_match
+rule : /network/traffic
+---
+# 单源 OR：城市归类
+tier = match read(city) {
+    chars(bj) | chars(sh) | chars(gz) => chars(tier1) ;
+    chars(cd) | chars(wh) => chars(tier2) ;
+    _ => chars(other) ;
+} ;
+```
+
+---
+
+### 任务：多源 + OR 条件组合
+
+**场景**：同时匹配多个字段，每个条件位置支持 OR 备选
+
+```oml
+name : multi_or_match
+rule : /network/traffic
+---
+# 多源 + OR
+priority = match (read(city), read(level)) {
+    (chars(bj) | chars(sh), chars(high)) => chars(priority) ;
+    (chars(gz), chars(low) | chars(mid)) => chars(normal) ;
+    _ => chars(default) ;
+} ;
+```
+
+---
+
+### 任务：多源匹配（三源及以上）
+
+**场景**：需要同时匹配三个或更多字段
+
+```oml
+name : triple_match
+rule : /firewall/rule
+---
+# 三源 match
+action = match (read(protocol), read(port), read(zone)) {
+    (chars(tcp), digit(22), chars(internal)) => chars(allow) ;
+    (chars(tcp), digit(443), chars(external)) => chars(inspect) ;
+    _ => chars(deny) ;
+} ;
+```
+
+---
+
 ## 数据富化（SQL 查询）
 
 ### 任务：用户信息查询

@@ -81,6 +81,12 @@ impl Default for PerformanceConf {
     }
 }
 
+#[derive(Debug, Default, PartialEq, Deserialize, Serialize, Clone)]
+pub struct SemanticConf {
+    #[serde(default)]
+    pub enabled: bool,
+}
+
 #[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
 pub struct EngineConfig {
     #[serde(default = "default_version")]
@@ -106,6 +112,9 @@ pub struct EngineConfig {
     /// 是否跳过 SINK 阶段（不启动 sink/infra 任务；若未进一步配置为黑洞，将阻塞在下发边界）
     #[serde(default)]
     skip_sink: bool,
+    /// 语义分析功能开关（默认关闭，启用后加载 jieba 分词器和语义词典）
+    #[serde(default)]
+    semantic: SemanticConf,
 }
 
 impl EnvEvaluable<EngineConfig> for EngineConfig {
@@ -177,6 +186,7 @@ impl Default for EngineConfig {
             robust: RobustnessMode::Normal,
             skip_parse: false,
             skip_sink: false,
+            semantic: SemanticConf::default(),
         }
     }
 }
@@ -206,6 +216,7 @@ impl EngineConfig {
             robust: RobustnessMode::Normal,
             skip_parse: false,
             skip_sink: false,
+            semantic: SemanticConf::default(),
         }
     }
 
@@ -265,6 +276,10 @@ impl EngineConfig {
     }
     pub fn skip_sink(&self) -> bool {
         self.skip_sink
+    }
+
+    pub fn semantic(&self) -> &SemanticConf {
+        &self.semantic
     }
 
     pub fn src_conf_of(&self, file_name: &str) -> String {

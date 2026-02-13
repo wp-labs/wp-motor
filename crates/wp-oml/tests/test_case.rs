@@ -486,6 +486,200 @@ X: chars = match  read(month) {
 }
 
 #[test]
+fn test_match_triple_get() -> ModalResult<()> {
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : test
+        ---
+        X : chars = match (take(city), take(level), take(zone)) {
+                (chars(bj), chars(high), chars(north)) => chars(result_A) ;
+                (chars(sh), chars(low), chars(east)) => chars(result_B) ;
+                _  => chars(default) ;
+        };
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+
+    // Test case 1: first arm matches
+    let data = vec![
+        DataField::from_chars("city", "bj"),
+        DataField::from_chars("level", "high"),
+        DataField::from_chars("zone", "north"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_chars("X", "result_A")));
+
+    // Test case 2: second arm matches
+    let data = vec![
+        DataField::from_chars("city", "sh"),
+        DataField::from_chars("level", "low"),
+        DataField::from_chars("zone", "east"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_chars("X", "result_B")));
+
+    // Test case 3: partial mismatch falls to default
+    let data = vec![
+        DataField::from_chars("city", "bj"),
+        DataField::from_chars("level", "low"),
+        DataField::from_chars("zone", "north"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_chars("X", "default")));
+
+    Ok(())
+}
+
+#[test]
+fn test_match_triple_with_mixed_cond() -> ModalResult<()> {
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : test
+        ---
+        X : chars = match (take(ip), take(level), take(zone)) {
+                (in (ip(10.0.0.1), ip(10.0.0.100)), chars(high), chars(north)) => chars(block) ;
+                (ip(192.168.0.1), chars(low), chars(south)) => chars(allow) ;
+                _  => chars(unknown) ;
+        };
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+
+    // Test case 1: ip in range + exact match
+    let data = vec![
+        DataField::from_ip("ip", IpAddr::V4(Ipv4Addr::new(10, 0, 0, 50))),
+        DataField::from_chars("level", "high"),
+        DataField::from_chars("zone", "north"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_chars("X", "block")));
+
+    // Test case 2: exact ip match
+    let data = vec![
+        DataField::from_ip("ip", IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1))),
+        DataField::from_chars("level", "low"),
+        DataField::from_chars("zone", "south"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_chars("X", "allow")));
+
+    // Test case 3: no match
+    let data = vec![
+        DataField::from_ip("ip", IpAddr::V4(Ipv4Addr::new(172, 16, 0, 1))),
+        DataField::from_chars("level", "mid"),
+        DataField::from_chars("zone", "west"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_chars("X", "unknown")));
+
+    Ok(())
+}
+
+#[test]
+fn test_match_quadruple_get() -> ModalResult<()> {
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : test
+        ---
+        X : chars = match (take(src_ip), take(dst_ip), take(proto), take(action)) {
+                (ip(10.0.0.1), ip(192.168.1.1), chars(tcp), chars(allow)) => chars(rule_A) ;
+                (ip(10.0.0.2), ip(192.168.1.2), chars(udp), chars(deny)) => chars(rule_B) ;
+                _  => chars(default_rule) ;
+        };
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+
+    // Test case 1: first arm matches
+    let data = vec![
+        DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))),
+        DataField::from_ip("dst_ip", IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1))),
+        DataField::from_chars("proto", "tcp"),
+        DataField::from_chars("action", "allow"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_chars("X", "rule_A")));
+
+    // Test case 2: second arm matches
+    let data = vec![
+        DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2))),
+        DataField::from_ip("dst_ip", IpAddr::V4(Ipv4Addr::new(192, 168, 1, 2))),
+        DataField::from_chars("proto", "udp"),
+        DataField::from_chars("action", "deny"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_chars("X", "rule_B")));
+
+    // Test case 3: no match falls to default
+    let data = vec![
+        DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(172, 16, 0, 1))),
+        DataField::from_ip("dst_ip", IpAddr::V4(Ipv4Addr::new(172, 16, 0, 2))),
+        DataField::from_chars("proto", "icmp"),
+        DataField::from_chars("action", "log"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_chars("X", "default_rule")));
+
+    Ok(())
+}
+
+#[test]
+fn test_match_quadruple_with_range() -> ModalResult<()> {
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : test
+        ---
+        X : chars = match (take(src_ip), take(dst_ip), take(level), take(zone)) {
+                (in (ip(10.0.0.1), ip(10.0.0.100)), in (ip(192.168.0.1), ip(192.168.0.100)), chars(high), chars(east)) => chars(critical) ;
+                (ip(172.16.0.1), ip(172.16.0.2), chars(low), chars(west)) => chars(minor) ;
+                _  => chars(normal) ;
+        };
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+
+    // Test case 1: both ip ranges match + exact fields
+    let data = vec![
+        DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(10, 0, 0, 50))),
+        DataField::from_ip("dst_ip", IpAddr::V4(Ipv4Addr::new(192, 168, 0, 50))),
+        DataField::from_chars("level", "high"),
+        DataField::from_chars("zone", "east"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_chars("X", "critical")));
+
+    // Test case 2: default
+    let data = vec![
+        DataField::from_ip("src_ip", IpAddr::V4(Ipv4Addr::new(10, 0, 0, 50))),
+        DataField::from_ip("dst_ip", IpAddr::V4(Ipv4Addr::new(192, 168, 0, 50))),
+        DataField::from_chars("level", "low"),
+        DataField::from_chars("zone", "east"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    let one = target.get_field_owned("X");
+    assert_eq!(one, Some(DataField::from_chars("X", "normal")));
+
+    Ok(())
+}
+
+#[test]
 fn test_value_arr() {
     let cache = &mut FieldQueryCache::default();
     let data = vec![
@@ -1283,4 +1477,141 @@ fn test_arc_optimization_with_many_references() {
     // Arc optimization shows clear benefit when values are reused
     // Without Arc: each reference creates a new DataField (expensive)
     // With Arc: each reference just clones Arc pointer (cheap)
+}
+
+// ==================== OR Match Tests ====================
+
+#[test]
+fn test_match_or_single_source() {
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : test
+        ---
+        X : chars = match take(city) {
+            chars(bj) | chars(sh) | chars(gz) => chars(tier1),
+            chars(cd) | chars(wh) => chars(tier2),
+            _ => chars(other),
+        };
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+
+    // Test first alternative
+    let data = vec![DataField::from_chars("city", "bj")];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "tier1"))
+    );
+
+    // Test second alternative
+    let data = vec![DataField::from_chars("city", "sh")];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "tier1"))
+    );
+
+    // Test third alternative
+    let data = vec![DataField::from_chars("city", "gz")];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "tier1"))
+    );
+
+    // Test second arm
+    let data = vec![DataField::from_chars("city", "cd")];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "tier2"))
+    );
+
+    // Test default
+    let data = vec![DataField::from_chars("city", "unknown")];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "other"))
+    );
+}
+
+#[test]
+fn test_match_or_multi_source() {
+    let cache = &mut FieldQueryCache::default();
+    let mut conf = r#"
+        name : test
+        ---
+        X : chars = match (take(city), read(level)) {
+            (chars(bj) | chars(sh), chars(high)) => chars(priority),
+            (chars(gz), chars(low) | chars(mid)) => chars(normal),
+            _ => chars(default),
+        };
+        "#;
+    let model = oml_parse_raw(&mut conf).assert();
+
+    // Test: city=bj, level=high => priority
+    let data = vec![
+        DataField::from_chars("city", "bj"),
+        DataField::from_chars("level", "high"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "priority"))
+    );
+
+    // Test: city=sh (OR alt), level=high => priority
+    let data = vec![
+        DataField::from_chars("city", "sh"),
+        DataField::from_chars("level", "high"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "priority"))
+    );
+
+    // Test: city=gz, level=low (OR alt) => normal
+    let data = vec![
+        DataField::from_chars("city", "gz"),
+        DataField::from_chars("level", "low"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "normal"))
+    );
+
+    // Test: city=gz, level=mid (second OR alt) => normal
+    let data = vec![
+        DataField::from_chars("city", "gz"),
+        DataField::from_chars("level", "mid"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "normal"))
+    );
+
+    // Test: no match => default
+    let data = vec![
+        DataField::from_chars("city", "other"),
+        DataField::from_chars("level", "high"),
+    ];
+    let src = DataRecord::from(data);
+    let target = model.transform(src, cache);
+    assert_eq!(
+        target.get_field_owned("X"),
+        Some(DataField::from_chars("X", "default"))
+    );
 }

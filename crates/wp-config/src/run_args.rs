@@ -26,6 +26,8 @@ pub struct RuntimeArgs {
     // 阶段开关：从 EngineConfig 派生
     pub skip_parse: bool,
     pub skip_sink: bool,
+    // 语义分析开关：从 EngineConfig [semantic].enabled 派生
+    pub semantic_enabled: bool,
 }
 
 impl Default for RuntimeArgs {
@@ -43,6 +45,7 @@ impl Default for RuntimeArgs {
             ldm_root: "./ldm".to_string(),
             skip_parse: false,
             skip_sink: false,
+            semantic_enabled: false,
         }
     }
 }

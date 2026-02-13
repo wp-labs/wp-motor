@@ -25,29 +25,26 @@ impl FieldExtractor for MatchOperation {
                     }
                 }
             }
-            MatchSource::Double(fst, sec) => {
-                let fst_key = fst.field_name().clone().unwrap_or(target.to_string());
-                let fst_cur = EvaluationTarget::new(fst_key, DataType::Auto);
-
-                let sec_key = sec.field_name().clone().unwrap_or(target.to_string());
-                let sec_cur = EvaluationTarget::new(sec_key, DataType::Auto);
-
-                let fst_val_opt = fst.extract_one(&fst_cur, src, dst);
-                let sec_val_opt = sec.extract_one(&sec_cur, src, dst);
-                if let (Some(fst_val), Some(sec_val)) = (fst_val_opt, sec_val_opt) {
-                    for i in self.items() {
-                        if i.is_match((&fst_val, &sec_val)) {
-                            return i.result().extract_one(target, src, dst);
+            MatchSource::Multi(sources) => {
+                let mut vals: Vec<DataField> = Vec::with_capacity(sources.len());
+                for s in sources.iter() {
+                    let k = s.field_name().clone().unwrap_or(target.to_string());
+                    let c = EvaluationTarget::new(k, DataType::Auto);
+                    if let Some(v) = s.extract_one(&c, src, dst) {
+                        vals.push(v);
+                    } else {
+                        // If any source fails to extract, skip matching
+                        if let Some(default) = self.default() {
+                            return default.result().extract_one(target, src, dst);
                         }
+                        return None;
                     }
-                    warn_edata!(
-                        dst.id,
-                        "not same type data ({}:{}, {}:{})",
-                        fst_val.get_name(),
-                        fst_val.get_meta(),
-                        sec_val.get_name(),
-                        sec_val.get_meta(),
-                    );
+                }
+                let refs: Vec<&DataField> = vals.iter().collect();
+                for i in self.items() {
+                    if i.is_match(refs.as_slice()) {
+                        return i.result().extract_one(target, src, dst);
+                    }
                 }
             }
         }
@@ -77,30 +74,26 @@ impl FieldExtractor for MatchOperation {
                     }
                 }
             }
-            MatchSource::Double(fst, sec) => {
-                let fst_key = fst.field_name().clone().unwrap_or(target.to_string());
-                let fst_cur = EvaluationTarget::new(fst_key, DataType::Auto);
-
-                let sec_key = sec.field_name().clone().unwrap_or(target.to_string());
-                let sec_cur = EvaluationTarget::new(sec_key, DataType::Auto);
-
-                let fst_val_opt = fst.extract_one(&fst_cur, src, dst);
-                let sec_val_opt = sec.extract_one(&sec_cur, src, dst);
-                if let (Some(fst_val), Some(sec_val)) = (fst_val_opt, sec_val_opt) {
-                    for i in self.items() {
-                        if i.is_match((&fst_val, &sec_val)) {
-                            // Call extract_storage to enable zero-copy for FieldArc/ObjArc
-                            return i.result().extract_storage(target, src, dst);
+            MatchSource::Multi(sources) => {
+                let mut vals: Vec<DataField> = Vec::with_capacity(sources.len());
+                for s in sources.iter() {
+                    let k = s.field_name().clone().unwrap_or(target.to_string());
+                    let c = EvaluationTarget::new(k, DataType::Auto);
+                    if let Some(v) = s.extract_one(&c, src, dst) {
+                        vals.push(v);
+                    } else {
+                        if let Some(default) = self.default() {
+                            return default.result().extract_storage(target, src, dst);
                         }
+                        return None;
                     }
-                    warn_edata!(
-                        dst.id,
-                        "not same type data ({}:{}, {}:{})",
-                        fst_val.get_name(),
-                        fst_val.get_meta(),
-                        sec_val.get_name(),
-                        sec_val.get_meta(),
-                    );
+                }
+                let refs: Vec<&DataField> = vals.iter().collect();
+                for i in self.items() {
+                    if i.is_match(refs.as_slice()) {
+                        // Call extract_storage to enable zero-copy for FieldArc/ObjArc
+                        return i.result().extract_storage(target, src, dst);
+                    }
                 }
             }
         }

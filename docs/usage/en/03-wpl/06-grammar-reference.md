@@ -57,7 +57,7 @@ name             = ("base64" | "hex") | "unescape" | "bom" ;     ; Step name whi
 ;   strip/bom - Remove BOM (Byte Order Mark)
 
 group            = [ group_meta ] ws? "(" ws? field_list_opt ws? ")" [ ws? group_len ] [ ws? group_sep ] ;
-group_meta       = "alt" | "opt" | "some_of" | "seq" ;
+group_meta       = "alt" | "opt" | "some_of" | "seq" | "not" ;
 group_len        = "[" number "]" ;
 group_sep        = sep ;
 
@@ -117,14 +117,51 @@ subtype          = key ;                                      ; Can be any suppo
 symbol_content   = "(" symbol_chars ")" ;
 
 ; Field display/extraction format
-format           = scope_fmt | quote_fmt | field_cnt ;
+format           = scope_fmt | quote_fmt ;
 scope_fmt        = "<" any_chars "," any_chars ">" ;   ; Scope delimiters, e.g., <[,]>
 quote_fmt        = '"' ;                                ; Equivalent to '"' at both ends
-field_cnt        = "^" number ;                          ; Only valid for chars/_ (implementation constraint)
 
-; Separator (high/medium priority, concatenated as-is). Syntax is backslash-escaped character sequence, length>=1
-sep              = sep_char , { sep_char } ;             ; e.g., "\\," => ","; "\\!\\|" => "!|"
+
+; Separator (two forms)
+sep              = shortcut_sep | pattern_sep ;
+
+; Shortcut separator: backslash-escaped character sequence
+shortcut_sep     = sep_char , { sep_char } ;             ; e.g., "\\," => ","; "\\!\\|" => "!|"
 sep_char         = '\\' , any_char ;
+
+; Pattern separator: brace-wrapped pattern expression
+pattern_sep      = "{" pattern_content "}" ;
+pattern_content  = glob_segments [ preserve ] ;
+glob_segments    = glob_segment { glob_segment } ;
+glob_segment     = literal_char | wildcard | escape_seq ;
+
+; Wildcards
+wildcard         = "*" | "?" ;                          ; "*" - zero or more arbitrary characters (non-greedy); "?" - exactly one arbitrary character
+; Constraint: at most one "*" allowed in a pattern
+
+; Escape sequences
+escape_seq       = "\\" ( special_char | macro_char ) ;
+special_char     = "\\" | "*" | "?" | "{" | "}" | "(" | ")" ;  ; Literal escape
+macro_char       = "s" | "S" | "h" | "H" | "0" | "n" | "t" | "r" ;  ; Macro characters
+; Supported macros:
+;   \s - one or more consecutive whitespace characters [ \t\r\n]+
+;   \S - one or more consecutive non-whitespace characters [^ \t\r\n]+
+;   \h - one or more consecutive horizontal whitespace [ \t]+
+;   \H - one or more consecutive non-horizontal-whitespace [^ \t]+
+;   \0 - null byte
+;   \n - newline
+;   \t - tab
+;   \r - carriage return
+
+; Preserve marker
+preserve         = "(" glob_segments ")" ;              ; Match but don't consume, only at pattern end
+; Constraints:
+;   1. preserve can only appear at the end of pattern_content
+;   2. preserve cannot contain "*" wildcard
+;   3. preserve cannot be nested
+
+; Literal character (any character except special characters)
+literal_char     = any_char_except_special ;            ; Any character except '\', '*', '?', '{', '}', '(', ')'
 
 ; Field-level pipe: function call or nested group
 pipe             = "|" ws? ( fun_call | group ) ;
@@ -234,7 +271,7 @@ ipv6             = ? valid IPv6 literal (RFC 4291), including compressed forms l
 ws               = { ' ' | '\t' | '\n' | '\r' } ;
 
 ; Reserved keywords (cannot be used as identifiers; conflict validation performed by implementation)
-ReservedKeyword  = "package" | "rule" | "alt" | "opt" | "some_of" | "seq" | "order"
+ReservedKeyword  = "package" | "rule" | "alt" | "opt" | "some_of" | "seq" | "not" | "order"
                  | "tag" | "copy_raw" | "include" | "macro" ;
 
 
@@ -255,14 +292,19 @@ ReservedKeyword  = "package" | "rule" | "alt" | "opt" | "some_of" | "seq" | "ord
   - `unquote/unescape` - URL unescape decoding
   - `strip/bom` - Remove BOM (Byte Order Mark)
 
+### Group Metadata (Group Meta)
+- `group_meta` specifies the behavior pattern of a group
+- `alt` - Alternative matching, matches any one field in the group
+- `opt` - Optional group, the entire group may not exist
+- `some_of` - Partial matching, matches some fields in the group
+- `seq` - Sequence matching, matches all fields in the group in order
+- `not` - Negation matching, matches content other than the fields in the group
+
 ### Group Length and Separator
 - `group` can be followed by `[n]` and separator `sep`
 - Length applies to all fields within the group
 - `sep` is only stored on the group, specific combination strategy see implementation
 
-### Format Control
-- `field_cnt` (`^n`) in `format` only applies to `chars/_` types
-- Other types will be rejected (implementation constraint)
 
 ### Symbol Types
 - `symbol/peek_symbol` can carry `symbol_content`, e.g., `symbol(boy)`
@@ -273,9 +315,46 @@ ReservedKeyword  = "package" | "rule" | "alt" | "opt" | "some_of" | "seq" | "ord
 - Subfields support `opt(type)` to mark as optional
 
 ### Separators
-- `sep` syntax requires backslash-escaping each character
-- For example, `\\!\\|` represents the string `"!|"`
+Separators support two forms:
+
+#### Shortcut Separator
+- Single or multiple characters escaped with backslash
+- For example, `\\,` represents comma `,`, `\\!\\|` represents string `"!|"`
 - Priority: field-level > group-level > upstream
+
+#### Pattern Separator
+- Pattern expression wrapped in braces `{...}`
+- Supports wildcards, whitespace macros, and preserve markers
+- Suitable for complex separation scenarios
+
+**Wildcards:**
+- `*` - Zero or more arbitrary characters (non-greedy, shortest match)
+- `?` - Exactly one arbitrary character
+- Constraint: at most one `*` allowed in a pattern
+
+**Whitespace Macros:**
+- `\s` - One or more consecutive whitespace characters `[ \t\r\n]+`
+- `\S` - One or more consecutive non-whitespace characters `[^ \t\r\n]+`
+- `\h` - One or more consecutive horizontal whitespace `[ \t]+`
+- `\H` - One or more consecutive non-horizontal-whitespace `[^ \t]+`
+
+**Preserve Marker:**
+- `(...)` - Match but don't consume, leave matched content for next stage
+- Can only appear at pattern end
+- Cannot contain `*` wildcard inside
+
+**Examples:**
+- `chars{*=}` - Match to first `=` sign
+- `chars{\s=}` - Skip whitespace then match `=`
+- `chars{*(key=)}` - Match to `key=` and preserve `key=` for next field
+- `chars{field?:\s}` - Match `field` + any char + `:` + whitespace
+
+**Constraints:**
+- At most one `*` in a pattern
+- `()` only at pattern end
+- `*` not allowed inside `()`
+- `()` cannot be nested
+- Cannot be used with upstream separator
 
 ### Annotations
 - `annotation` can be used for `package` and `rule`

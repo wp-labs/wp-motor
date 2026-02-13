@@ -4,7 +4,7 @@
 
 use super::profile::{CombineMode, SpeedProfile};
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use std::time::Instant;
 
 /// 动态速度控制器
@@ -40,7 +40,7 @@ impl DynamicSpeedController {
             step_start_time: 0.0,
             in_burst: false,
             burst_end: None,
-            rng: StdRng::from_os_rng(),
+            rng: StdRng::from_rng(&mut rand::rng()),
             composite_children: Vec::new(),
         };
 

@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo test:*)",
+      "Bash(cargo check:*)",
+      "Bash(find:*)",
+      "Bash(tree:*)",
+      "Bash(wc:*)",
+      "Bash(grep:*)",
+      "Bash(cargo metadata:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(git for-each-ref:*)",
+      "Bash(git show:*)",
+      "Bash(cat:*)",
+      "Bash(xxd:*)",
+      "Bash(tail:*)",
+      "Bash(sysctl:*)",
+      "Bash(netstat:*)",
+      "Bash(sudo sysctl:*)",
+      "Bash(cargo build:*)",
+      "WebSearch",
+      "WebFetch(domain:linuxjedi.co.uk)",
+      "WebFetch(domain:lwn.net)",
+      "WebFetch(domain:www.baeldung.com)",
+      "Bash(cargo bench:*)",
+      "Bash(cargo tree:*)",
+      "Bash(cargo audit:*)",
+      "Bash(ls:*)",
+      "Bash(git stash:*)"
+    ]
+  }
+}

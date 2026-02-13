@@ -46,6 +46,9 @@ pub async fn start_warp_service(
     crate::engine_flags::set_skip_parse(args.skip_parse);
     crate::engine_flags::set_skip_sink(args.skip_sink);
 
+    // 语义分析开关（控制 jieba 分词器和语义词典的加载）
+    oml::set_semantic_enabled(args.semantic_enabled);
+
     // 提前设置全局构建期限速提示（发送单元构建期将读取该目标决定背压策略）。
     crate::sinks::set_global_rate_limit_rps(args.speed_limit);
 

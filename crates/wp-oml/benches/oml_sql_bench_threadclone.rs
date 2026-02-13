@@ -130,7 +130,10 @@ fn bench_threadclone_sql(c: &mut Criterion) {
         "#,
     );
 
-    let src1 = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars("p1", "xiaolongnu"))]);
+    let src1 = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars(
+        "p1",
+        "xiaolongnu",
+    ))]);
     let src2 = DataRecord::from(vec![
         FieldStorage::from_owned(DataField::from_chars("p1", "xiaolongnu")),
         FieldStorage::from_owned(DataField::from_chars("p2", "guojing")),
@@ -282,7 +285,9 @@ fn bench_threadclone_sql(c: &mut Criterion) {
         let mut seed: u64 = 0x9E3779B97F4A7C15;
         // 预热
         for k in keys.iter().take(n.min(3)) {
-            let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars("p1", *k))]);
+            let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars(
+                "p1", *k,
+            ))]);
             let _ = mdl_1.transform(src, &mut cache);
         }
         b.iter(|| {
@@ -294,7 +299,9 @@ fn bench_threadclone_sql(c: &mut Criterion) {
             while idx + 1 < n && u > cdf[idx] {
                 idx += 1;
             }
-            let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars("p1", keys[idx]))]);
+            let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars(
+                "p1", keys[idx],
+            ))]);
             let _ = mdl_1.transform(black_box(src), &mut cache);
         })
     });
@@ -334,7 +341,9 @@ fn bench_threadclone_sql(c: &mut Criterion) {
                 let mut seed: u64 = 0x9E3779B97F4A7C15u64.wrapping_add((t as u64) << 1);
                 // 预热热点
                 for k in ks.iter().take(n.min(3)) {
-                    let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars("p1", *k))]);
+                    let src = DataRecord::from(vec![FieldStorage::from_owned(
+                        DataField::from_chars("p1", *k),
+                    )]);
                     let _ = m.transform(src, &mut cache);
                 }
                 for _ in 0..loops_per_thread {
@@ -346,7 +355,9 @@ fn bench_threadclone_sql(c: &mut Criterion) {
                     while idx + 1 < n && u > cdf[idx] {
                         idx += 1;
                     }
-                    let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars("p1", ks[idx]))]);
+                    let src = DataRecord::from(vec![FieldStorage::from_owned(
+                        DataField::from_chars("p1", ks[idx]),
+                    )]);
                     let _ = m.transform(src, &mut cache);
                 }
             }));

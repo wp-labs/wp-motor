@@ -4,7 +4,7 @@ use crate::eval::value::parse_def::*;
 use crate::generator::{FieldGenConf, GenScopeEnum};
 use crate::generator::{GenChannel, ParserValue};
 use crate::types::AnyResult;
-use rand::Rng;
+use rand::RngExt;
 use winnow::ascii::multispace0;
 use winnow::ascii::{Caseless, hex_uint};
 use winnow::combinator::{opt, preceded};

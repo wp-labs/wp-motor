@@ -602,6 +602,43 @@ Status = match read(status_code) {
 
 **特点**: 精确匹配固定值
 
+### OR 条件匹配
+
+使用 `|` 分隔多个备选条件，任一匹配即成功：
+
+```oml
+# 单源 OR 匹配
+tier = match read(city) {
+    chars(bj) | chars(sh) | chars(gz) => chars(tier1),
+    chars(cd) | chars(wh) => chars(tier2),
+    _ => chars(other),
+};
+```
+
+**特点**: 在同一分支中表达"或"的关系，减少重复分支
+
+OR 语法也可以与函数匹配组合使用：
+
+```oml
+EventType = match read(log_line) {
+    starts_with('[ERROR]') | starts_with('[FATAL]') => chars(critical),
+    starts_with('[WARN]') => chars(warning),
+    _ => chars(info),
+};
+```
+
+### 多源 + OR 匹配
+
+多源 match 中的每个条件位置都支持 OR 语法：
+
+```oml
+priority = match (read(city), read(level)) {
+    (chars(bj) | chars(sh), chars(high)) => chars(priority),
+    (chars(gz), chars(low) | chars(mid)) => chars(normal),
+    _ => chars(default),
+};
+```
+
 ### 函数匹配
 
 ```oml
@@ -623,6 +660,11 @@ EventType = match read(log_line) {
 - [OML 语法参考](../README.md) - OML 基础语法
 
 ## 版本历史
+
+- **1.16.3** (Unreleased)
+  - 新增 OR 条件语法：`cond1 | cond2 | ...`，在同一分支中表达备选条件
+  - 多源 match 支持任意数量源字段（不再限于 2/3/4 个）
+  - 多源 match 条件位置支持 OR 语法
 
 - **1.13.4** (2026-02-04)
   - 新增 match 表达式函数匹配支持

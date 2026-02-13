@@ -8,7 +8,7 @@ use wp_model_core::model::types::value::ObjectValue;
 use wp_model_core::model::{DataField, Value};
 
 // 导入语义词典
-use super::semantic_dict_loader::SEMANTIC_DICT;
+use super::semantic_dict_loader::{SEMANTIC_DICT, is_semantic_enabled};
 
 lazy_static! {
     // Jieba 中文分词器实例（全局单例）
@@ -190,8 +190,7 @@ fn analyze_subject_object_with_debug(
     if let Some(ref mut d) = debug {
         for tag in &tags {
             d.tokens.push(tag.word.to_string());
-            d.pos_tags
-                .push((tag.word.to_string(), tag.tag.to_string()));
+            d.pos_tags.push((tag.word.to_string(), tag.tag.to_string()));
         }
     }
 
@@ -218,16 +217,18 @@ fn analyze_subject_object_with_debug(
                     if status.is_empty() {
                         status = word.to_string();
                         if let Some(ref mut d) = debug {
-                            d.status_rule = if SEMANTIC_DICT.status_words.contains(word_lower.as_str()) {
-                                "rule1: status_word_match".to_string()
-                            } else {
-                                "rule2: cn_pos_match".to_string()
-                            };
-                            d.status_confidence = if SEMANTIC_DICT.status_words.contains(word_lower.as_str()) {
-                                1.0
-                            } else {
-                                0.7
-                            };
+                            d.status_rule =
+                                if SEMANTIC_DICT.status_words.contains(word_lower.as_str()) {
+                                    "rule1: status_word_match".to_string()
+                                } else {
+                                    "rule2: cn_pos_match".to_string()
+                                };
+                            d.status_confidence =
+                                if SEMANTIC_DICT.status_words.contains(word_lower.as_str()) {
+                                    1.0
+                                } else {
+                                    0.7
+                                };
                         }
                     }
                 }
@@ -236,20 +237,22 @@ fn analyze_subject_object_with_debug(
                         action = word.to_string();
                         action_seen = true;
                         if let Some(ref mut d) = debug {
-                            d.action_rule = if SEMANTIC_DICT.action_verbs.contains(word_lower.as_str()) {
-                                "rule1: action_verb_match".to_string()
-                            } else if pos == "eng" && word_lower.ends_with("ing") {
-                                "rule2: eng_ing_suffix".to_string()
-                            } else if pos == "eng" && word_lower.ends_with("ed") {
-                                "rule2: eng_ed_suffix".to_string()
-                            } else {
-                                format!("rule3: cn_pos({})", pos)
-                            };
-                            d.action_confidence = if SEMANTIC_DICT.action_verbs.contains(word_lower.as_str()) {
-                                1.0
-                            } else {
-                                0.7
-                            };
+                            d.action_rule =
+                                if SEMANTIC_DICT.action_verbs.contains(word_lower.as_str()) {
+                                    "rule1: action_verb_match".to_string()
+                                } else if pos == "eng" && word_lower.ends_with("ing") {
+                                    "rule2: eng_ing_suffix".to_string()
+                                } else if pos == "eng" && word_lower.ends_with("ed") {
+                                    "rule2: eng_ed_suffix".to_string()
+                                } else {
+                                    format!("rule3: cn_pos({})", pos)
+                                };
+                            d.action_confidence =
+                                if SEMANTIC_DICT.action_verbs.contains(word_lower.as_str()) {
+                                    1.0
+                                } else {
+                                    0.7
+                                };
                         }
                     }
                 }
@@ -257,30 +260,34 @@ fn analyze_subject_object_with_debug(
                     if subject.is_empty() {
                         subject = word.to_string();
                         if let Some(ref mut d) = debug {
-                            d.subject_rule = if SEMANTIC_DICT.domain_words.contains(word_lower.as_str()) {
-                                "rule1: domain_entity_match".to_string()
-                            } else {
-                                format!("rule2: core_pos({}) + non_stopword", pos)
-                            };
-                            d.subject_confidence = if SEMANTIC_DICT.domain_words.contains(word_lower.as_str()) {
-                                1.0
-                            } else {
-                                0.8
-                            };
+                            d.subject_rule =
+                                if SEMANTIC_DICT.domain_words.contains(word_lower.as_str()) {
+                                    "rule1: domain_entity_match".to_string()
+                                } else {
+                                    format!("rule2: core_pos({}) + non_stopword", pos)
+                                };
+                            d.subject_confidence =
+                                if SEMANTIC_DICT.domain_words.contains(word_lower.as_str()) {
+                                    1.0
+                                } else {
+                                    0.8
+                                };
                         }
                     } else if action_seen && object.is_empty() {
                         object = word.to_string();
                         if let Some(ref mut d) = debug {
-                            d.object_rule = if SEMANTIC_DICT.domain_words.contains(word_lower.as_str()) {
-                                "rule1: domain_entity_match (after_action)".to_string()
-                            } else {
-                                format!("rule2: core_pos({}) + after_action", pos)
-                            };
-                            d.object_confidence = if SEMANTIC_DICT.domain_words.contains(word_lower.as_str()) {
-                                1.0
-                            } else {
-                                0.8
-                            };
+                            d.object_rule =
+                                if SEMANTIC_DICT.domain_words.contains(word_lower.as_str()) {
+                                    "rule1: domain_entity_match (after_action)".to_string()
+                                } else {
+                                    format!("rule2: core_pos({}) + after_action", pos)
+                                };
+                            d.object_confidence =
+                                if SEMANTIC_DICT.domain_words.contains(word_lower.as_str()) {
+                                    1.0
+                                } else {
+                                    0.8
+                                };
                         }
                     }
                 }
@@ -301,6 +308,9 @@ fn analyze_subject_object_with_debug(
 /// - debug：调试信息（仅在debug模式下）
 impl ValueProcessor for ExtractSubjectObject {
     fn value_cacu(&self, in_val: DataField) -> DataField {
+        if !is_semantic_enabled() {
+            return DataField::from_obj(in_val.get_name().to_string(), ObjectValue::default());
+        }
         match in_val.get_value() {
             Value::Chars(x) => {
                 let cleaned = x.trim();
@@ -357,6 +367,9 @@ impl ValueProcessor for ExtractSubjectObject {
 /// 3. 回退：第一个非空分词
 impl ValueProcessor for ExtractMainWord {
     fn value_cacu(&self, in_val: DataField) -> DataField {
+        if !is_semantic_enabled() {
+            return DataField::from_chars(in_val.get_name().to_string(), String::new());
+        }
         match in_val.get_value() {
             Value::Chars(x) => {
                 // 步骤1：清洗文本（去除首尾空格）
@@ -390,7 +403,9 @@ impl ValueProcessor for ExtractMainWord {
                     }
 
                     // 规则2：核心词性 + 非停用词
-                    if SEMANTIC_DICT.core_pos.contains(pos) && !SEMANTIC_DICT.stop_words.contains(word_lower.as_str()) {
+                    if SEMANTIC_DICT.core_pos.contains(pos)
+                        && !SEMANTIC_DICT.stop_words.contains(word_lower.as_str())
+                    {
                         return DataField::from_chars(
                             in_val.get_name().to_string(),
                             word.to_string(),
@@ -407,13 +422,20 @@ impl ValueProcessor for ExtractMainWord {
 #[cfg(test)]
 mod tests {
     use crate::core::DataTransformer;
+    use crate::core::evaluator::transform::pipe::semantic_dict_loader::set_semantic_enabled;
     use crate::parser::oml_parse_raw;
     use orion_error::TestAssert;
     use wp_data_model::cache::FieldQueryCache;
     use wp_model_core::model::{DataField, DataRecord, Value};
 
+    /// 测试前启用语义功能开关
+    fn enable_semantic() {
+        set_semantic_enabled(true);
+    }
+
     #[test]
     fn test_extract_main_word() {
+        enable_semantic();
         let cache = &mut FieldQueryCache::default();
         let data = vec![
             // 英文测试
@@ -532,6 +554,7 @@ mod tests {
 
     #[test]
     fn test_extract_main_word_english() {
+        enable_semantic();
         let cache = &mut FieldQueryCache::default();
         let data = vec![
             // 英文句子测试
@@ -700,6 +723,7 @@ mod tests {
 
     #[test]
     fn test_extract_subject_object() {
+        enable_semantic();
         let cache = &mut FieldQueryCache::default();
         let data = vec![
             // 英文：主体 + 状态
@@ -958,6 +982,7 @@ mod tests {
 
     #[test]
     fn test_accuracy() {
+        enable_semantic();
         let cache = &mut FieldQueryCache::default();
 
         let mut total = 0;
@@ -1096,6 +1121,7 @@ mod tests {
 
     #[test]
     fn test_debug_mode() {
+        enable_semantic();
         use super::analyze_subject_object_with_debug;
 
         // 测试debug信息输出
@@ -1114,10 +1140,22 @@ mod tests {
 
             if let Some(ref d) = debug {
                 println!("Results:");
-                println!("  subject: {} (confidence: {:.2}, rule: {})", subject, d.subject_confidence, d.subject_rule);
-                println!("  action:  {} (confidence: {:.2}, rule: {})", action, d.action_confidence, d.action_rule);
-                println!("  object:  {} (confidence: {:.2}, rule: {})", object, d.object_confidence, d.object_rule);
-                println!("  status:  {} (confidence: {:.2}, rule: {})", status, d.status_confidence, d.status_rule);
+                println!(
+                    "  subject: {} (confidence: {:.2}, rule: {})",
+                    subject, d.subject_confidence, d.subject_rule
+                );
+                println!(
+                    "  action:  {} (confidence: {:.2}, rule: {})",
+                    action, d.action_confidence, d.action_rule
+                );
+                println!(
+                    "  object:  {} (confidence: {:.2}, rule: {})",
+                    object, d.object_confidence, d.object_rule
+                );
+                println!(
+                    "  status:  {} (confidence: {:.2}, rule: {})",
+                    status, d.status_confidence, d.status_rule
+                );
 
                 println!("Debug Info:");
                 println!("  Tokens: {:?}", d.tokens);
@@ -1130,4 +1168,3 @@ mod tests {
         }
     }
 }
-

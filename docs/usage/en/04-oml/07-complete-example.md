@@ -18,7 +18,7 @@ This example demonstrates the following feature modules:
 
 1. **Basic Operations** (8 types) - Literal assignment, value extraction, default values, wildcards, etc.
 2. **Built-in Functions** - Time-related functions
-3. **Pattern Matching** (5 types) - Single source, dual source, range judgment, negation conditions, etc.
+3. **Pattern Matching** (7 types) - Single source, multi-source (any count), range judgment, negation conditions, boolean, OR conditions, multi-source + OR combination
 4. **Pipeline Functions** (9 types) - Time conversion, encoding/decoding, data extraction, etc.
 5. **String Operations** - Formatting functions
 6. **Objects & Arrays** - Aggregation and collection operations

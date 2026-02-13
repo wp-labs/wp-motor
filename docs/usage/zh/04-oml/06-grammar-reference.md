@@ -265,20 +265,26 @@ metrics = collect read(keys:[cpu_*]) ;
 ### 模式匹配
 
 ```ebnf
-(* 模式匹配：单源/双源两种形态，支持 in/!= 与缺省分支 *)
+(* 模式匹配：单源/多源两种形态，支持 in/!=/OR 与缺省分支 *)
 match_expr       = "match", match_source, "{", case1, { case1 }, [ default_case ], "}"
-                 | "match", "(", var_get, ",", var_get, ")", "{", case2, { case2 }, [ default_case ], "}" ;
+                 | "match", "(", var_get, ",", var_get, { ",", var_get }, ")", "{", case_multi, { case_multi }, [ default_case ], "}" ;
 
 match_source     = var_get ;
 case1            = cond1, "=>", calc, [ "," ], [ ";" ] ;
-case2            = "(", cond1, ",", cond1, ")", "=>", calc, [ "," ], [ ";" ] ;
+case_multi       = "(", cond1, ",", cond1, { ",", cond1 }, ")", "=>", calc, [ "," ], [ ";" ] ;
 default_case     = "_", "=>", calc, [ "," ], [ ";" ] ;
 calc             = read_expr | take_expr | value_expr | collect_expr ;
 
-cond1            = "in", "(", value_expr, ",", value_expr, ")"
+cond1            = cond1_atom, { "|", cond1_atom }   (* OR：多个条件用 | 分隔 *)
+cond1_atom       = "in", "(", value_expr, ",", value_expr, ")"
                  | "!", value_expr
-                 | value_expr ;                 (* 省略运算符表示等于 *)
+                 | match_fun                           (* 函数匹配 *)
+                 | value_expr ;                        (* 省略运算符表示等于 *)
 ```
+
+**说明**：
+- **多源匹配**：`match (src1, src2, ...)` 支持任意数量的源字段（≥2），不再限于双源
+- **OR 语法**：在条件位置使用 `|` 分隔多个备选条件，任一匹配即成功
 
 **示例**：
 ```oml
@@ -289,9 +295,29 @@ level = match read(status) {
     _ => chars(other) ;
 } ;
 
-# 双源匹配
+# 单源 OR 匹配
+tier = match read(city) {
+    chars(bj) | chars(sh) | chars(gz) => chars(tier1) ;
+    chars(cd) | chars(wh) => chars(tier2) ;
+    _ => chars(other) ;
+} ;
+
+# 多源匹配（双源）
 result = match (read(a), read(b)) {
     (digit(1), digit(2)) => chars(case1) ;
+    _ => chars(default) ;
+} ;
+
+# 多源匹配（三源）
+zone = match (read(city), read(region), read(country)) {
+    (chars(bj), chars(north), chars(cn)) => chars(result1) ;
+    _ => chars(default) ;
+} ;
+
+# 多源 + OR 匹配
+priority = match (read(city), read(level)) {
+    (chars(bj) | chars(sh), chars(high)) => chars(priority) ;
+    (chars(gz), chars(low) | chars(mid)) => chars(normal) ;
     _ => chars(default) ;
 } ;
 ```
@@ -465,6 +491,27 @@ quarter : chars = match read(month) {
 X : chars = match (read(city1), read(city2)) {
     (ip(127.0.0.1), ip(127.0.0.100)) => chars(bj) ;
     _ => chars(sz) ;
+} ;
+
+# 三源 match
+zone : chars = match (read(city), read(region), read(country)) {
+    (chars(bj), chars(north), chars(cn)) => chars(zone1) ;
+    (chars(sh), chars(east), chars(cn)) => chars(zone2) ;
+    _ => chars(unknown) ;
+} ;
+
+# OR 匹配（单源）
+tier : chars = match read(city) {
+    chars(bj) | chars(sh) | chars(gz) => chars(tier1) ;
+    chars(cd) | chars(wh) => chars(tier2) ;
+    _ => chars(other) ;
+} ;
+
+# OR 匹配（多源）
+priority : chars = match (read(city), read(level)) {
+    (chars(bj) | chars(sh), chars(high)) => chars(priority) ;
+    (chars(gz), chars(low) | chars(mid)) => chars(normal) ;
+    _ => chars(default) ;
 } ;
 
 # SQL（where 中可混用 read/take/Now::time/常量）

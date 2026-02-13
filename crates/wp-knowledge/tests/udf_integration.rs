@@ -6,7 +6,7 @@ use wp_config::test_support::ForTest;
 use wp_knowledge::facade as kdb;
 
 fn uniq_tmp_dir() -> PathBuf {
-    use rand::{RngCore, rng};
+    use rand::{Rng, rng};
     use std::time::{SystemTime, UNIX_EPOCH};
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)

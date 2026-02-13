@@ -332,9 +332,10 @@ fn rewrite_match_condition(
     use crate::language::MatchCondition;
     match cond {
         MatchCondition::Single(c) => rewrite_single_match_cond(c, const_fields)?,
-        MatchCondition::Double(c1, c2) => {
-            rewrite_single_match_cond(c1, const_fields)?;
-            rewrite_single_match_cond(c2, const_fields)?;
+        MatchCondition::Multi(conds) => {
+            for c in conds.iter_mut() {
+                rewrite_single_match_cond(c, const_fields)?;
+            }
         }
         MatchCondition::Default => {}
     }
@@ -386,6 +387,11 @@ fn rewrite_single_match_cond(
             })?;
             // Use Arc::clone instead of DataField clone for zero-copy sharing
             *cond = MatchCond::InArc(Arc::clone(beg_field), Arc::clone(end_field));
+        }
+        MatchCond::Or(alternatives) => {
+            for alt in alternatives.iter_mut() {
+                rewrite_single_match_cond(alt, const_fields)?;
+            }
         }
         _ => {}
     }

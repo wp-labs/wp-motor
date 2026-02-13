@@ -3,24 +3,33 @@ use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// 语义功能全局开关（默认关闭）
+static SEMANTIC_ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// 设置语义功能开关（由主 crate 在启动时调用）
+pub fn set_semantic_enabled(v: bool) {
+    SEMANTIC_ENABLED.store(v, Ordering::Relaxed);
+}
+
+/// 查询语义功能是否启用
+pub fn is_semantic_enabled() -> bool {
+    SEMANTIC_ENABLED.load(Ordering::Relaxed)
+}
 
 /// 语义词典配置文件版本
 const SUPPORTED_VERSION: u32 = 1;
 
 /// 配置合并模式
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq)]
+#[derive(Debug, Default, Deserialize, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum MergeMode {
     /// 添加模式：外部配置添加到内置配置（默认）
+    #[default]
     Add,
     /// 替换模式：外部配置完全替换内置配置
     Replace,
-}
-
-impl Default for MergeMode {
-    fn default() -> Self {
-        MergeMode::Add
-    }
 }
 
 /// 外部语义词典配置
@@ -122,7 +131,10 @@ pub static SEMANTIC_DICT: Lazy<SemanticDict> = Lazy::new(|| {
                 dict.merge(conf);
             }
             Err(e) => {
-                eprintln!("Warning: Failed to load external semantic dict config: {}.", e);
+                eprintln!(
+                    "Warning: Failed to load external semantic dict config: {}.",
+                    e
+                );
             }
         }
     }
@@ -153,69 +165,172 @@ impl SemanticDict {
         Self {
             // 核心词性（硬编码，不可配置）
             core_pos: build_hashset_from_strs(&[
-                "n", "nr", "ns", "nt", "nz", "ng",  // 名词类
-                "v", "vn", "vd",                     // 动词类
-                "a", "ad", "an",                     // 形容词类
-                "eng", "m", "x", "t", "i",           // 英文、数词等
+                "n", "nr", "ns", "nt", "nz", "ng", // 名词类
+                "v", "vn", "vd", // 动词类
+                "a", "ad", "an", // 形容词类
+                "eng", "m", "x", "t", "i", // 英文、数词等
             ]),
 
             // 停用词
             stop_words: build_hashset_from_strs(&[
                 // 中文停用词
-                "的", "了", "在", "是", "我", "有", "和", "就", "不", "人",
-                "都", "一", "一个", "上", "也", "很", "到", "说", "要", "去",
-                "你", "会", "着", "没有", "看", "好", "自己", "这",
-                // 英文停用词
-                "the", "a", "an", "is", "are", "was", "were", "be", "been",
-                "being", "of", "at", "in", "to", "for", "and", "or", "but",
+                "的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都", "一", "一个",
+                "上", "也", "很", "到", "说", "要", "去", "你", "会", "着", "没有", "看", "好",
+                "自己", "这", // 英文停用词
+                "the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "of", "at",
+                "in", "to", "for", "and", "or", "but",
             ]),
 
             // 日志领域关键词
             domain_words: build_hashset_from_strs(&[
                 // 日志级别
-                "error", "warn", "info", "debug", "fatal", "trace",
+                "error",
+                "warn",
+                "info",
+                "debug",
+                "fatal",
+                "trace",
                 // 系统相关
-                "exception", "failure", "timeout", "connection", "database",
-                "server", "client", "request", "response", "login", "logout",
-                "auth", "authentication", "permission", "access",
+                "exception",
+                "failure",
+                "timeout",
+                "connection",
+                "database",
+                "server",
+                "client",
+                "request",
+                "response",
+                "login",
+                "logout",
+                "auth",
+                "authentication",
+                "permission",
+                "access",
                 // 网络相关
-                "http", "https", "tcp", "udp", "ip", "port", "socket",
+                "http",
+                "https",
+                "tcp",
+                "udp",
+                "ip",
+                "port",
+                "socket",
                 // 安全相关
-                "attack", "virus", "malware", "threat", "alert", "blocked", "denied",
+                "attack",
+                "virus",
+                "malware",
+                "threat",
+                "alert",
+                "blocked",
+                "denied",
             ]),
 
             // 状态词
             status_words: build_hashset_from_strs(&[
                 // 英文
-                "failed", "failure", "success", "succeeded", "timeout", "exception",
-                "crashed", "disconnected", "stopped", "completed", "pending",
-                "refused", "dropped", "rejected", "expired", "closed",
+                "failed",
+                "failure",
+                "success",
+                "succeeded",
+                "timeout",
+                "exception",
+                "crashed",
+                "disconnected",
+                "stopped",
+                "completed",
+                "pending",
+                "refused",
+                "dropped",
+                "rejected",
+                "expired",
+                "closed",
                 // 中文
-                "失败", "成功", "超时", "异常", "错误", "崩溃",
-                "断开", "拒绝", "丢失",
+                "失败",
+                "成功",
+                "超时",
+                "异常",
+                "错误",
+                "崩溃",
+                "断开",
+                "拒绝",
+                "丢失",
             ]),
 
             // 动作词
             action_verbs: build_hashset_from_strs(&[
                 // 英文
-                "connect", "login", "logout", "respond", "start", "stop", "fail",
-                "run", "process", "send", "receive", "read", "write", "open",
-                "close", "bind", "listen", "authenticate", "authorize", "create",
-                "delete", "update", "upload", "download", "retry", "handle",
-                "load", "fetch", "parse", "resolve", "block", "deny",
+                "connect",
+                "login",
+                "logout",
+                "respond",
+                "start",
+                "stop",
+                "fail",
+                "run",
+                "process",
+                "send",
+                "receive",
+                "read",
+                "write",
+                "open",
+                "close",
+                "bind",
+                "listen",
+                "authenticate",
+                "authorize",
+                "create",
+                "delete",
+                "update",
+                "upload",
+                "download",
+                "retry",
+                "handle",
+                "load",
+                "fetch",
+                "parse",
+                "resolve",
+                "block",
+                "deny",
                 // 中文
-                "连接", "登录", "登出", "请求", "响应", "启动", "停止",
-                "处理", "发送", "接收", "读取", "写入", "认证", "访问",
-                "创建", "删除", "更新", "下载", "上传", "重试",
+                "连接",
+                "登录",
+                "登出",
+                "请求",
+                "响应",
+                "启动",
+                "停止",
+                "处理",
+                "发送",
+                "接收",
+                "读取",
+                "写入",
+                "认证",
+                "访问",
+                "创建",
+                "删除",
+                "更新",
+                "下载",
+                "上传",
+                "重试",
             ]),
 
             // 实体名词（覆盖词缀规则）
             entity_nouns: build_hashset_from_strs(&[
                 // 英文
-                "connection", "transaction", "session", "application",
-                "configuration", "permission", "operation", "exception",
+                "connection",
+                "transaction",
+                "session",
+                "application",
+                "configuration",
+                "permission",
+                "operation",
+                "exception",
                 // 中文
-                "连接", "会话", "事务", "应用", "配置", "权限",
+                "连接",
+                "会话",
+                "事务",
+                "应用",
+                "配置",
+                "权限",
             ]),
         }
     }
@@ -465,7 +580,8 @@ mode = "add"
 # [entity_nouns]
 # english = ["migration", "notification"]
 # chinese = ["迁移任务", "通知"]
-"#.to_string()
+"#
+    .to_string()
 }
 
 #[cfg(test)]
@@ -631,8 +747,14 @@ business = ["order", "payment", "product"]
         assert!(domain.categories.contains_key("business"));
 
         // 验证具体的词汇
-        assert_eq!(domain.categories.get("database").unwrap(), &vec!["mysql", "postgres", "mongodb", "redis"]);
-        assert_eq!(domain.categories.get("cloud").unwrap(), &vec!["kubernetes", "docker", "pod"]);
+        assert_eq!(
+            domain.categories.get("database").unwrap(),
+            &vec!["mysql", "postgres", "mongodb", "redis"]
+        );
+        assert_eq!(
+            domain.categories.get("cloud").unwrap(),
+            &vec!["kubernetes", "docker", "pod"]
+        );
 
         // 测试合并到词典
         let mut dict = SemanticDict::builtin();
@@ -690,4 +812,3 @@ k8s_network = ["ingress", "endpoint"]
         assert_eq!(dict.domain_words.len(), 5); // pod, deployment, service, ingress, endpoint
     }
 }
-

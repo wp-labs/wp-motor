@@ -8,11 +8,11 @@ use std::hint::black_box;
 use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
+use wp_data_model::cache::FieldQueryCache;
 use wp_knowledge::DBQuery;
 use wp_knowledge::facade as kdb;
 use wp_knowledge::mem::memdb::{MDBEnum, MemDB, cache_query};
 use wp_knowledge::mem::thread_clone::ThreadClonedMDB;
-use wp_data_model::cache::FieldQueryCache;
 use wp_model_core::model::DataField;
 
 fn env_usize(key: &str, default: usize) -> usize {

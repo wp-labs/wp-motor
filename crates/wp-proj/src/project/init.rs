@@ -196,7 +196,10 @@ impl WarpProject {
             if let Err(e) = fs::write(&semantic_dict_config_path, config_content) {
                 eprintln!("Warning: Failed to write semantic_dict.toml: {}", e);
             } else {
-                println!("✓ 语义词典配置文件已创建: {}", semantic_dict_config_path.display());
+                println!(
+                    "✓ 语义词典配置文件已创建: {}",
+                    semantic_dict_config_path.display()
+                );
             }
         }
 

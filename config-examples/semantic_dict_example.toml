@@ -1,0 +1,12 @@
+version = 1
+mode = "add"
+
+# 添加业务特定的状态词
+[status_words]
+english = ["processing", "queued", "archived"]
+chinese = ["处理中", "队列中", "已归档"]
+
+# 添加业务特定的动作词
+[action_verbs]
+english = ["calculate", "aggregate", "transform"]
+chinese = ["计算", "聚合", "转换"]

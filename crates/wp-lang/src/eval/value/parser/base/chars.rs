@@ -9,7 +9,7 @@ use crate::generator::{FieldGenConf, GenScopeEnum};
 use crate::generator::{GenChannel, ParserValue};
 use crate::parser::utils::{quot_r_str, quot_str, take_to_end, window_path};
 use crate::types::AnyResult;
-use rand::Rng;
+use rand::RngExt;
 use winnow::ascii::{digit1, multispace0};
 use winnow::combinator::{alt, preceded};
 use wp_model_core::model::{DataField, Value};

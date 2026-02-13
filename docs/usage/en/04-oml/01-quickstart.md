@@ -20,6 +20,7 @@ OML (Object Model Language) is a **declarative transformation language** that co
 - **Type System**: 8 data types with automatic inference and conversion
 - **Powerful Functions**: Built-in functions, pipeline functions, pattern matching
 - **Flexible Operations**: Field extraction, data aggregation, conditional processing
+- **Pattern Matching**: match expressions support range, negation, multi-source (any count), OR conditions
 - **SQL Integration**: Enrich data with database queries
 
 ### How OML Works with WPL

@@ -18,7 +18,7 @@ Task-oriented practical guide to help you quickly find solutions.
 | Data Extraction | Various field extraction methods |
 | Data Transformation | Type conversion, time, URL, Base64, etc. |
 | Data Aggregation | Creating objects, arrays |
-| Conditional Processing | Status code classification, port identification, IP ranges, etc. |
+| Conditional Processing | Status code classification, port identification, IP ranges, OR conditions, multi-source + OR, etc. |
 | Data Enrichment (SQL Query) | SQL queries, multi-table joins |
 | Complex Scenarios | Web logs, system monitoring complete processing |
 
