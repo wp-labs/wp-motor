@@ -31,7 +31,7 @@ fn get_owned_count() -> usize {
 #[test]
 fn test_zero_copy_static_assignment() {
     // Static block with direct assignment
-    let oml = r#"
+    let mut oml = r#"
 name : zero_copy_test_1
 ---
 static {
@@ -67,7 +67,7 @@ enabled : bool = ENABLED;
 #[test]
 fn test_zero_copy_static_in_match() {
     // Static block used in match branches
-    let oml = r#"
+    let mut oml = r#"
 name : zero_copy_test_2
 ---
 static {
@@ -109,7 +109,7 @@ result : digit = match read(status) {
 #[test]
 fn test_zero_copy_static_in_object() {
     // Static block used in nested object
-    let oml = r#"
+    let mut oml = r#"
 name : zero_copy_test_3
 ---
 static {
@@ -196,7 +196,7 @@ field_c : chars = read(field_a);
 #[test]
 fn test_zero_copy_comprehensive() {
     // Comprehensive test with all static reference forms
-    let oml = r#"
+    let mut oml = r#"
 name : zero_copy_comprehensive
 ---
 static {
@@ -257,7 +257,7 @@ is_enabled : bool = match read(status) {
 #[should_panic]
 fn test_unresolved_static_symbol_panics() {
     // This test ensures unresolved static symbols are caught
-    let oml = r#"
+    let mut oml = r#"
 name : invalid
 ---
 field : chars = UNDEFINED_SYMBOL;
@@ -275,7 +275,7 @@ field : chars = UNDEFINED_SYMBOL;
 // Performance regression test
 #[test]
 fn test_zero_copy_performance_characteristics() {
-    let static_oml = r#"
+    let mut static_oml = r#"
 name : perf_test_static
 ---
 static {
@@ -290,7 +290,7 @@ f3 : chars = FIELD_3;
 f4 : chars = FIELD_4;
 "#;
 
-    let temp_oml = r#"
+    let mut temp_oml = r#"
 name : perf_test_temp
 ---
 f1 : chars = chars("value1");
@@ -299,8 +299,8 @@ f3 : chars = chars("value3");
 f4 : chars = chars("value4");
 "#;
 
-    let model_static = oml_parse_raw(&mut static_oml.as_ref()).expect("parse static");
-    let model_temp = oml_parse_raw(&mut temp_oml.as_ref()).expect("parse temp");
+    let model_static = oml_parse_raw(&mut static_oml).expect("parse static");
+    let model_temp = oml_parse_raw(&mut temp_oml).expect("parse temp");
 
     let mut cache = FieldQueryCache::default();
     let input = DataRecord::default();
