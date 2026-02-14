@@ -45,7 +45,7 @@ port : digit = PORT;
 enabled : bool = ENABLED;
 "#;
 
-    let model = oml_parse_raw(&mut oml.as_ref()).expect("parse OML");
+    let model = oml_parse_raw(&mut oml).expect("parse OML");
     let mut cache = FieldQueryCache::default();
     let input = DataRecord::default();
 
@@ -82,7 +82,7 @@ result : digit = match read(status) {
 };
 "#;
 
-    let model = oml_parse_raw(&mut oml.as_ref()).expect("parse OML");
+    let model = oml_parse_raw(&mut oml).expect("parse OML");
     let mut cache = FieldQueryCache::default();
 
     // Test success path
@@ -123,7 +123,7 @@ config = object {
 };
 "#;
 
-    let model = oml_parse_raw(&mut oml.as_ref()).expect("parse OML");
+    let model = oml_parse_raw(&mut oml).expect("parse OML");
     let mut cache = FieldQueryCache::default();
     let input = DataRecord::default();
 
@@ -226,7 +226,7 @@ is_enabled : bool = match read(status) {
 };
 "#;
 
-    let model = oml_parse_raw(&mut oml.as_ref()).expect("parse OML");
+    let model = oml_parse_raw(&mut oml).expect("parse OML");
     let mut cache = FieldQueryCache::default();
 
     // Test case 1: Normal execution
@@ -264,7 +264,7 @@ field : chars = UNDEFINED_SYMBOL;
 "#;
 
     // This should fail during parse or rewrite phase
-    let model = oml_parse_raw(&mut oml.as_ref()).expect("parse OML");
+    let model = oml_parse_raw(&mut oml).expect("parse OML");
     let mut cache = FieldQueryCache::default();
     let input = DataRecord::default();
 

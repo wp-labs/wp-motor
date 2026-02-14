@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use crate::structure::{FixedGroup, FlexGroup};
+use crate::structure::{FixedGroup, FlexGroup, default_batch_timeout_ms};
 use anyhow::Result as AnyResult;
 use orion_error::ToStructError;
 use orion_variate::{EnvDict, EnvEvaluable};
@@ -69,7 +69,7 @@ impl InfraSinkConf {
                             expect: g.expect.clone(),
                             sinks: g.sinks.clone(),
                             parallel: g.parallel_cnt(),
-                            flush_interval_ms: crate::structure::default_flush_interval_ms(),
+                            batch_timeout_ms: default_batch_timeout_ms(),
                         }
                     }
                     crate::sinks::GROUP_MISS => {
@@ -78,7 +78,7 @@ impl InfraSinkConf {
                             expect: g.expect.clone(),
                             sinks: g.sinks.clone(),
                             parallel: g.parallel_cnt(),
-                            flush_interval_ms: crate::structure::default_flush_interval_ms(),
+                            batch_timeout_ms: default_batch_timeout_ms(),
                         }
                     }
                     crate::sinks::GROUP_RESIDUE => {
@@ -87,7 +87,7 @@ impl InfraSinkConf {
                             expect: g.expect.clone(),
                             sinks: g.sinks.clone(),
                             parallel: g.parallel_cnt(),
-                            flush_interval_ms: crate::structure::default_flush_interval_ms(),
+                            batch_timeout_ms: default_batch_timeout_ms(),
                         }
                     }
                     crate::sinks::GROUP_ERROR => {
@@ -96,7 +96,7 @@ impl InfraSinkConf {
                             expect: g.expect.clone(),
                             sinks: g.sinks.clone(),
                             parallel: g.parallel_cnt(),
-                            flush_interval_ms: crate::structure::default_flush_interval_ms(),
+                            batch_timeout_ms: default_batch_timeout_ms(),
                         }
                     }
                     crate::sinks::GROUP_MONITOR => {

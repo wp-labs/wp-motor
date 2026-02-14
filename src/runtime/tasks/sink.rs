@@ -29,7 +29,7 @@ pub fn start_data_sinks(
 
         let cur_infra = infra.clone();
         let sink_name = x.get_name().to_string();
-        let flush_interval_ms = x.conf().flush_interval_ms();
+        let batch_timeout_ms = x.conf().batch_timeout_ms();
         let knowdb_for_task = knowdb_handler.clone();
         let handle = tokio::spawn(async move {
             if let Some(handler) = knowdb_for_task.as_ref() {
@@ -45,7 +45,7 @@ pub fn start_data_sinks(
                 sink_mon,
                 bad_sink_s,
                 fix_sink_r,
-                flush_interval_ms,
+                batch_timeout_ms,
             )
             .await
             {

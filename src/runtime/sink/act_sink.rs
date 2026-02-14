@@ -154,7 +154,7 @@ impl SinkWork {
         mon_send: MonSend,
         bad_sink_s: ASinkSender,
         mut fix_sink_r: ASinkReceiver,
-        flush_interval_ms: u64,
+        batch_timeout_ms: u64,
     ) -> SinkResult<()> {
         let mut ctx = OperationContext::want("sink start proc");
         let name = format!("work-sink:{:20}", sink.conf().name());
@@ -166,7 +166,7 @@ impl SinkWork {
 
         let mut stat_tick = interval(Duration::from_millis(STAT_INTERVAL_MS as u64));
         stat_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
-        let mut flush_tick = interval(Duration::from_millis(flush_interval_ms));
+        let mut flush_tick = interval(Duration::from_millis(batch_timeout_ms));
         flush_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
         let mut need_send_stat = false;
         loop {

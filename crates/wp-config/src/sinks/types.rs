@@ -42,9 +42,9 @@ pub struct RouteGroup {
     pub tags: Option<Vec<String>>,
     #[serde(default)]
     pub expect: Option<GroupExpectSpec>,
-    /// 刷新间隔，单位：毫秒，默认 3000ms (3秒)
+    /// 批量超时时间，单位：毫秒，默认 300ms
     #[serde(default)]
-    pub flush_interval_ms: Option<u64>,
+    pub batch_timeout_ms: Option<u64>,
     #[serde(default)]
     pub sinks: Vec<RouteSink>,
 }

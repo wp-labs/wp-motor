@@ -229,8 +229,8 @@ fn apply_group_metadata(
     if let Some(gt) = rf.sink_group.tags.as_ref() {
         g.tags = gt.clone();
     }
-    if let Some(flush_ms) = rf.sink_group.flush_interval_ms {
-        g.flush_interval_ms = flush_ms;
+    if let Some(timeout_ms) = rf.sink_group.batch_timeout_ms {
+        g.batch_timeout_ms = timeout_ms;
     }
 }
 
@@ -451,7 +451,7 @@ mod tests {
                 expect: None,
                 sinks: vec![],
                 parallel: None,
-                flush_interval_ms: None,
+                batch_timeout_ms: None,
             },
             origin: None,
         };
@@ -477,7 +477,7 @@ mod tests {
                 expect: None,
                 sinks: vec![],
                 parallel: None,
-                flush_interval_ms: None,
+                batch_timeout_ms: None,
             },
             origin: None,
         };
@@ -505,7 +505,7 @@ mod tests {
                 expect: None,
                 sinks: vec![],
                 parallel: None,
-                flush_interval_ms: None,
+                batch_timeout_ms: None,
             },
             origin: None,
         };
@@ -532,7 +532,7 @@ mod tests {
                 expect: None,
                 sinks: vec![],
                 parallel: None,
-                flush_interval_ms: None,
+                batch_timeout_ms: None,
             },
             origin: None,
         };
