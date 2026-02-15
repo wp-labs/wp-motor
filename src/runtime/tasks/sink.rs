@@ -29,6 +29,7 @@ pub fn start_data_sinks(
 
         let cur_infra = infra.clone();
         let sink_name = x.get_name().to_string();
+        let batch_timeout_ms = x.conf().batch_timeout_ms();
         let knowdb_for_task = knowdb_handler.clone();
         let handle = tokio::spawn(async move {
             if let Some(handler) = knowdb_for_task.as_ref() {
@@ -37,18 +38,27 @@ pub fn start_data_sinks(
                 warn_ctrl!("no knowdb handler for {} ", sink_name);
             }
             info_ctrl!("spawn tokio Sink Group {}", x.conf().name());
-            if let Err(e) =
-                SinkWork::async_proc(x, cur_infra, sink_cmd_sub, sink_mon, bad_sink_s, fix_sink_r)
-                    .await
+            if let Err(e) = SinkWork::async_proc(
+                x,
+                cur_infra,
+                sink_cmd_sub,
+                sink_mon,
+                bad_sink_s,
+                fix_sink_r,
+                batch_timeout_ms,
+            )
+            .await
             {
                 error_ctrl! { "{}  sink error: {}", sink_name,e}
             }
         });
         routine_group.append(handle);
     }
+
     ctx.mark_suc();
     routine_group
 }
+
 pub fn start_infra_working(
     infra_sink: InfraSinkService,
     mon_send: MonSend,

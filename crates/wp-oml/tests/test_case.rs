@@ -806,7 +806,7 @@ fn test_enable_default_true() {
         A1 = chars(hello);
         "#;
     let model = oml_parse_raw(&mut conf).assert();
-    assert_eq!(*model.enable(), true, "Default enable should be true");
+    assert!(*model.enable(), "Default enable should be true");
 }
 
 #[test]
@@ -819,7 +819,7 @@ fn test_enable_explicit_true() {
         A1 = chars(hello);
         "#;
     let model = oml_parse_raw(&mut conf).assert();
-    assert_eq!(*model.enable(), true, "Explicit enable true");
+    assert!(*model.enable(), "Explicit enable true");
 }
 
 #[test]
@@ -832,7 +832,7 @@ fn test_enable_explicit_false() {
         A1 = chars(hello);
         "#;
     let model = oml_parse_raw(&mut conf).assert();
-    assert_eq!(*model.enable(), false, "Explicit enable false");
+    assert!(!*model.enable(), "Explicit enable false");
 }
 
 #[test]
@@ -846,7 +846,7 @@ fn test_enable_with_rule() {
         A1 = chars(hello);
         "#;
     let model = oml_parse_raw(&mut conf).assert();
-    assert_eq!(*model.enable(), false, "Enable should be false");
+    assert!(!*model.enable(), "Enable should be false");
     assert!(!model.rules().is_empty(), "Rules should be set");
 }
 
@@ -861,7 +861,7 @@ fn test_enable_before_rule() {
         A1 = chars(hello);
         "#;
     let model = oml_parse_raw(&mut conf).assert();
-    assert_eq!(*model.enable(), false, "Enable should be false");
+    assert!(!*model.enable(), "Enable should be false");
     assert!(!model.rules().is_empty(), "Rules should be set");
 }
 
@@ -876,7 +876,7 @@ fn test_enabled_model_transforms_data() {
         result = chars(transformed);
         "#;
     let model = oml_parse_raw(&mut conf).assert();
-    assert_eq!(*model.enable(), true);
+    assert!(*model.enable());
 
     let src = DataRecord::default();
     let target = model.transform(src, cache);
@@ -898,7 +898,7 @@ fn test_disabled_model_still_parses() {
         result = chars(should_not_run);
         "#;
     let model = oml_parse_raw(&mut conf).assert();
-    assert_eq!(*model.enable(), false);
+    assert!(!*model.enable());
     assert_eq!(model.name(), "disabled_model");
 
     // Model can still transform if called directly (filtering is at load time)
@@ -926,7 +926,7 @@ fn test_enable_with_complex_config() {
         field1, field2 = take();
         "#;
     let model = oml_parse_raw(&mut conf).assert();
-    assert_eq!(*model.enable(), true);
+    assert!(*model.enable());
     assert_eq!(model.rules().as_ref().len(), 2);
 
     let data = vec![
@@ -957,7 +957,7 @@ fn test_enable_preserves_model_name() {
         "#;
     let model = oml_parse_raw(&mut conf).assert();
     assert_eq!(model.name(), "my_special_model");
-    assert_eq!(*model.enable(), false);
+    assert!(!*model.enable());
 }
 
 #[test]
@@ -971,7 +971,7 @@ fn test_multiple_rules_with_enable() {
         * = take();
         "#;
     let model = oml_parse_raw(&mut conf).assert();
-    assert_eq!(*model.enable(), true);
+    assert!(*model.enable());
     assert_eq!(model.rules().as_ref().len(), 3);
 }
 

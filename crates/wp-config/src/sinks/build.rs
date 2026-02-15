@@ -229,6 +229,9 @@ fn apply_group_metadata(
     if let Some(gt) = rf.sink_group.tags.as_ref() {
         g.tags = gt.clone();
     }
+    if let Some(timeout_ms) = rf.sink_group.batch_timeout_ms {
+        g.batch_timeout_ms = timeout_ms;
+    }
 }
 
 /// 从单个 RouteFile 构建标准输出 SinkRouteConf（统一事实源）
@@ -448,6 +451,7 @@ mod tests {
                 expect: None,
                 sinks: vec![],
                 parallel: None,
+                batch_timeout_ms: None,
             },
             origin: None,
         };
@@ -473,6 +477,7 @@ mod tests {
                 expect: None,
                 sinks: vec![],
                 parallel: None,
+                batch_timeout_ms: None,
             },
             origin: None,
         };
@@ -500,6 +505,7 @@ mod tests {
                 expect: None,
                 sinks: vec![],
                 parallel: None,
+                batch_timeout_ms: None,
             },
             origin: None,
         };
@@ -526,6 +532,7 @@ mod tests {
                 expect: None,
                 sinks: vec![],
                 parallel: None,
+                batch_timeout_ms: None,
             },
             origin: None,
         };

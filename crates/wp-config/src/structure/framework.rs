@@ -1,5 +1,6 @@
 use crate::common::paths::OUT_FILE_PATH;
 use crate::structure::SinkInstanceConf;
+use crate::structure::group::default_batch_timeout_ms;
 use crate::structure::{Basis, ExpectMode, FixedGroup, FlexGroup, GroupExpectSpec};
 use wp_model_core::model::fmt_def::TextFmt;
 use wp_specs::WildArray;
@@ -16,6 +17,7 @@ impl FixedGroup {
                 None,
             )],
             parallel: 1,
+            batch_timeout_ms: default_batch_timeout_ms(),
         }
     }
 
@@ -30,6 +32,7 @@ impl FixedGroup {
                 None,
             )],
             parallel: 1,
+            batch_timeout_ms: default_batch_timeout_ms(),
         }
     }
 
@@ -44,6 +47,7 @@ impl FixedGroup {
                 None,
             )],
             parallel: 1,
+            batch_timeout_ms: default_batch_timeout_ms(),
         }
     }
     // intercept_ins removed: intercept 组已废弃
@@ -59,6 +63,7 @@ impl FixedGroup {
                 None,
             )],
             parallel: 1,
+            batch_timeout_ms: default_batch_timeout_ms(),
         }
     }
 }
@@ -80,6 +85,7 @@ impl FlexGroup {
                 sum_tol: None,
                 others_max: None,
             }),
+            batch_timeout_ms: default_batch_timeout_ms(),
             sinks: vec![SinkInstanceConf::file_new(
                 "monitor_sink".to_string(),
                 TextFmt::ProtoText,

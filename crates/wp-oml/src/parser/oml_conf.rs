@@ -974,9 +974,8 @@ normal1 = chars(value1);
 normal2 = chars(value2);
         "#;
         let model_no_temp = oml_parse_raw(&mut code_no_temp).assert();
-        assert_eq!(
-            model_no_temp.has_temp_fields(),
-            false,
+        assert!(
+            !model_no_temp.has_temp_fields(),
             "Should not have temp fields flag"
         );
 
@@ -988,9 +987,8 @@ __temp = chars(temp_value);
 normal = chars(normal_value);
         "#;
         let model_with_temp = oml_parse_raw(&mut code_with_temp).assert();
-        assert_eq!(
+        assert!(
             model_with_temp.has_temp_fields(),
-            true,
             "Should have temp fields flag"
         );
 
@@ -1003,9 +1001,8 @@ normal = chars(value2);
 __temp2 = chars(value3);
         "#;
         let model_multi_temp = oml_parse_raw(&mut code_multi_temp).assert();
-        assert_eq!(
+        assert!(
             model_multi_temp.has_temp_fields(),
-            true,
             "Should have temp fields flag"
         );
 
@@ -1023,11 +1020,7 @@ name : test
 field = chars(value);
         "#;
         let model_default = oml_parse_raw(&mut code_default).assert();
-        assert_eq!(
-            *model_default.enable(),
-            true,
-            "Default enable should be true"
-        );
+        assert!(*model_default.enable(), "Default enable should be true");
 
         Ok(())
     }
@@ -1044,7 +1037,7 @@ enable : true
 field = chars(value);
         "#;
         let model_enable_true = oml_parse_raw(&mut code_enable_true).assert();
-        assert_eq!(*model_enable_true.enable(), true, "Explicit enable true");
+        assert!(*model_enable_true.enable(), "Explicit enable true");
 
         Ok(())
     }
@@ -1061,7 +1054,7 @@ enable : false
 field = chars(value);
         "#;
         let model_enable_false = oml_parse_raw(&mut code_enable_false).assert();
-        assert_eq!(*model_enable_false.enable(), false, "Explicit enable false");
+        assert!(!*model_enable_false.enable(), "Explicit enable false");
 
         Ok(())
     }
@@ -1079,7 +1072,7 @@ enable : false
 field = chars(value);
         "#;
         let model_with_rule = oml_parse_raw(&mut code_with_rule).assert();
-        assert_eq!(*model_with_rule.enable(), false, "enable with rule");
+        assert!(!*model_with_rule.enable(), "enable with rule");
 
         Ok(())
     }
@@ -1092,12 +1085,12 @@ field = chars(value);
         let mut enable_str = "enable : true ";
         let result = oml_conf_enable(&mut enable_str);
         assert!(result.is_ok(), "Should parse enable: {:?}", result);
-        assert_eq!(result.unwrap(), true);
+        assert!(result.unwrap());
 
         let mut enable_false = "enable : false ";
         let result = oml_conf_enable(&mut enable_false);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), false);
+        assert!(!result.unwrap());
 
         Ok(())
     }
