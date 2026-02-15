@@ -5,7 +5,7 @@ use crate::resources::SinkResUnit;
 use crate::sinks::builtin_factories;
 use crate::sinks::prelude::PkgID;
 use crate::sinks::routing::agent::InfraSinkAgent;
-use crate::sinks::{ProcMeta, SinkBackendType, SinkRecUnit, SinkRuntime};
+use crate::sinks::{ProcMeta, SinkBackendType, SinkPackage, SinkRecUnit, SinkRuntime};
 use oml::language::DataModel;
 use oml::parser::oml_parse_raw;
 use once_cell::sync::Lazy;
@@ -14,6 +14,7 @@ use orion_overload::append::Appendable;
 use std::sync::Arc;
 use wp_conf::TCondParser;
 use wp_conf::structure::{FlexGroup, SinkGroupConf, SinkInstanceConf};
+use wp_connector_api::ParamMap;
 use wp_data_model::cache::FieldQueryCache;
 use wp_model_core::model::fmt_def::TextFmt;
 use wp_model_core::model::{DataField, DataRecord, Value};
@@ -30,6 +31,16 @@ pub struct OmlBatchPerfCase {
     cache: FieldQueryCache,
     rule: ProcMeta,
     records: Vec<PerfRecord>,
+}
+
+/// SinkRuntime 缓冲路径对比场景：
+/// - 当 `package_size < batch_size`：走 pending 缓冲路径（flush 时下发）
+/// - 当 `package_size >= batch_size`：触发自动直通路径（绕过 pending）
+pub struct SinkBatchBufferPerfCase {
+    runtime: tokio::runtime::Runtime,
+    sink: SinkRuntime,
+    package: SinkPackage,
+    batch_size: usize,
 }
 
 struct PerfRecord {
@@ -89,6 +100,81 @@ impl OmlBatchPerfCase {
             .oml_proc_batch(batch, &self.infra, &mut self.cache, &self.rule)
             .expect("oml_proc_batch perf case failed");
         per_sink.iter().map(|units| units.len()).sum()
+    }
+}
+
+impl SinkBatchBufferPerfCase {
+    pub fn new(package_size: usize, batch_size: usize) -> Self {
+        assert!(package_size > 0, "package_size must be > 0");
+        assert!(batch_size > 0, "batch_size must be > 0");
+
+        let mut params = ParamMap::new();
+        params.insert(
+            "batch_size".to_string(),
+            serde_json::Value::from(batch_size as u64),
+        );
+
+        let conf = SinkInstanceConf::new_type(
+            format!("blackhole_batch_{}", batch_size),
+            TextFmt::Json,
+            "blackhole".to_string(),
+            params,
+            None,
+        );
+        let sink = SinkRuntime::new(
+            "./rescue".to_string(),
+            conf.name().clone(),
+            conf,
+            SinkBackendType::Proxy(builtin_factories::make_blackhole_sink()),
+            None,
+            Vec::new(),
+        );
+
+        let units = (0..package_size).map(|idx| {
+            let mut record = DataRecord::default();
+            record.append(DataField::from_chars("k", format!("v{}", idx)));
+            SinkRecUnit::new(
+                (idx as PkgID).saturating_add(1),
+                ProcMeta::Rule("/bench/batch_pending".to_string()),
+                Arc::new(record),
+            )
+        });
+        let package = SinkPackage::from_units(units);
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("build tokio runtime for sink batch pending perf case");
+
+        Self {
+            runtime,
+            sink,
+            package,
+            batch_size,
+        }
+    }
+
+    pub fn package_size(&self) -> usize {
+        self.package.len()
+    }
+
+    pub fn batch_size(&self) -> usize {
+        self.batch_size
+    }
+
+    pub fn run_once(&mut self) -> usize {
+        let size = self.package.len();
+        self.runtime.block_on(async {
+            self.sink
+                .send_package_to_sink(&self.package, None, None)
+                .await
+                .expect("send_package_to_sink perf case failed");
+            self.sink
+                .flush(None, None)
+                .await
+                .expect("flush perf case failed");
+        });
+        size
     }
 }
 

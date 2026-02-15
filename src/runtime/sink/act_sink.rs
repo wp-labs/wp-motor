@@ -166,7 +166,7 @@ impl SinkWork {
 
         let mut stat_tick = interval(Duration::from_millis(STAT_INTERVAL_MS as u64));
         stat_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
-        let mut flush_tick = interval(Duration::from_millis(batch_timeout_ms));
+        let mut flush_tick = interval(Duration::from_millis(batch_timeout_ms.max(1)));
         flush_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
         let mut need_send_stat = false;
         loop {
@@ -245,6 +245,10 @@ impl SinkWork {
         }
         let sinks = sink.get_sinks_mut();
         for s in sinks.iter_mut() {
+            s.flush(Some(&bad_sink_s), Some(&mon_send)).await?;
+        }
+        let sinks = sink.get_sinks_mut();
+        for s in sinks.iter_mut() {
             s.send_stat(&mon_send).await?;
         }
         sink.proc_end().await?;
@@ -275,6 +279,7 @@ impl SinkWork {
         mon_send: MonSend,
         bad_sink_s: ASinkSender,
         mut fix_sink_r: ASinkReceiver,
+        batch_timeout_ms: u64,
     ) -> SinkResult<()> {
         // 基础组固定 5 个：default/miss/residue/monitor/error
         let mut default_sink = InfraChannel::new(groups.default, &bad_sink_s, &mon_send);
@@ -288,6 +293,8 @@ impl SinkWork {
 
         let mut stat_tick = interval(Duration::from_millis(STAT_INTERVAL_MS as u64));
         stat_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        let mut flush_tick = interval(Duration::from_millis(batch_timeout_ms.max(1)));
+        flush_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
         let mut need_send_stat = false;
 
         loop {
@@ -369,6 +376,25 @@ impl SinkWork {
                         }
                     }
                 }
+                _ = flush_tick.tick() => {
+                    for ch in [&mut default_sink, &mut miss_cnn, &mut residue_cnn, &mut monitor_cnn, &mut error_cnn] {
+                        for s in ch.dispatcher.get_sinks_mut() {
+                            s.flush(Some(&bad_sink_s), Some(&mon_send)).await?;
+                        }
+                    }
+                    need_send_stat = true;
+                }
+            }
+        }
+        for ch in [
+            &mut default_sink,
+            &mut miss_cnn,
+            &mut residue_cnn,
+            &mut monitor_cnn,
+            &mut error_cnn,
+        ] {
+            for s in ch.dispatcher.get_sinks_mut() {
+                s.flush(Some(&bad_sink_s), Some(&mon_send)).await?;
             }
         }
         // Send final stats before exit

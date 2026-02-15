@@ -65,6 +65,18 @@ pub fn start_infra_working(
     infra_group: &TaskGroup,
     act_mt_sink: &mut ActMaintainer,
 ) {
+    let batch_timeout_ms = [
+        infra_sink.default_sink.conf().batch_timeout_ms(),
+        infra_sink.miss_sink.conf().batch_timeout_ms(),
+        infra_sink.residue_sink.conf().batch_timeout_ms(),
+        infra_sink.moni_sink.conf().batch_timeout_ms(),
+        infra_sink.err_sink.conf().batch_timeout_ms(),
+    ]
+    .into_iter()
+    .min()
+    .unwrap_or(1000)
+    .max(1);
+
     let groups = InfraGroups {
         default: infra_sink.default_sink,
         miss: infra_sink.miss_sink,
@@ -80,8 +92,15 @@ pub fn start_infra_working(
 
     tokio::spawn(async move {
         info_data!("spawn tokio Sink infra Group ");
-        if let Err(e) =
-            SinkWork::async_proc_infra(groups, sink_cmd_sub, sink_mon, bad_sink_s, fix_sink_r).await
+        if let Err(e) = SinkWork::async_proc_infra(
+            groups,
+            sink_cmd_sub,
+            sink_mon,
+            bad_sink_s,
+            fix_sink_r,
+            batch_timeout_ms,
+        )
+        .await
         {
             error_ctrl! { "sink error: {}", e}
         }

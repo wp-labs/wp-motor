@@ -238,6 +238,11 @@ name = "oml_proc_batch_nginx"
 harness = false
 required-features = ["perf-ci"]
 
+[[bench]]
+name = "sink_batch_pending_blackhole"
+harness = false
+required-features = ["perf-ci"]
+
 # ============================================================================
 # Metadata
 # ============================================================================

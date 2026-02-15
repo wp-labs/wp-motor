@@ -47,7 +47,7 @@ pub struct SinkRuntime {
     rescue: String,
     cond: Option<Expression<DataField, RustSymbol>>,
     batch_size: usize,
-    buffer: Vec<Arc<DataRecord>>,
+    pending_records: Vec<Arc<DataRecord>>,
     status: RuntimeStautus,
     normal_stat: MetricCollectors,
     backup_stat: MetricCollectors,
@@ -55,6 +55,13 @@ pub struct SinkRuntime {
     backup_used: bool,
     timer_poll_ticks: u8,
     last_stat_sent_at: Instant,
+}
+
+/// 批量发送错误处理结果
+enum BatchErrHandle {
+    Retry,
+    Consume,
+    Throw,
 }
 
 impl SinkRuntime {
@@ -76,7 +83,7 @@ impl SinkRuntime {
         if let Some(buffer_size) = conf.core.params.get("batch_size")
             && let Some(size) = buffer_size.as_u64()
         {
-            batch_size = size.to_usize();
+            batch_size = size.to_usize().max(1);
         }
 
         Self {
@@ -88,7 +95,7 @@ impl SinkRuntime {
             primary: sink,
             cond,
             batch_size,
-            buffer: Vec::with_capacity(batch_size),
+            pending_records: Vec::with_capacity(batch_size),
             normal_stat,
             backup_stat,
             status: RuntimeStautus::Ready,
@@ -235,19 +242,50 @@ impl SinkRuntime {
         Ok(())
     }
 
-    /// 批量发送记录数据包到 Sink
-    /// 通用的批量发送记录方法，发送 buffer 中的数据
-    async fn flush_records(
+    /// 刷新 pending 缓冲中的记录并发送到 Sink
+    async fn flush_pending_buffer(
         &mut self,
         bad_s: Option<&ASinkSender>,
         mon: Option<&MonSend>,
     ) -> SinkResult<()> {
-        if self.buffer.is_empty() {
+        if self.pending_records.is_empty() {
             return Ok(());
         }
 
-        // 提取 buffer 内容，避免借用冲突
-        let records = std::mem::take(&mut self.buffer);
+        // 提取 buffer 内容，并为下一轮写入保留容量，避免频繁扩容
+        let records = std::mem::replace(
+            &mut self.pending_records,
+            Vec::with_capacity(self.batch_size),
+        );
+        self.send_records_batch(records, bad_s, mon, true).await
+    }
+
+    /// 直接发送当前 package（绕过 pending 缓冲）
+    async fn send_package_bypass_buffer(
+        &mut self,
+        package: &SinkPackage,
+        bad_s: Option<&ASinkSender>,
+        mon: Option<&MonSend>,
+    ) -> SinkResult<()> {
+        let mut records = Vec::with_capacity(package.len());
+        for unit in package.iter() {
+            records.push(unit.data().clone());
+        }
+        self.send_records_batch(records, bad_s, mon, false).await
+    }
+
+    /// 发送一批 records；`requeue_on_throw=true` 时在 Throw 分支回填 pending 缓冲
+    async fn send_records_batch(
+        &mut self,
+        records: Vec<Arc<DataRecord>>,
+        bad_s: Option<&ASinkSender>,
+        mon: Option<&MonSend>,
+        requeue_on_throw: bool,
+    ) -> SinkResult<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+
         let ids: Vec<u64> = (0..records.len() as u64).collect();
 
         // 统计开始
@@ -274,20 +312,40 @@ impl SinkRuntime {
                     for e_id in &ids {
                         error_edata!(*e_id, "flush sink data failed: {}", e);
                     }
-                    if self.handle_send_error(&e, bad_s, mon).await? {
-                        continue;
-                    } else {
-                        // 失败时将数据放回 buffer
-                        self.buffer = records;
-                        // 统计结束 - 在放回 buffer 后，先克隆数据再调用 stat_end
-                        let buffer_copy: Vec<Arc<DataRecord>> = self.buffer.clone();
-                        for record in buffer_copy {
-                            self.stat_end(&SinkDataEnum::Rec(
-                                ProcMeta::Rule("flush".into()),
-                                record.clone(),
-                            ));
+                    match self.handle_send_error(&e, bad_s, mon).await? {
+                        BatchErrHandle::Retry => continue,
+                        BatchErrHandle::Consume => {
+                            for record in &records {
+                                self.stat_end(&SinkDataEnum::Rec(
+                                    ProcMeta::Rule("flush".into()),
+                                    record.clone(),
+                                ));
+                            }
+                            return Ok(());
                         }
-                        return Err(e);
+                        BatchErrHandle::Throw => {
+                            if requeue_on_throw {
+                                // 失败时将数据放回 buffer
+                                self.pending_records = records;
+                                // 统计结束 - 在放回 buffer 后，先克隆数据再调用 stat_end
+                                let buffer_copy: Vec<Arc<DataRecord>> =
+                                    self.pending_records.clone();
+                                for record in buffer_copy {
+                                    self.stat_end(&SinkDataEnum::Rec(
+                                        ProcMeta::Rule("flush".into()),
+                                        record.clone(),
+                                    ));
+                                }
+                            } else {
+                                for record in &records {
+                                    self.stat_end(&SinkDataEnum::Rec(
+                                        ProcMeta::Rule("flush".into()),
+                                        record.clone(),
+                                    ));
+                                }
+                            }
+                            return Err(e);
+                        }
                     }
                 }
             }
@@ -305,13 +363,18 @@ impl SinkRuntime {
             return Ok(());
         }
 
+        // 自动策略：当 pending 为空且入站包已达到阈值，直接下发可减少无效缓冲开销
+        if self.pending_records.is_empty() && package.len() >= self.batch_size {
+            return self.send_package_bypass_buffer(package, bad_s, mon).await;
+        }
+
         // 将 package 中的数据添加到 buffer
         for unit in package.iter() {
-            self.buffer.push(unit.data().clone());
+            self.pending_records.push(unit.data().clone());
 
             // 当 buffer 达到批次大小时自动 flush
-            if self.buffer.len() >= self.batch_size {
-                self.flush_records(bad_s, mon).await?;
+            if self.pending_records.len() >= self.batch_size {
+                self.flush_pending_buffer(bad_s, mon).await?;
             }
         }
 
@@ -324,7 +387,7 @@ impl SinkRuntime {
         bad_s: Option<&ASinkSender>,
         mon: Option<&MonSend>,
     ) -> SinkResult<()> {
-        self.flush_records(bad_s, mon).await
+        self.flush_pending_buffer(bad_s, mon).await
     }
 
     /// 批量发送 FFV 数据包到 Sink
@@ -370,14 +433,17 @@ impl SinkRuntime {
                     self.record_package_stats_end_ffv(&package);
                     return Ok(());
                 }
-                Err(e) => {
-                    if self.handle_send_error(&e, bad_s, mon).await? {
-                        continue;
-                    } else {
+                Err(e) => match self.handle_send_error(&e, bad_s, mon).await? {
+                    BatchErrHandle::Retry => continue,
+                    BatchErrHandle::Consume => {
+                        self.record_package_stats_end_ffv(&package);
+                        return Ok(());
+                    }
+                    BatchErrHandle::Throw => {
                         self.record_package_stats_end_ffv(&package);
                         return Err(e);
                     }
-                }
+                },
             }
         }
     }
@@ -403,14 +469,17 @@ impl SinkRuntime {
                     self.record_package_stats_end_str(&package);
                     return Ok(());
                 }
-                Err(e) => {
-                    if self.handle_send_error(&e, bad_s, mon).await? {
-                        continue;
-                    } else {
+                Err(e) => match self.handle_send_error(&e, bad_s, mon).await? {
+                    BatchErrHandle::Retry => continue,
+                    BatchErrHandle::Consume => {
+                        self.record_package_stats_end_str(&package);
+                        return Ok(());
+                    }
+                    BatchErrHandle::Throw => {
                         self.record_package_stats_end_str(&package);
                         return Err(e);
                     }
-                }
+                },
             }
         }
     }
@@ -449,16 +518,19 @@ impl SinkRuntime {
         error: &SinkError,
         bad_s: Option<&ASinkSender>,
         mon: Option<&MonSend>,
-    ) -> SinkResult<bool> {
+    ) -> SinkResult<BatchErrHandle> {
         match err4_send_to_sink(error, &sys_robust_mode()) {
             ErrorHandlingStrategy::FixRetry => {
                 if let Some(bad_sink_send) = bad_s {
                     self.use_back_sink(bad_sink_send, mon).await?;
-                    return Ok(true);
+                    return Ok(BatchErrHandle::Retry);
                 }
-                Ok(false)
+                Ok(BatchErrHandle::Throw)
             }
-            _ => Ok(false), // 表示未处理，需要返回错误
+            ErrorHandlingStrategy::Throw => Ok(BatchErrHandle::Throw),
+            ErrorHandlingStrategy::Tolerant
+            | ErrorHandlingStrategy::Ignore
+            | ErrorHandlingStrategy::Terminate => Ok(BatchErrHandle::Consume),
         }
     }
 
@@ -562,11 +634,23 @@ impl SinkRuntime {
 mod tests {
     use super::*;
     use crate::sinks::ProcMeta;
+    use crate::sinks::SinkRecUnit;
     use async_trait::async_trait;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use tempfile::tempdir;
     use wp_model_core::model::{DataField, DataRecord};
 
     struct FailingSink;
+
+    struct CountingSink {
+        sink_records_calls: Arc<AtomicUsize>,
+    }
+
+    impl CountingSink {
+        fn new(sink_records_calls: Arc<AtomicUsize>) -> Self {
+            Self { sink_records_calls }
+        }
+    }
 
     #[async_trait]
     impl AsyncCtrl for FailingSink {
@@ -607,6 +691,61 @@ mod tests {
         async fn sink_bytes_batch(&mut self, _data: Vec<&[u8]>) -> SinkResult<()> {
             Err(SinkError::from(SinkReason::StgCtrl))
         }
+    }
+
+    #[async_trait]
+    impl AsyncCtrl for CountingSink {
+        async fn stop(&mut self) -> SinkResult<()> {
+            Ok(())
+        }
+
+        async fn reconnect(&mut self) -> SinkResult<()> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl AsyncRecordSink for CountingSink {
+        async fn sink_record(&mut self, _data: &DataRecord) -> SinkResult<()> {
+            Ok(())
+        }
+
+        async fn sink_records(&mut self, _data: Vec<Arc<DataRecord>>) -> SinkResult<()> {
+            self.sink_records_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl AsyncRawdatSink for CountingSink {
+        async fn sink_str(&mut self, _data: &str) -> SinkResult<()> {
+            Ok(())
+        }
+
+        async fn sink_bytes(&mut self, _data: &[u8]) -> SinkResult<()> {
+            Ok(())
+        }
+
+        async fn sink_str_batch(&mut self, _data: Vec<&str>) -> SinkResult<()> {
+            Ok(())
+        }
+
+        async fn sink_bytes_batch(&mut self, _data: Vec<&[u8]>) -> SinkResult<()> {
+            Ok(())
+        }
+    }
+
+    fn build_package(count: usize) -> SinkPackage {
+        let units = (0..count).map(|idx| {
+            let mut record = DataRecord::default();
+            record.append(DataField::from_chars("k", format!("v{}", idx)));
+            SinkRecUnit::new(
+                idx as u64,
+                ProcMeta::Rule("/bench/rule".to_string()),
+                Arc::new(record),
+            )
+        });
+        SinkPackage::from_units(units)
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -657,6 +796,68 @@ mod tests {
         assert!(!entries.is_empty(), "expect rescue file created");
         let meta = std::fs::metadata(entries[0].path())?;
         assert!(meta.len() > 0, "rescue file should contain payload");
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn small_package_stays_in_pending_buffer_until_flush() -> anyhow::Result<()> {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let primary = SinkBackendType::Proxy(Box::new(CountingSink::new(calls.clone())));
+        let mut params = wp_connector_api::ParamMap::new();
+        params.insert("batch_size".into(), serde_json::Value::from(8_u64));
+        let conf = SinkInstanceConf::new_type(
+            "bench".into(),
+            TextFmt::Json,
+            "blackhole".into(),
+            params,
+            None,
+        );
+        let mut runtime = SinkRuntime::new(
+            "./rescue".to_string(),
+            "/sink/bench/[0]",
+            conf,
+            primary,
+            None,
+            Vec::new(),
+        );
+
+        let package = build_package(5);
+        runtime.send_package_to_sink(&package, None, None).await?;
+        // 小包未达到阈值时进入 pending，不会立即下发
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        runtime.flush(None, None).await?;
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn large_package_bypasses_pending_buffer() -> anyhow::Result<()> {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let primary = SinkBackendType::Proxy(Box::new(CountingSink::new(calls.clone())));
+        let mut params = wp_connector_api::ParamMap::new();
+        params.insert("batch_size".into(), serde_json::Value::from(2_u64));
+        let conf = SinkInstanceConf::new_type(
+            "bench".into(),
+            TextFmt::Json,
+            "blackhole".into(),
+            params,
+            None,
+        );
+        let mut runtime = SinkRuntime::new(
+            "./rescue".to_string(),
+            "/sink/bench/[0]",
+            conf,
+            primary,
+            None,
+            Vec::new(),
+        );
+
+        let package = build_package(5);
+        runtime.send_package_to_sink(&package, None, None).await?;
+        // 入站包达到阈值且 pending 为空时，直接按 package 一次下发
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        runtime.flush(None, None).await?;
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
         Ok(())
     }
 }
