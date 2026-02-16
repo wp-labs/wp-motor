@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.17.3 Unreleased]
+
+### Added
+- **Sinks/Buffer**: Add sink-level batch buffer with configurable `batch_size` parameter
+  - Small packages (< batch_size) enter pending buffer, flushed periodically or when buffer is full
+  - Large packages (>= batch_size) automatically bypass pending buffer for reduced overhead (zero-copy direct path)
+  - New `flush()` public API for manual buffer flush
+- **Sinks/Config**: Add `batch_timeout_ms` configuration to sink group (default 300ms), controls periodic buffer flush interval
+
+### Changed
+- **Sinks/File**: Remove `BufWriter` and `proc_cnt` periodic flush from `AsyncFileSink`, write directly to `tokio::fs::File`; upstream batch assembly makes userspace buffering redundant
+
+### Fixed
+- **wp-oml**: Fix llvm-cov warnings in parser and test modules
+
+
 ## [1.17.2 ] - 2026-02-13
 ### Changed
 - **wp-lang**: `kv`/`kvarr` key 解析支持括号类字符 `()`、`<>`、`[]`、`{}`，新增专用 `take_kv_key` 函数，不影响 WPL 语法层面其他模块的 key 解析

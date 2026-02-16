@@ -26,7 +26,11 @@
       "Bash(cargo tree:*)",
       "Bash(cargo audit:*)",
       "Bash(ls:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(while read hash msg)",
+      "Bash(do echo \"=== $msg ===\")",
+      "Bash(git diff-tree:*)",
+      "Bash(done)"
     ]
   }
 }

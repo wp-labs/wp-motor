@@ -99,8 +99,30 @@ where
     }
 
     async fn sink_records(&mut self, data: Vec<std::sync::Arc<DataRecord>>) -> SinkResult<()> {
-        for record in data {
-            self.sink_record(&record).await?;
+        if data.is_empty() {
+            return Ok(());
+        }
+        if let Some(ref mut next_proc) = self.next_proc {
+            let mut str_batch: Vec<String> = Vec::with_capacity(data.len());
+            let mut bytes_batch: Vec<Vec<u8>> = Vec::new();
+
+            for record in &data {
+                let raw: RawData = self.fmt.cov_data(record.as_ref().clone()).owe_data()?;
+                match raw {
+                    RawData::String(s) => str_batch.push(s),
+                    RawData::Bytes(b) => bytes_batch.push(b.to_vec()),
+                    RawData::ArcBytes(b) => bytes_batch.push(b.to_vec()),
+                }
+            }
+
+            if !str_batch.is_empty() {
+                let refs: Vec<&str> = str_batch.iter().map(|s| s.as_str()).collect();
+                next_proc.sink_str_batch(refs).await?;
+            }
+            if !bytes_batch.is_empty() {
+                let refs: Vec<&[u8]> = bytes_batch.iter().map(|b| b.as_slice()).collect();
+                next_proc.sink_bytes_batch(refs).await?;
+            }
         }
         Ok(())
     }

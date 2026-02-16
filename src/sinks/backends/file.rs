@@ -14,8 +14,7 @@ use std::io::{Cursor, ErrorKind, Write};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::fs::OpenOptions;
-use tokio::io::{AsyncWriteExt, BufWriter};
-use tokio_async_drop::tokio_async_drop;
+use tokio::io::AsyncWriteExt;
 use wp_connector_api::{SinkBuildCtx, SinkReason, SinkResult, SinkSpec as ResolvedSinkSpec};
 use wp_data_fmt::{FormatType, RecordFormatter};
 use wp_model_core::model::fmt_def::TextFmt;
@@ -201,16 +200,12 @@ impl RecSyncSink for FileSink {
     }
 }
 
-// Default buffer for classic file sink (kept for compatibility)
-const FILE_BUF_SIZE: usize = 102_400; // 100 KiB
-
-// Classic async file sink (original behavior preserved):
-// - Direct BufWriter writes
-// - Periodic flush by count (every 100 writes) OR immediate flush based on config
+// Async file sink: batch writes go directly to OS via write_all (no userspace buffer).
+// Upstream AsyncFormatter.sink_records() assembles data into a single buffer before calling
+// sink_str_batch/sink_bytes_batch, so BufWriter is unnecessary.
 pub struct AsyncFileSink {
     path: String,
-    out_io: BufWriter<tokio::fs::File>,
-    proc_cnt: usize,
+    out_io: tokio::fs::File,
     sync: bool,
     lock_released: bool,
 }
@@ -220,9 +215,6 @@ impl Drop for AsyncFileSink {
         if let Err(e) = self.unlock_lockfile() {
             error_data!("解锁备份文件失败,{}", e);
         }
-        tokio_async_drop!({
-            let _ = self.out_io.flush().await;
-        });
     }
 }
 
@@ -245,8 +237,7 @@ impl AsyncFileSink {
             .with_context(|| format!("output file fail :{}", out_path))?;
         Ok(Self {
             path: out_path.to_string(),
-            out_io: BufWriter::with_capacity(FILE_BUF_SIZE, out_io),
-            proc_cnt: 0,
+            out_io,
             sync,
             lock_released: !out_path.ends_with(".lock"),
         })
@@ -280,9 +271,9 @@ impl AsyncFileSink {
 impl AsyncCtrl for AsyncFileSink {
     async fn stop(&mut self) -> SinkResult<()> {
         self.out_io
-            .flush()
+            .sync_all()
             .await
-            .owe(SinkReason::sink("file out fail"))?;
+            .owe(SinkReason::sink("file sync on stop fail"))?;
         if let Err(e) = self.unlock_lockfile() {
             error_data!("unlock rescue file on stop failed: {}", e);
         }
@@ -301,24 +292,13 @@ impl AsyncRawdatSink for AsyncFileSink {
             .write_all(data)
             .await
             .owe(SinkReason::sink("file out fail"))?;
-        self.proc_cnt += 1;
 
-        // Flush immediately if sync mode enabled, otherwise flush every 100 writes
-        if self.sync || self.proc_cnt.is_multiple_of(100) {
+        if self.sync {
             self.out_io
-                .flush()
+                .sync_all()
                 .await
-                .owe(SinkReason::sink("file out fail"))?;
-
-            // If sync mode enabled, force data to disk
-            if self.sync {
-                self.out_io
-                    .get_ref()
-                    .sync_all()
-                    .await
-                    .owe(SinkReason::sink("file sync fail"))?;
-                record_sync_all_call();
-            }
+                .owe(SinkReason::sink("file sync fail"))?;
+            record_sync_all_call();
         }
         Ok(())
     }
@@ -326,7 +306,6 @@ impl AsyncRawdatSink for AsyncFileSink {
         if data.as_bytes().last() == Some(&b'\n') {
             self.sink_bytes(data.as_bytes()).await
         } else {
-            // Need to add newline and trigger flush logic
             let mut buffer = Vec::with_capacity(data.len() + 1);
             buffer.extend_from_slice(data.as_bytes());
             buffer.push(b'\n');
@@ -360,24 +339,12 @@ impl AsyncRawdatSink for AsyncFileSink {
             .await
             .owe(SinkReason::sink("file out fail"))?;
 
-        self.proc_cnt += data.len();
-
-        // Flush immediately if sync mode enabled, otherwise flush every 100 writes
-        if self.sync || self.proc_cnt.is_multiple_of(100) {
+        if self.sync {
             self.out_io
-                .flush()
+                .sync_all()
                 .await
-                .owe(SinkReason::sink("file out fail"))?;
-
-            // If sync mode enabled, force data to disk
-            if self.sync {
-                self.out_io
-                    .get_ref()
-                    .sync_all()
-                    .await
-                    .owe(SinkReason::sink("file sync fail"))?;
-                record_sync_all_call();
-            }
+                .owe(SinkReason::sink("file sync fail"))?;
+            record_sync_all_call();
         }
 
         Ok(())
@@ -409,24 +376,12 @@ impl AsyncRawdatSink for AsyncFileSink {
             .await
             .owe(SinkReason::sink("file out fail"))?;
 
-        self.proc_cnt += data.len();
-
-        // Flush immediately if sync mode enabled, otherwise flush every 100 writes
-        if self.sync || self.proc_cnt.is_multiple_of(100) {
+        if self.sync {
             self.out_io
-                .flush()
+                .sync_all()
                 .await
-                .owe(SinkReason::sink("file out fail"))?;
-
-            // If sync mode enabled, force data to disk
-            if self.sync {
-                self.out_io
-                    .get_ref()
-                    .sync_all()
-                    .await
-                    .owe(SinkReason::sink("file sync fail"))?;
-                record_sync_all_call();
-            }
+                .owe(SinkReason::sink("file sync fail"))?;
+            record_sync_all_call();
         }
 
         Ok(())
