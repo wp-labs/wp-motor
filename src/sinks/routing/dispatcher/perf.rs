@@ -108,26 +108,21 @@ impl SinkBatchBufferPerfCase {
         assert!(package_size > 0, "package_size must be > 0");
         assert!(batch_size > 0, "batch_size must be > 0");
 
-        let mut params = ParamMap::new();
-        params.insert(
-            "batch_size".to_string(),
-            serde_json::Value::from(batch_size as u64),
-        );
-
         let conf = SinkInstanceConf::new_type(
             format!("blackhole_batch_{}", batch_size),
             TextFmt::Json,
             "blackhole".to_string(),
-            params,
+            ParamMap::new(),
             None,
         );
-        let sink = SinkRuntime::new(
+        let sink = SinkRuntime::with_batch_size(
             "./rescue".to_string(),
             conf.name().clone(),
             conf,
             SinkBackendType::Proxy(builtin_factories::make_blackhole_sink()),
             None,
             Vec::new(),
+            batch_size,
         );
 
         let units = (0..package_size).map(|idx| {

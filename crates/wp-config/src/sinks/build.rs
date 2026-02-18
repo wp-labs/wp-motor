@@ -232,6 +232,9 @@ fn apply_group_metadata(
     if let Some(timeout_ms) = rf.sink_group.batch_timeout_ms {
         g.batch_timeout_ms = timeout_ms;
     }
+    if let Some(size) = rf.sink_group.batch_size {
+        g.batch_size = size;
+    }
 }
 
 /// 从单个 RouteFile 构建标准输出 SinkRouteConf（统一事实源）
@@ -452,6 +455,7 @@ mod tests {
                 sinks: vec![],
                 parallel: None,
                 batch_timeout_ms: None,
+                batch_size: None,
             },
             origin: None,
         };
@@ -478,6 +482,7 @@ mod tests {
                 sinks: vec![],
                 parallel: None,
                 batch_timeout_ms: None,
+                batch_size: None,
             },
             origin: None,
         };
@@ -506,6 +511,7 @@ mod tests {
                 sinks: vec![],
                 parallel: None,
                 batch_timeout_ms: None,
+                batch_size: None,
             },
             origin: None,
         };
@@ -533,6 +539,7 @@ mod tests {
                 sinks: vec![],
                 parallel: None,
                 batch_timeout_ms: None,
+                batch_size: None,
             },
             origin: None,
         };

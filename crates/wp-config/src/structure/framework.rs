@@ -18,6 +18,7 @@ impl FixedGroup {
             )],
             parallel: 1,
             batch_timeout_ms: default_batch_timeout_ms(),
+            batch_size: 128,
         }
     }
 
@@ -33,6 +34,7 @@ impl FixedGroup {
             )],
             parallel: 1,
             batch_timeout_ms: default_batch_timeout_ms(),
+            batch_size: 1,
         }
     }
 
@@ -48,6 +50,7 @@ impl FixedGroup {
             )],
             parallel: 1,
             batch_timeout_ms: default_batch_timeout_ms(),
+            batch_size: 1,
         }
     }
     // intercept_ins removed: intercept 组已废弃
@@ -64,6 +67,7 @@ impl FixedGroup {
             )],
             parallel: 1,
             batch_timeout_ms: default_batch_timeout_ms(),
+            batch_size: 1,
         }
     }
 }
@@ -86,6 +90,7 @@ impl FlexGroup {
                 others_max: None,
             }),
             batch_timeout_ms: default_batch_timeout_ms(),
+            batch_size: 1,
             sinks: vec![SinkInstanceConf::file_new(
                 "monitor_sink".to_string(),
                 TextFmt::ProtoText,

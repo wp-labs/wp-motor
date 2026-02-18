@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
-use winnow::stream::ToUsize;
+use wp_conf::structure::default_batch_size;
 use wp_model_core::model::{DataField, fmt_def::TextFmt};
 
 // 全局计数器，用于生成唯一的救援文件序号
@@ -73,22 +73,31 @@ impl SinkRuntime {
         cond: Option<Expression<DataField, RustSymbol>>,
         stat_reqs: Vec<StatReq>,
     ) -> Self {
+        Self::with_batch_size(rescue, name, conf, sink, cond, stat_reqs, default_batch_size())
+    }
+
+    pub fn with_batch_size<I: Into<String> + Clone>(
+        rescue: String,
+        name: I,
+        conf: SinkInstanceConf,
+        sink: SinkBackendType,
+        cond: Option<Expression<DataField, RustSymbol>>,
+        stat_reqs: Vec<StatReq>,
+        batch_size: usize,
+    ) -> Self {
+        let batch_size = batch_size.max(1);
         let backup_name = format!("{}_bak", name.clone().into());
         let normal_stat = MetricCollectors::new(name.clone().into(), stat_reqs.clone());
         let backup_stat = MetricCollectors::new(backup_name.clone(), stat_reqs);
-        info_ctrl!("create sink:{} ", conf.full_name());
+        info_ctrl!(
+            "create sink:{} batch_size={}",
+            conf.full_name(),
+            batch_size
+        );
         let pre_tags = Self::compile_tags(&conf);
-        let mut batch_size = 1024;
-        // 从配置读取缓冲区大小
-        if let Some(buffer_size) = conf.core.params.get("batch_size")
-            && let Some(size) = buffer_size.as_u64()
-        {
-            batch_size = size.to_usize().max(1);
-        }
 
         Self {
             rescue,
-            //backup_name,
             name: name.into(),
             conf,
             pre_tags,
@@ -803,22 +812,21 @@ mod tests {
     async fn small_package_stays_in_pending_buffer_until_flush() -> anyhow::Result<()> {
         let calls = Arc::new(AtomicUsize::new(0));
         let primary = SinkBackendType::Proxy(Box::new(CountingSink::new(calls.clone())));
-        let mut params = wp_connector_api::ParamMap::new();
-        params.insert("batch_size".into(), serde_json::Value::from(8_u64));
         let conf = SinkInstanceConf::new_type(
             "bench".into(),
             TextFmt::Json,
             "blackhole".into(),
-            params,
+            Default::default(),
             None,
         );
-        let mut runtime = SinkRuntime::new(
+        let mut runtime = SinkRuntime::with_batch_size(
             "./rescue".to_string(),
             "/sink/bench/[0]",
             conf,
             primary,
             None,
             Vec::new(),
+            8,
         );
 
         let package = build_package(5);
@@ -834,22 +842,21 @@ mod tests {
     async fn large_package_bypasses_pending_buffer() -> anyhow::Result<()> {
         let calls = Arc::new(AtomicUsize::new(0));
         let primary = SinkBackendType::Proxy(Box::new(CountingSink::new(calls.clone())));
-        let mut params = wp_connector_api::ParamMap::new();
-        params.insert("batch_size".into(), serde_json::Value::from(2_u64));
         let conf = SinkInstanceConf::new_type(
             "bench".into(),
             TextFmt::Json,
             "blackhole".into(),
-            params,
+            Default::default(),
             None,
         );
-        let mut runtime = SinkRuntime::new(
+        let mut runtime = SinkRuntime::with_batch_size(
             "./rescue".to_string(),
             "/sink/bench/[0]",
             conf,
             primary,
             None,
             Vec::new(),
+            2,
         );
 
         let package = build_package(5);

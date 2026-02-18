@@ -126,13 +126,14 @@ pub(crate) async fn infra_sink_group(
             let sink = build_sink_target(sc, rep, p_cnt, 0).await?;
             // 与业务组保持一致：使用 group/name 作为运行期名称，便于日志与统计
             let full_name = sc.full_name();
-            group.append(SinkRuntime::new(
+            group.append(SinkRuntime::with_batch_size(
                 rescue.clone(),
                 full_name,
                 sc.clone(),
                 sink,
                 None,
                 stat_reqs.clone(),
+                conf.batch_size(),
             ));
         }
     }

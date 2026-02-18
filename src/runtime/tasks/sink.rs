@@ -30,6 +30,7 @@ pub fn start_data_sinks(
         let cur_infra = infra.clone();
         let sink_name = x.get_name().to_string();
         let batch_timeout_ms = x.conf().batch_timeout_ms();
+        let batch_size = x.conf().batch_size();
         let knowdb_for_task = knowdb_handler.clone();
         let handle = tokio::spawn(async move {
             if let Some(handler) = knowdb_for_task.as_ref() {
@@ -37,7 +38,12 @@ pub fn start_data_sinks(
             } else {
                 warn_ctrl!("no knowdb handler for {} ", sink_name);
             }
-            info_ctrl!("spawn tokio Sink Group {}", x.conf().name());
+            info_ctrl!(
+                "spawn tokio Sink Group {} batch_size={} batch_timeout_ms={}",
+                x.conf().name(),
+                batch_size,
+                batch_timeout_ms
+            );
             if let Err(e) = SinkWork::async_proc(
                 x,
                 cur_infra,
@@ -91,7 +97,15 @@ pub fn start_infra_working(
     let sink_mon = mon_send.clone();
 
     tokio::spawn(async move {
-        info_data!("spawn tokio Sink infra Group ");
+        info_data!(
+            "spawn tokio Sink infra Group batch_timeout_ms={} default.batch_size={} miss.batch_size={} residue.batch_size={} monitor.batch_size={} error.batch_size={}",
+            batch_timeout_ms,
+            groups.default.conf().batch_size(),
+            groups.miss.conf().batch_size(),
+            groups.residue.conf().batch_size(),
+            groups.monitor.conf().batch_size(),
+            groups.error.conf().batch_size()
+        );
         if let Err(e) = SinkWork::async_proc_infra(
             groups,
             sink_cmd_sub,

@@ -36,11 +36,18 @@ pub struct FlexGroup {
     /// 批量超时时间，单位：毫秒，默认 300ms
     #[serde(default = "default_batch_timeout_ms")]
     pub batch_timeout_ms: u64,
+    /// 批量缓冲大小，默认 1024 条记录
+    #[serde(default = "default_batch_size")]
+    pub batch_size: usize,
     pub sinks: Vec<SinkInstanceConf>,
 }
 
 pub fn default_batch_timeout_ms() -> u64 {
     300
+}
+
+pub fn default_batch_size() -> usize {
+    1024
 }
 
 impl EnvEvaluable<FlexGroup> for FlexGroup {
@@ -188,6 +195,12 @@ impl SinkGroupConf {
             SinkGroupConf::Fixed(x) => x.batch_timeout_ms,
         }
     }
+    pub fn batch_size(&self) -> usize {
+        match self {
+            SinkGroupConf::Flexi(x) => x.batch_size,
+            SinkGroupConf::Fixed(x) => x.batch_size,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Default, Getters)]
@@ -202,6 +215,9 @@ pub struct FixedGroup {
     /// 批量超时时间，单位：毫秒，默认 300ms
     #[serde(default = "default_batch_timeout_ms")]
     pub batch_timeout_ms: u64,
+    /// 批量缓冲大小，默认 1024 条记录
+    #[serde(default = "default_batch_size")]
+    pub batch_size: usize,
 }
 impl EnvEvaluable<FixedGroup> for FixedGroup {
     fn env_eval(mut self, dict: &orion_variate::EnvDict) -> FixedGroup {
@@ -241,6 +257,7 @@ impl FlexGroup {
             rule: WildArray::new(rule),
             expect: None,
             batch_timeout_ms: default_batch_timeout_ms(),
+            batch_size: default_batch_size(),
             sinks: vec![SinkInstanceConf::null_new(
                 "test_sink".to_string(),
                 TextFmt::Raw,
@@ -259,6 +276,7 @@ impl FlexGroup {
             rule: WildArray::default(),
             expect: None,
             batch_timeout_ms: default_batch_timeout_ms(),
+            batch_size: default_batch_size(),
             sinks,
         }
     }
@@ -349,6 +367,7 @@ impl FlexGroup {
             rule: WildArray::default(),
             expect: None,
             batch_timeout_ms: default_batch_timeout_ms(),
+            batch_size: default_batch_size(),
             sinks: vec![],
         }
     }
@@ -370,6 +389,7 @@ impl FlexGroup {
             filter: filter.map(|x| x.into()),
             rule: rule_matches,
             batch_timeout_ms: default_batch_timeout_ms(),
+            batch_size: default_batch_size(),
             expect: None,
             sinks: vec![sink_conf],
         }
@@ -416,6 +436,7 @@ mod tests {
             filter: Some("${GROUP_FILTER}".to_string()),
             expect: None,
             batch_timeout_ms: default_batch_timeout_ms(),
+            batch_size: default_batch_size(),
             sinks: vec![sink],
         };
 

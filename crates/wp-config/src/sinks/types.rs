@@ -45,6 +45,9 @@ pub struct RouteGroup {
     /// 批量超时时间，单位：毫秒，默认 300ms
     #[serde(default)]
     pub batch_timeout_ms: Option<u64>,
+    /// 批量缓冲大小，默认 1024 条记录
+    #[serde(default)]
+    pub batch_size: Option<usize>,
     #[serde(default)]
     pub sinks: Vec<RouteSink>,
 }
