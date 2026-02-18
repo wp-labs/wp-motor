@@ -73,7 +73,15 @@ impl SinkRuntime {
         cond: Option<Expression<DataField, RustSymbol>>,
         stat_reqs: Vec<StatReq>,
     ) -> Self {
-        Self::with_batch_size(rescue, name, conf, sink, cond, stat_reqs, default_batch_size())
+        Self::with_batch_size(
+            rescue,
+            name,
+            conf,
+            sink,
+            cond,
+            stat_reqs,
+            default_batch_size(),
+        )
     }
 
     pub fn with_batch_size<I: Into<String> + Clone>(
@@ -89,11 +97,7 @@ impl SinkRuntime {
         let backup_name = format!("{}_bak", name.clone().into());
         let normal_stat = MetricCollectors::new(name.clone().into(), stat_reqs.clone());
         let backup_stat = MetricCollectors::new(backup_name.clone(), stat_reqs);
-        info_ctrl!(
-            "create sink:{} batch_size={}",
-            conf.full_name(),
-            batch_size
-        );
+        info_ctrl!("create sink:{} batch_size={}", conf.full_name(), batch_size);
         let pre_tags = Self::compile_tags(&conf);
 
         Self {

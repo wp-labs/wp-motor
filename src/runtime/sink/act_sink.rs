@@ -503,7 +503,6 @@ impl SinkService {
                 replica_idx,
                 replica_cnt,
                 rate_limit_rps,
-                group_conf.batch_size,
             )
             .await?;
         }
@@ -518,7 +517,6 @@ impl SinkService {
         replica_idx: usize,
         replica_cnt: usize,
         rate_limit_rps: usize,
-        batch_size: usize,
     ) -> Result<(), RunError> {
         let sink = build_sink_target(&conf, replica_idx, replica_cnt, rate_limit_rps).await?;
 
@@ -531,6 +529,7 @@ impl SinkService {
 
         // 运行态名称使用 full_name = group/inner_name（配置装配阶段已注入 group_name）
         let full_name = conf.full_name();
+        let batch_size = sink_group.conf().batch_size();
         sink_group.append(SinkRuntime::with_batch_size(
             rescue.clone(),
             full_name,
