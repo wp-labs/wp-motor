@@ -269,7 +269,7 @@ anyhow = "1.0"
 thiserror = "2.0"
 log = "0.4"
 env_logger = "0.11"
-orion-error = "0.5"
+orion-error = "0.6"
 
 # --- Parsing & Text ---
 winnow = "0.7"
