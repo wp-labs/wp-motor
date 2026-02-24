@@ -391,7 +391,7 @@ wp_stats = { package = "wp-stats", path = "./crates/wp-stats" }
 
 
 # --- External: Open API (Public Interfaces) ---
-wp-connector-api = "0.7"
+wp-connector-api = "0.8"
 wp-parse-api = "0.7"
 wp-model-core = "0.8"
 
