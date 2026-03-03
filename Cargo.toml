@@ -402,6 +402,6 @@ wp_enrich_api = { package = "wp-enrich-api", git = "https://github.com/wp-labs/w
 # --- External: Infrastructure Libraries ---
 wp-log = "0.1"
 wp-error = "0.7"
-wp-specs = "0.7"
+wp-specs = "0.8"
 wp-conf-base = "0.1"
 wp-data-fmt = "0.2"
