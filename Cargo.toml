@@ -362,7 +362,7 @@ rust-crypto = "0.2"
 # --- Configuration ---
 orion_conf = { version = "0.4", features = ["yaml", "toml"] }
 orion-sec = "0.3"
-orion-variate = "0.10"
+orion-variate = "0.11"
 
 # --- Testing ---
 criterion = "0.8"
