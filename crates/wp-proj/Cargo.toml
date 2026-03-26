@@ -18,7 +18,7 @@ toml = { workspace = true }
 wildmatch = { workspace = true }
 wp-cli-core = { path = "../wp-cli-core" }
 wp-connector-api = { workspace = true }
-wp-knowledge = { version = "0.10", package = "wp-knowledge" }
+wp-knowledge = { version = "0.11", package = "wp-knowledge" }
 wp-conf = { path = "../wp-config", package = "wp-config" }
 wp-model-core = { path = "../wp-data-utils", package = "wp-data-utils" }
 wp-engine = { path = "../..", package = "wp-engine" }
