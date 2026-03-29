@@ -273,7 +273,7 @@ env_logger = "0.11"
 orion-error = "0.6"
 
 # --- Parsing & Text ---
-winnow = "0.7"
+winnow = "1.0"
 regex = "1.12"
 wildmatch = "2.6"
 strfmt = "0.2"
