@@ -33,7 +33,7 @@ fn resolve_source_type(src_key: &str, event: &wp_connector_api::SourceEvent) -> 
     if let Some(v) = event
         .tags
         .get("access_source")
-        .and_then(|v| normalize_source_type(v))
+        .and_then(normalize_source_type)
     {
         return v.to_string();
     }

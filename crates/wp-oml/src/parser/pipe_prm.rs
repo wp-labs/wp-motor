@@ -300,9 +300,9 @@ pub fn oml_pipe(data: &mut &str) -> WResult<PipeFun> {
     symbol_pipe.parse_next(data)?;
     multispace0.parse_next(data)?;
     let fun = alt((pipe_fun_with_args, pipe_fun_simple))
-    .context(StrContext::Label("pipe fun"))
-    .context(ctx_desc("fun not found!"))
-    .parse_next(data)?;
+        .context(StrContext::Label("pipe fun"))
+        .context(ctx_desc("fun not found!"))
+        .parse_next(data)?;
     Ok(fun)
 }
 

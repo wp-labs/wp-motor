@@ -187,7 +187,8 @@ impl SinkRuntime {
             let backup_name = format!("{}_bak", self.name);
             if !self.backup_stat.has_pending_data() {
                 if let Some(rec) = self.build_sink_dim_record() {
-                    self.backup_stat.touch_task_record(backup_name.as_str(), &rec);
+                    self.backup_stat
+                        .touch_task_record(backup_name.as_str(), &rec);
                 } else {
                     self.backup_stat.touch_task_unit(backup_name.as_str());
                 }
