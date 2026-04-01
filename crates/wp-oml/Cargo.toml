@@ -12,7 +12,7 @@ arcstr = { workspace = true }
 winnow = { workspace = true }
 orion-error = { workspace = true }
 orion_conf= { workspace = true }
-wp_knowledge = { workspace = true }
+wp-knowledge = { workspace = true }
 wp_primitives = { workspace = true }
 wp_condition = { package = "wp-condition", path = "../wp-condition" }
 orion_exp = { path = "../orion_exp" }

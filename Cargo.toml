@@ -54,7 +54,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.19.12" # @gxl:set(version)
+version = "1.19.15" # @gxl:set(version)
 edition = "2024"
 license = "Apache-2.0"
 
@@ -157,7 +157,7 @@ orion-variate = { workspace = true }
 
 # --- Internal: Configuration & Knowledge ---
 wp_conf = { package = "wp-config", path = "crates/wp-config" }
-wp_knowledge = { workspace = true }
+wp-knowledge = { workspace = true }
 
 # --- Internal: Language & Parsing ---
 wp_primitives = { workspace = true }
@@ -302,7 +302,7 @@ strum = "0.27"
 strum_macros = "0.27"
 parse-display = "0.10"
 parse-display-derive = "0.10"
-ctor = "0.6"
+ctor = "0.8"
 
 # --- System & Platform ---
 arcstr = "1.2"
@@ -355,8 +355,7 @@ orion_exp = { path = "./crates/orion_exp" }
 wp_primitives = { package = "wp-primitives", version = "0.2" }
 wp_config = { package = "wp-config", path = "./crates/wp-config" }
 wp_data_model = { package = "wp-data-utils", path = "./crates/wp-data-utils" }
-wp-knowledge = { package = "wp-knowledge", path = "../wp-knowledge" }
-wp_knowledge = { package = "wp-knowledge", path = "../wp-knowledge" }
+wp-knowledge = "0.11"
 wp_lang = { package = "wp-lang", version = "0.1" }
 wp_oml = { package = "wp-oml", path = "./crates/wp-oml" }
 wp_proj = { package = "wp-proj", path = "./crates/wp-proj" }

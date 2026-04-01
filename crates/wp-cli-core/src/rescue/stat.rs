@@ -1,5 +1,6 @@
 //! Rescue 数据统计功能：扫描 rescue 目录并生成统计报告。
 
+use crate::utils::pretty::helpers::short_display_path;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -93,11 +94,7 @@ impl RescueStatSummary {
             println!("{:<50} {:>12} {:>15}", "Path", "Lines", "Size");
             println!("{}", "-".repeat(80));
             for f in &self.files {
-                let display_path = if f.path.len() > 48 {
-                    format!("...{}", &f.path[f.path.len() - 45..])
-                } else {
-                    f.path.clone()
-                };
+                let display_path = short_display_path(Path::new(&f.path), None, 3);
                 println!(
                     "{:<50} {:>12} {:>15}",
                     display_path,
@@ -175,6 +172,13 @@ fn parse_sink_name(path: &Path, rescue_root: &Path) -> String {
     sink_id.to_string()
 }
 
+fn relative_rescue_path(path: &Path, rescue_root: &Path) -> String {
+    path.strip_prefix(rescue_root)
+        .unwrap_or(path)
+        .display()
+        .to_string()
+}
+
 /// 统计单个文件的行数
 fn count_lines(path: &Path) -> usize {
     match File::open(path) {
@@ -242,7 +246,7 @@ pub fn scan_rescue_stat(rescue_path: &str, include_detail: bool) -> RescueStatSu
         // 文件详情
         if include_detail {
             summary.files.push(RescueFileStat {
-                path: path.display().to_string(),
+                path: relative_rescue_path(path, rescue_dir),
                 sink_name,
                 size_bytes: size,
                 line_count,
@@ -261,6 +265,7 @@ pub fn scan_rescue_stat(rescue_path: &str, include_detail: bool) -> RescueStatSu
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::PathBuf;
 
     fn setup_test_rescue_dir(name: &str) -> String {
         let dir = format!("target/test_rescue_{}", name);
@@ -386,8 +391,24 @@ mod tests {
         assert_eq!(summary.total_files, 2);
         assert_eq!(summary.total_lines, 4);
         assert_eq!(summary.files.len(), 2);
+        assert!(
+            summary
+                .files
+                .iter()
+                .all(|f| !PathBuf::from(&f.path).is_absolute())
+        );
 
         cleanup_test_dir(&dir);
+    }
+
+    #[test]
+    fn test_relative_rescue_path_prefers_path_under_root() {
+        let root = Path::new("/tmp/rescue");
+        let path = Path::new("/tmp/rescue/sink/group/file-2026-03-29.dat");
+        assert_eq!(
+            relative_rescue_path(path, root),
+            "sink/group/file-2026-03-29.dat"
+        );
     }
 
     #[test]

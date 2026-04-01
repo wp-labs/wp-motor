@@ -33,6 +33,57 @@ pub fn extract_metric_dimensions(tdo: &DataRecord, collects: &[String]) -> DataD
 fn extract_metric_dimensions_with_target(tdo: &DataRecord, collects: &[String]) -> DataDim {
     let mut data = DataDim::with_capacity(collects.len());
     let formatter = Raw;
+    let parsed_target = target.rsplit_once('/');
+    for key in collects {
+        match key.as_str() {
+            "wp_source_type" => {
+                let value = tdo
+                    .field("wp_source_type")
+                    .map(|x| formatter.fmt_field(x).to_string());
+                data.push(value);
+            }
+            "wp_access_ip" => {
+                let value = tdo
+                    .field("wp_access_ip")
+                    .map(|x| formatter.fmt_field(x).to_string());
+                data.push(value);
+            }
+            "wp_package_name" => {
+                let value = tdo
+                    .field("wp_package_name")
+                    .map(|x| formatter.fmt_field(x).to_string());
+                data.push(value.or_else(|| parsed_target.map(|(pkg, _)| pkg.to_string())));
+            }
+            "wp_rule_name" => {
+                let value = tdo
+                    .field("wp_rule_name")
+                    .map(|x| formatter.fmt_field(x).to_string());
+                data.push(value.or_else(|| parsed_target.map(|(_, rule)| rule.to_string())));
+            }
+            "wp_sink_group" => {
+                let value = tdo
+                    .field("wp_sink_group")
+                    .map(|x| formatter.fmt_field(x).to_string());
+                data.push(value.or_else(|| parsed_target.map(|(group, _)| group.to_string())));
+            }
+            "wp_sink_name" => {
+                let value = tdo
+                    .field("wp_sink_name")
+                    .map(|x| formatter.fmt_field(x).to_string());
+                data.push(value.or_else(|| parsed_target.map(|(_, name)| name.to_string())));
+            }
+            _ => {
+                let value = tdo.field(key.as_str());
+                data.push(value.map(|x| formatter.fmt_field(x).to_string()));
+            }
+        }
+    }
+    data
+}
+
+fn extract_metric_dimensions_from_target_only(collects: &[String], target: &str) -> DataDim {
+    let mut data = DataDim::with_capacity(collects.len());
+    let parsed_target = target.rsplit_once('/');
     for key in collects {
         match key.as_str() {
             "wp_source_type" => {

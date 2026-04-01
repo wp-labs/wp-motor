@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.13] - 2026-03-31
+
+### Added
+- **Monitoring/Fixed Labels**: Add fixed-label propagation across parser, runtime picker, sink manager, sources, and `wp-stats` metric collection so monitoring series can carry stable routing and component metadata without rebuilding labels at each emission point
+
+### Changed
+- **Monitoring/Tag Names**: Standardize internal metric tag naming across pipeline, runtime post path, sources, sinks, and stats collectors so the same logical labels are emitted consistently by all runtime components
+- **Dependencies/Workspace**: Clean unused workspace dependencies, keep only required crate references in root and member manifests, and update `ctor` compatibility to `0.8`
+
+### Fixed
+- **OML/Parser**: Split oversized `winnow::alt(...)` branches in the OML pipe-function parser so the workspace builds cleanly against current `winnow 1.0` tuple arity limits
+- **wp-proj/OML Init**: Resolve the OML project-template merge so project initialization creates the expected example OML file without leaving conflict markers in the generated model path
+
 ## [1.19.11] - 2026-03-29
 
 ### Added

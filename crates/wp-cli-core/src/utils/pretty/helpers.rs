@@ -1,3 +1,4 @@
+use std::path::Path;
 use wp_conf::structure::Basis;
 
 pub fn fmt_f(v: f64) -> String {
@@ -46,9 +47,42 @@ pub fn bg_warn<S: AsRef<str>>(s: S) -> String {
     color_bg(s, "43")
 }
 
+pub fn short_display_path(path: &Path, root: Option<&Path>, levels: usize) -> String {
+    let display = if let Some(root) = root {
+        path.strip_prefix(root)
+            .map(|rel| rel.display().to_string())
+            .unwrap_or_else(|_| path.display().to_string())
+    } else {
+        path.display().to_string()
+    };
+    truncate_path_tail(&display, levels)
+}
+
+fn truncate_path_tail(path: &str, levels: usize) -> String {
+    if levels == 0 {
+        return path.to_string();
+    }
+
+    let path_ref = Path::new(path);
+    let components: Vec<_> = path_ref.components().collect();
+    if components.len() <= levels {
+        return path.to_string();
+    }
+
+    let start = components.len() - levels;
+    let tail = components[start..]
+        .iter()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/");
+
+    format!(".../{}", tail)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn fmt_f_compacts_decimals() {
@@ -63,5 +97,41 @@ mod tests {
         assert_eq!(basis_cn(&Basis::TotalInput), "Total Input");
         assert_eq!(basis_cn(&Basis::GroupInput), "Group Input");
         assert_eq!(basis_cn(&Basis::Model { mdl: "x".into() }), "Model");
+    }
+
+    #[test]
+    fn short_display_path_keeps_short_relative_path() {
+        assert_eq!(
+            short_display_path(Path::new("data/in_dat/gen.dat"), None, 3),
+            "data/in_dat/gen.dat"
+        );
+    }
+
+    #[test]
+    fn short_display_path_truncates_long_absolute_path() {
+        assert_eq!(
+            short_display_path(
+                Path::new(
+                    "/Users/wp/devspace/wp-labs/warp-parse/my_example/data/out_dat/demo.json"
+                ),
+                None,
+                3,
+            ),
+            ".../data/out_dat/demo.json"
+        );
+    }
+
+    #[test]
+    fn short_display_path_prefers_relative_to_root_before_truncation() {
+        assert_eq!(
+            short_display_path(
+                Path::new(
+                    "/tmp/work/wp-examples/extensions/pg_knowledge/models/knowledge/semantic_dict.toml"
+                ),
+                Some(Path::new("/tmp/work")),
+                3,
+            ),
+            ".../models/knowledge/semantic_dict.toml"
+        );
     }
 }

@@ -1,29 +1,9 @@
 use super::super::types::SrcLineReport;
+use super::helpers::short_display_path;
 use comfy_table::{
     Cell, CellAlignment, ContentArrangement, Row as CRow, Table, presets::ASCII_MARKDOWN,
 };
 use std::path::Path;
-
-/// 截断路径，只保留最后 n 级
-fn truncate_path(path: &str, levels: usize) -> String {
-    let p = Path::new(path);
-    let components: Vec<_> = p.components().collect();
-
-    if components.len() <= levels {
-        return path.to_string();
-    }
-
-    let start = components.len() - levels;
-    let truncated: Vec<_> = components[start..].iter().collect();
-
-    let result = truncated
-        .iter()
-        .map(|c| c.as_os_str().to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("/");
-
-    format!(".../{}", result)
-}
 
 /// Print file sources (from wpsrc) in table form.
 /// Columns: Key | Enabled | Lines | Path | Error
@@ -39,7 +19,7 @@ pub fn print_src_files_table(rep: &SrcLineReport) {
             .map(|v| v.to_string())
             .unwrap_or_else(|| "-".to_string());
         let err = it.error.clone().unwrap_or_else(|| "-".to_string());
-        let truncated_path = truncate_path(&it.path, 3);
+        let truncated_path = short_display_path(Path::new(&it.path), None, 3);
 
         let mut row = CRow::new();
         row.add_cell(Cell::new(it.key.clone()).set_alignment(CellAlignment::Left));
@@ -62,20 +42,23 @@ mod tests {
     #[test]
     fn test_truncate_path_short() {
         let path = "data/in_dat/gen.dat";
-        assert_eq!(truncate_path(path, 3), "data/in_dat/gen.dat");
+        assert_eq!(
+            short_display_path(Path::new(path), None, 3),
+            "data/in_dat/gen.dat"
+        );
     }
 
     #[test]
     fn test_truncate_path_long() {
         let path = "/Users/wp/devspace/wp-labs/warp-parse/my_example/data/in_dat/gen.dat";
-        let result = truncate_path(path, 3);
+        let result = short_display_path(Path::new(path), None, 3);
         assert_eq!(result, ".../data/in_dat/gen.dat");
     }
 
     #[test]
     fn test_truncate_path_exact() {
         let path = "a/b/c";
-        assert_eq!(truncate_path(path, 3), "a/b/c");
+        assert_eq!(short_display_path(Path::new(path), None, 3), "a/b/c");
     }
 
     #[test]

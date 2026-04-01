@@ -164,13 +164,14 @@ impl ActCovPicker {
         check_point: &mut CheckPoint,
         stat_reqs: Vec<StatReq>,
     ) -> RunResult<TaskEndReason> {
+        let stat_target = relative_rescue_display_path(file_path, self.rescue_path.as_str());
         let mut run_ctrl = TaskController::from_speed_limit(
             "recover-file",
             self.cmd_sub.clone(),
             Some(speed),
             100,
         );
-        let mut stat = MetricCollectors::new(file_path.clone(), stat_reqs);
+        let mut stat = MetricCollectors::new(stat_target.clone(), stat_reqs);
 
         let stat_interval = Duration::from_millis(STAT_INTERVAL_MS as u64);
         let mut last_stat_tick = Instant::now();
@@ -190,14 +191,14 @@ impl ActCovPicker {
                 let mut buffer = String::new();
                 let size = reader.read_line(&mut buffer).await.owe_data()?;
                 if size.eq(&0) {
-                    stat.record_task(file_path.as_str(), None);
+                    stat.record_task(stat_target.as_str(), None);
                     fs::remove_file(file_path).owe_sys()?;
                     check_point.remove_point(file_path);
                     info_dfx!("recover end! clean file : {}", file_path);
                     println!("recover file finished! : {}", file_path);
                     return Ok(TaskEndReason::SucEnded);
                 }
-                stat.record_begin(file_path.as_str(), None);
+                stat.record_begin(stat_target.as_str(), None);
                 let trimmed = buffer.trim_end_matches(['\r', '\n']);
                 if trimmed.is_empty() {
                     continue;
@@ -210,7 +211,7 @@ impl ActCovPicker {
                     entry.into_payload(),
                 )
                 .owe_sink()?;
-                stat.record_end(file_path.as_str(), None);
+                stat.record_end(stat_target.as_str(), None);
                 run_ctrl.rec_task_suc();
                 check_point.rec_suc(file_path);
             }
@@ -314,6 +315,15 @@ impl ActCovPicker {
     }
 }
 
+fn relative_rescue_display_path(path: &str, rescue_root: &str) -> String {
+    let path = Path::new(path);
+    let rescue_root = Path::new(rescue_root);
+    path.strip_prefix(rescue_root)
+        .unwrap_or(path)
+        .display()
+        .to_string()
+}
+
 pub struct RescueFiles {
     path: String,
 }
@@ -396,7 +406,9 @@ impl CheckPoint {
 
 #[cfg(test)]
 mod tests {
-    use crate::runtime::collector::recovery::{ActCovPicker, CheckPoint, RescueFiles};
+    use crate::runtime::collector::recovery::{
+        ActCovPicker, CheckPoint, RescueFiles, relative_rescue_display_path,
+    };
     use crate::types::AnyResult;
     use orion_error::TestAssert;
 
@@ -414,6 +426,15 @@ mod tests {
         let path = "./rescue/groupA/bench_sink-2025-10-14_03:10:12.dat";
         let sink_name = ActCovPicker::get_sink_name(path);
         assert_eq!(sink_name, "bench_sink".to_string());
+    }
+
+    #[test]
+    fn test_relative_rescue_display_path() {
+        let display = relative_rescue_display_path(
+            "./data/rescue/sink/benchmark/[0]-2026-03-29_11:52:41-0.dat",
+            "./data/rescue",
+        );
+        assert_eq!(display, "sink/benchmark/[0]-2026-03-29_11:52:41-0.dat");
     }
 
     //test tack_lasts_file

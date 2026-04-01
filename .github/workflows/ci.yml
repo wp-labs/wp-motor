@@ -79,7 +79,7 @@ jobs:
           echo "File size: $(wc -c < lcov.info) bytes"
 
       - name: Upload to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           files: ./lcov.info
           flags: unittests
