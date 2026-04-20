@@ -10,15 +10,38 @@ use crate::runtime::generator::rule_source::RuleGenSource;
 use crate::runtime::generator::types::GenGRA;
 use crate::runtime::supervisor::monitor::ActorMonitor;
 use crate::sinks::SinkBackendType;
-use orion_error::{ErrorOwe, ErrorWith};
+use orion_error::{ErrorOwe, ErrorWith, OperationContext};
 use orion_variate::EnvDict;
+use std::path::Path;
 use tokio::task::JoinHandle;
 use wp_conf::stat::StatConf;
 use wp_conf::structure::SinkInstanceConf;
+use wp_error::diagnostic_meta::{
+    ComponentKind, OperationContextMetaExt, OperationKind, RuntimeStage,
+};
 use wp_error::run_error::{RunErrorOwe, RunResult};
 use wp_log::info_ctrl;
 use wp_stat::StatRecorder;
 use wp_stat::StatStage; // for record_task
+
+fn generator_path_context(path: &Path, operation: OperationKind) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(RuntimeStage::GeneratorGenerate)
+        .with_meta_value(ComponentKind::Generator)
+        .with_meta_value(operation)
+        .with_resource_path(path)
+}
+
+fn generator_context(
+    operation: OperationKind,
+    component_name: impl Into<String>,
+) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(RuntimeStage::GeneratorGenerate)
+        .with_meta_value(ComponentKind::Generator)
+        .with_meta_value(operation)
+        .with_component_name(component_name)
+}
 
 /// 批量发送一个“单元”的规则生成结果（逐条生成+发送，但作为一个批次）。
 async fn send_unit_rules(
@@ -35,6 +58,10 @@ async fn send_unit_rules(
         let ffv = src
             .gen_one(*cur_idx)
             .owe_conf()
+            .with(generator_context(
+                OperationKind::BuildSourceInstance,
+                format!("rule_idx={}", *cur_idx),
+            ))
             .with(format!("rule_idx={}", *cur_idx))
             .want("generate rule record")?;
         *cur_idx = (*cur_idx + 1) % rules_len;
@@ -43,6 +70,10 @@ async fn send_unit_rules(
         wp_connector_api::AsyncRawDataSink::sink_str(sink, &raw_line)
             .await
             .owe_sink()
+            .with(generator_context(
+                OperationKind::BuildSinkInstance,
+                "gen_direct_rule",
+            ))
             .with("gen_direct_rule")
             .want("write rule record to sink")?;
         collectors.record_task("gen_direct_rule", ());
@@ -69,11 +100,19 @@ pub async fn run_rule_direct(
     );
     let units = crate::core::generator::rules::load_gen_confs(rule_root, dict)
         .owe_rule()
+        .with(generator_path_context(
+            Path::new(rule_root),
+            OperationKind::LoadConfigFile,
+        ))
         .with(rule_root)
         .want("load rule")?;
     info_ctrl!("run_rule_direct: loaded {} rule units", units.len());
     let source = RuleGenSource::from_units(units)
         .owe_conf()
+        .with(generator_path_context(
+            Path::new(rule_root),
+            OperationKind::BuildSourceInstance,
+        ))
         .with(rule_root)
         .want("build rule source from units")?;
     let source = std::sync::Arc::new(source);
@@ -140,6 +179,10 @@ pub async fn run_rule_direct(
         let n = t
             .await
             .owe_conf()
+            .with(generator_context(
+                OperationKind::BuildSourceInstance,
+                "gen_direct_rule",
+            ))
             .with("gen_direct_rule")
             .want("join rule pipeline task")??;
         total_produced += n;

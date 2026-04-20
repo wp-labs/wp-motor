@@ -8,35 +8,70 @@ use crate::runtime::supervisor::monitor::ActorMonitor;
 use crate::sinks::SinkBackendType;
 use crate::stat::metric_collect::MetricCollectors;
 use orion_conf::ErrorWith;
+use orion_error::OperationContext;
 use orion_error::{ErrorOwe, ToStructError, UvsFrom};
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::task::JoinHandle;
 use wp_conf::stat::StatConf;
 use wp_conf::structure::SinkInstanceConf;
+use wp_error::diagnostic_meta::{
+    ComponentKind, OperationContextMetaExt, OperationKind, RuntimeStage,
+};
 use wp_error::run_error::{RunErrorOwe, RunReason, RunResult};
 use wp_log::info_ctrl;
 use wp_stat::{StatRecorder, StatStage};
+
+fn generator_path_context(path: &Path, operation: OperationKind) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(RuntimeStage::GeneratorGenerate)
+        .with_meta_value(ComponentKind::Generator)
+        .with_meta_value(operation)
+        .with_resource_path(path)
+}
+
+fn generator_context(
+    operation: OperationKind,
+    component_name: impl Into<String>,
+) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(RuntimeStage::GeneratorGenerate)
+        .with_meta_value(ComponentKind::Generator)
+        .with_meta_value(operation)
+        .with_component_name(component_name)
+}
 
 fn load_samples(rule_root: &str, find_name: &str) -> RunResult<Vec<String>> {
     use std::io::BufRead;
     // discover files
     let files = wp_conf::utils::find_conf_files(rule_root, find_name)
         .owe_conf()
+        .with(generator_path_context(
+            Path::new(rule_root),
+            OperationKind::ReadDir,
+        ))
         .with(rule_root)
         .want("find sample files")?;
     info_ctrl!("run_sample_direct: found {} files", files.len());
     if files.is_empty() {
-        return Err(RunReason::from_conf().to_err().with_detail(format!(
-            "sample files not found under '{}' for pattern '{}'",
-            rule_root, find_name
-        )));
+        return Err(RunReason::from_conf()
+            .to_err()
+            .with_detail(format!(
+                "sample files not found under '{}' for pattern '{}'",
+                rule_root, find_name
+            ))
+            .with(generator_path_context(
+                Path::new(rule_root),
+                OperationKind::ValidateConfig,
+            )));
     }
     // load lines
     let mut out = Vec::new();
     for f in files {
         let file = std::fs::File::open(&f)
             .owe_conf()
+            .with(generator_path_context(&f, OperationKind::LoadConfigFile))
             .with(&f)
             .want("open sample file")?;
         let reader = std::io::BufReader::new(file);
@@ -62,6 +97,10 @@ async fn send_unit_samples(
         wp_connector_api::AsyncRawDataSink::sink_str(sink, line.as_str())
             .await
             .owe_sink()
+            .with(generator_context(
+                OperationKind::BuildSinkInstance,
+                "gen_direct",
+            ))
             .with("gen_direct")
             .want("write sample line to sink")?;
         // 按条统计
@@ -338,6 +377,10 @@ pub async fn run_sample_direct(
         let produced = t
             .await
             .owe_conf()
+            .with(generator_context(
+                OperationKind::BuildSourceInstance,
+                "gen_direct",
+            ))
             .with("gen_direct")
             .want("join sample pipeline task")??;
         total_produced += produced;

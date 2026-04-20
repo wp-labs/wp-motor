@@ -1,11 +1,19 @@
 use crate::utils::types::{Ctx, GroupAccum, Row};
 use orion_conf::error::OrionConfResult;
-use orion_error::ErrorWith;
+use orion_error::{ErrorWith, OperationContext};
 use orion_variate::EnvDict;
 use std::path::Path;
+use wp_error::diagnostic_meta::{ConfigKind, OperationContextMetaExt, OperationKind};
 
 // Use business layer function
 use crate::business::observability::process_group;
+
+fn sink_route_context(path: &Path, operation: OperationKind) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(ConfigKind::SinkRoute)
+        .with_meta_value(operation)
+        .with_file_path(path)
+}
 
 /// Build groups and rows for sinks, used by validators. Caller supplies sink_root and ctx.
 pub fn build_groups_v2(
@@ -19,6 +27,10 @@ pub fn build_groups_v2(
 
     for conf in
         wp_conf::sinks::load_business_route_confs(sink_root.to_string_lossy().as_ref(), env_dict)
+            .with(sink_route_context(
+                &sink_root.join("business.d"),
+                OperationKind::LoadConfigFile,
+            ))
             .with(sink_root)
             .want("load business sink routes")?
     {
@@ -39,6 +51,10 @@ pub fn build_groups_v2(
     }
     for conf in
         wp_conf::sinks::load_infra_route_confs(sink_root.to_string_lossy().as_ref(), env_dict)
+            .with(sink_route_context(
+                &sink_root.join("infra.d"),
+                OperationKind::LoadConfigFile,
+            ))
             .with(sink_root)
             .want("load infra sink routes")?
     {

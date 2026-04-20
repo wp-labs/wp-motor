@@ -4,7 +4,7 @@ use crate::orchestrator::config::WPSRC_TOML;
 use futures_util::TryFutureExt;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
 use orion_conf::{EnvTomlLoad, ErrorOwe, ToStructError, TomlIO};
-use orion_error::{ErrorWith, UvsFrom};
+use orion_error::{ErrorWith, OperationContext, UvsFrom};
 use orion_variate::{EnvDict, EnvEvaluable};
 use std::cell::OnceCell;
 use std::path::{Path, PathBuf};
@@ -14,6 +14,7 @@ use wp_conf::paths::OUT_FILE_PATH;
 use wp_conf::structure::ConfStdOperation;
 use wp_conf::utils::{backup_clean, save_conf, save_data};
 use wp_error::config_error::ConfResult;
+use wp_error::diagnostic_meta::{ConfigKind, OperationContextMetaExt, OperationKind, RuntimeStage};
 use wp_error::error_handling::target;
 use wp_error::run_error::{RunReason, RunResult};
 
@@ -70,7 +71,13 @@ impl WarpConf {
     pub fn ensure_config_path_exists(&self, file_name: &str) -> OrionConfResult<PathBuf> {
         let target = self.conf_root_path().join(file_name);
         if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent).owe_res().with(parent)?;
+            std::fs::create_dir_all(parent)
+                .owe_res()
+                .with(orchestrator_dir_context(
+                    parent,
+                    OperationKind::LoadConfigFile,
+                ))
+                .with(parent)?;
         }
         Ok(target)
     }
@@ -103,6 +110,11 @@ impl WarpConf {
         let path = self.config_path(ENGINE_CONF_FILE);
         let conf = EngineConfig::env_load_toml(&path, dict)
             .owe_res()
+            .with(orchestrator_config_context(
+                ConfigKind::Engine,
+                &path,
+                OperationKind::LoadConfigFile,
+            ))
             .with(&path)?
             .env_eval(dict)
             .conf_absolutize(self.work_root());
@@ -111,23 +123,31 @@ impl WarpConf {
 
     /// 清理工作目录中的配置文件
     pub fn cleanup_work_directory(&self, dict: &EnvDict) -> RunResult<()> {
+        let engine_path = self.config_path(ENGINE_CONF_FILE);
         let wp_conf = EngineConfig::load_or_init(self.work_root(), dict)
             .map_err(|e| {
                 RunReason::from_conf()
                     .to_err()
-                    .with_detail(format!("load engine config for cleanup failed: {}", e))
+                    .with_detail("load engine config for cleanup failed")
+                    .with(cleanup_context(ConfigKind::Engine, &engine_path))
+                    .with_source(e)
             })?
             .env_eval(dict)
             .conf_absolutize(self.work_root());
-        backup_clean(self.config_path_string(ENGINE_CONF_FILE)).map_err(|e| {
+        backup_clean(engine_path.clone()).map_err(|e| {
             RunReason::from_conf()
                 .to_err()
-                .with_detail(format!("cleanup engine config backup failed: {}", e))
+                .with_detail("cleanup engine config backup failed")
+                .with(cleanup_context(ConfigKind::Engine, &engine_path))
+                .with_source(e)
         })?;
-        backup_clean(wp_conf.src_conf_of(WPSRC_TOML)).map_err(|e| {
+        let wpsrc_path = PathBuf::from(wp_conf.src_conf_of(WPSRC_TOML));
+        backup_clean(wpsrc_path.clone()).map_err(|e| {
             RunReason::from_conf()
                 .to_err()
-                .with_detail(format!("cleanup source config backup failed: {}", e))
+                .with_detail("cleanup source config backup failed")
+                .with(cleanup_context(ConfigKind::Wpsrc, &wpsrc_path))
+                .with_source(e)
         })?;
         // PUBLIC_ADM 废弃：不再清理 public.oml
         // 默认清理 connectors default + models templates（wpsrc）
@@ -136,16 +156,20 @@ impl WarpConf {
             if let Some(conn_path) =
                 connector_template_by_id(&self.work_root().join("connectors/source.d"), "file_src")
             {
-                backup_clean(conn_path).map_err(|e| {
+                backup_clean(conn_path.clone()).map_err(|e| {
                     RunReason::from_conf()
                         .to_err()
-                        .with_detail(format!("cleanup source connector backup failed: {}", e))
+                        .with_detail("cleanup source connector backup failed")
+                        .with(cleanup_context(ConfigKind::ConnectorDef, &conn_path))
+                        .with_source(e)
                 })?;
             }
-            backup_clean(wp_conf.src_conf_of(WPSRC_TOML)).map_err(|e| {
+            backup_clean(wpsrc_path.clone()).map_err(|e| {
                 RunReason::from_conf()
                     .to_err()
-                    .with_detail(format!("cleanup source config backup failed: {}", e))
+                    .with_detail("cleanup source config backup failed")
+                    .with(cleanup_context(ConfigKind::Wpsrc, &wpsrc_path))
+                    .with_source(e)
             })?;
         }
         Ok(())
@@ -167,6 +191,33 @@ impl WarpConf {
         let path = self.config_path_string(file_name);
         T::try_load(path.as_str(), dict).ok()?
     }
+}
+
+fn orchestrator_config_context(
+    kind: ConfigKind,
+    path: &Path,
+    operation: OperationKind,
+) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(RuntimeStage::OrchestratorConfigLoad)
+        .with_meta_value(kind)
+        .with_meta_value(operation)
+        .with_file_path(path)
+}
+
+fn orchestrator_dir_context(path: &Path, operation: OperationKind) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(RuntimeStage::OrchestratorConfigLoad)
+        .with_meta_value(operation)
+        .with_dir_path(path)
+}
+
+fn cleanup_context(kind: ConfigKind, path: &Path) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(RuntimeStage::OrchestratorConfigLoad)
+        .with_meta_value(kind)
+        .with_meta_value(OperationKind::LoadConfigFile)
+        .with_file_path(path)
 }
 
 fn connector_template_by_id(dir: &Path, id: &str) -> Option<PathBuf> {

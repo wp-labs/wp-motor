@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 use crate::structure::{FixedGroup, FlexGroup, default_batch_size, default_batch_timeout_ms};
-use anyhow::Result as AnyResult;
 use orion_error::{ErrorWith, ErrorWrap, ToStructError, UvsReason};
 use orion_variate::{EnvDict, EnvEvaluable};
 use wp_error::config_error::{ConfCore, ConfReason, ConfResult};
@@ -30,7 +29,7 @@ impl EnvEvaluable<InfraSinkConf> for InfraSinkConf {
     }
 }
 impl InfraSinkConf {
-    pub fn clean_local_file(&self) -> AnyResult<()> {
+    pub fn clean_local_file(&self) -> orion_conf::error::OrionConfResult<()> {
         for i in self.miss.sinks() {
             i.clean_sink_file()?;
         }

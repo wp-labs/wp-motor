@@ -79,6 +79,7 @@ mod tests {
     use orion_error::TestAssertWithMsg;
     use tempfile::tempdir;
     use wp_conf::test_support::ForTest;
+    use wp_error::diagnostic_meta::{ComponentKind, ConfigKind, MetaValue, first_meta_str, key};
 
     use super::*;
     use crate::project::{WarpProject, init::PrjScope};
@@ -163,8 +164,23 @@ mod tests {
             .expect_err("directory at output path should fail remove_file");
         let detail = err.detail().clone().unwrap_or_default();
         let chain = err.display_chain();
+        let report = err.report();
+        let output_file_str = output_file.display().to_string();
         assert!(detail.contains("清理 wpgen 数据失败"));
         assert!(chain.contains("remove wpgen output"));
         assert!(chain.contains(output_file.to_string_lossy().as_ref()));
+        assert_eq!(
+            first_meta_str(&report, key::CONFIG_KIND),
+            Some(ConfigKind::SinkRuntime.as_str())
+        );
+        assert_eq!(
+            first_meta_str(&report, key::COMPONENT_KIND),
+            Some(ComponentKind::Generator.as_str())
+        );
+        assert_eq!(first_meta_str(&report, key::COMPONENT_NAME), Some("wpgen"));
+        assert_eq!(
+            first_meta_str(&report, key::FILE_PATH),
+            Some(output_file_str.as_str())
+        );
     }
 }

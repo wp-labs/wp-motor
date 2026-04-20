@@ -1,6 +1,5 @@
 use super::expect::SinkExpectOverride;
 use crate::structure::default_batch_size;
-use crate::types::AnyResult;
 use crate::utils::{env_eval_params, env_eval_vec};
 use crate::{cond::WarpConditionParser, structure::Validate};
 use derive_getters::Getters;
@@ -13,6 +12,7 @@ use std::fs;
 use std::path::Path;
 use winnow::stream::ToUsize;
 use wp_connector_api::ParamMap;
+use wp_error::diagnostic_meta::{ComponentKind, ConfigKind, OperationContextMetaExt};
 use wp_log::{debug_ctrl, info_ctrl};
 use wp_model_core::model::fmt_def::TextFmt;
 
@@ -156,10 +156,21 @@ impl SinkInstanceConf {
     pub fn null_new(name: String, fmt: TextFmt, filter: Option<String>) -> Self {
         Self::new_type(name, fmt, "null".to_string(), ParamMap::default(), filter)
     }
-    pub fn clean_sink_file(&self) -> AnyResult<()> {
+    pub fn clean_sink_file(&self) -> OrionConfResult<()> {
         if let Some(path) = self.resolve_file_path() {
-            if std::path::Path::new(path.as_str()).exists() {
-                std::fs::remove_file(path.as_str())?;
+            let path_ref = Path::new(path.as_str());
+            if path_ref.exists() {
+                std::fs::remove_file(path_ref)
+                    .owe_conf_source()
+                    .with(
+                        OperationContext::want("clean sink output file")
+                            .with_meta_value(ConfigKind::SinkRuntime)
+                            .with_meta_value(ComponentKind::Sink)
+                            .with_component_name(self.full_name())
+                            .with_file_path(path_ref),
+                    )
+                    .with(path_ref)
+                    .want("remove sink output file")?;
                 info_ctrl!("clean file: {}", path)
             }
         } else {
@@ -229,7 +240,12 @@ impl Validate for SinkInstanceConf {
         let p = &self.core.params;
         match kind.as_str() {
             "file" | "test_rescue" => {
-                let has_base_file = p
+                let has_path = p
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .map(|s| !s.trim().is_empty())
+                    .unwrap_or(false);
+                let has_base_or_file = p
                     .get("base")
                     .and_then(|v| v.as_str())
                     .map(|s| !s.trim().is_empty())
@@ -238,10 +254,10 @@ impl Validate for SinkInstanceConf {
                         .and_then(|v| v.as_str())
                         .map(|s| !s.trim().is_empty())
                         .unwrap_or(false);
-                if !(has_base_file) {
+                if !(has_path || has_base_or_file) {
                     return Err(ConfIOReason::from_validation()
                         .to_err()
-                        .with_detail("file sink requires 'path' or 'base'+'file'"));
+                        .with_detail("file sink requires 'path', 'base', or 'file'"));
                 }
             }
             _ => {}

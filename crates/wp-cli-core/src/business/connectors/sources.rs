@@ -2,14 +2,15 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_conf::{EnvTomlLoad, ToStructError};
-use orion_error::UvsFrom;
+use orion_conf::{EnvTomlLoad, ErrorWith, ToStructError};
+use orion_error::{OperationContext, UvsFrom};
 use orion_variate::{EnvDict, EnvEvalable};
 use wp_conf::connectors::{
     ConnectorScope, ParamMap, load_connector_defs_from_dir, merge_params, param_map_to_table,
 };
 use wp_conf::engine::EngineConfig;
 use wp_conf::sources::{SourceConnector, WpSourcesConfig, find_connectors_dir};
+use wp_error::diagnostic_meta::{ConfigKind, OperationContextMetaExt, OperationKind};
 
 /// A flattened row for listing source connectors and their usages.
 #[derive(Debug, Clone)]
@@ -37,12 +38,27 @@ fn resolve_wpsrc_path(work_root: &str, eng_conf: &EngineConfig) -> OrionConfResu
     Ok(wr.join(eng_conf.src_root()).join("wpsrc.toml"))
 }
 
+fn wpsrc_load_context(path: &Path) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(ConfigKind::Wpsrc)
+        .with_meta_value(OperationKind::LoadConfigFile)
+        .with_file_path(path)
+}
+
+fn connector_map_context(path: &Path) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(ConfigKind::ConnectorDef)
+        .with_meta_value(OperationKind::LoadConfigFile)
+        .with_dir_path(path)
+}
+
 /// Load connectors map from `connectors/source.d` (dedup and validate ids).
 fn load_connectors_map(
     base_dir: &Path,
     dict: &EnvDict,
 ) -> OrionConfResult<BTreeMap<String, SourceConnector>> {
-    let defs = load_connector_defs_from_dir(base_dir, ConnectorScope::Source, dict)?;
+    let defs = load_connector_defs_from_dir(base_dir, ConnectorScope::Source, dict)
+        .with(connector_map_context(base_dir))?;
     Ok(defs.into_iter().map(|def| (def.id.clone(), def)).collect())
 }
 
@@ -72,7 +88,8 @@ pub fn list_connectors(
             ))
     })?;
     let conn_map = load_connectors_map(&conn_base, dict)?;
-    let wp_sources = WpSourcesConfig::env_load_toml(&wpsrc_path, dict)?;
+    let wp_sources =
+        WpSourcesConfig::env_load_toml(&wpsrc_path, dict).with(wpsrc_load_context(&wpsrc_path))?;
 
     // Count how many times each connector id is referenced.
     let mut refs: BTreeMap<String, usize> = BTreeMap::new();
@@ -111,7 +128,9 @@ pub fn route_table(
             ))
     })?;
     let conn_map = load_connectors_map(&conn_base, dict)?;
-    let wrapper = WpSourcesConfig::env_load_toml(&wpsrc_path, dict)?.env_eval(dict);
+    let wrapper = WpSourcesConfig::env_load_toml(&wpsrc_path, dict)
+        .with(wpsrc_load_context(&wpsrc_path))?
+        .env_eval(dict);
     let mut rows: Vec<RouteRow> = Vec::new();
     for src in wrapper.sources.into_iter() {
         let conn = conn_map.get(&src.connect).ok_or_else(|| {

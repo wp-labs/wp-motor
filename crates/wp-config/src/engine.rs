@@ -1,16 +1,25 @@
 use orion_conf::{EnvTomlLoad, ErrorOwe, ErrorWith, TomlIO, error::OrionConfResult};
+use orion_error::OperationContext;
 use orion_variate::{EnvDict, EnvEvaluable};
 use serde_derive::{Deserialize, Serialize};
 use std::{
     fs::create_dir_all,
     path::{Path, PathBuf},
 };
+use wp_error::diagnostic_meta::{ConfigKind, OperationContextMetaExt, OperationKind};
 use wp_error::error_handling::RobustnessMode;
 use wp_log::conf::LogConf;
 
 use crate::stat::StatConf;
 
 impl EngineConfig {}
+
+fn engine_load_context(path: &Path) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(ConfigKind::Engine)
+        .with_meta_value(OperationKind::LoadConfigFile)
+        .with_file_path(path)
+}
 
 #[derive(Debug, Default, PartialEq, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
@@ -513,6 +522,7 @@ impl EngineConfig {
         let engine_conf_path = work_root.as_ref().join("conf").join(ENGINE_CONF_FILE);
         if engine_conf_path.exists() {
             EngineConfig::env_load_toml(&engine_conf_path, dict)
+                .with(engine_load_context(&engine_conf_path))
         } else {
             if let Some(parent) = engine_conf_path.parent() {
                 create_dir_all(parent)
@@ -529,6 +539,7 @@ impl EngineConfig {
         use crate::constants::ENGINE_CONF_FILE;
         let engine_conf_path = work_root.as_ref().join("conf").join(ENGINE_CONF_FILE);
         EngineConfig::env_load_toml(&engine_conf_path, dict)
+            .with(engine_load_context(&engine_conf_path))
             .want("load engine config")
             .with(ENGINE_CONF_FILE)
     }

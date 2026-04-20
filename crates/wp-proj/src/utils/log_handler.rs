@@ -1,12 +1,24 @@
-use orion_error::{ToStructError, UvsFrom};
+use orion_conf::error::ConfIOReason;
+use orion_error::{
+    ErrorOweSource, ErrorWith, OperationContext, StructError, ToStructError, UvsFrom,
+    WrapStructError,
+};
 use orion_variate::EnvDict;
 use std::path::Path;
 use wp_engine::facade::config::load_warp_engine_confs;
+use wp_error::diagnostic_meta::{OperationContextMetaExt, OperationKind, RuntimeStage};
 use wp_error::run_error::{RunReason, RunResult};
 use wp_log::conf::LogConf;
 
 /// 通用日志处理器 - 基于WpEngine的LogConf对象进行日志处理
 pub struct LogHandler;
+
+fn log_clean_context(path: &Path) -> OperationContext {
+    OperationContext::want("clean log directory")
+        .with_meta_value(RuntimeStage::SystemOperations)
+        .with_meta_value(OperationKind::LoadConfigFile)
+        .with_dir_path(path)
+}
 
 impl LogHandler {
     /// 清理日志目录（基于WpEngine的LogConf对象）
@@ -90,15 +102,17 @@ impl LogHandler {
         let normalized_path = Self::normalize_path(&full_log_dir);
 
         if full_log_dir.exists() {
-            match std::fs::remove_dir_all(&full_log_dir) {
-                Ok(_) => {
-                    println!("✓ Cleaned log directory: {}", normalized_path);
-                    Ok(true)
-                }
-                Err(e) => Err(RunReason::from_conf()
-                    .to_err()
-                    .with_detail(format!("删除日志目录失败 {}: {}", normalized_path, e))),
-            }
+            std::fs::remove_dir_all(&full_log_dir)
+                .owe_conf_source()
+                .with(log_clean_context(&full_log_dir))
+                .with(&full_log_dir)
+                .want("remove log directory")
+                .map_err(|e: StructError<ConfIOReason>| {
+                    e.wrap(RunReason::from_conf())
+                        .with_detail(format!("删除日志目录失败: {}", normalized_path))
+                })?;
+            println!("✓ Cleaned log directory: {}", normalized_path);
+            Ok(true)
         } else {
             Ok(false)
         }
@@ -109,6 +123,7 @@ impl LogHandler {
 mod tests {
     use super::*;
     use crate::test_utils::temp_workdir;
+    use wp_error::diagnostic_meta::{MetaValue, RuntimeStage, first_meta_str, key};
 
     #[test]
     fn clean_logs_removes_relative_directory() {
@@ -168,7 +183,22 @@ mod tests {
         let err = LogHandler::clean_logs(&cfg, temp.path())
             .expect_err("file path should fail directory cleanup");
         let detail = err.detail().clone().unwrap_or_default();
+        let report = err.report();
+        let full_log_dir = temp.path().join("./data/logs");
+        let log_file_str = full_log_dir.display().to_string();
         assert!(detail.contains("删除日志目录失败"));
         assert!(detail.contains("data/logs"));
+        assert_eq!(
+            first_meta_str(&report, key::RUNTIME_STAGE),
+            Some(RuntimeStage::SystemOperations.as_str())
+        );
+        assert_eq!(
+            first_meta_str(&report, key::DIR_PATH),
+            Some(log_file_str.as_str())
+        );
+        assert!(
+            !report.source_frames.is_empty(),
+            "remove_dir_all failure should keep io source frame"
+        );
     }
 }

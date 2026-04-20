@@ -26,6 +26,9 @@ use crate::stat::MonSend;
 use orion_error::{ErrorOwe, ToStructError, UvsBizFrom};
 use std::any::type_name_of_val;
 use wp_conf::structure::SinkInstanceConf;
+use wp_error::diagnostic_meta::{
+    ComponentKind, OperationContextMetaExt, OperationKind, RuntimeStage,
+};
 use wp_error::run_error::RunResult;
 use wp_stat::StatRequires;
 use wp_stat::StatStage;
@@ -36,7 +39,12 @@ pub async fn rule_gen_run(
     out_io: SinkBackendType,
 ) -> RunResult<()> {
     if rules.is_empty() {
-        return Err(RunReason::from_biz().to_err());
+        return Err(RunReason::from_biz().to_err().with(
+            orion_error::OperationContext::new()
+                .with_meta_value(RuntimeStage::GeneratorGenerate)
+                .with_meta_value(ComponentKind::Generator)
+                .with_meta_value(OperationKind::ValidateConfig),
+        ));
     }
     // 限速为全局语义：当 speed>0 时，将并发限制为 min(parallel, speed)
     let mut g = args.gen_conf.clone();
@@ -205,7 +213,14 @@ pub async fn gen_run(
                 mon_s.clone(),
                 g_one.clone(),
             )
-            .owe_sys()?;
+            .owe_sys()
+            .with(
+                orion_error::OperationContext::new()
+                    .with_meta_value(RuntimeStage::GeneratorGenerate)
+                    .with_meta_value(ComponentKind::Generator)
+                    .with_meta_value(OperationKind::BuildSourceInstance)
+                    .with_component_name(format!("gen_worker_{i}")),
+            )?;
         info_ctrl!(
             "spawn gen worker {} with total_line={:?}, speed={}, parallel={}",
             i,
@@ -292,7 +307,14 @@ impl SpawnGen for SampleGenRoutine {
     ) -> RunResult<JoinHandle<()>> {
         info_ctrl!("gen samples from : {:?}", self.samples);
         let mut gen_actor = SampleGenerator::from_file(self.samples.clone())
-            .map_err(|e| RunReason::from_conf().to_err().with_source(e))?;
+            .map_err(|e| {
+                RunReason::from_conf().to_err().with_source(e).with(
+                    orion_error::OperationContext::new()
+                        .with_meta_value(RuntimeStage::GeneratorGenerate)
+                        .with_meta_value(ComponentKind::Generator)
+                        .with_meta_value(OperationKind::LoadConfigFile),
+                )
+            })?;
         let dat_s_cp = dat_s;
         let h = tokio::spawn(async move {
             match gen_actor.gen_data(cmd_r, dat_s_cp, gen_conf, mon_s).await {

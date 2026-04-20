@@ -1,9 +1,21 @@
-use orion_error::{ToStructError, UvsFrom};
+use orion_conf::error::ConfIOReason;
+use orion_error::{
+    ErrorOweSource, ErrorWith, OperationContext, StructError, UvsFrom, WrapStructError,
+};
 use orion_variate::EnvDict;
+use std::path::Path;
+use wp_error::diagnostic_meta::{OperationContextMetaExt, OperationKind, RuntimeStage};
 
 use crate::utils::LogHandler;
 
 pub mod samples;
+
+fn wparse_clean_context(path: &Path, operation: OperationKind) -> OperationContext {
+    OperationContext::want("clean wparse data")
+        .with_meta_value(RuntimeStage::SystemOperations)
+        .with_meta_value(operation)
+        .with_dir_path(path)
+}
 
 /// WParse 管理器
 #[derive(Debug, Clone)]
@@ -28,38 +40,31 @@ impl WParseManager {
     /// 清理 WParse 相关数据
     pub fn clean_data(&self, dict: &EnvDict) -> wp_error::run_error::RunResult<bool> {
         let mut did_clean_any = false;
-        let mut failures = Vec::new();
 
         // 1. 清理 .run 目录
         let run_dir = self.work_root.join(".run");
         if run_dir.exists() {
-            match std::fs::remove_dir_all(&run_dir) {
-                Ok(_) => {
-                    println!("✓ Cleaned .run directory");
-                    did_clean_any = true;
-                }
-                Err(e) => {
-                    failures.push(format!("remove .run directory: {}", e));
-                }
-            }
+            std::fs::remove_dir_all(&run_dir)
+                .owe_conf_source()
+                .with(wparse_clean_context(
+                    &run_dir,
+                    OperationKind::LoadConfigFile,
+                ))
+                .with(&run_dir)
+                .want("remove wparse runtime dir")
+                .map_err(|e: StructError<ConfIOReason>| {
+                    e.wrap(wp_error::RunReason::from_conf())
+                        .with_detail("清理 wparse 运行目录失败")
+                })?;
+            println!("✓ Cleaned .run directory");
+            did_clean_any = true;
         }
 
         // 2. 使用 WpEngine 的 load_main 清理日志文件
-        match LogHandler::clean_logs_via_config(&self.work_root, dict) {
-            Ok(log_cleaned) => {
-                if log_cleaned {
-                    did_clean_any = true;
-                }
-            }
-            Err(e) => {
-                failures.push(format!("clean logs: {}", e));
-            }
-        }
-
-        if !failures.is_empty() {
-            return Err(wp_error::RunReason::from_conf()
-                .to_err()
-                .with_detail(format!("清理 wparse 数据失败: {}", failures.join(" | "))));
+        let log_cleaned = LogHandler::clean_logs_via_config(&self.work_root, dict)
+            .map_err(|e| e.with_detail("清理 wparse 日志失败"))?;
+        if log_cleaned {
+            did_clean_any = true;
         }
 
         Ok(did_clean_any)
@@ -98,6 +103,7 @@ mod tests {
     use super::*;
     use crate::test_utils::{temp_workdir, write_basic_wparse_config};
     use wp_conf::test_support::ForTest;
+    use wp_error::diagnostic_meta::{MetaValue, RuntimeStage, first_meta_str, key};
 
     #[test]
     fn manager_reports_paths_relative_to_work_root() {
@@ -135,5 +141,35 @@ mod tests {
         let cleaned = manager.clean_data(&dict).expect("clean data");
         assert!(cleaned);
         assert!(!run_dir.exists());
+    }
+
+    #[test]
+    fn clean_data_reports_run_dir_failure_with_source_metadata() {
+        let temp = temp_workdir();
+        write_basic_wparse_config(temp.path());
+        let manager = WParseManager::new(temp.path());
+        let run_dir = temp.path().join(".run");
+        std::fs::write(&run_dir, "not a dir").expect("blocking file");
+        let dict = EnvDict::test_default();
+
+        let err = manager
+            .clean_data(&dict)
+            .expect_err("file at .run should fail runtime directory cleanup");
+        let report = err.report();
+        let run_dir_str = run_dir.display().to_string();
+
+        assert_eq!(
+            first_meta_str(&report, key::RUNTIME_STAGE),
+            Some(RuntimeStage::SystemOperations.as_str())
+        );
+        assert_eq!(
+            first_meta_str(&report, key::DIR_PATH),
+            Some(run_dir_str.as_str())
+        );
+        assert!(err.display_chain().contains("remove wparse runtime dir"));
+        assert!(
+            !report.source_frames.is_empty(),
+            "remove_dir_all failure should keep io source frame"
+        );
     }
 }

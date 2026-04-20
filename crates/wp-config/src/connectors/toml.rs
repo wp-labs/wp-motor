@@ -1,19 +1,48 @@
 use super::defs::ConnectorTomlFile;
 use orion_conf::EnvTomlLoad;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorOweSource, ErrorWith, ToStructError, UvsFrom};
+use orion_error::{ErrorOweSource, ErrorWith, OperationContext, ToStructError, UvsFrom};
 use orion_variate::EnvDict;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use wp_connector_api::{ConnectorDef, ConnectorScope};
+use wp_error::diagnostic_meta::{
+    ComponentKind, ConfigKind, OperationContextMetaExt, OperationKind,
+};
 
-fn collect_connector_files(dir: &Path) -> OrionConfResult<Vec<PathBuf>> {
+fn connector_scope_name(scope: ConnectorScope) -> &'static str {
+    match scope {
+        ConnectorScope::Source => "source",
+        ConnectorScope::Sink => "sink",
+    }
+}
+
+fn connector_dir_context(dir: &Path, scope: ConnectorScope) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(ConfigKind::ConnectorDef)
+        .with_meta_value(ComponentKind::Connector)
+        .with_meta_value(OperationKind::ReadDir)
+        .with_dir_path(dir)
+        .with_config_section(connector_scope_name(scope))
+}
+
+fn connector_file_context(path: &Path, scope: ConnectorScope) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(ConfigKind::ConnectorDef)
+        .with_meta_value(ComponentKind::Connector)
+        .with_meta_value(OperationKind::ParseConfig)
+        .with_file_path(path)
+        .with_config_section(connector_scope_name(scope))
+}
+
+fn collect_connector_files(dir: &Path, scope: ConnectorScope) -> OrionConfResult<Vec<PathBuf>> {
     if !dir.exists() {
         return Ok(Vec::new());
     }
     let mut files: Vec<PathBuf> = fs::read_dir(dir)
         .owe_conf_source()
+        .with(connector_dir_context(dir, scope))
         .with(dir)?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
@@ -29,8 +58,9 @@ pub fn load_connector_defs_from_dir(
     dict: &EnvDict,
 ) -> OrionConfResult<Vec<ConnectorDef>> {
     let mut map: BTreeMap<String, ConnectorDef> = BTreeMap::new();
-    for fp in collect_connector_files(dir)? {
-        let file: ConnectorTomlFile = ConnectorTomlFile::env_load_toml(&fp, dict)?;
+    for fp in collect_connector_files(dir, scope)? {
+        let file: ConnectorTomlFile =
+            ConnectorTomlFile::env_load_toml(&fp, dict).with(connector_file_context(&fp, scope))?;
         for mut def in file.connectors {
             let origin = Some(fp.display().to_string());
             if map.contains_key(&def.id) {
@@ -56,6 +86,7 @@ mod tests {
     use orion_variate::ValueType;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use wp_error::diagnostic_meta::{ComponentKind, ConfigKind, MetaValue, OperationKind, key};
 
     fn tmp_dir(prefix: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -146,19 +177,42 @@ file = "result.dat"
         let base = tmp_dir("conn_unknown_top");
         let cdir = base.join("connectors").join("sink.d");
         fs::create_dir_all(&cdir).unwrap();
+        let bad_path = cdir.join("bad.toml");
 
         let connector_toml = r#"
 [[connector]]
 id = "file_sink"
 type = "file"
 "#;
-        fs::write(cdir.join("bad.toml"), connector_toml).unwrap();
+        fs::write(&bad_path, connector_toml).unwrap();
 
         let err = load_connector_defs_from_dir(&cdir, ConnectorScope::Sink, &EnvDict::new())
-            .expect_err("unknown top-level connector table should fail")
-            .to_string();
-        assert!(err.contains("unknown field"));
-        assert!(err.contains("connector"));
+            .expect_err("unknown top-level connector table should fail");
+        let report = err.report();
+        let err_text = err.to_string();
+        let bad_path_str = bad_path.display().to_string();
+        assert!(err_text.contains("unknown field"));
+        assert!(err_text.contains("connector"));
+        assert_eq!(
+            report.root_metadata.get_str(key::CONFIG_KIND),
+            Some(ConfigKind::ConnectorDef.as_str())
+        );
+        assert_eq!(
+            report.root_metadata.get_str(key::COMPONENT_KIND),
+            Some(ComponentKind::Connector.as_str())
+        );
+        assert_eq!(
+            report.root_metadata.get_str(key::OPERATION_KIND),
+            Some(OperationKind::ParseConfig.as_str())
+        );
+        assert_eq!(
+            report.root_metadata.get_str(key::CONFIG_SECTION),
+            Some("sink")
+        );
+        assert_eq!(
+            report.root_metadata.get_str(key::FILE_PATH),
+            Some(bad_path_str.as_str())
+        );
     }
 
     #[test]

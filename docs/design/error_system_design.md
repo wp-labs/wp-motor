@@ -272,6 +272,14 @@ std::fs::read_to_string(path)
 
 因此，本工程明确要求：不要在中间层把结构错误压成普通字符串，否则这些能力会直接失效。
 
+### 5.7 SourceFrame metadata 方向
+
+当前 `source_frames()` 已能提供 `reason`、`want`、`path`、`detail` 等结构化信息，但对于“配置类型”这类诊断分类仍然不足。例如 CLI 需要区分 `wpsrc.toml`、`sinks/defaults.toml`、sink route 文件时，仍可能退化为基于文件名或 `Display` 文本的启发式判断。
+
+后续建议在 `orion-error` 中独立推进 `SourceFrame` typed metadata 能力，让 `OperationContext` 能携带机器可读 metadata，并在 `SourceFrame` 中保留。详细 PR 需求与设计见：
+
+- [Orion Error SourceFrame Metadata PR 设计](./orion_error_source_frame_metadata_pr.md)
+
 ## 6. 各 crate 的职责
 
 ### 6.1 `wp-config`

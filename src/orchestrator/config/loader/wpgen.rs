@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use orion_conf::EnvTomlLoad;
 use orion_conf::TomlIO;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorOwe, ErrorWith, ToStructError, UvsFrom};
+use orion_error::{ErrorOwe, ErrorWith, OperationContext, ToStructError, UvsFrom};
 use orion_variate::{EnvDict, EnvEvaluable};
 use serde_json::json;
 use wp_conf::connectors::{ParamMap, param_value_from_toml};
@@ -18,6 +18,30 @@ use crate::orchestrator::config::WPGEN_TOML;
 use crate::orchestrator::config::models::wpgen::{WpGenConfig, WpGenResolved};
 use crate::types::AnyResult;
 use wp_conf::engine::EngineConfig;
+use wp_error::diagnostic_meta::{
+    ComponentKind, ConfigKind, OperationContextMetaExt, OperationKind, RuntimeStage,
+};
+
+fn orchestrator_config_context(
+    kind: ConfigKind,
+    path: &Path,
+    operation: OperationKind,
+) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(RuntimeStage::OrchestratorConfigLoad)
+        .with_meta_value(kind)
+        .with_meta_value(operation)
+        .with_file_path(path)
+}
+
+fn orchestrator_connector_context(path: &Path, operation: OperationKind) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(RuntimeStage::OrchestratorConfigLoad)
+        .with_meta_value(ConfigKind::ConnectorDef)
+        .with_meta_value(ComponentKind::Connector)
+        .with_meta_value(operation)
+        .with_dir_path(path)
+}
 
 impl WarpConf {
     /// 加载已解析的 wpgen 配置，包含 connector 解析
@@ -34,8 +58,17 @@ impl WarpConf {
     // 1) 解析 wpgen.toml 为 WpGenConfig 并做基本验证
     fn parse_wpgen_config(&self, file_name: &str, dict: &EnvDict) -> OrionConfResult<WpGenConfig> {
         let path = self.config_path_string(file_name);
-        let conf = WpGenConfig::env_load_toml(&PathBuf::from(path.as_str()), dict)?;
-        conf.validate()?;
+        let path = PathBuf::from(path.as_str());
+        let conf = WpGenConfig::env_load_toml(&path, dict).with(orchestrator_config_context(
+            ConfigKind::Wpgen,
+            &path,
+            OperationKind::LoadConfigFile,
+        ))?;
+        conf.validate().with(orchestrator_config_context(
+            ConfigKind::Wpgen,
+            &path,
+            OperationKind::ValidateConfig,
+        ))?;
         Ok(conf)
     }
 
@@ -92,6 +125,11 @@ impl WarpConf {
     ) -> OrionConfResult<(String, ConnectorRec)> {
         let wp_conf = EngineConfig::load_or_init(self.work_root(), dict)
             .owe_res()
+            .with(orchestrator_config_context(
+                ConfigKind::Engine,
+                self.work_root(),
+                OperationKind::LoadConfigFile,
+            ))
             .with("load_or_init")
             .want("load engine config")?
             .env_eval(dict)
@@ -104,7 +142,9 @@ impl WarpConf {
             self.work_root().join(configured_path)
         };
         let start_root = resolved_root.to_string_lossy().to_string();
-        let connectors = load_connectors_for(&start_root, dict)?;
+        let connectors = load_connectors_for(&start_root, dict).with(
+            orchestrator_connector_context(Path::new(&start_root), OperationKind::LoadConfigFile),
+        )?;
         let connector_dir = find_connectors_base_dir(Path::new(&start_root))
             .unwrap_or_else(|| Path::new(&start_root).join("connectors/sink.d"));
         let conn = connectors.get(conn_id).cloned().ok_or_else(|| {
@@ -123,6 +163,10 @@ impl WarpConf {
             ConfIOReason::from_validation()
                 .to_err()
                 .with_detail(detail)
+                .with(orchestrator_connector_context(
+                    &connector_dir,
+                    OperationKind::ValidateConfig,
+                ))
         })?;
         Ok((start_root, conn))
     }
@@ -139,12 +183,26 @@ impl WarpConf {
                 return Err(ConfIOReason::from_validation()
                     .to_err()
                     .with(conn_id)
+                    .with(
+                        OperationContext::new()
+                            .with_meta_value(RuntimeStage::OrchestratorConfigLoad)
+                            .with_meta_value(ConfigKind::Wpgen)
+                            .with_meta_value(OperationKind::ValidateConfig)
+                            .with_component_name(conn_id),
+                    )
                     .want("nested params/params_override is not allowed"));
             }
             if !conn.allow_override.iter().any(|x| x == k) {
                 return Err(ConfIOReason::from_validation()
                     .to_err()
                     .with(conn_id)
+                    .with(
+                        OperationContext::new()
+                            .with_meta_value(RuntimeStage::OrchestratorConfigLoad)
+                            .with_meta_value(ConfigKind::Wpgen)
+                            .with_meta_value(OperationKind::ValidateConfig)
+                            .with_component_name(conn_id),
+                    )
                     .want(format!("override '{}' not allowed", k)));
             }
             merged.insert(k.clone(), param_value_from_toml(v));

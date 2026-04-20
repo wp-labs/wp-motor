@@ -16,6 +16,7 @@ use wp_conf::constants::WPSRC_TOML;
 use wp_conf::engine::EngineConfig;
 use wp_conf::sources::{WpSource, WpSourcesConfig};
 use wp_conf::structure::SourceInstanceConf;
+use wp_error::diagnostic_meta::{ConfigKind, OperationContextMetaExt, OperationKind};
 
 // Re-export types from wpcnt_lib for convenience
 pub use crate::utils::types::{Ctx, SrcLineItem, SrcLineReport};
@@ -35,6 +36,12 @@ fn read_wpsrc_toml(path: &Path) -> OrionConfResult<Option<String>> {
     if path.exists() {
         return std::fs::read_to_string(path)
             .owe_conf_source()
+            .with(
+                orion_error::OperationContext::new()
+                    .with_meta_value(ConfigKind::Wpsrc)
+                    .with_meta_value(OperationKind::LoadConfigFile)
+                    .with_file_path(path),
+            )
             .with(path)
             .want("read wpsrc config")
             .map(Some);
@@ -53,7 +60,12 @@ fn load_wpsrc_sources(
     };
 
     let parsed: WpSourcesConfig = WpSourcesConfig::env_parse_toml(&content, dict)
-        .owe_conf_source()
+        .with(
+            orion_error::OperationContext::new()
+                .with_meta_value(ConfigKind::Wpsrc)
+                .with_meta_value(OperationKind::ParseConfig)
+                .with_file_path(&path),
+        )
         .with(&path)
         .want("parse wpsrc config")?
         .env_eval(dict);
@@ -84,7 +96,12 @@ fn load_wpsrc_config(
         return Ok(None);
     };
     let parsed: WpSourcesConfig = WpSourcesConfig::env_parse_toml(&content, dict)
-        .owe_conf_source()
+        .with(
+            orion_error::OperationContext::new()
+                .with_meta_value(ConfigKind::Wpsrc)
+                .with_meta_value(OperationKind::ParseConfig)
+                .with_file_path(&path),
+        )
         .with(&path)
         .want("parse wpsrc config")?
         .env_eval(dict);

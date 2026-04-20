@@ -1,6 +1,9 @@
 //! 运行时错误的美化与提示收集，供各 CLI 共享使用。
 
-use orion_error::{ErrorCode, SourceFrame};
+use orion_error::{ErrorCode, ErrorReport, SourceFrame};
+use wp_error::diagnostic_meta::{
+    ConfigKind, HintCode, first_meta_enum, first_meta_hint, first_meta_str, key,
+};
 use wp_error::run_error::{RunError, RunReason};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,6 +18,13 @@ struct DiagnosticSummary {
     triplet: DiagnosticTriplet,
     parse_excerpt: Option<String>,
     root_cause: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiagnosticKind {
+    Defaults,
+    Route,
+    Wpsrc,
 }
 
 fn no_color() -> bool {
@@ -165,17 +175,19 @@ fn extract_location(raw: &str) -> Option<String> {
 
 fn looks_like_file_location(location: &str) -> bool {
     let trimmed = location.trim();
-    trimmed.contains('/')
+    trimmed.starts_with('/')
+        || trimmed.starts_with("./")
+        || trimmed.starts_with("../")
         || trimmed.ends_with(".toml")
         || trimmed.ends_with(".yaml")
         || trimmed.ends_with(".yml")
         || trimmed.ends_with(".json")
+        || trimmed.contains(":\\")
 }
 
 fn extract_toml_parse_excerpt(raw: &str) -> Option<String> {
     let anchor = raw.find("TOML parse error at line ")?;
-    let excerpt = raw[anchor..].trim();
-    Some(excerpt.to_string())
+    Some(truncate_diagnostic_block(&raw[anchor..]).to_string())
 }
 
 fn enrich_triplet_from_fallback(
@@ -240,6 +252,12 @@ fn sanitize_detail(raw: &str) -> String {
         ", position:",
         ", context:",
         " }], source:",
+        "\n  -> Want:",
+        "\n-> Want:",
+        "\n  -> Path:",
+        "\n-> Path:",
+        "\n  -> Context stack:",
+        "\n-> Context stack:",
         "\n  -> Source:",
         "\n-> Source:",
         "\nCaused by:",
@@ -251,6 +269,28 @@ fn sanitize_detail(raw: &str) -> String {
         }
     }
     trimmed[..end].trim().trim_matches('"').to_string()
+}
+
+fn truncate_diagnostic_block(raw: &str) -> &str {
+    let trimmed = raw.trim();
+    let cut_markers = [
+        "\n  -> Want:",
+        "\n-> Want:",
+        "\n  -> Path:",
+        "\n-> Path:",
+        "\n  -> Context stack:",
+        "\n-> Context stack:",
+        "\n  -> Source:",
+        "\n-> Source:",
+        "\nCaused by:",
+    ];
+    let mut end = trimmed.len();
+    for marker in cut_markers {
+        if let Some(idx) = trimmed.find(marker) {
+            end = end.min(idx);
+        }
+    }
+    trimmed[..end].trim()
 }
 
 fn normalize_message(raw: &str) -> Option<String> {
@@ -273,12 +313,21 @@ fn has_effective_detail(reason: &str, detail: Option<&str>) -> bool {
 }
 
 fn frame_location(frame: &SourceFrame) -> Option<String> {
-    frame
-        .path
-        .clone()
-        .or_else(|| frame.display.as_deref().and_then(extract_location))
+    let embedded_location = frame
+        .display
+        .as_deref()
+        .and_then(extract_location)
         .or_else(|| frame.detail.as_deref().and_then(extract_location))
-        .or_else(|| extract_location(&frame.message))
+        .or_else(|| extract_location(&frame.message));
+    match (frame.path.as_deref(), embedded_location) {
+        (Some(path), Some(location))
+            if !looks_like_file_location(path) || looks_like_file_location(&location) =>
+        {
+            Some(location)
+        }
+        (Some(path), _) => Some(path.to_string()),
+        (None, location) => location,
+    }
 }
 
 fn frame_parse_excerpt(frame: &SourceFrame) -> Option<String> {
@@ -323,12 +372,145 @@ fn root_cause_candidate(
     Some(candidate)
 }
 
+fn first_metadata_str<'a>(report: &'a ErrorReport, key: &str) -> Option<&'a str> {
+    first_meta_str(report, key)
+}
+
+fn first_hint_code_raw(report: &ErrorReport) -> Option<&str> {
+    first_metadata_str(report, key::HINT_CODE)
+}
+
+fn first_metadata_path(report: &ErrorReport) -> Option<&str> {
+    first_metadata_str(report, key::FILE_PATH).or_else(|| {
+        report
+            .source_frames
+            .iter()
+            .find_map(|frame| frame.path.as_deref())
+    })
+}
+
+fn classify_toml_parse_kind(
+    report: &ErrorReport,
+    summary: &DiagnosticSummary,
+    display_chain: &str,
+) -> Option<DiagnosticKind> {
+    summary.parse_excerpt.as_ref()?;
+
+    match first_meta_enum::<ConfigKind>(report) {
+        Some(ConfigKind::SinkDefaults) => return Some(DiagnosticKind::Defaults),
+        Some(ConfigKind::SinkRoute) => return Some(DiagnosticKind::Route),
+        Some(ConfigKind::Wpsrc) => return Some(DiagnosticKind::Wpsrc),
+        _ => {}
+    }
+
+    let location = first_metadata_path(report)
+        .or(summary.triplet.location.as_deref())
+        .unwrap_or_default();
+    let lower_location = location.to_lowercase();
+    let lower_display = display_chain.to_lowercase();
+
+    if lower_location.ends_with("/defaults.toml")
+        || lower_display.contains("load sink defaults")
+        || lower_display.contains("expected `defaults`")
+    {
+        return Some(DiagnosticKind::Defaults);
+    }
+
+    if lower_location.ends_with("/wpsrc.toml")
+        || lower_display.contains("load wpsrc")
+        || lower_display.contains("parse wpsrc")
+        || lower_display.contains("source key")
+    {
+        return Some(DiagnosticKind::Wpsrc);
+    }
+
+    if lower_location.contains("/business.d/")
+        || lower_location.contains("/infra.d/")
+        || first_metadata_str(report, key::CONFIG_GROUP).is_some()
+        || lower_display.contains("load infra sink routes")
+        || lower_display.contains("load business sink routes")
+        || lower_display.contains("sink_group")
+    {
+        return Some(DiagnosticKind::Route);
+    }
+
+    None
+}
+
+fn collect_report_hints(
+    report: &ErrorReport,
+    summary: &DiagnosticSummary,
+    display_chain: &str,
+) -> Vec<&'static str> {
+    let mut hints = Vec::new();
+
+    if let Some(hint_code) = first_meta_hint(report) {
+        match hint_code {
+            HintCode::WpsrcTomlSchema => push_hint_once(
+                &mut hints,
+                "检查 wpsrc.toml 结构：使用 [[sources]]，字段包含 key/type/enable/tags/path 等",
+            ),
+            HintCode::SinkRouteTomlSchema => push_hint_once(
+                &mut hints,
+                "检查 sink route TOML 结构：使用 [sink_group] 与 [[sink_group.sinks]]，确认文件内容是合法 TOML",
+            ),
+            HintCode::SinkDefaultsTomlSchema => push_hint_once(
+                &mut hints,
+                "检查 sinks/defaults.toml 结构：应使用 [defaults] 表，不要填写 route 的 version/sink_group 字段",
+            ),
+            HintCode::KafkaFeatureRequired => push_hint_once(
+                &mut hints,
+                "Kafka 源需要启用 'kafka' 特性：如 'cargo build --features kafka --bins' 或启用 'community'",
+            ),
+            HintCode::DuplicateSourceKey => push_hint_once(
+                &mut hints,
+                "sources 中存在重复 key；请确保每个源的 key 唯一",
+            ),
+            HintCode::InvalidSyslogProtocol => push_hint_once(
+                &mut hints,
+                "Syslog 协议仅支持 UDP/TCP：protocol='UDP' 或 'TCP'",
+            ),
+        }
+    }
+
+    if let Some("unknown_source_kind") = first_hint_code_raw(report) {
+        push_hint_once(
+            &mut hints,
+            "type 取值必须是 'file'/'syslog'/'tcp'/'kafka'（kafka 需启用 'kafka' 特性）",
+        );
+    }
+
+    if let Some(kind) = classify_toml_parse_kind(report, summary, display_chain) {
+        match kind {
+            DiagnosticKind::Defaults => push_hint_once(
+                &mut hints,
+                "检查 sinks/defaults.toml 结构：应使用 [defaults] 表，不要填写 route 的 version/sink_group 字段",
+            ),
+            DiagnosticKind::Route => push_hint_once(
+                &mut hints,
+                "检查 sink route TOML 结构：使用 [sink_group] 与 [[sink_group.sinks]]，确认文件内容是合法 TOML",
+            ),
+            DiagnosticKind::Wpsrc => push_hint_once(
+                &mut hints,
+                "检查 wpsrc.toml 结构：使用 [[sources]]，字段包含 key/type/enable/tags/path 等",
+            ),
+        }
+    }
+
+    for hint in collect_hints(display_chain) {
+        push_hint_once(&mut hints, hint);
+    }
+
+    hints
+}
+
 fn summarize_run_error(e: &RunError) -> DiagnosticSummary {
-    let reason = e.reason().to_string();
+    let report = e.report();
+    let reason = report.reason.clone();
     let mut triplet = DiagnosticTriplet {
         reason: reason.clone(),
-        detail: e.detail().clone().map(|detail| sanitize_detail(&detail)),
-        location: e.target_path(),
+        detail: report.detail.clone().map(|detail| sanitize_detail(&detail)),
+        location: report.path.clone(),
     };
     if let Some(detail_location) = triplet.detail.as_deref().and_then(extract_location) {
         triplet.location = Some(detail_location);
@@ -337,9 +519,15 @@ fn summarize_run_error(e: &RunError) -> DiagnosticSummary {
         .detail
         .as_deref()
         .and_then(extract_toml_parse_excerpt)
-        .or_else(|| extract_toml_parse_excerpt(&e.display_chain()));
+        .or_else(|| {
+            report
+                .source_frames
+                .iter()
+                .find_map(frame_parse_excerpt)
+                .or_else(|| extract_toml_parse_excerpt(&e.display_chain()))
+        });
 
-    for frame in e.source_frames() {
+    for frame in &report.source_frames {
         if let Some(location) = frame_location(frame)
             && (triplet
                 .location
@@ -433,9 +621,35 @@ pub fn collect_hints(es: &str) -> Vec<&'static str> {
             "type 取值必须是 'file'/'syslog'/'tcp'/'kafka'（kafka 需启用 'kafka' 特性）",
         );
     }
-    if lower.contains("failed to parse unified [[sources]] config")
-        || lower.contains("failed to parse toml")
-        || lower.contains("toml parse error")
+    if lower.contains("toml parse error")
+        && (lower.contains("defaults.toml")
+            || lower.contains("load sink defaults")
+            || lower.contains("expected `defaults`"))
+    {
+        push_hint_once(
+            &mut hints,
+            "检查 sinks/defaults.toml 结构：应使用 [defaults] 表，不要填写 route 的 version/sink_group 字段",
+        );
+    } else if lower.contains("toml parse error")
+        && (lower.contains("topology/sinks")
+            || lower.contains("business.d")
+            || lower.contains("infra.d")
+            || lower.contains("sink_group")
+            || lower.contains("load infra sink routes")
+            || lower.contains("load business sink routes")
+            || lower.contains("清理 sinks"))
+    {
+        push_hint_once(
+            &mut hints,
+            "检查 sink route TOML 结构：使用 [sink_group] 与 [[sink_group.sinks]]，确认文件内容是合法 TOML",
+        );
+    } else if lower.contains("failed to parse unified [[sources]] config")
+        || (lower.contains("toml parse error")
+            && (lower.contains("wpsrc.toml")
+                || lower.contains("[[sources]]")
+                || lower.contains("source key")
+                || lower.contains("load wpsrc")
+                || lower.contains("parse wpsrc")))
     {
         push_hint_once(
             &mut hints,
@@ -542,7 +756,9 @@ fn print_diagnostic(diag: DiagnosticPrint<'_>) {
 /// 打印更友好的错误信息（含建议与上下文）。
 pub fn print_run_error(app: &str, e: &RunError) {
     let summary = summarize_run_error(e);
-    let hints = collect_hints(&e.display_chain());
+    let report = e.report();
+    let display_chain = e.display_chain();
+    let hints = collect_report_hints(&report, &summary, &display_chain);
     let code = exit_code_for(e.reason());
     print_diagnostic(DiagnosticPrint {
         app,
@@ -578,6 +794,8 @@ pub fn print_error(app: &str, err: &impl std::fmt::Display) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use orion_error::ErrorMetadata;
+    use wp_error::diagnostic_meta::MetaValue;
     #[test]
     fn test_hint_file_source() {
         let hs = collect_hints("File source missing 'path'");
@@ -644,12 +862,216 @@ Caused by:
     }
 
     #[test]
+    fn test_collect_hints_distinguishes_sink_route_toml_parse() {
+        let raw = "配置错误 - TOML parse error at line 1, column 1\nlocation: 清理 sinks 输出失败 / /tmp/wp-use/topology/sinks/infra.d/miss.toml";
+        let hs = collect_hints(raw);
+        assert!(hs.iter().any(|h| h.contains("sink route TOML")));
+        assert!(!hs.iter().any(|h| h.contains("wpsrc.toml")));
+    }
+
+    #[test]
+    fn test_collect_hints_distinguishes_sink_defaults_toml_parse() {
+        let raw = "TOML parse error at line 1, column 1\nunknown field `version`, expected `defaults`\n1. from path: /tmp/wp-use/topology/sinks/defaults.toml";
+        let hs = collect_hints(raw);
+        assert!(hs.iter().any(|h| h.contains("sinks/defaults.toml")));
+        assert!(!hs.iter().any(|h| h.contains("sink route TOML")));
+        assert!(!hs.iter().any(|h| h.contains("wpsrc.toml")));
+    }
+
+    #[test]
+    fn test_collect_hints_keeps_wpsrc_toml_parse_hint() {
+        let raw = "parse wpsrc config: TOML parse error at line 1, column 1: /tmp/wp-use/topology/sources/wpsrc.toml";
+        let hs = collect_hints(raw);
+        assert!(hs.iter().any(|h| h.contains("wpsrc.toml")));
+    }
+
+    #[test]
+    fn test_collect_report_hints_prefers_structured_sink_defaults_metadata() {
+        let report = ErrorReport {
+            reason: "configuration error << core config".to_string(),
+            detail: Some("TOML parse error at line 1, column 1".to_string()),
+            position: None,
+            want: None,
+            path: None,
+            context: Vec::new(),
+            root_metadata: {
+                let mut m = ErrorMetadata::new();
+                m.insert(key::CONFIG_KIND, ConfigKind::SinkDefaults.as_str());
+                m
+            },
+            source_frames: Vec::new(),
+        };
+        let summary = DiagnosticSummary {
+            triplet: DiagnosticTriplet {
+                reason: "配置错误".to_string(),
+                detail: None,
+                location: Some("/tmp/wp-use/topology/sinks/defaults.toml".to_string()),
+            },
+            parse_excerpt: Some("TOML parse error at line 1, column 1".to_string()),
+            root_cause: None,
+        };
+
+        let hs = collect_report_hints(&report, &summary, "configuration error");
+        assert!(hs.iter().any(|h| h.contains("sinks/defaults.toml")));
+        assert!(!hs.iter().any(|h| h.contains("sink route TOML")));
+    }
+
+    #[test]
+    fn test_collect_report_hints_prefers_structured_wpsrc_metadata() {
+        let report = ErrorReport {
+            reason: "configuration error << core config".to_string(),
+            detail: Some("TOML parse error at line 1, column 1".to_string()),
+            position: None,
+            want: None,
+            path: None,
+            context: Vec::new(),
+            root_metadata: {
+                let mut m = ErrorMetadata::new();
+                m.insert(key::CONFIG_KIND, ConfigKind::Wpsrc.as_str());
+                m
+            },
+            source_frames: Vec::new(),
+        };
+        let summary = DiagnosticSummary {
+            triplet: DiagnosticTriplet {
+                reason: "配置错误".to_string(),
+                detail: None,
+                location: Some("/tmp/wp-use/topology/sources/wpsrc.toml".to_string()),
+            },
+            parse_excerpt: Some("TOML parse error at line 1, column 1".to_string()),
+            root_cause: None,
+        };
+
+        let hs = collect_report_hints(&report, &summary, "configuration error");
+        assert!(hs.iter().any(|h| h.contains("wpsrc.toml")));
+        assert!(!hs.iter().any(|h| h.contains("sink route TOML")));
+    }
+
+    #[test]
+    fn test_collect_report_hints_supports_raw_unknown_source_kind_hint() {
+        let report = ErrorReport {
+            reason: "configuration error << core config".to_string(),
+            detail: Some("source factory not found for kind 'udp2'".to_string()),
+            position: None,
+            want: None,
+            path: None,
+            context: Vec::new(),
+            root_metadata: {
+                let mut m = ErrorMetadata::new();
+                m.insert(key::HINT_CODE, "unknown_source_kind");
+                m
+            },
+            source_frames: Vec::new(),
+        };
+        let summary = DiagnosticSummary {
+            triplet: DiagnosticTriplet {
+                reason: "配置错误".to_string(),
+                detail: None,
+                location: None,
+            },
+            parse_excerpt: None,
+            root_cause: None,
+        };
+
+        let hs = collect_report_hints(&report, &summary, "configuration error");
+        assert!(hs.iter().any(|h| h.contains("type 取值必须是")));
+    }
+
+    #[test]
+    fn test_collect_report_hints_prefers_structured_duplicate_source_key_hint() {
+        let report = ErrorReport {
+            reason: "configuration error << core config".to_string(),
+            detail: Some("duplicate source key: 's1'".to_string()),
+            position: None,
+            want: None,
+            path: None,
+            context: Vec::new(),
+            root_metadata: {
+                let mut m = ErrorMetadata::new();
+                m.insert(key::HINT_CODE, HintCode::DuplicateSourceKey.as_str());
+                m
+            },
+            source_frames: Vec::new(),
+        };
+        let summary = DiagnosticSummary {
+            triplet: DiagnosticTriplet {
+                reason: "配置错误".to_string(),
+                detail: None,
+                location: None,
+            },
+            parse_excerpt: None,
+            root_cause: None,
+        };
+
+        let hs = collect_report_hints(&report, &summary, "configuration error");
+        assert!(hs.iter().any(|h| h.contains("重复 key")));
+    }
+
+    #[test]
+    fn test_collect_report_hints_prefers_structured_kafka_feature_hint() {
+        let report = ErrorReport {
+            reason: "configuration error << core config".to_string(),
+            detail: Some("source factory not found for kind 'kafka'".to_string()),
+            position: None,
+            want: None,
+            path: None,
+            context: Vec::new(),
+            root_metadata: {
+                let mut m = ErrorMetadata::new();
+                m.insert(key::HINT_CODE, HintCode::KafkaFeatureRequired.as_str());
+                m
+            },
+            source_frames: Vec::new(),
+        };
+        let summary = DiagnosticSummary {
+            triplet: DiagnosticTriplet {
+                reason: "配置错误".to_string(),
+                detail: None,
+                location: None,
+            },
+            parse_excerpt: None,
+            root_cause: None,
+        };
+
+        let hs = collect_report_hints(&report, &summary, "configuration error");
+        assert!(
+            hs.iter()
+                .any(|h| h.contains("Kafka 源需要启用 'kafka' 特性"))
+        );
+    }
+
+    #[test]
     fn test_derive_triplet_reads_group_location() {
         let raw = "[50041] configuration error << core config\n(group: source key: tcp_1)";
         let triplet = derive_error_triplet(raw);
         assert_eq!(
             triplet.location.as_deref(),
             Some("(group: source key: tcp_1)")
+        );
+    }
+
+    #[test]
+    fn test_frame_location_prefers_embedded_file_over_operation_path() {
+        let frame = SourceFrame {
+            index: 0,
+            message: "configuration error".to_string(),
+            display: Some("1. from path: /tmp/wp-use/topology/sinks/defaults.toml".to_string()),
+            debug: String::new(),
+            type_name: None,
+            error_code: None,
+            reason: None,
+            want: Some("load infra sink routes for clean".to_string()),
+            path: Some(
+                "load infra sink routes for clean / load sink defaults / load object from toml file with env"
+                    .to_string(),
+            ),
+            detail: None,
+            metadata: ErrorMetadata::default(),
+            is_root_cause: false,
+        };
+        assert_eq!(
+            frame_location(&frame).as_deref(),
+            Some("/tmp/wp-use/topology/sinks/defaults.toml")
         );
     }
 
@@ -692,6 +1114,21 @@ Caused by:
             sanitize_detail(raw),
             "override 'endpoint' not allowed (file: /tmp/monitor.toml)"
         );
+    }
+
+    #[test]
+    fn test_sanitize_detail_trims_structured_context_tail() {
+        let raw = "数据清理存在失败项: sinks: 配置错误\n  -> Want: 清理 sinks 输出失败\n  -> Source: [500] TOML parse error";
+        assert_eq!(sanitize_detail(raw), "数据清理存在失败项: sinks: 配置错误");
+    }
+
+    #[test]
+    fn test_extract_toml_parse_excerpt_trims_structured_context_tail() {
+        let raw = "detail\nTOML parse error at line 1, column 1\n  |\n1 | version = \"2.0\"\nunknown field `version`, expected `defaults`\n\n  -> Want: load infra sink routes for clean\n  -> Context stack:";
+        let excerpt = extract_toml_parse_excerpt(raw).expect("parse excerpt");
+        assert!(excerpt.contains("unknown field `version`, expected `defaults`"));
+        assert!(!excerpt.contains("Context stack"));
+        assert!(!excerpt.contains("load infra sink routes for clean"));
     }
 
     #[test]

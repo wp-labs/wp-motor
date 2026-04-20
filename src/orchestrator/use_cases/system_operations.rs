@@ -1,9 +1,17 @@
-use orion_error::{ToStructError, UvsFrom};
+use orion_error::{ErrorWith, OperationContext, ToStructError, UvsFrom};
 use std::env;
 use std::fs::File;
 use std::path::Path;
 use std::process::Command;
+use wp_error::diagnostic_meta::{OperationContextMetaExt, OperationKind, RuntimeStage};
 use wp_error::run_error::{RunReason, RunResult};
+
+fn system_resource_context(path: &Path, operation: OperationKind) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(RuntimeStage::SystemOperations)
+        .with_meta_value(operation)
+        .with_resource_path(path)
+}
 
 pub trait Wc<T1, T2> {
     fn wc_of(&self, file: T1) -> RunResult<T2>;
@@ -24,7 +32,11 @@ impl Usecase {
         if !std::path::Path::new(sh_path.as_str()).exists() {
             return Err(RunReason::from_sys()
                 .to_err()
-                .with_detail(format!("script not found: {}", sh_path)));
+                .with_detail(format!("script not found: {}", sh_path))
+                .with(system_resource_context(
+                    Path::new(&sh_path),
+                    OperationKind::ValidateConfig,
+                )));
         }
         if let (Some(path), Some(_home)) = (env::var_os("PATH"), env::var_os("HOME")) {
             //let bin = Path::new(&home).join("bin");
@@ -34,6 +46,11 @@ impl Usecase {
                 RunReason::from_sys()
                     .to_err()
                     .with_detail("resolve current dir failed")
+                    .with(
+                        OperationContext::new()
+                            .with_meta_value(RuntimeStage::SystemOperations)
+                            .with_meta_value(OperationKind::LoadConfigFile),
+                    )
                     .with_source(e)
             })?;
 
@@ -45,6 +62,11 @@ impl Usecase {
                 RunReason::from_sys()
                     .to_err()
                     .with_detail("join PATH entries failed")
+                    .with(
+                        OperationContext::new()
+                            .with_meta_value(RuntimeStage::SystemOperations)
+                            .with_meta_value(OperationKind::ValidateConfig),
+                    )
                     .with_source(e)
             })?;
             unsafe {
@@ -69,6 +91,10 @@ impl Usecase {
                 RunReason::from_sys()
                     .to_err()
                     .with_detail(format!("run script failed: {}", sh_path))
+                    .with(system_resource_context(
+                        Path::new(&sh_path),
+                        OperationKind::LoadConfigFile,
+                    ))
                     .with_source(e)
             })?;
         println!(" out: {}", String::from_utf8_lossy(&uc_cmd.stdout));
@@ -82,7 +108,11 @@ impl Usecase {
         if !std::path::Path::new(path).exists() {
             return Err(RunReason::from_sys()
                 .to_err()
-                .with_detail(format!("file not found: {}", path)));
+                .with_detail(format!("file not found: {}", path))
+                .with(system_resource_context(
+                    Path::new(path),
+                    OperationKind::ValidateConfig,
+                )));
         }
         let cmd = Command::new("wc")
             .arg("-l")
@@ -92,12 +122,20 @@ impl Usecase {
                 RunReason::from_sys()
                     .to_err()
                     .with_detail(format!("run wc failed for {}", path))
+                    .with(system_resource_context(
+                        Path::new(path),
+                        OperationKind::LoadConfigFile,
+                    ))
                     .with_source(e)
             })?;
         let binding = String::from_utf8(cmd.stdout).map_err(|e| {
             RunReason::from_sys()
                 .to_err()
                 .with_detail(format!("decode wc output failed for {}", path))
+                .with(system_resource_context(
+                    Path::new(path),
+                    OperationKind::ParseConfig,
+                ))
                 .with_source(e)
         })?;
         let stdout: Vec<&str> = binding.trim().split(' ').collect();
@@ -105,6 +143,10 @@ impl Usecase {
             RunReason::from_sys()
                 .to_err()
                 .with_detail(format!("parse wc output failed for {}", path))
+                .with(system_resource_context(
+                    Path::new(path),
+                    OperationKind::ParseConfig,
+                ))
                 .with_source(e)
         })?;
         Ok(count)
@@ -114,12 +156,20 @@ impl Usecase {
         if !Path::new(path.as_str()).exists() {
             return Err(RunReason::from_sys()
                 .to_err()
-                .with_detail(format!("file not found: {}", path)));
+                .with_detail(format!("file not found: {}", path))
+                .with(system_resource_context(
+                    Path::new(&path),
+                    OperationKind::ValidateConfig,
+                )));
         }
         File::open(&path).map_err(|e| {
             RunReason::from_sys()
                 .to_err()
                 .with_detail(format!("open file failed: {}", path))
+                .with(system_resource_context(
+                    Path::new(&path),
+                    OperationKind::LoadConfigFile,
+                ))
                 .with_source(e)
         })
     }

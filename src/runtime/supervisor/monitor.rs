@@ -9,7 +9,10 @@ use crate::core::sinks::sync_sink::RecSyncSink;
 use crate::runtime::actor::constants::ACTOR_IDLE_TICK_MS;
 use tokio::time::{MissedTickBehavior, interval, sleep};
 
-use orion_error::ErrorOwe;
+use orion_error::{ErrorOwe, ErrorWith};
+use wp_error::diagnostic_meta::{
+    ComponentKind, OperationContextMetaExt, OperationKind, RuntimeStage,
+};
 use wp_stat::ReportVariant;
 use wp_stat::StatReq;
 
@@ -155,7 +158,12 @@ impl ActorMonitor {
                             .into_iter()
                             .map(|tdc| SinkRecUnit::new(0, ProcMeta::Null, tdc.into()))
                             .collect();
-                        sink.send_to_sink_batch(units).owe_res()?;
+                        sink.send_to_sink_batch(units).owe_res().with(
+                            orion_error::OperationContext::new()
+                                .with_meta_value(RuntimeStage::SupervisorMonitor)
+                                .with_meta_value(ComponentKind::Monitor)
+                                .with_meta_value(OperationKind::BuildSinkInstance),
+                        )?;
                     }
                     }
                     wparse_stat.sum_up();

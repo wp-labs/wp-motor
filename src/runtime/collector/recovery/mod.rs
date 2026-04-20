@@ -7,12 +7,15 @@ use chrono::NaiveDateTime;
 use wp_connector_api::{SinkReason, SinkResult};
 
 use wp_error::RunErrorOwe;
+use wp_error::diagnostic_meta::{
+    ComponentKind, OperationContextMetaExt, OperationKind, RuntimeStage,
+};
 use wp_error::run_error::RunResult;
 use wp_stat::StatReq;
 
 use wp_stat::StatRecorder;
 
-use orion_error::ErrorOwe;
+use orion_error::{ErrorOwe, ErrorWith, OperationContext};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,6 +29,29 @@ use walkdir::WalkDir;
 
 // 读取到的文件的文件位置
 const POINT_PATH: &str = "rescue/recover.lock";
+
+fn recovery_path_context(path: &Path, operation: OperationKind) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(RuntimeStage::CollectorRecovery)
+        .with_meta_value(ComponentKind::Rescue)
+        .with_meta_value(operation)
+        .with_resource_path(path)
+}
+
+fn checkpoint_context(operation: OperationKind) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(RuntimeStage::CollectorRecovery)
+        .with_meta_value(ComponentKind::Checkpoint)
+        .with_meta_value(operation)
+        .with_resource_path(Path::new(POINT_PATH))
+}
+
+fn recovery_stage_context(operation: OperationKind) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(RuntimeStage::CollectorRecovery)
+        .with_meta_value(ComponentKind::Rescue)
+        .with_meta_value(operation)
+}
 
 // 要求rescue文件里面的数据没有空行。
 pub struct ActCovPicker {
@@ -64,11 +90,19 @@ impl ActCovPicker {
         info_dfx!("recover begin");
         let rescues = RescueFiles::new(self.rescue_path.as_str());
         // 加载上次读取文件位置
-        let mut check_point = CheckPoint::load_point().owe_data()?;
+        let mut check_point = CheckPoint::load_point()
+            .owe_data()
+            .with(checkpoint_context(OperationKind::LoadConfigFile))?;
         let mut idle_since: Option<Instant> = None;
         loop {
             //当前还在写入的救急文件(文件后缀有.lock), 不能马上 recover.
-            let paths = rescues.tack_lasts_file("dat").owe_data()?;
+            let paths = rescues
+                .tack_lasts_file("dat")
+                .owe_data()
+                .with(recovery_path_context(
+                    Path::new(self.rescue_path.as_str()),
+                    OperationKind::ReadDir,
+                ))?;
             if let Some(paths) = paths {
                 idle_since = None; // 重置空闲计时
                 self.recov_file(paths, &mut check_point, &mut route_agent, stat_reqs.clone())
@@ -174,7 +208,13 @@ impl ActCovPicker {
 
         let stat_interval = Duration::from_millis(STAT_INTERVAL_MS as u64);
         let mut last_stat_tick = Instant::now();
-        let file = File::open(file_path).await.owe_data()?;
+        let file = File::open(file_path)
+            .await
+            .owe_data()
+            .with(recovery_path_context(
+                Path::new(file_path),
+                OperationKind::LoadConfigFile,
+            ))?;
         let mut reader = BufReader::new(file);
         #[allow(unused_assignments)]
         let mut end_reason = TaskEndReason::Interrupt;
@@ -188,10 +228,23 @@ impl ActCovPicker {
             run_ctrl.rec_task_unit_reset();
             while !run_ctrl.is_unit_end() {
                 let mut buffer = String::new();
-                let size = reader.read_line(&mut buffer).await.owe_data()?;
+                let size =
+                    reader
+                        .read_line(&mut buffer)
+                        .await
+                        .owe_data()
+                        .with(recovery_path_context(
+                            Path::new(file_path),
+                            OperationKind::LoadConfigFile,
+                        ))?;
                 if size.eq(&0) {
                     stat.record_task(stat_target.as_str(), None);
-                    fs::remove_file(file_path).owe_sys()?;
+                    fs::remove_file(file_path)
+                        .owe_sys()
+                        .with(recovery_path_context(
+                            Path::new(file_path),
+                            OperationKind::LoadConfigFile,
+                        ))?;
                     check_point.remove_point(file_path);
                     info_dfx!("recover end! clean file : {}", file_path);
                     println!("recover file finished! : {}", file_path);
@@ -203,21 +256,33 @@ impl ActCovPicker {
                     continue;
                 }
 
-                let entry = RescueEntry::parse(trimmed).owe_data()?;
+                let entry = RescueEntry::parse(trimmed)
+                    .owe_data()
+                    .with(recovery_path_context(
+                        Path::new(file_path),
+                        OperationKind::ParseConfig,
+                    ))?;
                 Self::send_payload_with_failover(
                     &sink_agents,
                     &mut active_sink_idx,
                     entry.into_payload(),
                 )
-                .owe_sink()?;
+                .owe_sink()
+                .with(recovery_stage_context(OperationKind::BuildSinkInstance))?;
                 stat.record_end(stat_target.as_str(), None);
                 run_ctrl.rec_task_suc();
                 check_point.rec_suc(file_path);
             }
 
             if last_stat_tick.elapsed() >= stat_interval {
-                stat.send_stat(&self.mon_s).await.owe_res()?;
-                check_point.save_point().owe_sys()?;
+                stat.send_stat(&self.mon_s)
+                    .await
+                    .owe_res()
+                    .with(recovery_stage_context(OperationKind::BuildSinkInstance))?;
+                check_point
+                    .save_point()
+                    .owe_sys()
+                    .with(checkpoint_context(OperationKind::LoadConfigFile))?;
                 last_stat_tick = Instant::now();
             }
             let wait_during = run_ctrl.unit_speed_limit_left();
@@ -236,8 +301,14 @@ impl ActCovPicker {
         }
 
         end_reason = TaskEndReason::Interrupt;
-        check_point.save_point().owe_sys()?;
-        stat.send_stat(&self.mon_s).await.owe_res()?;
+        check_point
+            .save_point()
+            .owe_sys()
+            .with(checkpoint_context(OperationKind::LoadConfigFile))?;
+        stat.send_stat(&self.mon_s)
+            .await
+            .owe_res()
+            .with(recovery_stage_context(OperationKind::BuildSinkInstance))?;
         Ok(end_reason)
     }
 
@@ -348,7 +419,10 @@ impl RescueFiles {
         let mut files = Vec::new();
         let paths = WalkDir::new(&self.path);
         for entry in paths {
-            let entry = entry.owe_data()?;
+            let entry = entry.owe_data().with(recovery_path_context(
+                Path::new(&self.path),
+                OperationKind::ReadDir,
+            ))?;
             let path = entry.path();
 
             // 收集 rescue 根目录下的所有子孙文件（不再限制必须为直接子文件）
@@ -371,18 +445,26 @@ pub struct CheckPoint(HashMap<String, usize>);
 
 impl CheckPoint {
     pub fn save_point(&mut self) -> RunResult<()> {
-        let point = serde_json::to_string(self).owe_data()?;
+        let point = serde_json::to_string(self)
+            .owe_data()
+            .with(checkpoint_context(OperationKind::ParseConfig))?;
         let path = Path::new(POINT_PATH);
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).owe_sys()?;
+            fs::create_dir_all(parent)
+                .owe_sys()
+                .with(recovery_path_context(parent, OperationKind::LoadConfigFile))?;
         }
-        fs::write(POINT_PATH, point).owe_sys()?;
+        fs::write(POINT_PATH, point)
+            .owe_sys()
+            .with(checkpoint_context(OperationKind::LoadConfigFile))?;
         Ok(())
     }
 
     pub fn load_point() -> RunResult<CheckPoint> {
         let point = match fs::read_to_string(POINT_PATH) {
-            Ok(val) => serde_json::from_str(&val).owe_data()?,
+            Ok(val) => serde_json::from_str(&val)
+                .owe_data()
+                .with(checkpoint_context(OperationKind::ParseConfig))?,
             Err(_) => CheckPoint::default(),
         };
         Ok(point)

@@ -6,10 +6,18 @@
 use crate::utils::fs::{count_lines_file, is_match, resolve_path};
 use crate::utils::types::{Ctx, GroupAccum, Row, SinkAccum};
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorWith, ToStructError, UvsFrom};
+use orion_error::{ErrorWith, OperationContext, ToStructError, UvsFrom};
 use orion_variate::EnvDict;
 use std::path::Path;
 use wp_conf::sinks::{load_business_route_confs, load_infra_route_confs};
+use wp_error::diagnostic_meta::{ConfigKind, OperationContextMetaExt, OperationKind};
+
+fn sink_route_context(path: &Path, operation: OperationKind) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(ConfigKind::SinkRoute)
+        .with_meta_value(operation)
+        .with_file_path(path)
+}
 
 /// Process a sink group and collect line count statistics
 pub fn process_group(
@@ -212,6 +220,7 @@ pub fn collect_sink_statistics(
                 "缺少 sinks 配置目录：在 '{}' 下未发现 business.d/ 或 infra.d/",
                 sink_root.display()
             ))
+            .with(sink_route_context(sink_root, OperationKind::ValidateConfig))
             .with(sink_root));
     }
 
@@ -220,6 +229,10 @@ pub fn collect_sink_statistics(
 
     // Process business route configurations
     for conf in load_business_route_confs(sink_root.to_string_lossy().as_ref(), dict)
+        .with(sink_route_context(
+            &sink_root.join("business.d"),
+            OperationKind::LoadConfigFile,
+        ))
         .with(sink_root)
         .want("load business sink routes")?
     {
@@ -240,6 +253,10 @@ pub fn collect_sink_statistics(
 
     // Process infra route configurations
     for conf in load_infra_route_confs(sink_root.to_string_lossy().as_ref(), dict)
+        .with(sink_route_context(
+            &sink_root.join("infra.d"),
+            OperationKind::LoadConfigFile,
+        ))
         .with(sink_root)
         .want("load infra sink routes")?
     {

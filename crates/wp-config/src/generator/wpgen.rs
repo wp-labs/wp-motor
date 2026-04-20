@@ -6,9 +6,11 @@ use crate::structure::ConfStdOperation;
 use crate::structure::SinkInstanceConf;
 use crate::utils::{backup_clean, save_conf};
 use orion_conf::error::OrionConfResult;
+use orion_error::{ErrorWith, OperationContext};
 use orion_variate::EnvDict;
 use serde_derive::{Deserialize, Serialize};
 use toml;
+use wp_error::diagnostic_meta::{ConfigKind, OperationContextMetaExt, OperationKind};
 
 use super::speed_profile::SpeedProfileConfig;
 // no external IO traits for resolved wpgen; handled in loader
@@ -178,10 +180,18 @@ impl LoggingConfig {
 }
 
 use orion_conf::EnvTomlLoad;
+fn wpgen_load_context(path: &Path) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(ConfigKind::Wpgen)
+        .with_meta_value(OperationKind::LoadConfigFile)
+        .with_file_path(path)
+}
+
 impl WpGenConfig {
     /// Load WpGenConfig from a path with generic path parameter support
     pub fn load_from_path<P: AsRef<Path>>(path: P, dict: &EnvDict) -> OrionConfResult<Self> {
-        Self::env_load_toml(path.as_ref(), dict)
+        let path = path.as_ref();
+        Self::env_load_toml(path, dict).with(wpgen_load_context(path))
     }
 
     /// Initialize WpGenConfig to a path with generic path parameter support
@@ -208,7 +218,8 @@ impl ConfStdOperation for WpGenConfig {
     where
         Self: Sized,
     {
-        WpGenConfig::env_load_toml(&PathBuf::from(path), dict)
+        let path = PathBuf::from(path);
+        WpGenConfig::env_load_toml(&path, dict).with(wpgen_load_context(&path))
     }
 
     fn init(path: &str) -> OrionConfResult<Self>

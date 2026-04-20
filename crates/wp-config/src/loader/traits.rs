@@ -11,9 +11,27 @@
 //! ```
 
 use orion_conf::error::OrionConfResult;
-use orion_error::{ErrorOweSource, ErrorWith};
+use orion_error::{ErrorOweSource, ErrorWith, OperationContext};
 use orion_variate::EnvDict;
 use std::path::Path;
+use wp_error::diagnostic_meta::{ConfigKind, OperationContextMetaExt, OperationKind};
+
+fn config_loader_context(
+    kind: Option<ConfigKind>,
+    operation: OperationKind,
+    path: &Path,
+    type_name: &'static str,
+) -> OperationContext {
+    let ctx = OperationContext::new()
+        .with_meta_value(operation)
+        .with_config_type_name(type_name)
+        .with_file_path(path);
+    if let Some(kind) = kind {
+        ctx.with_meta_value(kind)
+    } else {
+        ctx
+    }
+}
 
 /// 统一的配置加载接口
 ///
@@ -23,6 +41,13 @@ pub trait ConfigLoader: Sized {
     ///
     /// 返回人类可读的配置类型名称，例如 "Sources", "Sink Routes", "Syslog Sink"。
     fn config_type_name() -> &'static str;
+
+    /// 配置类型的结构化 kind（可选）
+    ///
+    /// 对正式配置建议覆写该值，以便 CLI/diagnostics 层消费 typed metadata。
+    fn config_kind() -> Option<ConfigKind> {
+        None
+    }
 
     /// 从文件路径加载配置
     ///
@@ -58,11 +83,22 @@ pub trait ConfigLoader: Sized {
     {
         let content = std::fs::read_to_string(path)
             .owe_conf_source()
+            .with(config_loader_context(
+                Self::config_kind(),
+                OperationKind::LoadConfigFile,
+                path,
+                Self::config_type_name(),
+            ))
             .with(path)
             .want(format!("无法读取 {} 配置文件", Self::config_type_name()))?;
 
         let base = path.parent().unwrap_or_else(|| Path::new("."));
-        let config = Self::load_from_str(&content, base, dict)?;
+        let config = Self::load_from_str(&content, base, dict).with(config_loader_context(
+            Self::config_kind(),
+            OperationKind::ParseConfig,
+            path,
+            Self::config_type_name(),
+        ))?;
 
         // 检测未替换的变量
         if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
@@ -70,7 +106,12 @@ pub trait ConfigLoader: Sized {
         }
 
         // 自动验证
-        config.validate()?;
+        config.validate().with(config_loader_context(
+            Self::config_kind(),
+            OperationKind::ValidateConfig,
+            path,
+            Self::config_type_name(),
+        ))?;
 
         Ok(config)
     }
@@ -128,6 +169,7 @@ mod tests {
     use orion_conf::error::ConfIOReason;
     use orion_error::{ToStructError, UvsFrom};
     use serde::Serialize;
+    use wp_error::diagnostic_meta::MetaValue;
 
     // 用于测试的简单配置类型
     #[derive(Serialize)]
@@ -138,6 +180,10 @@ mod tests {
     impl ConfigLoader for TestConfig {
         fn config_type_name() -> &'static str {
             "TestConfig"
+        }
+
+        fn config_kind() -> Option<ConfigKind> {
+            Some(ConfigKind::Wpgen)
         }
 
         fn load_from_str(_content: &str, _base: &Path, _dict: &EnvDict) -> OrionConfResult<Self> {
@@ -179,6 +225,10 @@ mod tests {
                 "InvalidConfig"
             }
 
+            fn config_kind() -> Option<ConfigKind> {
+                Some(ConfigKind::Wpsrc)
+            }
+
             fn load_from_str(_: &str, _: &Path, _: &EnvDict) -> OrionConfResult<Self> {
                 Ok(InvalidConfig)
             }
@@ -208,5 +258,41 @@ mod tests {
             &EnvDict::test_default(),
         );
         assert!(result.is_err(), "不存在的文件应该返回错误");
+    }
+
+    #[test]
+    fn config_loader_attaches_config_kind_metadata() {
+        #[derive(Debug, Serialize)]
+        struct FailingConfig;
+
+        impl ConfigLoader for FailingConfig {
+            fn config_type_name() -> &'static str {
+                "FailingConfig"
+            }
+
+            fn config_kind() -> Option<ConfigKind> {
+                Some(ConfigKind::SinkDefaults)
+            }
+
+            fn load_from_str(_: &str, _: &Path, _: &EnvDict) -> OrionConfResult<Self> {
+                Err(ConfIOReason::from_validation()
+                    .to_err()
+                    .with_detail("bad defaults"))
+            }
+        }
+
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+        use wp_error::diagnostic_meta::key;
+
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "content").unwrap();
+
+        let err = FailingConfig::load_from_path(file.path(), &EnvDict::test_default()).unwrap_err();
+        let report = err.report();
+        assert_eq!(
+            report.root_metadata.get_str(key::CONFIG_KIND),
+            Some(ConfigKind::SinkDefaults.as_str())
+        );
     }
 }

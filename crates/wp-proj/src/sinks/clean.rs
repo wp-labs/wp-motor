@@ -1,8 +1,8 @@
 use orion_conf::ErrorWith;
-use orion_error::ErrorOwe;
+use orion_error::{ErrorOwe, UvsFrom, WrapStructError};
 use orion_variate::EnvDict;
 use std::path::Path;
-use wp_error::run_error::RunResult;
+use wp_error::run_error::{RunReason, RunResult};
 
 /// 清理 sinks 输出数据
 pub fn clean_outputs(work_root: &str, dict: &EnvDict) -> RunResult<bool> {
@@ -27,7 +27,7 @@ pub fn clean_outputs(work_root: &str, dict: &EnvDict) -> RunResult<bool> {
             println!("✓ Cleaned sink outputs from {}", main_conf.sink_root());
             true
         })
-        .owe_conf()
+        .map_err(|e| e.wrap(RunReason::from_conf()))
         .with(&sink_root)
         .want("清理 sinks 输出失败")
 }

@@ -13,6 +13,7 @@ anyhow = { workspace = true }
 orion-variate =  {workspace = true }
 orion-error = {workspace = true }
 wp-conf = { path = "../wp-config", package = "wp-config" }
+wp-error = { workspace = true }
 orion_conf = { workspace = true, features = ["toml"]}
 wp-knowledge = { workspace = true }
 serde = { workspace = true }

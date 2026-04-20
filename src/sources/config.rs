@@ -1,12 +1,13 @@
 use orion_conf::error::{ConfIOReason, OrionConfResult};
 use orion_conf::{EnvTomlLoad, ErrorOwe, ErrorWith};
-use orion_error::{ToStructError, UvsFrom};
+use orion_error::{OperationContext, ToStructError, UvsFrom};
 use orion_variate::EnvDict;
 use serde_derive::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use wp_conf::structure::SourceInstanceConf;
 use wp_connector_api::{AcceptorHandle, SourceBuildCtx, SourceHandle};
 use wp_core_connectors::registry;
+use wp_error::diagnostic_meta::{OperationContextMetaExt, key};
 use wp_log::info_ctrl;
 
 use wp_conf::sources::core_to_resolved_with;
@@ -78,12 +79,17 @@ impl SourceConfigParser {
             let mut resolved = core_to_resolved_with(&core, connector_id);
             Self::ensure_source_type_tag(&mut resolved);
             let fac = registry::get_source_factory(&resolved.kind).ok_or_else(|| {
+                let mut ctx = OperationContext::new()
+                    .with_component_name(resolved.name.clone())
+                    .with_config_section("sources");
+                ctx.record_meta(key::HINT_CODE, "unknown_source_kind");
                 ConfIOReason::from_validation()
                     .to_err()
                     .with_detail(format!(
                         "source factory not found for kind '{}'",
                         resolved.kind
                     ))
+                    .with(ctx)
             })?;
             let svc = fac
                 .build(&resolved, &ctx)

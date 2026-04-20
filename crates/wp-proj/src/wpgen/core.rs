@@ -1,6 +1,8 @@
 use glob::glob;
 use orion_conf::error::OrionConfResult;
-use orion_error::{ErrorOwe, ErrorOweSource, ErrorWith, UvsFrom, WrapStructError};
+use orion_error::{
+    ErrorOwe, ErrorOweSource, ErrorWith, OperationContext, UvsFrom, WrapStructError,
+};
 use orion_variate::EnvDict;
 use std::path::{Path, PathBuf};
 use wp_conf::structure::SinkInstanceConf;
@@ -8,6 +10,7 @@ use wp_engine::facade::config::{WarpConf, WpGenResolved};
 use wp_engine::facade::generator::SampleGRA;
 use wp_engine::runtime::generator::run_rule_direct;
 use wp_engine::runtime::generator::run_sample_direct;
+use wp_error::diagnostic_meta::{ComponentKind, ConfigKind, OperationContextMetaExt};
 use wp_error::run_error::{RunReason, RunResult};
 use wp_log::info_ctrl;
 
@@ -150,6 +153,13 @@ pub fn clean_wpgen_output_file(
                 existed = true;
                 std::fs::remove_file(&target)
                     .owe_conf_source()
+                    .with(
+                        OperationContext::want("clean wpgen output file")
+                            .with_meta_value(ConfigKind::SinkRuntime)
+                            .with_meta_value(ComponentKind::Generator)
+                            .with_component_name("wpgen")
+                            .with_file_path(&target),
+                    )
                     .with(&target)
                     .want("remove wpgen output")?;
                 cleaned_any = true;

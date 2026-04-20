@@ -5,21 +5,54 @@ use crate::sources::types::SourceConnector;
 use crate::structure::{SourceInstanceConf, Validate};
 use orion_conf::EnvTomlLoad;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorOweSource, ErrorWith, ToStructError, UvsFrom, WrapStructError};
+use orion_error::{
+    ErrorOweSource, ErrorWith, OperationContext, ToStructError, UvsFrom, WrapStructError,
+};
 use orion_variate::{EnvDict, EnvEvaluable};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
 use wp_connector_api::ParamMap;
+use wp_error::diagnostic_meta::{ConfigKind, HintCode, OperationContextMetaExt};
+
+fn wpsrc_context(path: &Path) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(ConfigKind::Wpsrc)
+        .with_meta_value(HintCode::WpsrcTomlSchema)
+        .with_file_path(path)
+}
+
+fn duplicate_source_key_error(key: &str) -> orion_error::StructError<ConfIOReason> {
+    ConfIOReason::from_validation()
+        .to_err()
+        .with_detail(format!("duplicate source key: '{}'", key))
+        .with(
+            OperationContext::new()
+                .with_meta_value(ConfigKind::Wpsrc)
+                .with_meta_value(HintCode::DuplicateSourceKey)
+                .with_component_name(key.to_string())
+                .with_config_section("sources"),
+        )
+}
+
+fn validate_unique_source_keys(source_conf: &WpSourcesConfig) -> OrionConfResult<()> {
+    let mut seen = BTreeSet::new();
+    for source in &source_conf.sources {
+        if !seen.insert(source.key.clone()) {
+            return Err(duplicate_source_key_error(&source.key));
+        }
+    }
+    Ok(())
+}
 
 /// 仅解析并执行最小校验（不进行实际构建，不触发 I/O）
 pub fn parse_and_validate_only(
     config_str: &str,
     dict: &EnvDict,
 ) -> OrionConfResult<Vec<wp_specs::CoreSourceSpec>> {
-    let wrapper: WpSourcesConfig = WpSourcesConfig::env_parse_toml(config_str, dict)
-        .owe_conf_source()
-        .want("parse sources v2")?;
+    let wrapper: WpSourcesConfig =
+        WpSourcesConfig::env_parse_toml(config_str, dict).want("parse sources v2")?;
+    validate_unique_source_keys(&wrapper)?;
     let mut out: Vec<wp_specs::CoreSourceSpec> = Vec::new();
     for s in wrapper.sources.into_iter() {
         if !s.enable.unwrap_or(true) {
@@ -80,9 +113,9 @@ pub fn load_source_instances_from_str(
     dict: &EnvDict,
 ) -> OrionConfResult<Vec<SourceInstanceConf>> {
     let src_conf: WpSourcesConfig = WpSourcesConfig::env_parse_toml(config_str, dict)
-        .owe_conf_source()
         .want("parse sources")?
         .env_eval(dict);
+    validate_unique_source_keys(&src_conf)?;
     let cnn_dict = load_connectors_for(start, dict)?;
     build_source_instances(src_conf, &cnn_dict)
 }
@@ -95,6 +128,7 @@ pub fn load_source_instances_from_file(
     let content = std::fs::read_to_string(path)
         .owe_conf_source()
         .want("load sources config")
+        .with(wpsrc_context(path))
         .with(path)?;
     let start = if path.is_dir() {
         path.to_path_buf()
@@ -103,7 +137,7 @@ pub fn load_source_instances_from_file(
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
     };
-    load_source_instances_from_str(&content, &start, dict)
+    load_source_instances_from_str(&content, &start, dict).with(wpsrc_context(path))
 }
 
 /// 从 WarpSources + 连接器字典 构建 SourceInstanceConf（包含 Core + connector_id）列表
@@ -159,18 +193,34 @@ pub fn validate_specs_with_factory(
 ) -> OrionConfResult<()> {
     for item in specs.iter() {
         let core: wp_specs::CoreSourceSpec = item.into();
-        if let Some(factory) = reg.get_factory(&core.kind) {
-            let resolved = crate::sources::resolved::core_to_resolved_with(
-                &core,
-                item.connector_id.clone().unwrap_or_default(),
-            );
-            factory.validate_spec(&resolved).map_err(|e| {
-                e.wrap(ConfIOReason::from_validation()).with(format!(
-                    "plugin validate failed for source '{}' of kind '{}'",
-                    core.name, core.kind
-                ))
-            })?;
-        }
+        let resolved = crate::sources::resolved::core_to_resolved_with(
+            &core,
+            item.connector_id.clone().unwrap_or_default(),
+        );
+        let Some(factory) = reg.get_factory(&core.kind) else {
+            let mut ctx = OperationContext::new()
+                .with_meta_value(ConfigKind::Wpsrc)
+                .with_component_name(core.name.clone())
+                .with_config_section("sources");
+            if core.kind.eq_ignore_ascii_case("kafka") {
+                ctx = ctx.with_meta_value(HintCode::KafkaFeatureRequired);
+            } else {
+                ctx.record_meta(
+                    wp_error::diagnostic_meta::key::HINT_CODE,
+                    "unknown_source_kind",
+                );
+            }
+            return Err(ConfIOReason::from_validation()
+                .to_err()
+                .with_detail(format!("source factory not found for kind '{}'", core.kind))
+                .with(ctx));
+        };
+        factory.validate_spec(&resolved).map_err(|e| {
+            e.wrap(ConfIOReason::from_validation()).with(format!(
+                "plugin validate failed for source '{}' of kind '{}'",
+                core.name, core.kind
+            ))
+        })?;
     }
     Ok(())
 }
@@ -184,12 +234,16 @@ impl ConfigLoader for Vec<SourceInstanceConf> {
         "Sources"
     }
 
+    fn config_kind() -> Option<ConfigKind> {
+        Some(ConfigKind::Wpsrc)
+    }
+
     fn load_from_str(content: &str, base: &Path, dict: &EnvDict) -> OrionConfResult<Self> {
         // 解析 TOML 并进行环境变量替换
         let src_conf: WpSourcesConfig = WpSourcesConfig::env_parse_toml(content, dict)
-            .owe_conf_source()
             .want("parse sources")?
             .env_eval(dict);
+        validate_unique_source_keys(&src_conf)?;
 
         // 加载 connectors
         let cnn_dict = load_connectors_for(base, dict)?;
@@ -230,6 +284,7 @@ mod tests {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
     use wp_connector_api::{ConnectorScope, SourceReason, SourceResult, SourceSvcIns};
+    use wp_error::diagnostic_meta::{ConfigKind, MetaValue, key};
 
     fn tmp_dir(prefix: &str) -> std::path::PathBuf {
         let nanos = SystemTime::now()
@@ -269,6 +324,27 @@ addr = "127.0.0.1"
     }
 
     #[test]
+    fn load_source_instances_from_file_parse_error_carries_wpsrc_metadata() {
+        let base = tmp_dir("wpsrc_meta");
+        let sources_file = base.join("wpsrc.toml");
+        fs::write(&sources_file, "not = [valid").unwrap();
+
+        let err = load_source_instances_from_file(&sources_file, &EnvDict::test_default())
+            .expect_err("parse wpsrc");
+        let report = err.report();
+        let sources_file_str = sources_file.display().to_string();
+
+        assert_eq!(
+            report.root_metadata.get_str(key::CONFIG_KIND),
+            Some(ConfigKind::Wpsrc.as_str())
+        );
+        assert_eq!(
+            report.root_metadata.get_str(key::FILE_PATH),
+            Some(sources_file_str.as_str())
+        );
+    }
+
+    #[test]
     fn parse_rejects_unknown_source_field() {
         let raw = r#"[[sources]]
 key = "s1"
@@ -281,6 +357,31 @@ connector = "typo"
             .to_string();
         assert!(err.contains("unknown field"));
         assert!(err.contains("connector"));
+    }
+
+    #[test]
+    fn parse_rejects_duplicate_source_key_with_hint_metadata() {
+        let raw = r#"[[sources]]
+key = "s1"
+connect = "conn1"
+
+[[sources]]
+key = "s1"
+connect = "conn2"
+"#;
+        let err = parse_and_validate_only(raw, &EnvDict::test_default()).expect_err("duplicate");
+        let report = err.report();
+        assert_eq!(
+            report.root_metadata.get_str(key::HINT_CODE),
+            Some(HintCode::DuplicateSourceKey.as_str())
+        );
+        assert!(
+            report
+                .detail
+                .as_deref()
+                .unwrap_or_default()
+                .contains("duplicate source key")
+        );
     }
 
     #[test]
@@ -447,6 +548,29 @@ type = "dummy"
             .expect_err("error")
             .to_string();
         assert!(err.contains("plugin validate failed"));
+    }
+
+    #[test]
+    fn validate_specs_with_factory_marks_kafka_feature_hint_when_factory_missing() {
+        let mut inst =
+            SourceInstanceConf::new_type("k1".into(), "kafka".into(), ParamMap::new(), vec![]);
+        inst.connector_id = Some("kafka_src".into());
+        let reg = DummyReg;
+
+        let err = validate_specs_with_factory(&[inst], &reg).expect_err("missing kafka factory");
+        let report = err.report();
+
+        assert_eq!(
+            report.root_metadata.get_str(key::HINT_CODE),
+            Some(HintCode::KafkaFeatureRequired.as_str())
+        );
+        assert!(
+            report
+                .detail
+                .as_deref()
+                .unwrap_or_default()
+                .contains("source factory not found")
+        );
     }
 
     // ========================================================================

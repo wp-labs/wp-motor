@@ -2,6 +2,7 @@
 
 use super::constants::{DEFAULT_TCP_RECV_BYTES, DEFAULT_UDP_RECV_BUFFER};
 use wp_connector_api::{SourceReason, SourceResult};
+use wp_error::diagnostic_meta::HintCode;
 
 /// Configuration for syslog sources
 #[derive(Debug, Clone)]
@@ -31,10 +32,12 @@ impl SyslogSourceSpec {
         if let Some(v) = params.get("protocol").and_then(|v| v.as_str()) {
             let p = v.to_ascii_lowercase();
             if p != "udp" && p != "tcp" {
-                return Err(SourceReason::from_conf().err_detail(format!(
+                let mut err = SourceReason::from_conf().err_detail(format!(
                     "invalid protocol: {} (must be 'udp' or 'tcp')",
                     v
-                )));
+                ));
+                err.add_context(("hint.code", HintCode::InvalidSyslogProtocol.as_str()));
+                return Err(err);
             }
         }
         if let Some(v) = params.get("tcp_recv_bytes").and_then(|v| v.as_i64()) {

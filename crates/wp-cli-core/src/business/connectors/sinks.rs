@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use orion_conf::ToStructError;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorOwe, ErrorWith, UvsFrom};
+use orion_error::{ErrorOwe, ErrorWith, OperationContext, UvsFrom};
 use orion_variate::EnvDict;
 
 use wp_conf::connectors::{
@@ -14,11 +14,41 @@ use wp_conf::sinks::io::find_connectors_base_dir;
 use wp_conf::sinks::{ConnectorRec, RouteFile};
 use wp_conf::sinks::{load_route_files_from, load_sink_defaults};
 use wp_conf::structure::SinkInstanceConf;
+use wp_error::diagnostic_meta::{
+    ComponentKind, ConfigKind, OperationContextMetaExt, OperationKind,
+};
+
+fn sink_route_context(path: &Path, operation: OperationKind) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(ConfigKind::SinkRoute)
+        .with_meta_value(operation)
+        .with_file_path(path)
+}
+
+fn sink_defaults_context(path: &Path, operation: OperationKind) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(ConfigKind::SinkDefaults)
+        .with_meta_value(operation)
+        .with_file_path(path)
+}
+
+fn sink_connector_context(path: &Path, operation: OperationKind) -> OperationContext {
+    OperationContext::new()
+        .with_meta_value(ConfigKind::ConnectorDef)
+        .with_meta_value(ComponentKind::Connector)
+        .with_meta_value(operation)
+        .with_dir_path(path)
+}
 
 /// List immediate child directories of `p`, sorted.
 fn read_dirs_sorted(p: &Path) -> OrionConfResult<Vec<PathBuf>> {
     let mut v: Vec<_> = std::fs::read_dir(p)
         .owe_conf()
+        .with(
+            OperationContext::new()
+                .with_meta_value(OperationKind::ReadDir)
+                .with_dir_path(p),
+        )
         .with(p)?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
@@ -58,7 +88,8 @@ fn load_routes(work_root: &Path, env_dict: &EnvDict) -> OrionConfResult<Vec<Rout
                 let r2 = case.join("sink/infra.d");
                 for rd in [r1, r2] {
                     if rd.exists() {
-                        let rfs = load_route_files_from(&rd, env_dict)?;
+                        let rfs = load_route_files_from(&rd, env_dict)
+                            .with(sink_route_context(&rd, OperationKind::LoadConfigFile))?;
                         for rf in rfs.into_iter() {
                             let path = rf.origin.clone().unwrap_or_else(|| rd.clone());
                             out.push(RouteFileWithPath { inner: rf, path });
@@ -73,7 +104,8 @@ fn load_routes(work_root: &Path, env_dict: &EnvDict) -> OrionConfResult<Vec<Rout
     let models = work_root.join("models").join("sinks");
     for rd in [models.join("business.d"), models.join("infra.d")] {
         if rd.exists() {
-            let rfs = load_route_files_from(&rd, env_dict)?;
+            let rfs = load_route_files_from(&rd, env_dict)
+                .with(sink_route_context(&rd, OperationKind::LoadConfigFile))?;
             for rf in rfs.into_iter() {
                 let path = rf.origin.clone().unwrap_or_else(|| rd.clone());
                 out.push(RouteFileWithPath { inner: rf, path });
@@ -95,8 +127,14 @@ pub fn validate_routes(work_root: &str, env_dict: &EnvDict) -> OrionConfResult<(
             .unwrap_or_else(|| rf.path.parent().unwrap_or(&wr))
             .to_path_buf();
         let conn_map = load_sink_connectors(&sink_root, env_dict)?;
-        let defaults = load_sink_defaults(sink_root.to_string_lossy().as_ref(), env_dict)?;
-        let conf = build_route_conf_from(&rf.inner, defaults.as_ref(), &conn_map)?;
+        let defaults = load_sink_defaults(sink_root.to_string_lossy().as_ref(), env_dict).with(
+            sink_defaults_context(
+                &sink_root.join("defaults.toml"),
+                OperationKind::LoadConfigFile,
+            ),
+        )?;
+        let conf = build_route_conf_from(&rf.inner, defaults.as_ref(), &conn_map)
+            .with(sink_route_context(&rf.path, OperationKind::ValidateConfig))?;
 
         // 验证 FlexGroup 配置：OML 和 RULE 只能有一个
         let flex_group = &conf.sink_group;
@@ -186,8 +224,14 @@ pub fn list_connectors_usage(
             .unwrap_or_else(|| rf.path.parent().unwrap_or(&wr))
             .to_path_buf();
         let conn_map_local = load_sink_connectors(&sink_root, env_dict)?;
-        let defaults = load_sink_defaults(sink_root.to_string_lossy().as_ref(), env_dict)?;
-        let conf = build_route_conf_from(&rf.inner, defaults.as_ref(), &conn_map_local)?;
+        let defaults = load_sink_defaults(sink_root.to_string_lossy().as_ref(), env_dict).with(
+            sink_defaults_context(
+                &sink_root.join("defaults.toml"),
+                OperationKind::LoadConfigFile,
+            ),
+        )?;
+        let conf = build_route_conf_from(&rf.inner, defaults.as_ref(), &conn_map_local)
+            .with(sink_route_context(&rf.path, OperationKind::ValidateConfig))?;
         let g = conf.sink_group;
         for s in g.sinks.iter() {
             let cid = s.connector_id.clone().unwrap_or_else(|| "-".to_string());
@@ -235,8 +279,14 @@ pub fn route_table(
             .unwrap_or_else(|| rf.path.parent().unwrap_or(&wr))
             .to_path_buf();
         let conn_map_local = load_sink_connectors(&sink_root, env_dict)?;
-        let defaults = load_sink_defaults(sink_root.to_string_lossy().as_ref(), env_dict)?;
-        let conf = build_route_conf_from(&rf.inner, defaults.as_ref(), &conn_map_local)?;
+        let defaults = load_sink_defaults(sink_root.to_string_lossy().as_ref(), env_dict).with(
+            sink_defaults_context(
+                &sink_root.join("defaults.toml"),
+                OperationKind::LoadConfigFile,
+            ),
+        )?;
+        let conf = build_route_conf_from(&rf.inner, defaults.as_ref(), &conn_map_local)
+            .with(sink_route_context(&rf.path, OperationKind::ValidateConfig))?;
         let g = conf.sink_group;
         let scope = if rf.path.to_string_lossy().contains("/infra.d/")
             || rf.path.to_string_lossy().ends_with("/infra.d")
@@ -314,7 +364,8 @@ fn load_sink_connectors(
     dict: &orion_variate::EnvDict,
 ) -> OrionConfResult<BTreeMap<String, ConnectorRec>> {
     if let Some(dir) = find_connectors_base_dir(start) {
-        let defs = load_connector_defs_from_dir(&dir, ConnectorScope::Sink, dict)?;
+        let defs = load_connector_defs_from_dir(&dir, ConnectorScope::Sink, dict)
+            .with(sink_connector_context(&dir, OperationKind::LoadConfigFile))?;
         Ok(defs.into_iter().map(|def| (def.id.clone(), def)).collect())
     } else {
         Ok(BTreeMap::new())
