@@ -25,8 +25,8 @@ impl FieldTake {
             return dst_val.or(src_val);
         }
         for option in self.option() {
-            let dst_val=find_move_tdc(dst, option, true);
-            let src_val=find_move_tdo(target, src, option, true);
+            let dst_val = find_move_tdc(dst, option, true);
+            let src_val = find_move_tdo(target, src, option, true);
             if let Some(value) = dst_val.or(src_val) {
                 return Some(value);
             }
