@@ -17,18 +17,17 @@ impl FieldTake {
         let target_name = target.safe_name();
         let key_string = self.get().clone().unwrap_or(target_name.clone());
         let key = key_string.as_str();
-        if let Some(value) = find_move_tdc(dst, key, false) {
-            return Some(value);
-        }
-        if let Some(value) = find_move_tdo(target, src, key, false) {
-            return Some(value);
-        }
 
+        let dst_val = find_move_tdc(dst, key, false);
+        let src_val = find_move_tdo(target, src, key, false);
+        // 优先返回 dst 中的值，如果 dst 中没有，再返回 src 中的值
+        if dst_val.is_some() || src_val.is_some() {
+            return dst_val.or(src_val);
+        }
         for option in self.option() {
-            if let Some(value) = find_move_tdc(dst, option, true) {
-                return Some(value);
-            }
-            if let Some(value) = find_move_tdo(target, src, option, true) {
+            let dst_val=find_move_tdc(dst, option, true);
+            let src_val=find_move_tdo(target, src, option, true);
+            if let Some(value) = dst_val.or(src_val) {
                 return Some(value);
             }
         }
