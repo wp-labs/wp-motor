@@ -1,6 +1,6 @@
 use orion_conf::EnvTomlLoad;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorOweSource, ErrorWith, OperationContext, ToStructError, UvsFrom};
+use orion_error::{ErrorWith, IntoAs, OperationContext, ToStructError, UvsFrom};
 use orion_variate::EnvDict;
 use serde::Serialize;
 use std::fs;
@@ -169,13 +169,16 @@ pub fn init(work_root: &str, full: bool) -> OrionConfResult<()> {
     let wr = PathBuf::from(work_root);
     let models_dir = wr.join("models").join("knowledge");
     fs::create_dir_all(&models_dir)
-        .owe_conf_source()
+        .into_as(
+            ConfIOReason::from_conf(),
+            "create models knowledge dir failed",
+        )
         .with(knowdb_dir_context(
             &models_dir,
             OperationKind::LoadConfigFile,
         ))
         .with(&models_dir)
-        .want("create models knowledge dir")?;
+        .doing("create models knowledge dir")?;
     let mut body = toml::to_string_pretty(&spec).unwrap_or_else(|_| {
         "version = 2\n\n[[tables]]\nname = \"example\"\ncolumns.by_header = [\"name\", \"pinying\"]\n"
             .to_string()
@@ -186,43 +189,46 @@ pub fn init(work_root: &str, full: bool) -> OrionConfResult<()> {
     body.push_str(postgres_provider_example());
     let knowdb_path = models_dir.join("knowdb.toml");
     fs::write(&knowdb_path, body)
-        .owe_conf_source()
+        .into_as(ConfIOReason::from_conf(), "write knowdb config failed")
         .with(knowdb_context(&knowdb_path, OperationKind::LoadConfigFile))
         .with(&knowdb_path)
-        .want("write knowdb config")?;
+        .doing("write knowdb config")?;
     let ex = models_dir.join("example");
     fs::create_dir_all(&ex)
-        .owe_conf_source()
+        .into_as(
+            ConfIOReason::from_conf(),
+            "create knowdb example dir failed",
+        )
         .with(knowdb_dir_context(&ex, OperationKind::LoadConfigFile))
         .with(&ex)
-        .want("create knowdb example dir")?;
+        .doing("create knowdb example dir")?;
     let create_sql = ex.join("create.sql");
     fs::write(
         &create_sql,
         "CREATE TABLE IF NOT EXISTS {table} (\n  id      INTEGER PRIMARY KEY,\n  name    TEXT NOT NULL,\n  pinying TEXT NOT NULL\n);\nCREATE INDEX IF NOT EXISTS idx_{table}_name ON {table}(name);\n",
     )
-    .owe_conf_source()
+    .into_as(ConfIOReason::from_conf(), "write knowdb create.sql failed")
     .with(knowdb_context(&create_sql, OperationKind::LoadConfigFile))
     .with(&create_sql)
-    .want("write knowdb create.sql")?;
+    .doing("write knowdb create.sql")?;
     let insert_sql = ex.join("insert.sql");
     fs::write(
         &insert_sql,
         "INSERT INTO {table} (name, pinying) VALUES (?1, ?2);\n",
     )
-    .owe_conf_source()
+    .into_as(ConfIOReason::from_conf(), "write knowdb insert.sql failed")
     .with(knowdb_context(&insert_sql, OperationKind::LoadConfigFile))
     .with(&insert_sql)
-    .want("write knowdb insert.sql")?;
+    .doing("write knowdb insert.sql")?;
     let data_csv = ex.join("data.csv");
     fs::write(
         &data_csv,
         "name,pinying\n令狐冲,linghuchong\n任盈盈,renyingying\n",
     )
-    .owe_conf_source()
+    .into_as(ConfIOReason::from_conf(), "write knowdb data.csv failed")
     .with(knowdb_context(&data_csv, OperationKind::LoadConfigFile))
     .with(&data_csv)
-    .want("write knowdb data.csv")?;
+    .doing("write knowdb data.csv")?;
     Ok(())
 }
 
@@ -238,14 +244,14 @@ pub fn check(work_root: &str, dict: &EnvDict) -> OrionConfResult<CheckReport> {
             .with(&conf_path));
     }
     let txt = std::fs::read_to_string(&conf_path)
-        .owe_conf_source()
+        .into_as(ConfIOReason::from_conf(), "read knowdb config failed")
         .with(knowdb_context(&conf_path, OperationKind::LoadConfigFile))
         .with(&conf_path)
-        .want("read knowdb config")?;
+        .doing("read knowdb config")?;
     let conf: KnowDbConf = KnowDbConf::env_parse_toml(&txt, dict)
         .with(knowdb_context(&conf_path, OperationKind::ParseConfig))
         .with(&conf_path)
-        .want("parse knowdb config")?;
+        .doing("parse knowdb config")?;
     if conf.version != 2 {
         return Err(ConfIOReason::from_validation()
             .to_err()
@@ -290,13 +296,13 @@ pub fn clean(work_root: &str) -> OrionConfResult<CleanReport> {
     let mut rep = CleanReport::default();
     if models_dir.exists() {
         std::fs::remove_dir_all(&models_dir)
-            .owe_conf_source()
+            .into_as(ConfIOReason::from_conf(), "remove knowdb models dir failed")
             .with(knowdb_dir_context(
                 &models_dir,
                 OperationKind::LoadConfigFile,
             ))
             .with(&models_dir)
-            .want("remove knowdb models dir")?;
+            .doing("remove knowdb models dir")?;
         rep.removed_models_dir = true;
     } else {
         rep.not_found_models = true;
@@ -304,10 +310,10 @@ pub fn clean(work_root: &str) -> OrionConfResult<CleanReport> {
     let auth = wr.join(".run").join("authority.sqlite");
     if auth.exists() {
         std::fs::remove_file(&auth)
-            .owe_conf_source()
+            .into_as(ConfIOReason::from_conf(), "remove authority cache failed")
             .with(knowdb_context(&auth, OperationKind::LoadConfigFile))
             .with(&auth)
-            .want("remove authority cache")?;
+            .doing("remove authority cache")?;
         rep.removed_authority_cache = true;
     }
     Ok(rep)

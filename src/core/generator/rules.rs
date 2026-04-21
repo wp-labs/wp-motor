@@ -1,7 +1,9 @@
-use super::super::prelude::*;
 use oml::parser::code::OMLCode;
-use orion_conf::EnvTomlLoad;
-use orion_error::{ContextRecord, ErrorOweBase, ErrorWith, OperationContext, WithContext};
+use orion_conf::{EnvTomlLoad, ErrorOwe, ToStructError};
+use orion_error::{
+    ContextRecord, ErrorOweBase, ErrorWith, ErrorWrapAs, IntoAs, OperationContext, UvsFrom,
+    WithContext,
+};
 use orion_variate::EnvDict;
 use std::{
     collections::{HashMap, VecDeque},
@@ -134,18 +136,23 @@ pub fn load_gen_confs(path: &str, dict: &EnvDict) -> ConfResult<Vec<GenRuleUnit>
                 .with(&ctx)?;
             let mut buffer = Vec::with_capacity(10240);
             f.read_to_end(&mut buffer)
-                .owe_conf()
+                .into_as(ConfReason::from_conf(), "read file failed")
                 .with(generator_resource_context(
                     fst,
                     OperationKind::LoadConfigFile,
                 ))
                 .with(&ctx)?;
             let data = String::from_utf8(buffer)
-                .owe_conf()
+                .map_err(|err| {
+                    ConfReason::from_conf()
+                        .to_err()
+                        .with_detail("decode utf8 failed")
+                        .with_std_source(err)
+                })
                 .with(generator_resource_context(fst, OperationKind::ParseConfig))
                 .with(&ctx)?;
             let code_build = WplCode::build(fst.clone(), data.as_str())
-                .owe_conf()
+                .owe_rule()
                 .with(generator_resource_context(fst, OperationKind::ParseConfig))
                 .with(&ctx)?;
             info_ctrl!("load conf file: {:?}", fst);
@@ -166,14 +173,14 @@ pub fn load_gen_confs(path: &str, dict: &EnvDict) -> ConfResult<Vec<GenRuleUnit>
             let mut ctx = WithContext::want("loadd field gen rule");
             ctx.record("sec", sec.to_str().unwrap_or("unknow"));
             let toml = std::fs::read_to_string(sec)
-                .owe_conf()
+                .into_as(ConfReason::from_conf(), "read field rule file failed")
                 .with(generator_resource_context(
                     sec,
                     OperationKind::LoadConfigFile,
                 ))
                 .with(&ctx)?;
             let conf: FieldsGenRule = FieldsGenRule::env_parse_toml(toml.as_str(), dict)
-                .owe_conf()
+                .wrap_as(ConfReason::from_conf(), "parse field rule file failed")
                 .with(generator_resource_context(sec, OperationKind::ParseConfig))
                 .with(&ctx)?;
             fields = conf.items;
@@ -190,7 +197,10 @@ pub fn fetch_oml_data(path: &str, target: &str) -> OMLCodeResult<OmlRepository> 
     let mut ctx = WithContext::want("load oml");
     ctx.record("path", path);
     let files = find_conf_files(path, target)
-        .owe_conf()
+        .wrap_as(
+            wp_error::parse_error::OMLCodeReason::from_conf(),
+            "find oml files failed",
+        )
         .with(generator_resource_context(
             Path::new(path),
             OperationKind::ReadDir,
@@ -201,7 +211,10 @@ pub fn fetch_oml_data(path: &str, target: &str) -> OMLCodeResult<OmlRepository> 
     for f_name in &files {
         info_ctrl!("load conf file: {:?}", f_name);
         let mut f = File::open(f_name)
-            .owe_conf()
+            .into_as(
+                wp_error::parse_error::OMLCodeReason::from_conf(),
+                "open oml file failed",
+            )
             .with(generator_resource_context(
                 f_name,
                 OperationKind::LoadConfigFile,
@@ -209,14 +222,22 @@ pub fn fetch_oml_data(path: &str, target: &str) -> OMLCodeResult<OmlRepository> 
             .with(&ctx)?;
         let mut buffer = Vec::with_capacity(10240);
         f.read_to_end(&mut buffer)
-            .owe_conf()
+            .into_as(
+                wp_error::parse_error::OMLCodeReason::from_conf(),
+                "read oml file failed",
+            )
             .with(generator_resource_context(
                 f_name,
                 OperationKind::LoadConfigFile,
             ))
             .with(&ctx)?;
         let file_data = String::from_utf8(buffer)
-            .owe_conf()
+            .map_err(|err| {
+                wp_error::parse_error::OMLCodeReason::from_conf()
+                    .to_err()
+                    .with_detail("decode oml utf8 failed")
+                    .with_std_source(err)
+            })
             .with(generator_resource_context(
                 f_name,
                 OperationKind::ParseConfig,

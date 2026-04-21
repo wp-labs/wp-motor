@@ -1,12 +1,10 @@
-use std::fmt::Write as _;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use anyhow::Context;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
 use orion_conf::{ToStructError, TomlIO};
-use orion_error::{ErrorOweSource, ErrorOweSourceBase, ErrorWith, UvsFrom};
+use orion_error::{ErrorWith, IntoAs, UvsFrom};
 use orion_variate::EnvEvaluable;
 use serde::Serialize;
 use wp_connector_api::ParamMap;
@@ -40,8 +38,8 @@ where
             // ensure parent directory exists
             if let Some(parent) = path_ref.parent() {
                 std::fs::create_dir_all(parent)
-                    .owe_conf_source()
-                    .want("crate dir")
+                    .into_as(ConfIOReason::from_conf(), "crate dir")
+                    .doing("crate dir")
                     .with(parent)?;
             }
             //export_toml(&conf, path)?;
@@ -64,17 +62,17 @@ pub fn save_data<P: AsRef<Path>>(
             let path = dst_ref;
             if let Some(value) = path.parent() {
                 std::fs::create_dir_all(value)
-                    .owe_conf_source()
-                    .want("create dir")
+                    .into_as(ConfIOReason::from_conf(), "create dir")
+                    .doing("create dir")
                     .with(value)?;
             }
             let mut file = std::fs::File::create(path)
-                .owe_conf_source()
-                .want("create file")
+                .into_as(ConfIOReason::from_conf(), "create file")
+                .doing("create file")
                 .with(path)?;
             file.write_all(conf.as_bytes())
-                .owe_conf_source()
-                .want("save data")
+                .into_as(ConfIOReason::from_conf(), "save data")
+                .doing("save data")
                 .with(path)?;
             info_ctrl!("save data file suc : {} ", dst_ref.display());
         }
@@ -86,12 +84,12 @@ pub fn backup_clean<P: AsRef<Path>>(path: P) -> OrionConfResult<()> {
     let path_ref = path.as_ref();
     if path_ref.exists() {
         std::fs::copy(path_ref, format!("{}.bak", path_ref.display()))
-            .owe_conf_source()
-            .want("copy file")
+            .into_as(ConfIOReason::from_conf(), "copy file")
+            .doing("copy file")
             .with(path_ref)?;
         std::fs::remove_file(path_ref)
-            .owe_conf_source()
-            .want("remove file")
+            .into_as(ConfIOReason::from_conf(), "remove file")
+            .doing("remove file")
             .with(path_ref)?;
     }
     Ok(())
@@ -117,12 +115,38 @@ pub fn some_str(s: &str) -> Option<String> {
     Some(s.to_string())
 }
 
-pub fn validate_tags(items: &[String]) -> Result<(), String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TagValidationError {
+    TooManyItems { got: usize },
+    InvalidKey { index: usize, key: String },
+    InvalidValue { index: usize, value: String },
+}
+
+impl std::fmt::Display for TagValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TooManyItems { got } => {
+                write!(f, "tags must have at most 4 items (got {})", got)
+            }
+            Self::InvalidKey { index, key } => write!(
+                f,
+                "invalid tag key at index {}: '{}' (allowed: [A-Za-z0-9_.-], len 1..=32)",
+                index, key
+            ),
+            Self::InvalidValue { index, value } => write!(
+                f,
+                "invalid tag value at index {}: '{}' (allowed: [A-Za-z0-9_.:/=@+,-], len 0..=64)",
+                index, value
+            ),
+        }
+    }
+}
+
+impl std::error::Error for TagValidationError {}
+
+pub fn validate_tags(items: &[String]) -> Result<(), TagValidationError> {
     if items.len() > 4 {
-        return Err(format!(
-            "tags must have at most 4 items (got {})",
-            items.len()
-        ));
+        return Err(TagValidationError::TooManyItems { got: items.len() });
     }
     for (idx, item) in items.iter().enumerate() {
         let (k, v) = if let Some((k, v)) = item.split_once(':').or_else(|| item.split_once('=')) {
@@ -131,22 +155,16 @@ pub fn validate_tags(items: &[String]) -> Result<(), String> {
             (item.trim(), "true")
         };
         if k.is_empty() || k.len() > 32 || !k.chars().all(is_valid_tag_key_char) {
-            let mut msg = String::new();
-            let _ = write!(
-                &mut msg,
-                "invalid tag key at index {}: '{}' (allowed: [A-Za-z0-9_.-], len 1..=32)",
-                idx, k
-            );
-            return Err(msg);
+            return Err(TagValidationError::InvalidKey {
+                index: idx,
+                key: k.to_string(),
+            });
         }
         if v.len() > 64 || !v.chars().all(is_valid_tag_val_char) {
-            let mut msg = String::new();
-            let _ = write!(
-                &mut msg,
-                "invalid tag value at index {}: '{}' (allowed: [A-Za-z0-9_.:/=@+,-], len 0..=64)",
-                idx, v
-            );
-            return Err(msg);
+            return Err(TagValidationError::InvalidValue {
+                index: idx,
+                value: v.to_string(),
+            });
         }
     }
     Ok(())
@@ -162,14 +180,18 @@ fn is_valid_tag_val_char(c: char) -> bool {
 
 //pub type NomResult<I, O> = IResult<I, O, nom::error::VerboseError<I>>;
 
-pub fn find_conf_files<P: AsRef<Path>>(path: P, target: &str) -> AnyResult<Vec<PathBuf>> {
+pub fn find_conf_files<P: AsRef<Path>>(path: P, target: &str) -> OrionConfResult<Vec<PathBuf>> {
     let path_ref = path.as_ref();
     let mut found = Vec::new();
     info_ctrl!("find conf files in: {}", path_ref.display());
     let glob_path = format!("{}/**/{}", path_ref.display(), target);
-    for entry in glob(glob_path.as_str())
-        .with_context(|| format!("read_dir  fail: {}", path_ref.display()))?
-    {
+    let entries = glob(glob_path.as_str()).map_err(|e| {
+        ConfIOReason::from_conf()
+            .to_err()
+            .with_detail(format!("read_dir fail: {}", path_ref.display()))
+            .with_std_source(e)
+    })?;
+    for entry in entries {
         match entry {
             Ok(path) => {
                 found.push(path);
@@ -188,16 +210,28 @@ pub fn find_group_conf(
     target_sec: &str,
 ) -> ConfResult<Vec<PathGroup>> {
     let mut found = Vec::new();
-    let entries = fs::read_dir(path)
-        .owe_source(ConfReason::NotFound("file miss".into()))
-        .with(path.to_string())?;
+    let entries = fs::read_dir(path).map_err(|err| {
+        ConfReason::NotFound("file miss".into())
+            .to_err()
+            .with_detail(format!("read dir failed: {}", path))
+            .with_std_source(err)
+            .with(path.to_string())
+    })?;
     let mut first = None;
     let mut second = None;
     for entry in entries {
-        let entry = entry.owe_source(ConfReason::Syntax("bad entry".into()))?;
-        let file_type = entry
-            .file_type()
-            .owe_source(ConfReason::NotFound("file type error".into()))?;
+        let entry = entry.map_err(|err| {
+            ConfReason::Syntax("bad entry".into())
+                .to_err()
+                .with_detail("read dir entry failed")
+                .with_std_source(err)
+        })?;
+        let file_type = entry.file_type().map_err(|err| {
+            ConfReason::NotFound("file type error".into())
+                .to_err()
+                .with_detail("read file type failed")
+                .with_std_source(err)
+        })?;
         if file_type.is_dir() {
             let sub = entry.path();
             if let Some(sub_str) = sub.to_str() {

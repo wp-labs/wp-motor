@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use crate::structure::{FixedGroup, FlexGroup, default_batch_size, default_batch_timeout_ms};
-use orion_error::{ErrorWith, ErrorWrap, ToStructError, UvsReason};
+use orion_error::{ErrorWith, ErrorWrapAs, ToStructError, UvsReason};
 use orion_variate::{EnvDict, EnvEvaluable};
 use wp_error::config_error::{ConfCore, ConfReason, ConfResult};
 
@@ -54,8 +54,11 @@ impl InfraSinkConf {
         if infra_d.exists() || business_d.exists() {
             // 使用配置层统一输出：将 SinkRouteConf 映射为不同的 Infra 组
             let confs = crate::sinks::load_infra_route_confs(path, dict)
-                .err_wrap(ConfReason::<ConfCore>::Uvs(UvsReason::core_conf()))
-                .want("load infra routes")?;
+                .wrap_as(
+                    ConfReason::<ConfCore>::Uvs(UvsReason::core_conf()),
+                    "load infra routes failed",
+                )
+                .doing("load infra routes")?;
             let mut conf = InfraSinkConf::default();
             for c in confs {
                 let g = c.sink_group; // FlexiGroupConf

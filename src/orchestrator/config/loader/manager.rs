@@ -4,7 +4,7 @@ use crate::orchestrator::config::WPSRC_TOML;
 use futures_util::TryFutureExt;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
 use orion_conf::{EnvTomlLoad, ErrorOwe, ToStructError, TomlIO};
-use orion_error::{ErrorWith, OperationContext, UvsFrom};
+use orion_error::{ErrorWith, OperationContext, UvsFrom, WrapStructError};
 use orion_variate::{EnvDict, EnvEvaluable};
 use std::cell::OnceCell;
 use std::path::{Path, PathBuf};
@@ -126,28 +126,22 @@ impl WarpConf {
         let engine_path = self.config_path(ENGINE_CONF_FILE);
         let wp_conf = EngineConfig::load_or_init(self.work_root(), dict)
             .map_err(|e| {
-                RunReason::from_conf()
-                    .to_err()
+                e.wrap(RunReason::from_conf())
                     .with_detail("load engine config for cleanup failed")
                     .with(cleanup_context(ConfigKind::Engine, &engine_path))
-                    .with_source(e)
             })?
             .env_eval(dict)
             .conf_absolutize(self.work_root());
         backup_clean(engine_path.clone()).map_err(|e| {
-            RunReason::from_conf()
-                .to_err()
+            e.wrap(RunReason::from_conf())
                 .with_detail("cleanup engine config backup failed")
                 .with(cleanup_context(ConfigKind::Engine, &engine_path))
-                .with_source(e)
         })?;
         let wpsrc_path = PathBuf::from(wp_conf.src_conf_of(WPSRC_TOML));
         backup_clean(wpsrc_path.clone()).map_err(|e| {
-            RunReason::from_conf()
-                .to_err()
+            e.wrap(RunReason::from_conf())
                 .with_detail("cleanup source config backup failed")
                 .with(cleanup_context(ConfigKind::Wpsrc, &wpsrc_path))
-                .with_source(e)
         })?;
         // PUBLIC_ADM 废弃：不再清理 public.oml
         // 默认清理 connectors default + models templates（wpsrc）
@@ -157,19 +151,15 @@ impl WarpConf {
                 connector_template_by_id(&self.work_root().join("connectors/source.d"), "file_src")
             {
                 backup_clean(conn_path.clone()).map_err(|e| {
-                    RunReason::from_conf()
-                        .to_err()
+                    e.wrap(RunReason::from_conf())
                         .with_detail("cleanup source connector backup failed")
                         .with(cleanup_context(ConfigKind::ConnectorDef, &conn_path))
-                        .with_source(e)
                 })?;
             }
             backup_clean(wpsrc_path.clone()).map_err(|e| {
-                RunReason::from_conf()
-                    .to_err()
+                e.wrap(RunReason::from_conf())
                     .with_detail("cleanup source config backup failed")
                     .with(cleanup_context(ConfigKind::Wpsrc, &wpsrc_path))
-                    .with_source(e)
             })?;
         }
         Ok(())

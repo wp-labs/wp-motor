@@ -47,7 +47,7 @@ impl crate::structure::Validate for FileSinkConf {
                 ConfIOReason::from_validation()
                     .to_err()
                     .with_detail(format!("create parent dir failed: {:?}, err={}", parent, e))
-                    .with_source(e)
+                    .with_std_source(e)
             })?;
         }
         Ok(())
@@ -69,7 +69,7 @@ impl crate::loader::traits::ConfigLoader for FileSinkConf {
             ConfIOReason::from_validation()
                 .to_err()
                 .with_detail(format!("TOML 解析失败: {}", e))
-                .with_source(e)
+                .with_std_source(e)
         })?;
 
         Ok(conf)

@@ -61,7 +61,7 @@ impl WarpProject {
             RunReason::from_conf()
                 .to_err()
                 .with_detail(format!("create work root '{}' failed", abs_root.display()))
-                .with_source(err)
+                .with_std_source(err)
         })?;
         std::fs::create_dir_all(&paths.conf_dir).map_err(|err| {
             RunReason::from_conf()
@@ -70,15 +70,13 @@ impl WarpProject {
                     "create conf dir '{}' failed",
                     paths.conf_dir.display()
                 ))
-                .with_source(err)
+                .with_std_source(err)
         })?;
         let eng_conf = Arc::new(
             EngineConfig::load_or_init(&abs_root, dict)
                 .map_err(|err| {
-                    RunReason::from_conf()
-                        .to_err()
+                    err.wrap(RunReason::from_conf())
                         .with_detail("load engine config failed")
-                        .with_source(err)
                 })?
                 .env_eval(dict)
                 .conf_absolutize(&abs_root),
@@ -251,7 +249,7 @@ fn normalize_work_root_result(work_root: &Path) -> RunResult<PathBuf> {
             RunReason::from_conf()
                 .to_err()
                 .with_detail("resolve current dir failed")
-                .with_source(err)
+                .with_std_source(err)
         })?;
         Ok(base.join(&rel))
     }

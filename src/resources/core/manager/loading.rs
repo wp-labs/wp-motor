@@ -7,7 +7,7 @@ use crate::sinks::SinkGroupAgent;
 use oml::core::ConfADMExt;
 use oml::language::{DataModel, ObjModel};
 use orion_conf::{ErrorWith, UvsFrom};
-use orion_error::{ErrorConv, ErrorOwe, ErrorOweSource, OperationContext, ToStructError};
+use orion_error::{ErrorConv, ErrorOwe, ErrorWrapAs, OperationContext, ToStructError};
 use orion_variate::EnvDict;
 use wp_conf::engine::EngineConfig;
 use wp_error::RunReason;
@@ -42,7 +42,7 @@ impl ResManager {
                 let mdl = ObjModel::load(path.as_str())
                     .await
                     .err_conv()
-                    .want("load oml")
+                    .doing("load oml")
                     .with(path.as_str())?;
                 // Skip disabled models
                 if !mdl.enable() {
@@ -76,7 +76,7 @@ impl ResManager {
         sink_root: &str,
         dict: &EnvDict,
     ) -> RunResult<SinkRouteTable> {
-        let mut op = OperationContext::want("load all sink").with_auto_log();
+        let mut op = OperationContext::doing("load all sink").with_auto_log();
         let wpl_index = self.wpl_index.clone().ok_or(RunReason::from_logic())?;
 
         let mut sink_route = SinkRouteTable::default();
@@ -84,9 +84,9 @@ impl ResManager {
         let infra_d = Path::new(sink_root).join("infra.d");
         if busin_d.exists() || infra_d.exists() {
             let confs = wp_conf::sinks::load_business_route_confs_with(sink_root, &Lookup, dict)
-                .owe_conf_source()
+                .wrap_as(RunReason::from_conf(), "load sink route confs failed")
                 .with(sink_root)
-                .want("load sink route confs")?;
+                .doing("load sink route confs")?;
             for mut conf in confs {
                 // 现有的方法正确处理 FlexGroup rule 和 oml 字段
                 self.update_sink_rule_index(&wpl_index, &mut conf);

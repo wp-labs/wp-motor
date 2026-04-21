@@ -12,8 +12,6 @@ mod tests {
     use crate::orchestrator::config::loader::WarpConf;
     use crate::test_support::TestCasePath;
     use crate::types::AnyResult;
-    use orion_conf::ErrorOwe;
-    use orion_conf::error::OrionConfResult;
     use orion_variate::EnvDict;
     use std::fs;
     use std::path::Path;
@@ -21,9 +19,9 @@ mod tests {
     use wp_log::conf::Output as LogOutput;
 
     #[test]
-    fn test_wpgen_conf_init_clean() -> OrionConfResult<()> {
+    fn test_wpgen_conf_init_clean() -> AnyResult<()> {
         use crate::orchestrator::config::models::wpgen::WpGenConfig;
-        let tw = TestCasePath::new("wp", "wpgen_conf").owe_conf()?;
+        let tw = TestCasePath::new("wp", "wpgen_conf")?;
         let path = tw.path_string();
         let conf_manager = WarpConf::new(&path);
         conf_manager.clear_work_directory();

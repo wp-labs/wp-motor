@@ -21,7 +21,7 @@ pub fn start_data_sinks(
     knowdb: Option<Arc<KnowdbHandler>>,
     drain_bus: &ReloadDrainBus,
 ) -> TaskGroup {
-    let mut ctx = OperationContext::want("start-data-sinks").with_auto_log();
+    let mut ctx = OperationContext::doing("start-data-sinks").with_auto_log();
     let mut routine_group = TaskGroup::new("oml-sink", ShutdownCmd::Timeout(200));
     let sink_groups = act_sink.items;
     let knowdb_handler = knowdb;

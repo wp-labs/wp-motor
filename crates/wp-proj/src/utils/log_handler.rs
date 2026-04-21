@@ -1,7 +1,6 @@
 use orion_conf::error::ConfIOReason;
 use orion_error::{
-    ErrorOweSource, ErrorWith, OperationContext, StructError, ToStructError, UvsFrom,
-    WrapStructError,
+    ErrorWith, IntoAs, OperationContext, StructError, ToStructError, UvsFrom, WrapStructError,
 };
 use orion_variate::EnvDict;
 use std::path::Path;
@@ -14,7 +13,7 @@ use wp_log::conf::LogConf;
 pub struct LogHandler;
 
 fn log_clean_context(path: &Path) -> OperationContext {
-    OperationContext::want("clean log directory")
+    OperationContext::doing("clean log directory")
         .with_meta_value(RuntimeStage::SystemOperations)
         .with_meta_value(OperationKind::LoadConfigFile)
         .with_dir_path(path)
@@ -103,10 +102,10 @@ impl LogHandler {
 
         if full_log_dir.exists() {
             std::fs::remove_dir_all(&full_log_dir)
-                .owe_conf_source()
+                .into_as(ConfIOReason::from_conf(), "remove log directory failed")
                 .with(log_clean_context(&full_log_dir))
                 .with(&full_log_dir)
-                .want("remove log directory")
+                .doing("remove log directory")
                 .map_err(|e: StructError<ConfIOReason>| {
                     e.wrap(RunReason::from_conf())
                         .with_detail(format!("删除日志目录失败: {}", normalized_path))

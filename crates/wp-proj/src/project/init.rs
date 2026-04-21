@@ -1,7 +1,7 @@
 use super::warp::{WarpProject, normalize_work_root};
 use crate::utils::error_handler::ErrorHandler;
-use orion_conf::{EnvTomlLoad, ErrorOwe, ToStructError, TomlIO};
-use orion_error::UvsFrom;
+use orion_conf::{EnvTomlLoad, ToStructError, TomlIO};
+use orion_error::{ErrorWrapAs, UvsFrom};
 use orion_variate::EnvDict;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -231,15 +231,41 @@ impl WarpProject {
             now.as_secs(),
             now.subsec_nanos()
         );
-        fs::write(&token_path, token).owe_conf()?;
+        fs::write(&token_path, token).map_err(|err| {
+            RunReason::from_conf()
+                .to_err()
+                .with_detail(format!(
+                    "write admin api token failed: {}",
+                    token_path.display()
+                ))
+                .with_std_source(err)
+        })?;
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
 
-            let mut perms = fs::metadata(&token_path).owe_conf()?.permissions();
+            let mut perms = fs::metadata(&token_path)
+                .map_err(|err| {
+                    RunReason::from_conf()
+                        .to_err()
+                        .with_detail(format!(
+                            "read admin api token metadata failed: {}",
+                            token_path.display()
+                        ))
+                        .with_std_source(err)
+                })?
+                .permissions();
             perms.set_mode(0o600);
-            fs::set_permissions(&token_path, perms).owe_conf()?;
+            fs::set_permissions(&token_path, perms).map_err(|err| {
+                RunReason::from_conf()
+                    .to_err()
+                    .with_detail(format!(
+                        "set admin api token permissions failed: {}",
+                        token_path.display()
+                    ))
+                    .with_std_source(err)
+            })?;
         }
 
         println!("✓ 管理面 token 文件已创建: {}", token_path.display());
@@ -278,20 +304,29 @@ impl WarpProject {
             if let Some(parent) = engine_config_path.parent() {
                 ErrorHandler::safe_create_dir(parent)?;
             }
-            conf.save_toml(&engine_config_path).owe_conf()?;
+            conf.save_toml(&engine_config_path)
+                .wrap_as(RunReason::from_conf(), "save engine config failed")?;
         }
         // `WarpProject::build()` may have already materialized wparse.toml via
         // `EngineConfig::load_or_init`, so the admin block must be enforced
         // regardless of whether the file pre-existed.
         Self::ensure_admin_api_config_block(&engine_config_path)?;
         let conf = EngineConfig::env_load_toml(&engine_config_path, dict)
-            .owe_conf()?
+            .wrap_as(RunReason::from_conf(), "load engine config failed")?
             .conf_absolutize(&abs_root);
         Ok(conf)
     }
 
     fn ensure_admin_api_config_block(config_path: &Path) -> RunResult<()> {
-        let mut conf = std::fs::read_to_string(config_path).owe_conf()?;
+        let mut conf = std::fs::read_to_string(config_path).map_err(|err| {
+            RunReason::from_conf()
+                .to_err()
+                .with_detail(format!(
+                    "read engine config failed: {}",
+                    config_path.display()
+                ))
+                .with_std_source(err)
+        })?;
         if conf.contains("[admin_api]") {
             return Ok(());
         }
@@ -300,7 +335,15 @@ impl WarpProject {
             conf.push('\n');
         }
         conf.push_str(&default_admin_api_block());
-        std::fs::write(config_path, conf).owe_conf()?;
+        std::fs::write(config_path, conf).map_err(|err| {
+            RunReason::from_conf()
+                .to_err()
+                .with_detail(format!(
+                    "write engine config failed: {}",
+                    config_path.display()
+                ))
+                .with_std_source(err)
+        })?;
         Ok(())
     }
 
@@ -318,7 +361,7 @@ impl WarpProject {
             )));
         }
         let conf = EngineConfig::env_load_toml(&engine_config_path, dict)
-            .owe_conf()?
+            .wrap_as(RunReason::from_conf(), "load engine config failed")?
             .conf_absolutize(&abs_root);
         Ok(conf)
     }
@@ -333,7 +376,8 @@ impl WarpProject {
                 wpgen_config_path.display()
             )));
         }
-        WpGenConfig::env_load_toml(&wpgen_config_path, dict).owe_conf()?;
+        WpGenConfig::env_load_toml(&wpgen_config_path, dict)
+            .wrap_as(RunReason::from_conf(), "load wpgen config failed")?;
         Ok(())
     }
 

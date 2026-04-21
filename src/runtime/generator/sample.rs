@@ -9,7 +9,7 @@ use crate::sinks::SinkBackendType;
 use crate::stat::metric_collect::MetricCollectors;
 use orion_conf::ErrorWith;
 use orion_error::OperationContext;
-use orion_error::{ErrorOwe, ToStructError, UvsFrom};
+use orion_error::{ErrorWrapAs, IntoAs, ToStructError, UvsFrom};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -46,13 +46,13 @@ fn load_samples(rule_root: &str, find_name: &str) -> RunResult<Vec<String>> {
     use std::io::BufRead;
     // discover files
     let files = wp_conf::utils::find_conf_files(rule_root, find_name)
-        .owe_conf()
+        .wrap_as(RunReason::from_conf(), "find sample files failed")
         .with(generator_path_context(
             Path::new(rule_root),
             OperationKind::ReadDir,
         ))
         .with(rule_root)
-        .want("find sample files")?;
+        .doing("find sample files")?;
     info_ctrl!("run_sample_direct: found {} files", files.len());
     if files.is_empty() {
         return Err(RunReason::from_conf()
@@ -70,10 +70,10 @@ fn load_samples(rule_root: &str, find_name: &str) -> RunResult<Vec<String>> {
     let mut out = Vec::new();
     for f in files {
         let file = std::fs::File::open(&f)
-            .owe_conf()
+            .into_as(RunReason::from_conf(), "open sample file failed")
             .with(generator_path_context(&f, OperationKind::LoadConfigFile))
             .with(&f)
-            .want("open sample file")?;
+            .doing("open sample file")?;
         let reader = std::io::BufReader::new(file);
         for s in reader.lines().map_while(Result::ok) {
             out.push(s);
@@ -102,7 +102,7 @@ async fn send_unit_samples(
                 "gen_direct",
             ))
             .with("gen_direct")
-            .want("write sample line to sink")?;
+            .doing("write sample line to sink")?;
         // 按条统计
         collectors.record_task("gen_direct", ());
         *cur_idx = (*cur_idx + 1) % n;
@@ -376,13 +376,18 @@ pub async fn run_sample_direct(
     for t in tasks {
         let produced = t
             .await
-            .owe_conf()
+            .map_err(|err| {
+                RunReason::from_conf()
+                    .to_err()
+                    .with_detail("join sample pipeline task failed")
+                    .with_std_source(err)
+            })
             .with(generator_context(
                 OperationKind::BuildSourceInstance,
                 "gen_direct",
             ))
             .with("gen_direct")
-            .want("join sample pipeline task")??;
+            .doing("join sample pipeline task")??;
         total_produced += produced;
     }
     info_ctrl!("run_sample_direct: all pipelines finished");

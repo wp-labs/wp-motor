@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use orion_conf::ToStructError;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorOwe, ErrorWith, OperationContext, UvsFrom};
+use orion_error::{ErrorWith, IntoAs, OperationContext, UvsFrom};
 use orion_variate::EnvDict;
 
 use wp_conf::connectors::{
@@ -43,7 +43,10 @@ fn sink_connector_context(path: &Path, operation: OperationKind) -> OperationCon
 /// List immediate child directories of `p`, sorted.
 fn read_dirs_sorted(p: &Path) -> OrionConfResult<Vec<PathBuf>> {
     let mut v: Vec<_> = std::fs::read_dir(p)
-        .owe_conf()
+        .into_as(
+            ConfIOReason::from_conf(),
+            "read sink route directory failed",
+        )
         .with(
             OperationContext::new()
                 .with_meta_value(OperationKind::ReadDir)

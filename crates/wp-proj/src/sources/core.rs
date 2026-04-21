@@ -5,7 +5,7 @@
 //! in the Warp Flow System.
 
 use orion_conf::{EnvTomlLoad, ErrorWith, TomlIO};
-use orion_error::{ErrorConv, ErrorOwe, ToStructError, UvsFrom};
+use orion_error::{ErrorConv, ErrorWrapAs, IntoAs, ToStructError, UvsFrom};
 use orion_variate::EnvDict;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -107,9 +107,9 @@ impl Sources {
         // Save configuration
         sources_config
             .save_toml(&wpsrc_path)
-            .owe_conf()
+            .wrap_as(RunReason::from_conf(), "save sources config failed")
             .with(&wpsrc_path)
-            .want("save sources config")?;
+            .doing("save sources config")?;
 
         println!("✓ Sources initialization completed");
         Ok(())
@@ -128,16 +128,21 @@ impl Sources {
 
         // Serialize configuration to validate structure
         let config_content = toml::to_string_pretty(&sources_config)
-            .owe_conf()
+            .map_err(|err| {
+                RunReason::from_conf()
+                    .to_err()
+                    .with_detail("serialize sources config failed")
+                    .with_std_source(err)
+            })
             .with(wpsrc_path)
-            .want("serialize sources config")?;
+            .doing("serialize sources config")?;
 
         // Parse and validate the configuration content
         parser
             .parse_and_validate_only(&config_content, dict)
-            .owe_conf()
+            .wrap_as(RunReason::from_conf(), "validate sources config failed")
             .with(wpsrc_path)
-            .want("validate sources config")?;
+            .doing("validate sources config")?;
 
         Ok(())
     }
@@ -145,9 +150,9 @@ impl Sources {
     /// Builds source specifications for validation
     fn build_source_specs(&self, wpsrc_path: &Path, dict: &EnvDict) -> RunResult<()> {
         let _specs = load_source_instances_from_file(wpsrc_path, dict)
-            .owe_conf()
+            .wrap_as(RunReason::from_conf(), "build source instances failed")
             .with(wpsrc_path)
-            .want("build source instances")?;
+            .doing("build source instances")?;
         Ok(())
     }
 
@@ -155,9 +160,9 @@ impl Sources {
     fn load_or_create_config(&self, config_path: &Path, dict: &EnvDict) -> RunResult<WarpSources> {
         if config_path.exists() {
             WarpSources::env_load_toml(config_path, dict)
-                .owe_conf()
+                .wrap_as(RunReason::from_conf(), "load sources config failed")
                 .with(config_path)
-                .want("load sources config")
+                .doing("load sources config")
         } else {
             Ok(WarpSources { sources: vec![] })
         }
@@ -198,9 +203,12 @@ impl Sources {
     fn ensure_directory_exists(&self, config_path: &Path) -> RunResult<()> {
         if let Some(parent) = config_path.parent() {
             fs::create_dir_all(parent)
-                .owe_conf()
+                .into_as(
+                    RunReason::from_conf(),
+                    "create sources config directory failed",
+                )
                 .with(parent)
-                .want("create sources config directory")?;
+                .doing("create sources config directory")?;
         }
         Ok(())
     }

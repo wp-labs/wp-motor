@@ -117,7 +117,7 @@ impl crate::loader::traits::ConfigLoader for SyslogSinkConf {
             ConfIOReason::from_validation()
                 .to_err()
                 .with_detail(format!("TOML 解析失败: {}", e))
-                .with_source(e)
+                .with_std_source(e)
         })?;
 
         Ok(conf)
@@ -136,7 +136,7 @@ impl crate::loader::traits::ConfigLoader for SyslogSourceConf {
             ConfIOReason::from_validation()
                 .to_err()
                 .with_detail(format!("TOML 解析失败: {}", e))
-                .with_source(e)
+                .with_std_source(e)
         })?;
 
         Ok(conf)

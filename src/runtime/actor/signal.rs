@@ -29,7 +29,7 @@ impl Display for ShutdownCmd {
 pub fn stop_signals() -> RunResult<Signals> {
     let signals = Signals::new([Signal::Term, Signal::Quit, Signal::Int])
         .owe_sys()
-        .want("set signal")?;
+        .doing("set signal")?;
     Ok(signals)
 }
 

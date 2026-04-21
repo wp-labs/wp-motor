@@ -51,7 +51,7 @@ impl Usecase {
                             .with_meta_value(RuntimeStage::SystemOperations)
                             .with_meta_value(OperationKind::LoadConfigFile),
                     )
-                    .with_source(e)
+                    .with_std_source(e)
             })?;
 
             let target_dir = project_root
@@ -67,7 +67,7 @@ impl Usecase {
                             .with_meta_value(RuntimeStage::SystemOperations)
                             .with_meta_value(OperationKind::ValidateConfig),
                     )
-                    .with_source(e)
+                    .with_std_source(e)
             })?;
             unsafe {
                 env::set_var("PATH", new_path);
@@ -95,7 +95,7 @@ impl Usecase {
                         Path::new(&sh_path),
                         OperationKind::LoadConfigFile,
                     ))
-                    .with_source(e)
+                    .with_std_source(e)
             })?;
         println!(" out: {}", String::from_utf8_lossy(&uc_cmd.stdout));
         println!(" err: {}", String::from_utf8_lossy(&uc_cmd.stderr));
@@ -126,7 +126,7 @@ impl Usecase {
                         Path::new(path),
                         OperationKind::LoadConfigFile,
                     ))
-                    .with_source(e)
+                    .with_std_source(e)
             })?;
         let binding = String::from_utf8(cmd.stdout).map_err(|e| {
             RunReason::from_sys()
@@ -136,7 +136,7 @@ impl Usecase {
                     Path::new(path),
                     OperationKind::ParseConfig,
                 ))
-                .with_source(e)
+                .with_std_source(e)
         })?;
         let stdout: Vec<&str> = binding.trim().split(' ').collect();
         let count: usize = stdout[0].parse().map_err(|e| {
@@ -147,7 +147,7 @@ impl Usecase {
                     Path::new(path),
                     OperationKind::ParseConfig,
                 ))
-                .with_source(e)
+                .with_std_source(e)
         })?;
         Ok(count)
     }
@@ -170,7 +170,7 @@ impl Usecase {
                     Path::new(&path),
                     OperationKind::LoadConfigFile,
                 ))
-                .with_source(e)
+                .with_std_source(e)
         })
     }
 }

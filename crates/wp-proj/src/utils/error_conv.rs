@@ -109,7 +109,7 @@ impl<T, E: std::fmt::Display> ResultExt<T, E> for Result<T, E> {
             RunReason::from_conf()
                 .to_err()
                 .with_detail(detail)
-                .with_source(e)
+                .with_std_source(e)
         })
     }
 
@@ -123,7 +123,7 @@ impl<T, E: std::fmt::Display> ResultExt<T, E> for Result<T, E> {
             RunReason::from_conf()
                 .to_err()
                 .with_detail(detail)
-                .with_source(e)
+                .with_std_source(e)
         })
     }
 }

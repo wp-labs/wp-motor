@@ -181,7 +181,7 @@ impl ConnectionManager {
                                             client_ip
                                         ))
                                         .to_err()
-                                        .with_source(e));
+                                        .with_std_source(e));
                                     }
                                 }
                             }
@@ -206,7 +206,7 @@ impl ConnectionManager {
                                 client_ip
                             ))
                             .to_err()
-                            .with_source(e));
+                            .with_std_source(e));
                         }
                     }
                 }
@@ -307,7 +307,7 @@ impl ConnectionManager {
                                             client_ip
                                         ))
                                         .to_err()
-                                        .with_source(e));
+                                        .with_std_source(e));
                                     }
                                 }
                             }
@@ -331,7 +331,7 @@ impl ConnectionManager {
                                 client_ip
                             ))
                             .to_err()
-                            .with_source(e));
+                            .with_std_source(e));
                         }
                     }
                 }

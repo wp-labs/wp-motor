@@ -58,10 +58,10 @@ impl FileSource {
             .map_err(|e| {
                 SourceReason::Disconnect("open source file failed".to_string())
                     .to_err()
-                    .with_source(e)
+                    .with_std_source(e)
             })
             .with(file_path)
-            .want("open source file")?;
+            .doing("open source file")?;
         use std::io::SeekFrom;
         use tokio::io::AsyncSeekExt;
         file.seek(SeekFrom::Start(range_start))
@@ -69,10 +69,10 @@ impl FileSource {
             .map_err(|e| {
                 SourceReason::Disconnect("seek source file failed".to_string())
                     .to_err()
-                    .with_source(e)
+                    .with_std_source(e)
             })
             .with(file_path)
-            .want("seek to position")?;
+            .doing("seek to position")?;
         tags.set("access_source", path.to_string());
         let batch_lines = DEFAULT_BATCH_LINES;
         let batch_bytes_budget = DEFAULT_BATCH_BYTES;
@@ -168,10 +168,10 @@ impl MultiFileSource {
             .map_err(|e| {
                 SourceReason::Disconnect("compute file ranges failed".to_string())
                     .to_err()
-                    .with_source(e)
+                    .with_std_source(e)
             })
             .with(path.as_str())
-            .want("compute source file ranges")?;
+            .doing("compute source file ranges")?;
         let (tx, rx) = unbounded_channel();
         let shard_total = ranges.len();
         let mut tasks = Vec::with_capacity(shard_total);

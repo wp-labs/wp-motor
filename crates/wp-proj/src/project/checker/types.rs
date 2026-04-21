@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::fmt::Display;
 
 /// 单个组件的检查结果单元格
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -36,10 +37,13 @@ impl Cell {
     }
 
     /// 从 Result 转换
-    pub fn from_result(result: Result<(), String>) -> Self {
+    pub fn from_result<E>(result: Result<(), E>) -> Self
+    where
+        E: Display,
+    {
         match result {
             Ok(_) => Self::success(),
-            Err(e) => Self::failure(e),
+            Err(e) => Self::failure(e.to_string()),
         }
     }
 
@@ -174,9 +178,9 @@ mod tests {
 
     #[test]
     fn cell_from_result_reflects_error_state() {
-        let ok = Cell::from_result(Ok(()));
+        let ok = Cell::from_result(Result::<(), String>::Ok(()));
         assert!(ok.ok);
-        let err = Cell::from_result(Err("boom".into()));
+        let err = Cell::from_result(Result::<(), String>::Err("boom".into()));
         assert!(!err.ok);
         assert_eq!(err.msg.as_deref(), Some("boom"));
     }

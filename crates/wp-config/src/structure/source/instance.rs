@@ -80,7 +80,7 @@ impl Validate for SourceInstanceConf {
         if let Err(e) = crate::utils::validate_tags(&self.core.tags) {
             return Err(ConfIOReason::from_validation()
                 .to_err()
-                .with_detail(e)
+                .with_detail(e.to_string())
                 .with(self.core.name.clone()));
         }
         Ok(())

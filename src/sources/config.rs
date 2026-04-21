@@ -1,6 +1,6 @@
 use orion_conf::error::{ConfIOReason, OrionConfResult};
 use orion_conf::{EnvTomlLoad, ErrorOwe, ErrorWith};
-use orion_error::{OperationContext, ToStructError, UvsFrom};
+use orion_error::{IntoAs, OperationContext, ToStructError, UvsFrom};
 use orion_variate::EnvDict;
 use serde_derive::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -22,14 +22,14 @@ impl UnifiedSourcesConfig {
     #[allow(clippy::ptr_arg)]
     pub fn from_file(path: &PathBuf, dict: &EnvDict) -> OrionConfResult<Self> {
         let content = std::fs::read_to_string(path)
-            .owe_conf()
-            .want("load config")
+            .into_as(ConfIOReason::from_conf(), "load config failed")
+            .doing("load config")
             .with(path)?;
         Self::from_str(&content, dict)
     }
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(content: &str, dict: &EnvDict) -> OrionConfResult<Self> {
-        Self::env_parse_toml(content, dict).want("to UnifiedSourcesConfig")
+        Self::env_parse_toml(content, dict).doing("to UnifiedSourcesConfig")
     }
 }
 
@@ -96,7 +96,7 @@ impl SourceConfigParser {
                 .await
                 .owe_validation()
                 .with(resolved.name.as_str())
-                .want("build source instance")?;
+                .doing("build source instance")?;
             sources.extend(svc.sources);
             if let Some(acc) = svc.acceptor {
                 acceptors.push(acc);

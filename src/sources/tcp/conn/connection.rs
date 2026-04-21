@@ -147,7 +147,7 @@ impl TcpConnection {
                         self.client_addr
                     ))
                     .to_err()
-                    .with_source(e));
+                    .with_std_source(e));
                 }
             }
         }
@@ -168,7 +168,7 @@ impl TcpConnection {
                     self.client_addr
                 ))
                 .to_err()
-                .with_source(e));
+                .with_std_source(e));
             }
             match self.stream.try_read_buf(self.batcher.buffer_mut()) {
                 Ok(0) => {
@@ -209,7 +209,7 @@ impl TcpConnection {
                         self.client_addr
                     ))
                     .to_err()
-                    .with_source(e));
+                    .with_std_source(e));
                 }
             }
         }

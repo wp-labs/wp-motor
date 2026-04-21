@@ -11,7 +11,7 @@
 //! ```
 
 use orion_conf::error::OrionConfResult;
-use orion_error::{ErrorOweSource, ErrorWith, OperationContext};
+use orion_error::{ErrorWith, IntoAs, OperationContext, UvsFrom};
 use orion_variate::EnvDict;
 use std::path::Path;
 use wp_error::diagnostic_meta::{ConfigKind, OperationContextMetaExt, OperationKind};
@@ -82,7 +82,10 @@ pub trait ConfigLoader: Sized {
         Self: serde::Serialize,
     {
         let content = std::fs::read_to_string(path)
-            .owe_conf_source()
+            .into_as(
+                orion_conf::error::ConfIOReason::from_conf(),
+                "无法读取配置文件",
+            )
             .with(config_loader_context(
                 Self::config_kind(),
                 OperationKind::LoadConfigFile,
@@ -90,7 +93,7 @@ pub trait ConfigLoader: Sized {
                 Self::config_type_name(),
             ))
             .with(path)
-            .want(format!("无法读取 {} 配置文件", Self::config_type_name()))?;
+            .doing(format!("无法读取 {} 配置文件", Self::config_type_name()))?;
 
         let base = path.parent().unwrap_or_else(|| Path::new("."));
         let config = Self::load_from_str(&content, base, dict).with(config_loader_context(

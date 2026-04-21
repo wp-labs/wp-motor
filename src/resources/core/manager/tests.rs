@@ -4,6 +4,7 @@ use std::path::Path;
 use crate::facade::config::{load_warp_engine_confs, stat_reqs_from};
 use crate::resources::ResManager;
 use crate::runtime::sink::infrastructure::InfraSinkService;
+use orion_error::ErrorConv;
 use orion_error::ErrorOwe;
 use orion_error::UvsFrom;
 use orion_variate::EnvDict;
@@ -44,7 +45,7 @@ async fn test_res() -> RunResult<()> {
 
     res_center
         .load_all_sink(main_conf.sinks_root(), &env_dict)
-        .owe_conf()?;
+        .err_conv()?;
 
     let res_path = "res.dat";
     if Path::new(res_path).exists() {

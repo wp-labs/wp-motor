@@ -527,7 +527,7 @@ impl EngineConfig {
             if let Some(parent) = engine_conf_path.parent() {
                 create_dir_all(parent)
                     .owe_res()
-                    .want("create path")
+                    .doing("create path")
                     .with(parent)?;
             }
             let conf = EngineConfig::init(&work_root);
@@ -540,7 +540,7 @@ impl EngineConfig {
         let engine_conf_path = work_root.as_ref().join("conf").join(ENGINE_CONF_FILE);
         EngineConfig::env_load_toml(&engine_conf_path, dict)
             .with(engine_load_context(&engine_conf_path))
-            .want("load engine config")
+            .doing("load engine config")
             .with(ENGINE_CONF_FILE)
     }
 

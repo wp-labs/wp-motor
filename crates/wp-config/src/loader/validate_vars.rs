@@ -45,7 +45,7 @@ pub fn check_unresolved_variables<T: Serialize>(
         ConfIOReason::from_validation()
             .to_err()
             .with_detail(format!("Failed to serialize config for validation: {}", e))
-            .with_source(e)
+            .with_std_source(e)
     })?;
 
     // 查找未替换的变量

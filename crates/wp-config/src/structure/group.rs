@@ -303,7 +303,9 @@ impl crate::structure::Validate for FlexGroup {
                 .with_detail("group.parallel must be <= 10"));
         }
         if let Err(e) = crate::utils::validate_tags(&self.tags) {
-            return Err(ConfIOReason::from_validation().to_err().with_detail(e));
+            return Err(ConfIOReason::from_validation()
+                .to_err()
+                .with_detail(e.to_string()));
         }
         if let Some(g) = &self.expect
             && let Err(e) = g.validate()

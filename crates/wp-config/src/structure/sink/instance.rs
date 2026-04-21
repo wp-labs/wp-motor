@@ -4,8 +4,8 @@ use crate::utils::{env_eval_params, env_eval_vec};
 use crate::{cond::WarpConditionParser, structure::Validate};
 use derive_getters::Getters;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_conf::{ErrorOwe, ErrorWith, ToStructError};
-use orion_error::{ContextRecord, ErrorOweSource, OperationContext, UvsFrom};
+use orion_conf::{ErrorWith, ToStructError};
+use orion_error::{ContextRecord, ErrorWrapAs, IntoAs, OperationContext, UvsFrom};
 use orion_variate::EnvEvaluable;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -161,16 +161,16 @@ impl SinkInstanceConf {
             let path_ref = Path::new(path.as_str());
             if path_ref.exists() {
                 std::fs::remove_file(path_ref)
-                    .owe_conf_source()
+                    .into_as(ConfIOReason::from_conf(), "remove sink output file failed")
                     .with(
-                        OperationContext::want("clean sink output file")
+                        OperationContext::doing("clean sink output file")
                             .with_meta_value(ConfigKind::SinkRuntime)
                             .with_meta_value(ComponentKind::Sink)
                             .with_component_name(self.full_name())
                             .with_file_path(path_ref),
                     )
                     .with(path_ref)
-                    .want("remove sink output file")?;
+                    .doing("remove sink output file")?;
                 info_ctrl!("clean file: {}", path)
             }
         } else {
@@ -226,7 +226,7 @@ impl SinkInstanceConf {
 
 impl Validate for SinkInstanceConf {
     fn validate(&self) -> OrionConfResult<()> {
-        let mut opx = OperationContext::want("validate sink conf")
+        let mut opx = OperationContext::doing("validate sink conf")
             .with_auto_log()
             .with_mod_path("ctrl");
         opx.record("name", self.full_name().as_str());
@@ -265,15 +265,17 @@ impl Validate for SinkInstanceConf {
         if let Some(path) = &self.core.filter {
             if Path::new(path).exists() {
                 let content = std::fs::read_to_string(path)
-                    .owe_conf_source()
-                    .want("read filter file")
+                    .into_as(ConfIOReason::from_conf(), "read filter file failed")
+                    .doing("read filter file")
                     .with(path.as_str())?;
                 if !content.trim().is_empty() {
                     let mut data = content.as_str();
-                    WarpConditionParser::exp(&mut data)
-                        .owe_conf()
-                        .want("invalid filter expression syntax")
-                        .with(path.as_str())?;
+                    WarpConditionParser::exp(&mut data).map_err(|err| {
+                        ConfIOReason::from_validation()
+                            .to_err()
+                            .with_detail(format!("invalid filter expression syntax: {}", err))
+                            .with(path.as_str())
+                    })?;
                 }
             } else {
                 return Err(ConfIOReason::from_validation()
@@ -283,11 +285,17 @@ impl Validate for SinkInstanceConf {
             }
         }
         if let Some(exp) = &self.expect {
-            exp.validate().owe_conf().want("sink.expect validate")?;
+            exp.validate()
+                .wrap_as(ConfIOReason::from_conf(), "sink.expect validate failed")
+                .doing("sink.expect validate")?;
         }
         crate::utils::validate_tags(&self.core.tags)
-            .owe_conf()
-            .want("tags validate")?;
+            .map_err(|err| {
+                ConfIOReason::from_validation()
+                    .to_err()
+                    .with_detail(format!("invalid tags: {}", err))
+            })
+            .doing("tags validate")?;
 
         opx.mark_suc();
         opx.warn("validate suc!");

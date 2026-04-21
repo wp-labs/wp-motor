@@ -360,7 +360,7 @@ impl TcpSyslogSource {
             sender.send(pending).await.map_err(|e| {
                 SourceReason::Disconnect("syslog framing channel closed".to_string())
                     .to_err()
-                    .with_source(e)
+                    .with_std_source(e)
             })?;
         }
         Ok(())

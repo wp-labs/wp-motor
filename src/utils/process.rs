@@ -13,10 +13,10 @@ impl PidRec {
     pub fn current(name: &str) -> RunResult<Self> {
         let id = sysinfo::get_current_pid()
             .owe_sys()
-            .want("want current pid")?;
+            .doing("want current pid")?;
         // 将进程ID写入文件
         let path = Path::new(name);
-        let mut file = File::create(path).owe_sys().want("crate Pid file")?;
+        let mut file = File::create(path).owe_sys().doing("crate Pid file")?;
         file.write_all(id.to_string().as_bytes()).owe_sys()?;
         Ok(Self {
             pid_file: name.to_string(),

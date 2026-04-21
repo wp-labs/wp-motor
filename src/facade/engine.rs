@@ -127,9 +127,7 @@ impl WpApp {
     pub async fn start_cmd_if(&mut self) -> RunResult<()> {
         #[cfg(feature = "enterprise-backend")]
         {
-            crate::wp_ctrl_enterprise::start(self.control_handle.command_sender())
-                .await
-                .owe_conf()?;
+            crate::wp_ctrl_enterprise::start(self.control_handle.command_sender()).await?;
             Ok(())
         }
         #[cfg(not(feature = "enterprise-backend"))]
@@ -411,7 +409,7 @@ async fn load_engine_res(
     run_mode: RunMode,
     env_dict: &EnvDict,
 ) -> RunResult<EngineResource> {
-    let mut ctx = OperationContext::want("load-engine-res").with_auto_log();
+    let mut ctx = OperationContext::doing("load-engine-res").with_auto_log();
     let knowdb_path = knowdb_config_path(main_conf);
     let mut knowdb_handler = None;
     if knowdb_path.exists() {
@@ -457,7 +455,7 @@ async fn load_engine_res(
         .build_source_handles(&wpsrc_path, run_mode, env_dict)
         .await
         .err_conv()
-        .want("parse/build sources")?;
+        .doing("parse/build sources")?;
 
     let mut res_center = ResManager::build(main_conf, &infra_sinks, env_dict).await?;
     let sink_service = SinkService::async_sinks_spawn(
@@ -527,7 +525,7 @@ async fn load_processing_res(
     env_dict: &EnvDict,
     options: ProcessingLoadOptions,
 ) -> RunResult<EngineResource> {
-    let mut ctx = OperationContext::want("load-processing-res").with_auto_log();
+    let mut ctx = OperationContext::doing("load-processing-res").with_auto_log();
     let knowdb_path = knowdb_config_path(main_conf);
     let mut knowdb_handler = None;
     if knowdb_path.exists() {

@@ -54,15 +54,15 @@ impl Wpl {
             PathBuf::from("example/nginx/parse.wpl"),
             example_wpl_content,
         )
-        .owe_conf()
+        .owe_rule()
         .with("example/nginx/parse.wpl")
-        .want("build example wpl")?;
+        .doing("build example wpl")?;
 
         let _pkg = code
             .parse_pkg()
             .owe_conf()
             .with("example/nginx/parse.wpl")
-            .want("parse example wpl")?;
+            .doing("parse example wpl")?;
 
         // Create WPL directory and example files
         self.create_example_files(work_root)?;
@@ -122,14 +122,14 @@ impl Wpl {
                                 .with_detail(format!("wpl file is empty: {}", fp.display())));
                         }
                         let code = WplCode::build(fp.clone(), raw.as_str())
-                            .owe_conf()
+                            .owe_rule()
                             .with(&fp)
-                            .want("build wpl code")?;
+                            .doing("build wpl code")?;
                         let _pkg = code
                             .parse_pkg()
                             .owe_conf()
                             .with(&fp)
-                            .want("parse wpl package")?;
+                            .doing("parse wpl package")?;
                     }
                     return Ok(CheckStatus::Suc);
                 }
@@ -151,12 +151,12 @@ impl Wpl {
             let code = WplCode::build(fp.clone(), raw.as_str())
                 .owe_rule()
                 .with(&fp)
-                .want("build wpl code")?;
+                .doing("build wpl code")?;
             let _pkg = code
                 .parse_pkg()
                 .owe_conf()
                 .with(&fp)
-                .want("parse wpl package")?;
+                .doing("parse wpl package")?;
         }
         Ok(CheckStatus::Suc)
     }

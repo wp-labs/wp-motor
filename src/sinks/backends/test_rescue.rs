@@ -4,7 +4,7 @@ use crate::sinks::{ASinkTestProxy, HealthController};
 use async_trait::async_trait;
 use orion_error::ErrorOwe;
 use wp_conf::connectors::{ConnectorDef, SinkDefProvider};
-use wp_connector_api::{SinkBuildCtx, SinkFactory, SinkResult, SinkSpec};
+use wp_connector_api::{SinkBuildCtx, SinkErrorOwe, SinkFactory, SinkResult, SinkSpec};
 
 pub struct TestRescueFactory;
 
@@ -14,7 +14,7 @@ impl SinkFactory for TestRescueFactory {
         "test_rescue"
     }
     fn validate_spec(&self, spec: &SinkSpec) -> SinkResult<()> {
-        FileSinkSpec::from_resolved("test_rescue", spec).owe_conf()?;
+        FileSinkSpec::from_resolved("test_rescue", spec).owe_sink("validate test_rescue spec")?;
         Ok(())
     }
     async fn build(
@@ -22,7 +22,8 @@ impl SinkFactory for TestRescueFactory {
         spec: &SinkSpec,
         ctx: &SinkBuildCtx,
     ) -> SinkResult<wp_connector_api::SinkHandle> {
-        let resolved = FileSinkSpec::from_resolved("test_rescue", spec).owe_conf()?;
+        let resolved =
+            FileSinkSpec::from_resolved("test_rescue", spec).owe_sink("build test_rescue spec")?;
         let path = resolved.resolve_path(ctx);
         let fmt = resolved.text_fmt();
         let dummy = wp_conf::structure::SinkInstanceConf::null_new(spec.name.clone(), fmt, None);

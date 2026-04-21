@@ -234,7 +234,7 @@ pub fn collect_sink_statistics(
             OperationKind::LoadConfigFile,
         ))
         .with(sink_root)
-        .want("load business sink routes")?
+        .doing("load business sink routes")?
     {
         let g = conf.sink_group;
         if !is_match(g.name().as_str(), &ctx.group_filters) {
@@ -258,7 +258,7 @@ pub fn collect_sink_statistics(
             OperationKind::LoadConfigFile,
         ))
         .with(sink_root)
-        .want("load infra sink routes")?
+        .doing("load infra sink routes")?
     {
         let g = conf.sink_group;
         if !is_match(g.name().as_str(), &ctx.group_filters) {

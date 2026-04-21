@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 use orion_conf::ErrorWith;
-use orion_conf::error::OrionConfResult;
+use orion_conf::error::{ConfIOReason, OrionConfResult};
 use orion_error::{ToStructError, UvsFrom};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -123,7 +123,7 @@ pub fn load_semantic_dict(config_path: &Path) -> OrionConfResult<SemanticDictCon
                 "read semantic dict config '{}' failed",
                 config_path.display()
             ))
-            .with_source(e)
+            .with_std_source(e)
     })?;
 
     let conf: SemanticDictConf = toml::from_str(&content).map_err(|e| {
@@ -133,7 +133,7 @@ pub fn load_semantic_dict(config_path: &Path) -> OrionConfResult<SemanticDictCon
                 "parse semantic dict config '{}' failed",
                 config_path.display()
             ))
-            .with_source(e)
+            .with_std_source(e)
     })?;
 
     if conf.version != SUPPORTED_VERSION {
@@ -501,8 +501,8 @@ impl SemanticDict {
 /// # 返回
 /// - Ok(Some(message)): 配置文件存在且有效，返回成功信息
 /// - Ok(None): 未配置外部语义词典（使用默认内置词典）
-/// - Err(message): 配置文件无效或加载失败
-pub fn check_semantic_dict_config(config_path: Option<&Path>) -> Result<Option<String>, String> {
+/// - Err(err): 配置文件无效或加载失败
+pub fn check_semantic_dict_config(config_path: Option<&Path>) -> OrionConfResult<Option<String>> {
     // 确定配置文件路径
     let path = resolve_semantic_dict_path(config_path);
 
@@ -514,7 +514,10 @@ pub fn check_semantic_dict_config(config_path: Option<&Path>) -> Result<Option<S
     // 检查文件是否存在
     if !path.exists() {
         if config_path.is_some() {
-            return Err(format!("语义词典配置文件不存在: {}", path.display()));
+            return Err(ConfIOReason::from_validation()
+                .to_err()
+                .with_detail("语义词典配置文件不存在")
+                .with(&path));
         }
         return Ok(None);
     }
@@ -557,7 +560,7 @@ pub fn check_semantic_dict_config(config_path: Option<&Path>) -> Result<Option<S
                 total_words
             )))
         }
-        Err(e) => Err(format!("语义词典配置加载失败: {}", e)),
+        Err(e) => Err(e),
     }
 }
 
@@ -569,8 +572,8 @@ pub fn check_semantic_dict_config(config_path: Option<&Path>) -> Result<Option<S
 ///
 /// # 返回
 /// - Ok(message): 加载成功的信息
-/// - Err(message): 加载失败（但会回退到内置词典）
-pub fn init_semantic_dict() -> Result<String, String> {
+/// - Err(err): 加载失败（但会回退到内置词典）
+pub fn init_semantic_dict() -> OrionConfResult<String> {
     // 触发 SEMANTIC_DICT 的延迟初始化
     let dict = &*SEMANTIC_DICT;
 
@@ -601,7 +604,7 @@ pub fn init_semantic_dict() -> Result<String, String> {
                     ))
                 }
             }
-            Err(e) => Err(format!("语义词典配置加载失败: {}", e)),
+            Err(e) => Err(e),
         }
     } else {
         Ok(format!(

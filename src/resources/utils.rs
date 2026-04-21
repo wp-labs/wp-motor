@@ -4,9 +4,10 @@ use crate::core::parser::indexing::ResourceIndexer;
 use crate::orchestrator::config::WPARSE_OML_FILE;
 use crate::orchestrator::config::WPARSE_RULE_FILE;
 use crate::orchestrator::engine::definition::WplCodePKG;
-use orion_error::ErrorOwe;
+use orion_error::{ErrorOwe, ErrorWrapAs, UvsFrom};
 use std::thread;
 use wp_conf::engine::EngineConfig;
+use wp_error::RunReason;
 use wp_error::run_error::RunResult;
 use wp_stat::StatReq;
 use wpl::AnnotationType;
@@ -96,7 +97,8 @@ pub fn rule_to_parser(rule: &WplRule) -> RunResult<WplEvaluator> {
 }
 
 pub async fn load_oml_code(oml_root: &str) -> RunResult<OmlRepository> {
-    fetch_oml_data(oml_root, WPARSE_OML_FILE).owe_conf()
+    fetch_oml_data(oml_root, WPARSE_OML_FILE)
+        .wrap_as(RunReason::from_conf(), "load oml code failed")
 }
 
 pub async fn load_wpl_code(
@@ -104,7 +106,8 @@ pub async fn load_wpl_code(
     rule_file: Option<String>,
 ) -> RunResult<Vec<WplCode>> {
     let rule_path: String = rule_file.clone().unwrap_or(conf.rule_root().to_string());
-    fetch_wpl_data(rule_path.as_str(), WPARSE_RULE_FILE).owe_conf()
+    fetch_wpl_data(rule_path.as_str(), WPARSE_RULE_FILE)
+        .wrap_as(RunReason::from_conf(), "load wpl code failed")
 }
 
 pub async fn load_engine_code(main_conf: &EngineConfig) -> RunResult<WplCodePKG> {

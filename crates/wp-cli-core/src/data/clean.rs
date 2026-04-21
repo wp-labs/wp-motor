@@ -1,5 +1,5 @@
 use orion_conf::error::OrionConfResult;
-use orion_error::{ErrorOweSource, ErrorWith, OperationContext};
+use orion_error::{ErrorWith, IntoAs, OperationContext, UvsFrom};
 use orion_variate::EnvDict;
 use std::fs;
 use std::path::Path;
@@ -34,7 +34,7 @@ pub fn clean_outputs(sink_root: &Path, env_dict: &EnvDict) -> OrionConfResult<Da
     for conf in
         wp_conf::sinks::load_infra_route_confs(sink_root.to_string_lossy().as_ref(), env_dict)
             .with(sink_root)
-            .want("load infra sink routes for clean")?
+            .doing("load infra sink routes for clean")?
     {
         for s in conf.sink_group.sinks.iter() {
             append_clean_item(&mut rep, s)?;
@@ -43,7 +43,7 @@ pub fn clean_outputs(sink_root: &Path, env_dict: &EnvDict) -> OrionConfResult<Da
     for conf in
         wp_conf::sinks::load_business_route_confs(sink_root.to_string_lossy().as_ref(), env_dict)
             .with(sink_root)
-            .want("load business sink routes for clean")?
+            .doing("load business sink routes for clean")?
     {
         for s in conf.sink_group.sinks.iter() {
             append_clean_item(&mut rep, s)?;
@@ -60,16 +60,19 @@ fn append_clean_item(rep: &mut DataCleanReport, s: &SinkInstanceConf) -> OrionCo
         let mut cleaned = false;
         if existed {
             fs::remove_file(path_ref)
-                .owe_conf_source()
+                .into_as(
+                    orion_conf::error::ConfIOReason::from_conf(),
+                    "remove sink output file failed",
+                )
                 .with(
-                    OperationContext::want("clean sink output file")
+                    OperationContext::doing("clean sink output file")
                         .with_meta_value(ConfigKind::SinkRuntime)
                         .with_meta_value(ComponentKind::Sink)
                         .with_component_name(s.full_name())
                         .with_file_path(path_ref),
                 )
                 .with(path_ref)
-                .want("remove sink output file")?;
+                .doing("remove sink output file")?;
             cleaned = true;
         }
         rep.items.push(DataCleanItem {

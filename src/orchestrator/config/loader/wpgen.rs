@@ -131,7 +131,7 @@ impl WarpConf {
                 OperationKind::LoadConfigFile,
             ))
             .with("load_or_init")
-            .want("load engine config")?
+            .doing("load engine config")?
             .env_eval(dict)
             .conf_absolutize(self.work_root());
         let configured_root = wp_conf.sinks_root().to_string();
@@ -190,7 +190,7 @@ impl WarpConf {
                             .with_meta_value(OperationKind::ValidateConfig)
                             .with_component_name(conn_id),
                     )
-                    .want("nested params/params_override is not allowed"));
+                    .doing("nested params/params_override is not allowed"));
             }
             if !conn.allow_override.iter().any(|x| x == k) {
                 return Err(ConfIOReason::from_validation()
@@ -203,7 +203,7 @@ impl WarpConf {
                             .with_meta_value(OperationKind::ValidateConfig)
                             .with_component_name(conn_id),
                     )
-                    .want(format!("override '{}' not allowed", k)));
+                    .doing(format!("override '{}' not allowed", k)));
             }
             merged.insert(k.clone(), param_value_from_toml(v));
         }

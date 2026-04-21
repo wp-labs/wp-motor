@@ -1,5 +1,7 @@
 use crate::runtime::actor::TaskRole;
+use orion_error::{ToStructError, UvsFrom};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
+use wp_error::run_error::{RunReason, RunResult};
 use wp_log::warn_ctrl;
 
 #[derive(Debug, Clone)]
@@ -133,7 +135,7 @@ impl ReloadDrainTracker {
         self.rx.recv().await
     }
 
-    pub fn observe(&mut self, event: &ReloadDrainEvent) -> Result<(), String> {
+    pub fn observe(&mut self, event: &ReloadDrainEvent) -> RunResult<()> {
         if event.epoch() != self.epoch {
             warn_ctrl!(
                 "ignore stale reload drain event epoch={} current_epoch={} role={:?} worker={}",
@@ -171,12 +173,12 @@ impl ReloadDrainTracker {
         }
 
         if event.outcome() == ReloadDrainOutcome::Aborted {
-            return Err(format!(
+            return Err(RunReason::from_logic().to_err().with_detail(format!(
                 "reload drain aborted epoch={} role={:?} worker={}",
                 event.epoch(),
                 event.role(),
                 event.worker_name()
-            ));
+            )));
         }
 
         *pending -= 1;
@@ -218,6 +220,6 @@ mod tests {
         let err = tracker
             .observe(&event)
             .expect_err("aborted event must fail");
-        assert!(err.contains("parser-abort"));
+        assert!(err.to_string().contains("parser-abort"));
     }
 }

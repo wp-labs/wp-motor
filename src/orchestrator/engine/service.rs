@@ -148,9 +148,7 @@ impl EngineRuntime {
                 .await
                 .map_err(|_| RunReason::from_logic().to_err())?
                 .ok_or_else(|| RunReason::from_logic().to_err())?;
-            self.active_processing
-                .observe(&event)
-                .map_err(|detail| RunReason::from_logic().to_err().with_detail(detail))?;
+            self.active_processing.observe(&event)?;
         }
         self.task_manager
             .stop_role(TaskRole::Maintainer, ShutdownCmd::Immediate)

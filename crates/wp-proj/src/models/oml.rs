@@ -1,5 +1,5 @@
 use orion_conf::ErrorWith;
-use orion_error::{ErrorOwe, ToStructError, UvsFrom};
+use orion_error::{ErrorWrapAs, ToStructError, UvsFrom};
 use orion_variate::EnvDict;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -82,9 +82,9 @@ impl Oml {
                 .with_detail("oml root path is not valid UTF-8")
         })?;
         let oml_files = find_conf_files(root_str, WPARSE_OML_FILE)
-            .owe_conf()
+            .wrap_as(RunReason::from_conf(), "find oml files failed")
             .with(root_str)
-            .want("find oml files")?;
+            .doing("find oml files")?;
         if oml_files.is_empty() {
             return Ok(CheckStatus::Miss);
         }
@@ -93,9 +93,9 @@ impl Oml {
         }
 
         fetch_oml_data(root_str, WPARSE_OML_FILE)
-            .owe_rule()
+            .wrap_as(RunReason::from_conf(), "parse oml models failed")
             .with(root_str)
-            .want("parse oml models")?;
+            .doing("parse oml models")?;
         Ok(CheckStatus::Suc)
     }
 }

@@ -20,7 +20,7 @@ fn write_template_if_absent(work_root: &Path, template: &ConnectorTemplate) -> R
     };
     fs::create_dir_all(&dir)
         .owe_res()
-        .want("create connector template dir")
+        .doing("create connector template dir")
         .with(&dir)?;
     let path = dir.join(&template.file_name);
     if path.exists() {
@@ -29,7 +29,7 @@ fn write_template_if_absent(work_root: &Path, template: &ConnectorTemplate) -> R
     let body = render_connector_file(&template.connectors)?;
     fs::write(&path, body.as_bytes())
         .owe_res()
-        .want("write connector template")
+        .doing("write connector template")
         .with(&path)?;
     Ok(())
 }
@@ -43,7 +43,7 @@ fn render_connector_file(connectors: &[ConnectorDef]) -> RunResult<String> {
     root.insert("connectors".to_string(), Value::Array(entries));
     toml::to_string(&Value::Table(root))
         .owe_res()
-        .want("serialize connector template")
+        .doing("serialize connector template")
 }
 
 fn connector_to_value(def: &ConnectorDef) -> Value {

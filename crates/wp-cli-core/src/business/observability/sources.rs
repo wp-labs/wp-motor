@@ -7,7 +7,7 @@ use crate::utils::fs::{count_lines_file, resolve_path};
 use glob::glob;
 use orion_conf::EnvTomlLoad;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorOweSource, ErrorWith, ToStructError, UvsFrom};
+use orion_error::{ErrorWith, IntoAs, ToStructError, UvsFrom};
 use orion_variate::{EnvDict, EnvEvaluable};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -35,7 +35,7 @@ fn wpsrc_path(work_root: &Path, engine_conf: &EngineConfig) -> PathBuf {
 fn read_wpsrc_toml(path: &Path) -> OrionConfResult<Option<String>> {
     if path.exists() {
         return std::fs::read_to_string(path)
-            .owe_conf_source()
+            .into_as(ConfIOReason::from_conf(), "read wpsrc config failed")
             .with(
                 orion_error::OperationContext::new()
                     .with_meta_value(ConfigKind::Wpsrc)
@@ -43,7 +43,7 @@ fn read_wpsrc_toml(path: &Path) -> OrionConfResult<Option<String>> {
                     .with_file_path(path),
             )
             .with(path)
-            .want("read wpsrc config")
+            .doing("read wpsrc config")
             .map(Some);
     }
     Ok(None)
@@ -67,11 +67,11 @@ fn load_wpsrc_sources(
                 .with_file_path(&path),
         )
         .with(&path)
-        .want("parse wpsrc config")?
+        .doing("parse wpsrc config")?
         .env_eval(dict);
     let instances = wp_conf::sources::load_source_instances_from_file(&path, dict)
         .with(&path)
-        .want("load wpsrc source instances")?;
+        .doing("load wpsrc source instances")?;
 
     let mut instances_by_name: BTreeMap<String, SourceInstanceConf> = instances
         .into_iter()
@@ -103,7 +103,7 @@ fn load_wpsrc_config(
                 .with_file_path(&path),
         )
         .with(&path)
-        .want("parse wpsrc config")?
+        .doing("parse wpsrc config")?
         .env_eval(dict);
     Ok(Some((path, parsed)))
 }
@@ -120,7 +120,7 @@ fn load_wpsrc_connectors_map(
     match conn_dir.as_ref() {
         Some(path) => wp_conf::sources::load_connectors_for(path.as_path(), dict)
             .with(path)
-            .want("load source connectors"),
+            .doing("load source connectors"),
         None => Ok(BTreeMap::new()),
     }
 }
@@ -185,13 +185,13 @@ fn expand_source_paths(raw: &str, work_root: &Path) -> OrionConfResult<Vec<PathB
         ConfIOReason::from_validation()
             .to_err()
             .with_detail(format!("invalid glob pattern: {}", pattern))
-            .with_source(err)
+            .with_std_source(err)
     })? {
         let path = entry.map_err(|err| {
             ConfIOReason::from_validation()
                 .to_err()
                 .with_detail(format!("iterate glob match: {}", pattern))
-                .with_source(err)
+                .with_std_source(err)
         })?;
         if path.is_file() {
             matches.push(path);
@@ -230,11 +230,11 @@ pub fn total_input_from_wpsrc(
         let key = source.source.key;
         let path = validated_file_source_path(&source.instance.core.params).map_err(|e| {
             e.with(&wpsrc_path)
-                .want(format!("validate source '{}' path spec", key))
+                .doing(format!("validate source '{}' path spec", key))
         })?;
         let paths = expand_source_paths(&path, &ctx.work_root).map_err(|e| {
             e.with(&wpsrc_path)
-                .want(format!("expand source '{}' files", key))
+                .doing(format!("expand source '{}' files", key))
         })?;
         for pathbuf in paths {
             let n = count_lines_file(&pathbuf).map_err(|e| {

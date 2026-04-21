@@ -40,7 +40,7 @@ fn sink_route_context(path: &Path, group: Option<ConfigGroup>) -> OperationConte
 }
 
 fn sink_defaults_context(path: &Path) -> OperationContext {
-    OperationContext::want("load sink defaults")
+    OperationContext::doing("load sink defaults")
         .with_meta_value(ConfigKind::SinkDefaults)
         .with_meta_value(HintCode::SinkDefaultsTomlSchema)
         .with_file_path(path)
@@ -115,7 +115,7 @@ pub fn load_sink_defaults<P: AsRef<Path>>(
     let f: super::types::DefaultsFile = DefaultsFile::env_load_toml(&p, _dict)
         .with(sink_defaults_context(&p))
         .with(&p)
-        .want("load sink defaults")?;
+        .doing("load sink defaults")?;
     Ok(Some(f.defaults))
 }
 

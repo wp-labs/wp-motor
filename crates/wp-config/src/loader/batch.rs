@@ -9,7 +9,7 @@
 
 use super::traits::ConfigLoader;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorOweSource, ErrorWith, ToStructError, UvsFrom};
+use orion_error::{ErrorWith, IntoAs, ToStructError, UvsFrom};
 use orion_variate::EnvDict;
 use std::path::{Path, PathBuf};
 
@@ -53,12 +53,14 @@ where
     let mut configs = Vec::new();
 
     let entries = std::fs::read_dir(dir)
-        .owe_conf_source()
-        .want("无法读取目录")
+        .into_as(ConfIOReason::from_conf(), "无法读取目录")
+        .doing("无法读取目录")
         .with(dir)?;
 
     for entry in entries {
-        let entry: std::fs::DirEntry = entry.owe_conf_source().want("读取目录项失败")?;
+        let entry: std::fs::DirEntry = entry
+            .into_as(ConfIOReason::from_conf(), "读取目录项失败")
+            .doing("读取目录项失败")?;
 
         let path = entry.path();
 

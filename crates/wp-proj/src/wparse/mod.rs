@@ -1,7 +1,5 @@
 use orion_conf::error::ConfIOReason;
-use orion_error::{
-    ErrorOweSource, ErrorWith, OperationContext, StructError, UvsFrom, WrapStructError,
-};
+use orion_error::{ErrorWith, IntoAs, OperationContext, StructError, UvsFrom, WrapStructError};
 use orion_variate::EnvDict;
 use std::path::Path;
 use wp_error::diagnostic_meta::{OperationContextMetaExt, OperationKind, RuntimeStage};
@@ -11,7 +9,7 @@ use crate::utils::LogHandler;
 pub mod samples;
 
 fn wparse_clean_context(path: &Path, operation: OperationKind) -> OperationContext {
-    OperationContext::want("clean wparse data")
+    OperationContext::doing("clean wparse data")
         .with_meta_value(RuntimeStage::SystemOperations)
         .with_meta_value(operation)
         .with_dir_path(path)
@@ -45,13 +43,16 @@ impl WParseManager {
         let run_dir = self.work_root.join(".run");
         if run_dir.exists() {
             std::fs::remove_dir_all(&run_dir)
-                .owe_conf_source()
+                .into_as(
+                    ConfIOReason::from_conf(),
+                    "remove wparse runtime dir failed",
+                )
                 .with(wparse_clean_context(
                     &run_dir,
                     OperationKind::LoadConfigFile,
                 ))
                 .with(&run_dir)
-                .want("remove wparse runtime dir")
+                .doing("remove wparse runtime dir")
                 .map_err(|e: StructError<ConfIOReason>| {
                     e.wrap(wp_error::RunReason::from_conf())
                         .with_detail("清理 wparse 运行目录失败")

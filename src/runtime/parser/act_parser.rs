@@ -32,7 +32,7 @@ impl ActParser {
         infra: InfraSinkAgent,
     ) -> RunResult<Self> {
         trace_ctrl!("setting depend");
-        let pipe_lines = WplEngine::from(pipelines, infra).owe_conf()?;
+        let pipe_lines = WplEngine::from(pipelines, infra)?;
         //let pipe_lines = ParseEngine::from(pipelines, infra).to_uvs::<ConfErrReader>()?;
         Ok(ActParser { engine: pipe_lines })
     }
@@ -45,7 +45,7 @@ impl ActParser {
     ) -> RunResult<Self> {
         trace_ctrl!("setting depend");
         let wpl_pkgs = WplRepository::from_wpl_tolerant(wpl_code, infra.error.end()).owe_rule()?;
-        let pipe_lines = WplEngine::from_code(&wpl_pkgs, infra).owe_conf()?;
+        let pipe_lines = WplEngine::from_code(&wpl_pkgs, infra)?;
         Ok(ActParser { engine: pipe_lines })
     }
 }

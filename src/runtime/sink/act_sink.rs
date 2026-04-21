@@ -162,7 +162,7 @@ impl SinkWork {
         infra: InfraSinkAgent,
         mut ctx_args: SinkProcCtx,
     ) -> SinkResult<()> {
-        let mut ctx = OperationContext::want("sink start proc");
+        let mut ctx = OperationContext::doing("sink start proc");
         let name = format!("work-sink:{:20}", sink.conf().name());
         let mut run_ctrl = TaskController::new(name.as_str(), ctx_args.cmd_r.clone(), None);
         let mut cache = FieldQueryCache::with_capacity(1000);

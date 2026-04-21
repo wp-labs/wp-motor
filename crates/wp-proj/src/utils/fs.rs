@@ -3,7 +3,7 @@
 //! 提供统一的文件和目录操作接口，统一错误处理。
 
 use orion_conf::ErrorWith;
-use orion_error::ErrorOwe;
+use orion_error::{ToStructError, UvsFrom};
 use std::fs;
 use std::path::{Path, PathBuf};
 use wp_error::run_error::RunResult;
@@ -137,9 +137,14 @@ impl FsOps {
 
         let search_pattern = format!("{}/{}", dir.display(), pattern);
         let entries = glob::glob(&search_pattern)
-            .owe_conf()
+            .map_err(|err| {
+                wp_error::RunReason::from_conf()
+                    .to_err()
+                    .with_detail("expand glob pattern failed")
+                    .with_std_source(err)
+            })
             .with(search_pattern.as_str())
-            .want("expand glob pattern")?;
+            .doing("expand glob pattern")?;
 
         let mut files: Vec<PathBuf> = entries.filter_map(Result::ok).collect();
 

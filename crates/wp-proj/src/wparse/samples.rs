@@ -1,7 +1,7 @@
 use crate::res::simple_ins_run_res;
 use glob::glob;
 use orion_conf::ErrorWith;
-use orion_error::{ErrorOwe, ToStructError, UvsFrom};
+use orion_error::{ErrorOwe, ErrorWrapAs, IntoAs, ToStructError, UvsFrom};
 use orion_variate::EnvDict;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -41,15 +41,18 @@ fn parse_single_run<P: AsRef<Path> + Clone>(data_path: P, rule_file: P) -> RunRe
     engine_proc_file(work_rule, &data_path, infra, 1)
         .owe_biz()
         .with(data_path.as_ref())
-        .want("parse sample with rule")?;
+        .doing("parse sample with rule")?;
     Ok(())
 }
 
 fn discover_sample_jobs(work_root: &str, dict: &EnvDict) -> RunResult<Vec<SampleJob>> {
     let (cm, main) = load_warp_engine_confs(work_root, dict)
-        .owe_conf()
+        .wrap_as(
+            RunReason::from_conf(),
+            "load engine config for sample parsing failed",
+        )
         .with(work_root)
-        .want("load engine config for sample parsing")?;
+        .doing("load engine config for sample parsing")?;
     let rule_root = Path::new(main.rule_root());
     let wpl_root = if rule_root.is_absolute() {
         rule_root.to_path_buf()
@@ -62,9 +65,14 @@ fn discover_sample_jobs(work_root: &str, dict: &EnvDict) -> RunResult<Vec<Sample
     let pattern = format!("{}/**/sample.dat", wpl_root.display());
     let mut jobs = Vec::new();
     let walker = glob(&pattern)
-        .owe_conf()
+        .map_err(|err| {
+            RunReason::from_conf()
+                .to_err()
+                .with_detail("scan sample files failed")
+                .with_std_source(err)
+        })
         .with(pattern.as_str())
-        .want("scan sample files")?;
+        .doing("scan sample files")?;
     for entry in walker {
         match entry {
             Ok(sample_path) => {
@@ -103,14 +111,17 @@ fn locate_rule_file(dir: &Path) -> RunResult<Option<PathBuf>> {
     }
     let mut first = None;
     for entry in fs::read_dir(dir)
-        .owe_conf()
+        .into_as(RunReason::from_conf(), "read sample directory failed")
         .with(dir)
-        .want("read sample directory")?
+        .doing("read sample directory")?
     {
         let entry = entry
-            .owe_conf()
+            .into_as(
+                RunReason::from_conf(),
+                "iterate sample directory entry failed",
+            )
             .with(dir)
-            .want("iterate sample directory entry")?;
+            .doing("iterate sample directory entry")?;
         let path = entry.path();
         if path
             .extension()

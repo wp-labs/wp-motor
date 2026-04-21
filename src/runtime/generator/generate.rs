@@ -308,7 +308,7 @@ impl SpawnGen for SampleGenRoutine {
         info_ctrl!("gen samples from : {:?}", self.samples);
         let mut gen_actor = SampleGenerator::from_file(self.samples.clone())
             .map_err(|e| {
-                RunReason::from_conf().to_err().with_source(e).with(
+                RunReason::from_conf().to_err().with_std_source(e).with(
                     orion_error::OperationContext::new()
                         .with_meta_value(RuntimeStage::GeneratorGenerate)
                         .with_meta_value(ComponentKind::Generator)

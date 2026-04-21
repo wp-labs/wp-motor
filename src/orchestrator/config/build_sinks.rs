@@ -56,7 +56,7 @@ pub async fn build_sink_target(
     replica_cnt: usize,
     rate_limit_rps: usize,
 ) -> RunResult<SinkBackendType> {
-    let mut op = OperationContext::want("build-sink-instance").with_auto_log();
+    let mut op = OperationContext::doing("build-sink-instance").with_auto_log();
     // External sink builders must be registered by the application before calling this
     // function (apps/wparse or apps/wpsink). Keeping registration out of core avoids
     // feature-coupling core with optional extension crates.
@@ -113,7 +113,7 @@ pub(crate) async fn infra_sink_group(
     conf: &SinkGroupConf,
     stat_reqs: Vec<StatReq>,
 ) -> RunResult<SinkDispatcher> {
-    let mut cxt = OperationContext::want("assmeble sink group").with_auto_log();
+    let mut cxt = OperationContext::doing("assmeble sink group").with_auto_log();
     cxt.record("gourp_name", conf.name().as_str());
     let mut group = SinkDispatcher::new(conf.clone(), SinkResUnit::use_null());
 

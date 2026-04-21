@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use orion_conf::{ErrorWith, ToStructError, UvsFrom};
-use orion_error::ErrorOwe;
+use orion_error::ErrorWrapAs;
 use orion_variate::EnvDict;
 use wp_cli_core as wlib;
 use wp_engine::facade::config;
@@ -48,11 +48,11 @@ pub fn stat_sink_files(filters: &SinkStatFilters<'_>, dict: &EnvDict) -> RunResu
     let sink_root = Path::new(&cm.work_root_path()).join(main.sink_root());
     ensure_sink_dirs(&sink_root, main.sink_root())
         .with(&sink_root)
-        .want("validate sink directory layout")?;
+        .doing("validate sink directory layout")?;
     let (rows, total) = wp_cli_core::collect_sink_statistics(&sink_root, &ctx, dict)
-        .owe_conf()
+        .wrap_as(RunReason::from_conf(), "collect sink statistics failed")
         .with(&sink_root)
-        .want("collect sink statistics")?;
+        .doing("collect sink statistics")?;
     Ok(SinkStatResult { rows, total })
 }
 
@@ -70,19 +70,19 @@ pub fn stat_file_combined(
         &ctx,
         dict,
     )
-    .owe_conf()
+    .wrap_as(RunReason::from_conf(), "collect source file stats failed")
     .with(&ctx.work_root)
-    .want("collect source file stats")?;
+    .doing("collect source file stats")?;
 
     // Collect sink statistics
     let sink_root = Path::new(&cm.work_root_path()).join(main.sink_root());
     ensure_sink_dirs(&sink_root, main.sink_root())
         .with(&sink_root)
-        .want("validate sink directory layout")?;
+        .doing("validate sink directory layout")?;
     let (rows, total) = wp_cli_core::collect_sink_statistics(&sink_root, &ctx, dict)
-        .owe_conf()
+        .wrap_as(RunReason::from_conf(), "collect sink statistics failed")
         .with(&sink_root)
-        .want("collect sink statistics")?;
+        .doing("collect sink statistics")?;
 
     Ok(CombinedStatResult {
         src,

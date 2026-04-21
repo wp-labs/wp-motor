@@ -5,9 +5,7 @@ use crate::sources::types::SourceConnector;
 use crate::structure::{SourceInstanceConf, Validate};
 use orion_conf::EnvTomlLoad;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{
-    ErrorOweSource, ErrorWith, OperationContext, ToStructError, UvsFrom, WrapStructError,
-};
+use orion_error::{ErrorWith, IntoAs, OperationContext, ToStructError, UvsFrom, WrapStructError};
 use orion_variate::{EnvDict, EnvEvaluable};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -51,7 +49,7 @@ pub fn parse_and_validate_only(
     dict: &EnvDict,
 ) -> OrionConfResult<Vec<wp_specs::CoreSourceSpec>> {
     let wrapper: WpSourcesConfig =
-        WpSourcesConfig::env_parse_toml(config_str, dict).want("parse sources v2")?;
+        WpSourcesConfig::env_parse_toml(config_str, dict).doing("parse sources v2")?;
     validate_unique_source_keys(&wrapper)?;
     let mut out: Vec<wp_specs::CoreSourceSpec> = Vec::new();
     for s in wrapper.sources.into_iter() {
@@ -113,7 +111,7 @@ pub fn load_source_instances_from_str(
     dict: &EnvDict,
 ) -> OrionConfResult<Vec<SourceInstanceConf>> {
     let src_conf: WpSourcesConfig = WpSourcesConfig::env_parse_toml(config_str, dict)
-        .want("parse sources")?
+        .doing("parse sources")?
         .env_eval(dict);
     validate_unique_source_keys(&src_conf)?;
     let cnn_dict = load_connectors_for(start, dict)?;
@@ -126,8 +124,8 @@ pub fn load_source_instances_from_file(
     dict: &EnvDict,
 ) -> OrionConfResult<Vec<SourceInstanceConf>> {
     let content = std::fs::read_to_string(path)
-        .owe_conf_source()
-        .want("load sources config")
+        .into_as(ConfIOReason::from_conf(), "load sources config failed")
+        .doing("load sources config")
         .with(wpsrc_context(path))
         .with(path)?;
     let start = if path.is_dir() {
@@ -241,7 +239,7 @@ impl ConfigLoader for Vec<SourceInstanceConf> {
     fn load_from_str(content: &str, base: &Path, dict: &EnvDict) -> OrionConfResult<Self> {
         // 解析 TOML 并进行环境变量替换
         let src_conf: WpSourcesConfig = WpSourcesConfig::env_parse_toml(content, dict)
-            .want("parse sources")?
+            .doing("parse sources")?
             .env_eval(dict);
         validate_unique_source_keys(&src_conf)?;
 

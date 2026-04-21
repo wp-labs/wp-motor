@@ -182,7 +182,7 @@ impl SinkRuntime {
             .send_stat(mon_send)
             .await
             .owe_sys()
-            .want("sink stat")?;
+            .doing("sink stat")?;
         if self.backup_used {
             let backup_name = format!("{}_bak", self.name);
             if !self.backup_stat.has_pending_data() {
@@ -197,7 +197,7 @@ impl SinkRuntime {
                 .send_stat(mon_send)
                 .await
                 .owe_sys()
-                .want("back sink stat")?;
+                .doing("back sink stat")?;
         }
         Ok(())
     }
@@ -238,7 +238,7 @@ impl SinkRuntime {
                 SinkDataEnum::FFV(dat) => {
                     let raw = TextFmt::Raw
                         .gen_data(dat.clone())
-                        .map_err(|e| e.with("ffv").want("render raw payload"))?;
+                        .map_err(|e| e.with("ffv").doing("render raw payload"))?;
                     match raw {
                         RawData::String(line) => self.primary.sink_str(&line).await,
                         RawData::Bytes(bytes) => self.primary.sink_bytes(&bytes).await,
@@ -427,7 +427,7 @@ impl SinkRuntime {
             for unit in package.iter() {
                 let raw = TextFmt::Raw
                     .gen_data(unit.data().clone())
-                    .map_err(|e| e.with("ffv_batch").want("render raw payload"))
+                    .map_err(|e| e.with("ffv_batch").doing("render raw payload"))
                     .unwrap_or_else(|_| RawData::String("".to_string()));
                 match raw {
                     RawData::String(s) => raw_strings.push(s),

@@ -264,7 +264,7 @@ impl SourceWorker {
                     .send_stat(&self.mon_s)
                     .await
                     .owe_sys()
-                    .want("mon-stat")?;
+                    .doing("mon-stat")?;
             }
             // 外层根据“限速/等待”计算应休眠的时间，避免在数据路径处直接 sleep
             let sleep_dur = self.calc_sleep_duration(&total_round, &task_ctrl);
@@ -281,7 +281,7 @@ impl SourceWorker {
             .send_stat(&self.mon_s)
             .await
             .owe_sys()
-            .want("mon-stat")?;
+            .doing("mon-stat")?;
         Ok(())
     }
 

@@ -153,7 +153,7 @@ impl TcpServer {
         let listener = TcpListener::bind(&address).await.map_err(|e| {
             SourceReason::Disconnect(format!("failed to bind TCP socket to {}", address))
                 .to_err()
-                .with_source(e)
+                .with_std_source(e)
         })?;
 
         let local = listener

@@ -32,7 +32,7 @@ pub fn build_groups_v2(
                 OperationKind::LoadConfigFile,
             ))
             .with(sink_root)
-            .want("load business sink routes")?
+            .doing("load business sink routes")?
     {
         let g = conf.sink_group;
         if !crate::utils::fs::is_match(g.name().as_str(), &ctx.group_filters) {
@@ -56,7 +56,7 @@ pub fn build_groups_v2(
                 OperationKind::LoadConfigFile,
             ))
             .with(sink_root)
-            .want("load infra sink routes")?
+            .doing("load infra sink routes")?
     {
         let g = conf.sink_group;
         if !crate::utils::fs::is_match(g.name().as_str(), &ctx.group_filters) {

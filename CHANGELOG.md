@@ -9,9 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Error Handling/Diagnostics**: Expand structured metadata and hint propagation across config loading and source validation so CLI diagnostics rely more on typed error context and less on text heuristics
+- **Error Handling/orion-error 0.6.3**: Complete the mainline migration from legacy `owe_*` / `err_wrap(...)` error-conversion style to the new split model
+  - Use `wrap_as(...)` / `with_struct_source(...)` on structured-error boundaries
+  - Use `into_as(...)` or explicit `with_std_source(...)` on raw std/third-party error boundaries
+  - Replace transitional `want(...)` naming on touched paths with `doing(...)` for operation context wording
+- **wp-proj/wp-cli-core/wp-config**: Align project init, knowdb, source/sink observability, generator, and cleanup flows with the `orion-error 0.6.3` API surface and preserve structured source chains consistently
 
 ### Fixed
 - **Sources/CLI Errors**: Reject duplicate `[[sources]].key` values and improve diagnostics for unknown source kind, missing Kafka feature support, and schema-related configuration failures
+- **Error Handling/Convergence**: Remove remaining legacy `owe_conf_source(...)` / `owe_source(...)` / `err_wrap(...)` calls from production code paths and normalize them onto explicit structured-vs-raw conversion boundaries
+- **Diagnostics/Source Chains**: Fix several places that previously attached already-structured errors through raw-source paths, which could blur reason ownership or violate the new structured-source attachment rules
 
 ## [1.20.4] - 2026-04-20
 
