@@ -54,7 +54,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.20.5" # @gxl:set(version)
+version = "1.20.6" # @gxl:set(version)
 edition = "2024"
 license = "Apache-2.0"
 

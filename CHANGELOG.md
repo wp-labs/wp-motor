@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.6] - 2026-04-24
+
+### Fixed
+- **Error Handling/Structured Errors**: 修复多个配置与项目管理链路把 `StructError` 当作普通 source 再次挂接而触发 panic 的问题，相关路径现在按结构化错误方式转换并保留可读诊断信息。
+- **Observability/KnowDB**: 修复 `wpsrc.toml` 统计、knowdb 配置解析与 source 构建等路径在遇到无效 TOML 或配置错误时可能 panic 的问题；现在会稳定返回结构化错误。
+- **wp-proj/Config Loading**: 修复 `Knowledge` 错误转换、`load_warp_engine_confs()` 以及模型路径回退相关测试场景中的 panic，非法 `wparse.toml` 与缺失配置会按预期返回错误或走回退逻辑。
+
 ## [1.20.5] - 2026-04-24
 
 ### Fixed

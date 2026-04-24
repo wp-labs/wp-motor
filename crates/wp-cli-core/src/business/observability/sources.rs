@@ -53,9 +53,7 @@ fn load_wpsrc_sources(
     };
 
     let parsed: WpSourcesConfig = WpSourcesConfig::env_parse_toml(&content, dict)
-        .owe_conf_source()
-        .with(&path)
-        .want("parse wpsrc config")?
+        .map_err(|e| e.with(&path).want("parse wpsrc config"))?
         .env_eval(dict);
     let instances = wp_conf::sources::load_source_instances_from_file(&path, dict)
         .with(&path)
@@ -84,9 +82,7 @@ fn load_wpsrc_config(
         return Ok(None);
     };
     let parsed: WpSourcesConfig = WpSourcesConfig::env_parse_toml(&content, dict)
-        .owe_conf_source()
-        .with(&path)
-        .want("parse wpsrc config")?
+        .map_err(|e| e.with(&path).want("parse wpsrc config"))?
         .env_eval(dict);
     Ok(Some((path, parsed)))
 }
