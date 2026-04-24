@@ -337,7 +337,7 @@ encoding_rs = "0.8"
 
 # --- Cryptography ---
 orion_conf = { version = "0.5", features = ["yaml", "toml"] }
-orion-sec = "0.4"
+orion-sec = "0.5"
 orion-variate = "0.11"
 
 # --- Testing ---
