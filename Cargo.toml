@@ -336,7 +336,7 @@ md5 = "0.8"
 encoding_rs = "0.8"
 
 # --- Cryptography ---
-orion_conf = { version = "0.5", features = ["yaml", "toml"] }
+orion_conf = { version = "0.6", features = ["yaml", "toml"] }
 orion-sec = "0.4"
 orion-variate = "0.11"
 
