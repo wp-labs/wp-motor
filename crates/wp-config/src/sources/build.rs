@@ -17,8 +17,8 @@ pub fn parse_and_validate_only(
     config_str: &str,
     dict: &EnvDict,
 ) -> OrionConfResult<Vec<wp_specs::CoreSourceSpec>> {
-    let wrapper: WpSourcesConfig =
-        WpSourcesConfig::env_parse_toml(config_str, dict).map_err(|e| e.want("parse sources v2"))?;
+    let wrapper: WpSourcesConfig = WpSourcesConfig::env_parse_toml(config_str, dict)
+        .map_err(|e| e.want("parse sources v2"))?;
     let mut out: Vec<wp_specs::CoreSourceSpec> = Vec::new();
     for s in wrapper.sources.into_iter() {
         if !s.enable.unwrap_or(true) {
