@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.20.4 Unreleased]
+## [1.20.5] - 2026-04-24
+
+### Fixed
+- **Monitoring/Hot Reload**: 修复热加载后监控统计数据不再输出的问题；现在 engine reload 之后，统计与监控链路会继续正常产出数据，不会出现 reload 成功但统计面板长期无数据的情况。
+- **Stats/Runtime**: 调整 monitor、service、recovery 与 rule/sample 生成相关链路，补齐热加载后统计任务继续运行所需的状态衔接。
+
+### Changed
+- **Code Quality**: 清理相关模块中的 clippy 告警，收敛统计与 dispatcher 附近的实现细节，不改变对外行为。
+
+## [1.20.4] - 2026-04-19
 
 ### Added
 - **Error Handling/Docs**: Add structured error-system design and review checklist documentation
