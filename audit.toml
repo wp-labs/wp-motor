@@ -1,2 +1,10 @@
 [advisories]
-ignore = []
+ignore = [
+    # Transitive only via wp-knowledge -> sqlx-mysql -> rsa.
+    # sqlx-mysql uses RSA public-key encryption for MySQL auth without handling
+    # RSA private keys in this workspace; RUSTSEC-2023-0071 (Marvin) targets
+    # private-key timing leakage. Temporary exception approved on 2026-04-25 and
+    # must be reviewed by 2026-07-25, or earlier if sqlx-mysql/wp-knowledge can
+    # drop the dependency or upstream ships a patched constant-time path.
+    "RUSTSEC-2023-0071",
+]
