@@ -94,9 +94,7 @@ impl SinkDispatcher {
         let outputs = om_ins.transform_batch_ref_async(&records, cache).await;
         let mut successes = Vec::with_capacity(outputs.len());
         let mut failures = Vec::new();
-        for ((event_id, meta, original_len), output) in
-            contexts.into_iter().zip(outputs.into_iter())
-        {
+        for ((event_id, meta, original_len), output) in contexts.into_iter().zip(outputs) {
             if output.items.is_empty() {
                 let mut failed = output.clone();
                 Self::annotate_err(

@@ -205,6 +205,7 @@ impl WpApp {
             },
         )
         .await?;
+        let next_monitor_sink = eng_res.infra.as_ref().map(|i| i.moni_agent());
         let processing = start_processing_tasks(
             &self.run_args,
             eng_res,
@@ -244,6 +245,7 @@ impl WpApp {
                 .take()
                 .expect("pending processing should exist before install"),
         );
+        runtime.replace_monitor_sink(next_monitor_sink);
         runtime.resume_picker().await?;
         info_ctrl!(
             "runtime reload P0 done request_id={} force_replaced={}",

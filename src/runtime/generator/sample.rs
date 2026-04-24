@@ -4,7 +4,7 @@ use crate::orchestrator::config::models::stat_reqs_from;
 use crate::runtime::actor::TaskGroup;
 use crate::runtime::actor::signal::ShutdownCmd;
 use crate::runtime::generator::types::GenGRA;
-use crate::runtime::supervisor::monitor::ActorMonitor;
+use crate::runtime::supervisor::monitor::{ActorMonitor, MonitorSinkHandle};
 use crate::sinks::SinkBackendType;
 use crate::stat::metric_collect::MetricCollectors;
 use orion_conf::ErrorWith;
@@ -304,8 +304,12 @@ pub async fn run_sample_direct(
 
     // 监控：启动监控任务
     let moni_group = TaskGroup::new("moni", ShutdownCmd::Timeout(200));
-    let mut actor_mon =
-        ActorMonitor::new(moni_group.subscribe(), None, gar.stat_print, gar.stat_sec);
+    let mut actor_mon = ActorMonitor::new(
+        moni_group.subscribe(),
+        MonitorSinkHandle::new(None),
+        gar.stat_print,
+        gar.stat_sec,
+    );
     let mon_s = actor_mon.send_agent();
     let stat_reqs = stat_reqs_from(&StatConf::gen_default());
     let sink_reqs = stat_reqs.get_requ_items(StatStage::Sink);

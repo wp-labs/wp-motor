@@ -193,7 +193,7 @@ impl SinkDispatcher {
                             self.unit_pool.recycle(units);
                             None
                         } else {
-                            let pkg = SinkPackage::from_units(units.into_iter());
+                            let pkg = SinkPackage::from_units(units);
                             let name_snapshot = sink_rt.name.clone();
                             sink_rt.send_package_to_sink(&pkg, Some(bad_s), mon).await?;
                             let vec_back = pkg.into_inner();

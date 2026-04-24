@@ -7,6 +7,7 @@ use crate::runtime::actor::{TaskGroup, TaskManager};
 use crate::runtime::parser::workflow::{ParseDispatchRouter, ParseWorkerSender};
 use crate::runtime::reload_drain::{ReloadDrainBus, ReloadDrainTracker};
 use crate::runtime::supervisor::maintenance::ActMaintainer;
+use crate::runtime::supervisor::monitor::MonitorSinkHandle;
 use crate::runtime::tasks::{
     start_acceptor_tasks, start_data_sinks, start_infra_working, start_moni_tasks,
     start_parser_tasks_frames, start_picker_tasks,
@@ -75,6 +76,7 @@ pub struct EngineRuntime {
     task_manager: TaskManager,
     parse_router: ParseDispatchRouter,
     moni_send: MonSend,
+    monitor_sink: MonitorSinkHandle,
     reload_timeout: Duration,
     active_processing: ReloadDrainTracker,
     detached_processing_groups: Vec<DetachedProcessingGroup>,
@@ -85,6 +87,7 @@ impl EngineRuntime {
         task_manager: TaskManager,
         parse_router: ParseDispatchRouter,
         moni_send: MonSend,
+        monitor_sink: MonitorSinkHandle,
         reload_timeout: Duration,
         active_processing: ReloadDrainTracker,
     ) -> Self {
@@ -92,6 +95,7 @@ impl EngineRuntime {
             task_manager,
             parse_router,
             moni_send,
+            monitor_sink,
             reload_timeout,
             active_processing,
             detached_processing_groups: Vec::new(),
@@ -108,6 +112,10 @@ impl EngineRuntime {
 
     pub fn reload_timeout(&self) -> Duration {
         self.reload_timeout
+    }
+
+    pub fn replace_monitor_sink(&self, sink: Option<crate::facade::test_helpers::SinkTerminal>) {
+        self.monitor_sink.replace(sink);
     }
 
     pub fn parse_router_snapshot(&self) -> Vec<ParseWorkerSender> {
@@ -376,7 +384,7 @@ pub async fn start_warp_service(
     crate::sinks::set_global_rate_limit_rps(args.speed_limit);
 
     // 启动监控任务
-    let (moni_send, moni_group) = start_moni_tasks(&args, &resource, &stat_reqs);
+    let (moni_send, moni_group, monitor_sink) = start_moni_tasks(&args, &resource, &stat_reqs);
     crate::knowledge::attach_stats_monitor_sender(moni_send.clone());
 
     // 准备收集与接受器清单（先取接受器，避免被 `get_all_sources` 消费源结构）
@@ -414,6 +422,7 @@ pub async fn start_warp_service(
         task_manager,
         parse_router,
         moni_send,
+        monitor_sink,
         Duration::from_millis(args.reload_timeout_ms),
         active_processing,
     ))
@@ -652,6 +661,7 @@ mod tests {
             task_manager,
             parse_router,
             mon_tx,
+            MonitorSinkHandle::default(),
             TEST_RELOAD_TIMEOUT,
             active_processing,
         );
@@ -752,6 +762,7 @@ mod tests {
             task_manager,
             parse_router,
             mon_tx,
+            MonitorSinkHandle::default(),
             TEST_RELOAD_TIMEOUT,
             active_processing,
         );
@@ -805,6 +816,7 @@ mod tests {
             task_manager,
             parse_router,
             mon_tx,
+            MonitorSinkHandle::default(),
             TEST_RELOAD_TIMEOUT,
             active_processing,
         );
@@ -862,6 +874,7 @@ mod tests {
             task_manager,
             parse_router,
             mon_tx,
+            MonitorSinkHandle::default(),
             TEST_RELOAD_TIMEOUT,
             active_processing,
         );
@@ -905,6 +918,7 @@ mod tests {
             task_manager,
             parse_router,
             mon_tx,
+            MonitorSinkHandle::default(),
             TEST_RELOAD_TIMEOUT,
             active_processing,
         );

@@ -167,7 +167,7 @@ impl SinkDispatcher {
             if let Some(units) = per_sink_units.remove(&key)
                 && !units.is_empty()
             {
-                let batch = SinkPackage::from_units(units.into_iter());
+                let batch = SinkPackage::from_units(units);
                 rt.send_package_to_sink(&batch, bad_s, mon).await?;
             }
         }

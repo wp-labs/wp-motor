@@ -183,7 +183,7 @@ impl StatCollector {
             data.select_nth_unstable_by(keep, |a, b| b.stat.total.cmp(&a.stat.total));
             data.truncate(keep);
         }
-        data.sort_unstable_by(|a, b| b.stat.total.cmp(&a.stat.total));
+        data.sort_unstable_by_key(|b| std::cmp::Reverse(b.stat.total));
         let ins = StatReport::new(self.require.clone(), Some(self.target.clone()), data);
         trace_mtrc!("{}", ins);
         ins

@@ -171,17 +171,9 @@ fn to_sql_piece(s: &str, params: &mut HashMap<String, CondAccessor>) -> String {
     st.to_string()
 }
 
-/// Fast path for `1 = ip4_between(read(x), a, b)` pattern.
-/// Converts to range comparison without going through the generic cond parser.
 fn fast_path_ip4_between_eq_one(s: &str) -> Option<(String, HashMap<String, CondAccessor>)> {
     let t = s.trim();
-    let t = if let Some(rest) = t.strip_prefix("1=") {
-        rest
-    } else if let Some(rest) = t.strip_prefix("1 =") {
-        rest
-    } else {
-        return None;
-    };
+    let t = t.strip_prefix("1=").or_else(|| t.strip_prefix("1 ="))?;
     let t = t.trim_start();
     if !t.starts_with("ip4_between(") {
         return None;

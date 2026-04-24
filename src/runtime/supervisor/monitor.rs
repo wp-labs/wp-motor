@@ -3,13 +3,13 @@ use crate::sinks::ProcMeta;
 use crate::sinks::SinkRecUnit;
 
 use std::collections::BTreeMap;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use crate::core::sinks::sync_sink::RecSyncSink;
 use crate::runtime::actor::constants::ACTOR_IDLE_TICK_MS;
 use tokio::time::{MissedTickBehavior, interval, sleep};
 
-use orion_error::ErrorOwe;
 use wp_stat::ReportVariant;
 use wp_stat::StatReq;
 
@@ -26,20 +26,48 @@ use wp_stat::StatStage;
 const MONITOR_CHANNEL_CAP: usize = 4096;
 const ENABLE_BACKLOG_JUDGEMENT: bool = false;
 
+#[derive(Clone, Default)]
+pub struct MonitorSinkHandle {
+    sink: Arc<RwLock<Option<SinkTerminal>>>,
+}
+
+impl MonitorSinkHandle {
+    pub fn new(sink: Option<SinkTerminal>) -> Self {
+        Self {
+            sink: Arc::new(RwLock::new(sink)),
+        }
+    }
+
+    pub fn replace(&self, sink: Option<SinkTerminal>) {
+        let mut guard = self
+            .sink
+            .write()
+            .expect("monitor sink handle poisoned on replace");
+        *guard = sink;
+    }
+
+    pub fn current(&self) -> Option<SinkTerminal> {
+        self.sink
+            .read()
+            .expect("monitor sink handle poisoned on read")
+            .clone()
+    }
+}
+
 pub struct ActorMonitor {
     mon_r: MonRecv,
     mon_s: MonSend,
     cmd_r: CmdSubscriber,
     stat_sec: usize,
     stat_print: bool,
-    sink: Option<SinkTerminal>,
+    sink: MonitorSinkHandle,
     //actions: Vec<Action>,
 }
 
 impl ActorMonitor {
     pub fn new(
         cmd_r: CmdSubscriber,
-        sink: Option<SinkTerminal>,
+        sink: MonitorSinkHandle,
         stat_print: bool,
         stat_sec: usize,
         //actions: Vec<Action>,
@@ -147,16 +175,18 @@ impl ActorMonitor {
                         wparse_stat.slice.show_table();
                         println!("sum stat:");
                         wparse_stat.total.show_table();
-                }
-                if run_ctrl.not_alone() {
-                    let tdc_vec = wparse_stat.slice.conv_to_tdc();
-                    if let Some(sink) = &self.sink {
-                        let units: Vec<SinkRecUnit> = tdc_vec
-                            .into_iter()
-                            .map(|tdc| SinkRecUnit::new(0, ProcMeta::Null, tdc.into()))
-                            .collect();
-                        sink.send_to_sink_batch(units).owe_res()?;
                     }
+                    if run_ctrl.not_alone() {
+                        let tdc_vec = wparse_stat.slice.conv_to_tdc();
+                        if let Some(sink) = self.sink.current() {
+                            let units: Vec<SinkRecUnit> = tdc_vec
+                                .into_iter()
+                                .map(|tdc| SinkRecUnit::new(0, ProcMeta::Null, tdc.into()))
+                                .collect();
+                            if let Err(e) = sink.send_to_sink_batch(units) {
+                                error_data!("sink error:{}", e);
+                            }
+                        }
                     }
                     wparse_stat.sum_up();
                 }
@@ -217,6 +247,84 @@ fn merge_collectors_to_slice(
 ) {
     for collector in collectors.items.iter_mut() {
         slice.merge_slice(ReportVariant::Stat(collector.collect_stat()));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime::actor::TaskGroup;
+    use crate::runtime::actor::signal::ShutdownCmd;
+    use tokio::sync::mpsc;
+    use tokio::time::Duration;
+    use wp_stat::{StatRecorder, StatReq, StatTarget};
+
+    #[tokio::test]
+    async fn monitor_sink_handle_can_be_replaced() {
+        let (old_tx, mut old_rx) = mpsc::channel(4);
+        let (new_tx, mut new_rx) = mpsc::channel(4);
+        let sink = MonitorSinkHandle::new(Some(SinkTerminal::Channel(old_tx)));
+        let group = TaskGroup::new("monitor-test", ShutdownCmd::Immediate);
+        let mut monitor = ActorMonitor::new(group.subscribe(), sink.clone(), false, 1);
+
+        let mon_send = monitor.send_agent();
+        let task = tokio::spawn(async move {
+            monitor
+                .stat_proc(vec![StatReq {
+                    stage: wp_stat::StatStage::Sink,
+                    name: "monitor-test".to_string(),
+                    target: StatTarget::All,
+                    collect: Vec::new(),
+                    max: 8,
+                }])
+                .await
+                .expect("monitor stat proc");
+        });
+
+        mon_send
+            .try_send(wp_stat::ReportVariant::Stat({
+                let mut collector = wp_stat::StatCollector::new(
+                    "monitor/test".to_string(),
+                    StatReq::simple_test(StatTarget::All, Vec::new(), 4),
+                );
+                collector.record_task("monitor/test", ());
+                collector.collect_stat()
+            }))
+            .expect("send first stat");
+
+        let first = tokio::time::timeout(Duration::from_secs(2), old_rx.recv())
+            .await
+            .expect("old sink should receive stat")
+            .expect("old sink package");
+        assert!(
+            !first.is_empty(),
+            "old sink should receive non-empty package"
+        );
+
+        sink.replace(Some(SinkTerminal::Channel(new_tx)));
+
+        mon_send
+            .try_send(wp_stat::ReportVariant::Stat({
+                let mut collector = wp_stat::StatCollector::new(
+                    "monitor/test".to_string(),
+                    StatReq::simple_test(StatTarget::All, Vec::new(), 4),
+                );
+                collector.record_task("monitor/test", ());
+                collector.collect_stat()
+            }))
+            .expect("send second stat");
+
+        let second = tokio::time::timeout(Duration::from_secs(2), new_rx.recv())
+            .await
+            .expect("new sink should receive stat")
+            .expect("new sink package");
+        assert!(
+            !second.is_empty(),
+            "new sink should receive non-empty package after replacement"
+        );
+
+        group.cmd_stop_now().await.expect("stop monitor");
+        task.await.expect("monitor task join");
     }
 }
 

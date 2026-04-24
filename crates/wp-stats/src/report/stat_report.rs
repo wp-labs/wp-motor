@@ -161,7 +161,7 @@ impl Mergeable<StatReport> for StatReport {
             self.data.truncate(keep);
         }
         self.data
-            .sort_unstable_by(|a, b| b.stat.total.cmp(&a.stat.total));
+            .sort_unstable_by_key(|b| std::cmp::Reverse(b.stat.total));
     }
 }
 

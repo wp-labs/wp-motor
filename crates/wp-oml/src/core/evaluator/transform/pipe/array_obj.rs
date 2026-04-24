@@ -23,30 +23,20 @@ impl ValueProcessor for Nth {
 impl ValueProcessor for SkipEmpty {
     fn value_cacu(&self, in_val: DataField) -> DataField {
         match in_val.get_value() {
-            Value::Array(x) => {
-                if x.is_empty() {
-                    return DataField::from_ignore(in_val.get_name());
-                }
+            Value::Array(x) if x.is_empty() => {
+                return DataField::from_ignore(in_val.get_name());
             }
-            Value::Digit(x) => {
-                if x.eq(&0) {
-                    return DataField::from_ignore(in_val.get_name());
-                }
+            Value::Digit(x) if x.eq(&0) => {
+                return DataField::from_ignore(in_val.get_name());
             }
-            Value::Float(x) => {
-                if x.eq(&0.0) {
-                    return DataField::from_ignore(in_val.get_name());
-                }
+            Value::Float(x) if x.eq(&0.0) => {
+                return DataField::from_ignore(in_val.get_name());
             }
-            Value::Chars(x) => {
-                if x.is_empty() {
-                    return DataField::from_ignore(in_val.get_name());
-                }
+            Value::Chars(x) if x.is_empty() => {
+                return DataField::from_ignore(in_val.get_name());
             }
-            Value::Obj(x) => {
-                if x.is_empty() {
-                    return DataField::from_ignore(in_val.get_name());
-                }
+            Value::Obj(x) if x.is_empty() => {
+                return DataField::from_ignore(in_val.get_name());
             }
             _ => {}
         }
