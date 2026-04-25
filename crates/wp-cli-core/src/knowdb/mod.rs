@@ -1,5 +1,4 @@
 use orion_conf::EnvTomlLoad;
-use orion_conf::ErrorOwe;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
 use orion_error::{ErrorOweSource, ErrorWith, ToStructError, UvsFrom};
 use orion_variate::EnvDict;
@@ -218,9 +217,7 @@ pub fn check(work_root: &str, dict: &EnvDict) -> OrionConfResult<CheckReport> {
         .with(&conf_path)
         .want("read knowdb config")?;
     let conf: KnowDbConf = KnowDbConf::env_parse_toml(&txt, dict)
-        .owe_conf()
-        .with(&conf_path)
-        .want("parse knowdb config")?;
+        .map_err(|e| e.with(&conf_path).want("parse knowdb config"))?;
     if conf.version != 2 {
         return Err(ConfIOReason::from_validation()
             .to_err()

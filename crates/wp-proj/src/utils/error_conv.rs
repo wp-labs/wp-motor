@@ -106,10 +106,10 @@ impl<T, E: std::fmt::Display> ResultExt<T, E> for Result<T, E> {
     {
         self.map_err(|e| {
             let detail = format!("{}: {}", context, e);
-            RunReason::from_conf()
-                .to_err()
-                .with_detail(detail)
-                .with_source(e)
+            // Generic conversion cannot safely distinguish StructError from ordinary
+            // std::error::Error values, so keep the chain text in detail instead of
+            // attaching a potentially-structured source and triggering a panic.
+            RunReason::from_conf().to_err().with_detail(detail)
         })
     }
 
@@ -119,11 +119,10 @@ impl<T, E: std::fmt::Display> ResultExt<T, E> for Result<T, E> {
         F: FnOnce(&E) -> String,
     {
         self.map_err(|e| {
-            let detail = f(&e);
-            RunReason::from_conf()
-                .to_err()
-                .with_detail(detail)
-                .with_source(e)
+            let detail = format!("{}: {}", f(&e), e);
+            // Keep source-chain text in detail for generic StdError conversions.
+            // Structured errors must be wrapped explicitly at typed boundaries.
+            RunReason::from_conf().to_err().with_detail(detail)
         })
     }
 }

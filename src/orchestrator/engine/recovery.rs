@@ -8,7 +8,7 @@ use crate::runtime::reload_drain::ReloadDrainBus;
 use crate::runtime::sink::act_sink::SinkService;
 use crate::runtime::sink::infrastructure::InfraSinkService;
 use crate::runtime::supervisor::maintenance::ActMaintainer;
-use crate::runtime::supervisor::monitor::ActorMonitor;
+use crate::runtime::supervisor::monitor::{ActorMonitor, MonitorSinkHandle};
 use crate::runtime::tasks::{start_data_sinks, start_infra_working};
 use std::sync::Arc;
 use wp_conf::RunArgs;
@@ -30,7 +30,7 @@ pub async fn recover_main(
     let mut infra_group = TaskGroup::new("infra", ShutdownCmd::Timeout(200));
     let mut actor_mon = ActorMonitor::new(
         mon_group.subscribe(),
-        Some(infra_sink.moni_agent()),
+        MonitorSinkHandle::new(Some(infra_sink.moni_agent())),
         true,
         args.stat_sec,
     );

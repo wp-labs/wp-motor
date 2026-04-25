@@ -7,7 +7,7 @@ use crate::sinks::SinkGroupAgent;
 use oml::core::ConfADMExt;
 use oml::language::{DataModel, ObjModel};
 use orion_conf::{ErrorWith, UvsFrom};
-use orion_error::{ErrorConv, ErrorOwe, OperationContext, ToStructError};
+use orion_error::{ErrorConv, ErrorOwe, ErrorWrap, OperationContext, ToStructError};
 use orion_variate::EnvDict;
 use wp_conf::engine::EngineConfig;
 use wp_error::RunReason;
@@ -84,7 +84,7 @@ impl ResManager {
         let infra_d = Path::new(sink_root).join("infra.d");
         if busin_d.exists() || infra_d.exists() {
             let confs = wp_conf::sinks::load_business_route_confs_with(sink_root, &Lookup, dict)
-                .err_conv()
+                .err_wrap(RunReason::from_conf())
                 .with(sink_root)
                 .want("load sink route confs")?;
             for mut conf in confs {

@@ -18,7 +18,7 @@ pub fn parse_and_validate_only(
     dict: &EnvDict,
 ) -> OrionConfResult<Vec<wp_specs::CoreSourceSpec>> {
     let wrapper: WpSourcesConfig = WpSourcesConfig::env_parse_toml(config_str, dict)
-        .want("parse sources v2")?;
+        .map_err(|e| e.want("parse sources v2"))?;
     let mut out: Vec<wp_specs::CoreSourceSpec> = Vec::new();
     for s in wrapper.sources.into_iter() {
         if !s.enable.unwrap_or(true) {
@@ -79,7 +79,7 @@ pub fn load_source_instances_from_str(
     dict: &EnvDict,
 ) -> OrionConfResult<Vec<SourceInstanceConf>> {
     let src_conf: WpSourcesConfig = WpSourcesConfig::env_parse_toml(config_str, dict)
-        .want("parse sources")?
+        .map_err(|e| e.want("parse sources"))?
         .env_eval(dict);
     let cnn_dict = load_connectors_for(start, dict)?;
     build_source_instances(src_conf, &cnn_dict)
@@ -185,7 +185,7 @@ impl ConfigLoader for Vec<SourceInstanceConf> {
     fn load_from_str(content: &str, base: &Path, dict: &EnvDict) -> OrionConfResult<Self> {
         // 解析 TOML 并进行环境变量替换
         let src_conf: WpSourcesConfig = WpSourcesConfig::env_parse_toml(content, dict)
-            .want("parse sources")?
+            .map_err(|e| e.want("parse sources"))?
             .env_eval(dict);
 
         // 加载 connectors

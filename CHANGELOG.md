@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.5 Unreleased]
+
+### Added
+- **Audit**: 新增 `.cargo/audit.toml`，忽略 RUSTSEC-2023-0071（rsa crate Marvin Attack 时序侧信道 — 仅影响 loopback TLS 且默认关闭，实际风险低，计划 2026-07-25 再评估）。
+
+### Removed
+- **Patches**: 移除未使用的 `include-flate-codegen` patch 及相关目录。
+
+
+## [1.21.4] - 2026-04-22
+
+### Fixed
+- **Error Handling/Config Loading**: 修复 v1.21.3 引入的 `owe_conf_source` 在加载损坏 TOML 文件时触发 panic 的回归问题，恢复为 `err_conv` 链式错误转换。
+
+### Changed
+- **Version Control**: 从仓库中移除 `Cargo.lock`。
+
+
+## [1.21.3] - 2026-04-22
+
+### Added
+- **Error System Docs**: 新增结构化错误系统设计文档与 review 清单。
+
+### Changed
+- **Error Diagnostics**: 重构错误诊断输出，改进嵌套错误的 reason/detail/root_cause 提取逻辑，支持 `ConfigError`、`Core` 等多种错误格式的详情展示，CLI 报错信息更完整可读。
+- **Config Schema**: 配置解析开启 `deny_unknown_fields`，拼写错误的配置键将明确报错而非静默忽略。
+- **Error Handling**: 统一 observability、config loading、project management 等链路的错误转换风格，错误信息附带路径上下文。
+
+### Fixed
+- **Runtime/Stats**: 修复统计切片过多导致的反压问题。
+- **Config/Tests**: 修复 observability validate 测试与严格 config schema 的兼容性。
+
+
+## [1.21.2] - 2026-04-22
+
+### Fixed
+- **OML/SQL**: 修复 SQL `IN (...)` 子句的参数绑定，`take(field)` 与临时变量可正确转换为 `IN` 绑定参数；补充对应测试用例。
+
+
 ## [1.21.1] - 2026-04-21
 
 ### Fixed
@@ -21,7 +60,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **OML/Take**: 修复 `take(...)` 只能从源记录取值的问题，现支持消费当前目标记录中已生成的字段，使前序 OML 字段可以被后续 `take(...)` 正确移动复用。
 - **OML/SQL Parser**: 修复严格 SQL 模式下对 `group_concat(distinct ...)` 这类聚合表达式的校验与解析，并支持 `IN (@sip, @dip)`、`in(@sip, @dip)` 这类引用参数写法。
-## [1.20.4 Unreleased]
+## [1.20.6] - 2026-04-24
+
+### Fixed
+- **Error Handling/Structured Errors**: 修复多个配置与项目管理链路把 `StructError` 当作普通 source 再次挂接而触发 panic 的问题，相关路径现在按结构化错误方式转换并保留可读诊断信息。
+- **Observability/KnowDB**: 修复 `wpsrc.toml` 统计、knowdb 配置解析与 source 构建等路径在遇到无效 TOML 或配置错误时可能 panic 的问题；现在会稳定返回结构化错误。
+- **wp-proj/Config Loading**: 修复 `Knowledge` 错误转换、`load_warp_engine_confs()` 以及模型路径回退相关测试场景中的 panic，非法 `wparse.toml` 与缺失配置会按预期返回错误或走回退逻辑。
+
+## [1.20.5] - 2026-04-24
+
+### Fixed
+- **Monitoring/Hot Reload**: 修复热加载后监控统计数据不再输出的问题；现在 engine reload 之后，统计与监控链路会继续正常产出数据，不会出现 reload 成功但统计面板长期无数据的情况。
+- **Stats/Runtime**: 调整 monitor、service、recovery 与 rule/sample 生成相关链路，补齐热加载后统计任务继续运行所需的状态衔接。
+
+### Changed
+- **Code Quality**: 清理相关模块中的 clippy 告警，收敛统计与 dispatcher 附近的实现细节，不改变对外行为。
+
+## [1.20.4] - 2026-04-19
 
 ### Added
 - **Error Handling/Docs**: Add structured error-system design and review checklist documentation

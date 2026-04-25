@@ -1,7 +1,7 @@
 use crate::orchestrator::engine::resource::EngineResource;
 use crate::runtime::actor::TaskGroup;
 use crate::runtime::actor::signal::ShutdownCmd;
-use crate::runtime::supervisor::monitor::ActorMonitor;
+use crate::runtime::supervisor::monitor::{ActorMonitor, MonitorSinkHandle};
 use crate::stat::MonSend;
 use wp_conf::RunArgs;
 use wp_stat::StatRequires;
@@ -12,15 +12,15 @@ pub fn start_moni_tasks(
     args: &RunArgs,
     resource: &EngineResource,
     stat_reqs: &StatRequires,
-) -> (MonSend, TaskGroup) {
+) -> (MonSend, TaskGroup, MonitorSinkHandle) {
     let mut moni_group = TaskGroup::new("monitor", ShutdownCmd::Immediate);
     // 为与旧版 start_warp_service 对齐，这里统计全阶段（Pick/Parse/Sink/…）
     let reqs = stat_reqs.get_all().clone();
     // 若存在 infra，则与旧版一致，将监控数据写入 infra 的 moni sink；否则为 None
-    let moni_sink = resource.infra.as_ref().map(|i| i.moni_agent());
+    let moni_sink = MonitorSinkHandle::new(resource.infra.as_ref().map(|i| i.moni_agent()));
     let mut monitor = ActorMonitor::new(
         moni_group.subscribe(),
-        moni_sink,
+        moni_sink.clone(),
         args.stat_print,
         args.stat_sec,
     );
@@ -39,5 +39,5 @@ pub fn start_moni_tasks(
         resource.acceptor_count()
     );
 
-    (mon_send, moni_group)
+    (mon_send, moni_group, moni_sink)
 }
