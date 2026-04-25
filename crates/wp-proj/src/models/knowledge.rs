@@ -59,7 +59,10 @@ impl Knowledge {
     /// - fail: 未通过检查的表数
     /// - tables: 每个表的详细检查结果
     pub fn check(&self, work_root: &str, dict: &orion_variate::EnvDict) -> RunResult<CheckReport> {
-        wrap_knowledge_err(wp_cli_core::knowdb::check(work_root, dict), "知识库检查失败")
+        wrap_knowledge_err(
+            wp_cli_core::knowdb::check(work_root, dict),
+            "知识库检查失败",
+        )
     }
 
     /// 清理知识库数据
