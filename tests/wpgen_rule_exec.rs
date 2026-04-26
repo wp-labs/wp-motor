@@ -58,13 +58,11 @@ file = "out.dat"
 "#;
     write_file(cdir.join("file_json_sink.toml"), connectors);
 
-    // New-format config: rule mode; explicitly set output.connect to file_json_sink
+    // New-format config: explicitly set output.connect to file_json_sink
     let wpgen_toml = r#"version = "1.0"
 
 [generator]
-mode = "rule"
 count = 8
-duration_secs = 0
 speed = 100
 parallel = 2
 

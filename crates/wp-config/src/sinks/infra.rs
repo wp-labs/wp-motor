@@ -138,17 +138,13 @@ impl Default for InfraSinkConf {
 #[cfg(test)]
 mod tests {
     use anyhow::Result as AnyResult;
-    use std::fs::remove_file;
-    use std::path::Path;
 
     use crate::utils::save_data;
 
     #[test]
     fn test_infra_conf() -> AnyResult<()> {
-        let conf_path = "./temp/framework.toml";
-        if Path::new(conf_path).exists() {
-            remove_file(conf_path)?;
-        }
+        let temp_dir = tempfile::tempdir()?;
+        let conf_path = temp_dir.path().join("framework.toml");
         // Write a minimal, known-good framework template
         let s = r#"[defaults]
 [defaults.expect]
@@ -201,7 +197,7 @@ fmt = "raw"
 target = "file"
 path = "./out/error.dat"
 "#;
-        save_data(Some(s.to_string()), conf_path, false)?;
+        save_data(Some(s.to_string()), &conf_path, false)?;
         Ok(())
     }
 }

@@ -18,6 +18,7 @@ fn create_valid_sink_env() -> (TempDir, PathBuf) {
     // Create directory structure
     fs::create_dir_all(root.join("connectors/sink.d")).unwrap();
     fs::create_dir_all(root.join("models/sinks/business.d")).unwrap();
+    fs::create_dir_all(root.join("data/out_dat")).unwrap();
 
     // Create connector definition
     fs::write(

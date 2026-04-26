@@ -7,6 +7,9 @@ pub struct Cell {
     pub ok: bool,
     /// 错误消息（如果检查失败）
     pub msg: Option<String>,
+    /// 非阻断性告警（检查仍可通过）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 impl Default for Cell {
@@ -14,6 +17,7 @@ impl Default for Cell {
         Self {
             ok: true, // 默认为成功状态，未检查的组件不应显示为错误
             msg: None,
+            warnings: Vec::new(),
         }
     }
 }
@@ -24,6 +28,7 @@ impl Cell {
         Self {
             ok: true,
             msg: None,
+            warnings: Vec::new(),
         }
     }
 
@@ -32,6 +37,7 @@ impl Cell {
         Self {
             ok: false,
             msg: Some(msg),
+            warnings: Vec::new(),
         }
     }
 
@@ -48,6 +54,16 @@ impl Cell {
         Self {
             ok: true,
             msg: Some(msg),
+            warnings: Vec::new(),
+        }
+    }
+
+    /// 创建成功但带有非阻断性告警的检查结果
+    pub fn success_with_warnings(msg: String, warnings: Vec<String>) -> Self {
+        Self {
+            ok: true,
+            msg: Some(msg),
+            warnings,
         }
     }
 
@@ -83,6 +99,8 @@ pub struct Row {
     pub oml: Cell,
     /// 语义词典配置检查结果
     pub semantic_dict: Cell,
+    /// wpgen 配置检查结果
+    pub wpgen: Cell,
 }
 
 impl Row {
@@ -122,6 +140,9 @@ impl Row {
         if !self.semantic_dict.ok {
             count += 1;
         }
+        if !self.wpgen.ok {
+            count += 1;
+        }
         count
     }
 
@@ -148,6 +169,9 @@ impl Row {
             count += 1;
         }
         if self.semantic_dict.ok {
+            count += 1;
+        }
+        if self.wpgen.ok {
             count += 1;
         }
         count
@@ -187,6 +211,6 @@ mod tests {
         row.sources = Cell::failure("bad".into());
         row.oml = Cell::failure("boom".into());
         assert_eq!(row.count_failures(), 2);
-        assert_eq!(row.count_successes(), 5);
+        assert_eq!(row.count_successes(), 6);
     }
 }

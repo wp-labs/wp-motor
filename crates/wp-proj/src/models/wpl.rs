@@ -1,6 +1,7 @@
 use orion_conf::ErrorWith;
 use orion_error::{ErrorOwe, ToStructError, UvsFrom};
 use orion_variate::EnvDict;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use wp_conf::engine::EngineConfig;
@@ -113,24 +114,7 @@ impl Wpl {
                 let wpl_files: Vec<_> = glob_results.filter_map(Result::ok).collect();
 
                 if !wpl_files.is_empty() {
-                    // 使用找到的 .wpl 文件
-                    for fp in wpl_files {
-                        let raw = std::fs::read_to_string(&fp).unwrap_or_default();
-                        if raw.trim().is_empty() {
-                            return Err(RunReason::from_conf()
-                                .to_err()
-                                .with_detail(format!("wpl file is empty: {}", fp.display())));
-                        }
-                        let code = WplCode::build(fp.clone(), raw.as_str())
-                            .owe_conf()
-                            .with(&fp)
-                            .want("build wpl code")?;
-                        let _pkg = code
-                            .parse_pkg()
-                            .owe_conf()
-                            .with(&fp)
-                            .want("parse wpl package")?;
-                    }
+                    let (_pkg_names, _rule_names) = parse_and_collect_wpl_files(&wpl_files)?;
                     return Ok(CheckStatus::Suc);
                 }
             }
@@ -141,25 +125,91 @@ impl Wpl {
             return Ok(CheckStatus::Miss);
         }
 
-        for fp in rules {
-            let raw = std::fs::read_to_string(&fp).unwrap_or_default();
-            if raw.trim().is_empty() {
-                return Err(RunReason::from_conf()
-                    .to_err()
-                    .with_detail(format!("wpl file is empty: {}", fp.display())));
-            }
-            let code = WplCode::build(fp.clone(), raw.as_str())
-                .owe_rule()
-                .with(&fp)
-                .want("build wpl code")?;
-            let _pkg = code
-                .parse_pkg()
-                .owe_conf()
-                .with(&fp)
-                .want("parse wpl package")?;
-        }
+        let (_pkg_names, _rule_names) = parse_and_collect_wpl_files(&rules)?;
         Ok(CheckStatus::Suc)
     }
+}
+
+/// Parse WPL files and collect package names and fully-qualified rule names.
+/// Returns (package_names, rule_names) where rule_names are "pkg::rule".
+fn parse_and_collect_wpl_files(
+    files: &[PathBuf],
+) -> RunResult<(BTreeMap<String, String>, BTreeSet<String>)> {
+    let mut pkg_names: BTreeMap<String, String> = BTreeMap::new(); // package_name -> file
+    let mut rule_names: BTreeSet<String> = BTreeSet::new();
+
+    for fp in files {
+        let raw = match std::fs::read_to_string(fp) {
+            Ok(s) => s,
+            Err(e) => {
+                return Err(RunReason::from_conf().to_err().with_detail(format!(
+                    "wpl file read error: {}: {}",
+                    fp.display(),
+                    e
+                )));
+            }
+        };
+        if raw.trim().is_empty() {
+            return Err(RunReason::from_conf()
+                .to_err()
+                .with_detail(format!("wpl file is empty: {}", fp.display())));
+        }
+        let code = WplCode::build(fp.clone(), raw.as_str())
+            .owe_conf()
+            .with(fp)
+            .want("build wpl code")?;
+        let pkg = code
+            .parse_pkg()
+            .owe_conf()
+            .with(fp)
+            .want("parse wpl package")?;
+
+        // Check for empty package
+        if pkg.rules.is_empty() {
+            eprintln!(
+                "  ⚠ WPL package '{}' has no rules in {}",
+                pkg.name,
+                fp.display()
+            );
+        }
+
+        // Check for rules with empty field groups (parse nothing)
+        for rule in &pkg.rules {
+            if rule.statement.first_field().is_none() {
+                eprintln!(
+                    "  ⚠ WPL rule '{}::{}' has no fields to parse in {}",
+                    pkg.name,
+                    rule.name,
+                    fp.display()
+                );
+            }
+        }
+
+        // Register package name; detect duplicates
+        let pkg_name = pkg.name.to_string();
+        if let Some(prev_file) = pkg_names.get(&pkg_name) {
+            eprintln!(
+                "  ⚠ Duplicate WPL package '{}' in {} (previously defined in {})",
+                pkg_name,
+                fp.display(),
+                prev_file
+            );
+        }
+        pkg_names.insert(pkg_name, fp.display().to_string());
+
+        // Register rule names with package prefix
+        for rule in &pkg.rules {
+            let fq_name = format!("{}::{}", pkg.name, rule.name);
+            if !rule_names.insert(fq_name.clone()) {
+                eprintln!(
+                    "  ⚠ Duplicate WPL rule '{}' in {} (previously defined elsewhere)",
+                    fq_name,
+                    fp.display()
+                );
+            }
+        }
+    }
+    Ok((pkg_names, rule_names))
 }
 
 // Trait implementations for unified component interface

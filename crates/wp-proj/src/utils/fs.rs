@@ -257,8 +257,8 @@ mod tests {
         FsOps::write(&empty_file, "").unwrap();
         FsOps::write(&non_empty_file, "content").unwrap();
 
-        assert_eq!(FsOps::file_not_empty(&empty_file).unwrap(), false);
-        assert_eq!(FsOps::file_not_empty(&non_empty_file).unwrap(), true);
+        assert!(!FsOps::file_not_empty(&empty_file).unwrap());
+        assert!(FsOps::file_not_empty(&non_empty_file).unwrap());
     }
 
     #[test]

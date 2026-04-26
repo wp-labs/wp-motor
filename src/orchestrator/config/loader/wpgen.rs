@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use orion_conf::EnvTomlLoad;
 use orion_conf::TomlIO;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
 use orion_error::{ErrorOwe, ErrorWith, ToStructError, UvsFrom};
@@ -34,9 +33,7 @@ impl WarpConf {
     // 1) 解析 wpgen.toml 为 WpGenConfig 并做基本验证
     fn parse_wpgen_config(&self, file_name: &str, dict: &EnvDict) -> OrionConfResult<WpGenConfig> {
         let path = self.config_path_string(file_name);
-        let conf = WpGenConfig::env_load_toml(&PathBuf::from(path.as_str()), dict)?;
-        conf.validate()?;
-        Ok(conf)
+        WpGenConfig::load_from_path(PathBuf::from(path.as_str()), dict)
     }
 
     // 2) 根据是否指定 connect 选择默认文件输出或按 connectors 装配 out_sink

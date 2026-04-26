@@ -24,6 +24,42 @@ fn null_query_field(name: &str) -> DataField {
     DataField::new(DataType::default(), name.to_string(), Value::Null)
 }
 
+fn ordered_sql_param_names(sql: &str, query: &SqlQuery) -> Vec<String> {
+    let mut out = Vec::with_capacity(query.vars().len());
+    let bytes = sql.as_bytes();
+    let mut idx = 0usize;
+
+    while idx < bytes.len() {
+        if bytes[idx] != b':' {
+            idx += 1;
+            continue;
+        }
+
+        let start = idx + 1;
+        let mut end = start;
+        while end < bytes.len() {
+            let ch = bytes[end] as char;
+            if ch == '_' || ch.is_ascii_alphanumeric() {
+                end += 1;
+            } else {
+                break;
+            }
+        }
+
+        if end > start {
+            let name = &sql[start..end];
+            if query.vars().contains_key(name) {
+                out.push(name.to_string());
+            }
+            idx = end;
+        } else {
+            idx += 1;
+        }
+    }
+
+    out
+}
+
 fn collect_sql_params(
     query: &SqlQuery,
     src: &mut DataRecordRef<'_>,
@@ -31,7 +67,12 @@ fn collect_sql_params(
 ) -> (String, DataField, Vec<DataField>) {
     let mut params = Vec::with_capacity(5);
     let target = EvaluationTarget::auto_default();
-    for (v, acq) in query.vars() {
+    let sql = query.oml_sql().to_string();
+    for v in ordered_sql_param_names(&sql, query) {
+        let acq = query
+            .vars()
+            .get(&v)
+            .expect("ordered SQL param names are collected from query vars");
         let mut tdo = if let Some(storage) = acq.extract_storage(&target, src, dst) {
             storage.into_owned()
         } else {
@@ -41,9 +82,12 @@ fn collect_sql_params(
         params.push(tdo);
     }
     debug_kdb!("pararms:{:#?}", params);
-    let sql = query.oml_sql().to_string();
     debug_kdb!("[sql] {}", sql);
-    for (v, acq) in query.vars() {
+    for v in ordered_sql_param_names(&sql, query) {
+        let acq = query
+            .vars()
+            .get(&v)
+            .expect("ordered SQL param names are collected from query vars");
         let preview = acq.diy_fmt(&wp_data_fmt::SqlInsert::new_with_json("_"));
         debug_kdb!("[param] :{} = {}", v, preview);
     }
@@ -113,8 +157,8 @@ impl SqlQuery {
             2 => {
                 let c_params: [DataField; 3] = [
                     norm_query_field(&md5),
-                    norm_query_field(&params[1]),
                     norm_query_field(&params[0]),
+                    norm_query_field(&params[1]),
                 ];
                 let query_params = [c_params[1].clone(), c_params[2].clone()];
                 let out = kdb::cache_query_fields_with_scope(
@@ -130,9 +174,9 @@ impl SqlQuery {
             3 => {
                 let c_params: [DataField; 4] = [
                     norm_query_field(&md5),
-                    norm_query_field(&params[2]),
-                    norm_query_field(&params[1]),
                     norm_query_field(&params[0]),
+                    norm_query_field(&params[1]),
+                    norm_query_field(&params[2]),
                 ];
                 let query_params = [
                     c_params[1].clone(),
@@ -153,10 +197,10 @@ impl SqlQuery {
                 // 显式构造，避免 try_into().unwrap() 带来的运行期 panic 风险
                 let c_params: [DataField; 5] = [
                     norm_query_field(&md5),
-                    norm_query_field(&params[3]),
-                    norm_query_field(&params[2]),
-                    norm_query_field(&params[1]),
                     norm_query_field(&params[0]),
+                    norm_query_field(&params[1]),
+                    norm_query_field(&params[2]),
+                    norm_query_field(&params[3]),
                 ];
                 let query_params = [
                     c_params[1].clone(),
@@ -177,11 +221,11 @@ impl SqlQuery {
             5 => {
                 let c_params: [DataField; 6] = [
                     norm_query_field(&md5),
-                    norm_query_field(&params[4]),
-                    norm_query_field(&params[3]),
-                    norm_query_field(&params[2]),
-                    norm_query_field(&params[1]),
                     norm_query_field(&params[0]),
+                    norm_query_field(&params[1]),
+                    norm_query_field(&params[2]),
+                    norm_query_field(&params[3]),
+                    norm_query_field(&params[4]),
                 ];
                 let query_params = [
                     c_params[1].clone(),
@@ -266,8 +310,8 @@ impl AsyncFieldExtractor for SqlQuery {
             2 => {
                 let c_params: [DataField; 3] = [
                     norm_query_field(&md5),
-                    norm_query_field(&params[1]),
                     norm_query_field(&params[0]),
+                    norm_query_field(&params[1]),
                 ];
                 let out = kdb::cache_query_fields_async_with_scope(
                     sql.as_str(),
@@ -283,9 +327,9 @@ impl AsyncFieldExtractor for SqlQuery {
             3 => {
                 let c_params: [DataField; 4] = [
                     norm_query_field(&md5),
-                    norm_query_field(&params[2]),
-                    norm_query_field(&params[1]),
                     norm_query_field(&params[0]),
+                    norm_query_field(&params[1]),
+                    norm_query_field(&params[2]),
                 ];
                 let out = kdb::cache_query_fields_async_with_scope(
                     sql.as_str(),
@@ -307,10 +351,10 @@ impl AsyncFieldExtractor for SqlQuery {
             4 => {
                 let c_params: [DataField; 5] = [
                     norm_query_field(&md5),
-                    norm_query_field(&params[3]),
-                    norm_query_field(&params[2]),
-                    norm_query_field(&params[1]),
                     norm_query_field(&params[0]),
+                    norm_query_field(&params[1]),
+                    norm_query_field(&params[2]),
+                    norm_query_field(&params[3]),
                 ];
                 let out = kdb::cache_query_fields_async_with_scope(
                     sql.as_str(),
@@ -333,11 +377,11 @@ impl AsyncFieldExtractor for SqlQuery {
             5 => {
                 let c_params: [DataField; 6] = [
                     norm_query_field(&md5),
-                    norm_query_field(&params[4]),
-                    norm_query_field(&params[3]),
-                    norm_query_field(&params[2]),
-                    norm_query_field(&params[1]),
                     norm_query_field(&params[0]),
+                    norm_query_field(&params[1]),
+                    norm_query_field(&params[2]),
+                    norm_query_field(&params[3]),
+                    norm_query_field(&params[4]),
                 ];
                 let out = kdb::cache_query_fields_async_with_scope(
                     sql.as_str(),

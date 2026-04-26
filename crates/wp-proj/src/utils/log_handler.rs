@@ -119,11 +119,13 @@ mod tests {
         std::fs::create_dir_all(&log_dir).expect("log dir");
         std::fs::write(log_dir.join("test.log"), "line").expect("log file");
 
-        let mut cfg = LogConf::default();
-        cfg.output = Output::File;
-        cfg.file = Some(FileLogConf {
-            path: "./data/logs".to_string(),
-        });
+        let cfg = LogConf {
+            output: Output::File,
+            file: Some(FileLogConf {
+                path: "./data/logs".to_string(),
+            }),
+            ..Default::default()
+        };
 
         let cleaned = LogHandler::clean_logs(&cfg, temp.path().to_str().unwrap()).unwrap();
         assert!(cleaned);
@@ -159,11 +161,13 @@ mod tests {
         std::fs::create_dir_all(log_file.parent().unwrap()).expect("log parent");
         std::fs::write(&log_file, "not a dir").expect("log file");
 
-        let mut cfg = LogConf::default();
-        cfg.output = Output::File;
-        cfg.file = Some(FileLogConf {
-            path: "./data/logs".to_string(),
-        });
+        let cfg = LogConf {
+            output: Output::File,
+            file: Some(FileLogConf {
+                path: "./data/logs".to_string(),
+            }),
+            ..Default::default()
+        };
 
         let err = LogHandler::clean_logs(&cfg, temp.path())
             .expect_err("file path should fail directory cleanup");

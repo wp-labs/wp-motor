@@ -434,8 +434,8 @@ pub fn collect_hints(es: &str) -> Vec<&'static str> {
         );
     }
     if lower.contains("failed to parse unified [[sources]] config")
-        || lower.contains("failed to parse toml")
-        || lower.contains("toml parse error")
+        || (lower.contains("failed to parse toml") && lower.contains("wpsrc"))
+        || (lower.contains("toml parse error") && lower.contains("wpsrc"))
     {
         push_hint_once(
             &mut hints,
@@ -459,11 +459,25 @@ pub fn collect_hints(es: &str) -> Vec<&'static str> {
         push_hint_once(&mut hints, "示例1: [sink.expect] ratio=0.02 tol=0.01");
         push_hint_once(&mut hints, "示例2: [sink.expect] min=0.98 max=1.0");
     }
-    if lower.contains("output.connect") && lower.contains("source connector") {
+    if lower.contains("output.connect") && lower.contains("not found in sink connector") {
         push_hint_once(
             &mut hints,
             "wpgen 的 [output].connect 必须填写 sink connector id，例如 'tcp_sink'、'file_raw_sink'；不要填写 'tcp_src' 这类 source connector id",
         );
+    }
+    if lower.contains("wpgen.toml") && lower.contains("toml parse error") {
+        if lower.contains("unknown field `mode`") {
+            push_hint_once(
+                &mut hints,
+                "\"mode\" 字段已不再使用，为了避免配置错误，请删除该字段",
+            );
+        }
+        if lower.contains("unknown field `duration_secs`") {
+            push_hint_once(
+                &mut hints,
+                "\"duration_secs\" 字段已不再使用，为了避免理解错误，请删除该字段",
+            );
+        }
     }
     hints
 }

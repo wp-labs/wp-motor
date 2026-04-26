@@ -15,6 +15,8 @@ use orion_conf::UvsFrom;
 use orion_error::{DomainReason, ErrorCode, StructError, ToStructError};
 use orion_variate::EnvDict;
 use wp_cli_core::business::connectors::{sinks as sink_connectors, sources as source_connectors};
+use wp_conf::generator::wpgen::WpGenConfig;
+use wp_conf::sinks::io::load_connectors_for;
 use wp_engine::facade::config::{self as cfg_face, ENGINE_CONF_FILE};
 use wp_error::run_error::{RunError, RunResult};
 
@@ -97,10 +99,24 @@ fn evaluate_target(
     comps: &CheckComponents,
     dict: &EnvDict,
 ) -> Row {
-    let mut row = Row::new(wrs.to_string());
+    // Resolve to absolute early: load_warp_engine_confs changes CWD globally,
+    // so subsequent relative paths would resolve against the wrong directory.
+    let wrs = if Path::new(wrs).is_absolute() {
+        wrs.to_string()
+    } else {
+        std::path::absolute(wrs)
+            .unwrap_or_else(|_| {
+                std::env::current_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."))
+                    .join(wrs)
+            })
+            .to_string_lossy()
+            .to_string()
+    };
+    let mut row = Row::new(wrs.clone());
 
     if comps.engine {
-        row.conf = match cfg_face::load_warp_engine_confs(wrs, dict) {
+        row.conf = match cfg_face::load_warp_engine_confs(&wrs, dict) {
             Ok((cm, _)) => {
                 row.conf_detail = Some(cm.config_path_string(ENGINE_CONF_FILE));
                 Cell::success()
@@ -139,11 +155,11 @@ fn evaluate_target(
         row.connectors = Cell::from_result(
             project
                 .connectors()
-                .check(wrs, dict)
+                .check(&wrs, dict)
                 .map(|_| ())
                 .map_err(|e| describe_run_error(&e)),
         );
-        match collect_connector_counts(wrs, dict) {
+        match collect_connector_counts(&wrs, dict) {
             Ok(stats) => row.connector_counts = Some(stats),
             Err(_e) => {
                 row.connector_counts = None;
@@ -204,8 +220,8 @@ fn evaluate_target(
     }
 
     if comps.semantic_dict {
-        row.semantic_dict = match check_semantic_dict_config(Path::new(wrs), dict) {
-            Ok(Some(msg)) => Cell::success_with_message(msg),
+        row.semantic_dict = match check_semantic_dict_config(Path::new(&wrs), dict) {
+            Ok(Some(result)) => Cell::success_with_warnings(result.message, result.warnings),
             Ok(None) => Cell::success_with_message("使用内置词典".to_string()),
             Err(e) => Cell::failure(e),
         };
@@ -216,24 +232,49 @@ fn evaluate_target(
         row.semantic_dict = Cell::skipped();
     }
 
+    if comps.wpgen {
+        row.wpgen = check_wpgen_config(&wrs, dict);
+        if !row.wpgen.ok && opts.fail_fast {
+            return row;
+        }
+    } else {
+        row.wpgen = Cell::skipped();
+    }
+
     row
 }
 
 /// 检查语义词典配置
-fn check_semantic_dict_config(work_root: &Path, dict: &EnvDict) -> Result<Option<String>, String> {
+struct SemanticDictCheckView {
+    message: String,
+    warnings: Vec<String>,
+}
+
+fn check_semantic_dict_config(
+    work_root: &Path,
+    dict: &EnvDict,
+) -> Result<Option<SemanticDictCheckView>, String> {
     let (_, main_conf) = cfg_face::load_warp_engine_confs(&work_root.to_string_lossy(), dict)
         .map_err(|e| describe_run_error(&e))?;
 
     let primary = PathBuf::from(main_conf.knowledge_root()).join("semantic_dict.toml");
     if primary.exists() {
-        return oml::check_semantic_dict_config(Some(&primary))
-            .map(|msg| msg.map(|msg| shorten_semantic_dict_message(&msg, work_root, &primary)));
+        return oml::check_semantic_dict_config_detailed(Some(&primary)).map(|result| {
+            result.map(|result| SemanticDictCheckView {
+                message: shorten_semantic_dict_message(&result.message, work_root, &primary),
+                warnings: result.warnings,
+            })
+        });
     }
 
     let fallback = work_root.join("knowledge/semantic_dict.toml");
     if fallback.exists() {
-        return oml::check_semantic_dict_config(Some(&fallback))
-            .map(|msg| msg.map(|msg| shorten_semantic_dict_message(&msg, work_root, &fallback)));
+        return oml::check_semantic_dict_config_detailed(Some(&fallback)).map(|result| {
+            result.map(|result| SemanticDictCheckView {
+                message: shorten_semantic_dict_message(&result.message, work_root, &fallback),
+                warnings: result.warnings,
+            })
+        });
     }
 
     Ok(None)
@@ -252,6 +293,139 @@ fn shorten_semantic_dict_message(msg: &str, work_root: &Path, config_path: &Path
         .strip_prefix("语义词典配置有效: ")
         .unwrap_or(&replaced)
         .to_string()
+}
+
+/// 已知的已移除字段 → 替代建议
+const WPGEN_REMOVED_FIELDS: &[(&str, &str)] = &[
+    (
+        "mode",
+        "\"mode\" 字段已不再使用，为了避免配置错误，请删除该字段",
+    ),
+    (
+        "duration_secs",
+        "\"duration_secs\" 字段已不再使用，为了避免理解错误，请删除该字段",
+    ),
+];
+
+/// 对 WpGen 加载错误附加迁移提示
+fn enhance_wpgen_error(err_msg: &str) -> String {
+    let mut enhanced = err_msg.to_string();
+    for (field, hint) in WPGEN_REMOVED_FIELDS {
+        if err_msg.contains(&format!("unknown field `{}`", field)) {
+            enhanced.push_str(&format!("\n  Hint: {}", hint));
+            break;
+        }
+    }
+    enhanced
+}
+
+/// 检查 wpgen 配置（conf/wpgen.toml）
+fn check_wpgen_config(work_root: &str, dict: &EnvDict) -> Cell {
+    let path = Path::new(work_root).join("conf").join("wpgen.toml");
+    if !path.exists() {
+        return Cell::success_with_message("wpgen.toml not found (optional)".into());
+    }
+    let config = match WpGenConfig::load_from_path(&path, dict) {
+        Ok(c) => c,
+        Err(e) => {
+            let raw = format!("{:#}", e);
+            return Cell::failure(enhance_wpgen_error(&raw));
+        }
+    };
+
+    let mut errors: Vec<String> = Vec::new();
+
+    // 检查 rule_root 路径存在性
+    if let Some(ref rule_root) = config.generator.rule_root {
+        let rule_path = Path::new(rule_root);
+        let resolved = if rule_path.is_absolute() {
+            rule_path.to_path_buf()
+        } else {
+            Path::new(work_root).join(rule_path)
+        };
+        if !resolved.exists() {
+            errors.push(format!(
+                "wpgen.generator.rule_root '{}' does not exist (resolved to '{}')",
+                rule_root,
+                resolved.display()
+            ));
+        }
+    }
+
+    // 检查 sample_pattern 是合法 glob
+    if let Some(ref pattern) = config.generator.sample_pattern
+        && glob::Pattern::new(pattern).is_err()
+    {
+        errors.push(format!(
+            "wpgen.generator.sample_pattern '{}' is not a valid glob pattern",
+            pattern
+        ));
+    }
+
+    // 检查 output.connect 引用的 sink connector 是否存在；字段必填由 WpGenConfig::validate 统一处理。
+    if let Some(ref connect) = config.output.connect
+        && let Err(e) = validate_wpgen_sink_connector(work_root, connect, dict)
+    {
+        errors.push(e);
+    }
+
+    // 检查 logging.file_path 父目录存在性
+    if let Some(ref file_path) = config.logging.file_path {
+        let log_path = Path::new(file_path);
+        let resolved = if log_path.is_absolute() {
+            log_path.to_path_buf()
+        } else {
+            Path::new(work_root).join(log_path)
+        };
+        if let Some(parent) = resolved.parent()
+            && !parent.exists()
+        {
+            eprintln!(
+                "  ⚠ wpgen.logging.file_path parent directory '{}' does not exist (resolved from '{}')",
+                parent.display(),
+                file_path
+            );
+        }
+    }
+
+    if errors.is_empty() {
+        Cell::success()
+    } else {
+        Cell::failure(errors.join("; "))
+    }
+}
+
+/// 验证 wpgen 的 output.connect 引用的 sink connector 存在
+fn validate_wpgen_sink_connector(
+    work_root: &str,
+    connect_id: &str,
+    dict: &EnvDict,
+) -> Result<(), String> {
+    let (_, eng_conf) =
+        cfg_face::load_warp_engine_confs(work_root, dict).map_err(|e| describe_run_error(&e))?;
+    let configured_root = eng_conf.sinks_root();
+    let sink_root_path = Path::new(configured_root);
+    let resolved_root = if sink_root_path.is_absolute() {
+        sink_root_path.to_path_buf()
+    } else {
+        Path::new(work_root).join(sink_root_path)
+    };
+    let start_root = resolved_root.to_string_lossy().to_string();
+
+    let connectors = load_connectors_for(&start_root, dict)
+        .map_err(|e| format!("failed to load sink connectors: {:#}", e))?;
+
+    if !connectors.contains_key(connect_id) {
+        let mut known: Vec<String> = connectors.keys().cloned().collect();
+        known.sort();
+        return Err(format!(
+            "wpgen.output.connect '{}' not found in sink connectors at '{}'; available: {}",
+            connect_id,
+            resolved_root.display(),
+            known.join(", ")
+        ));
+    }
+    Ok(())
 }
 
 fn describe_run_error(err: &RunError) -> String {
@@ -321,6 +495,7 @@ struct SummaryCounts {
     wpl: ComponentCount,
     oml: ComponentCount,
     semantic_dict: ComponentCount,
+    wpgen: ComponentCount,
 }
 
 fn summarize_components(rows: &[Row], comps: &CheckComponents) -> SummaryCounts {
@@ -346,6 +521,9 @@ fn summarize_components(rows: &[Row], comps: &CheckComponents) -> SummaryCounts 
         }
         if comps.semantic_dict {
             stats.semantic_dict.record(r.semantic_dict.ok);
+        }
+        if comps.wpgen {
+            stats.wpgen.record(r.wpgen.ok);
         }
     }
     stats
@@ -383,12 +561,20 @@ fn render_output(
             "semantic_dict".into(),
             component_stat_value(comps.semantic_dict, &stats.semantic_dict),
         );
+        stat.insert(
+            "wpgen".into(),
+            component_stat_value(comps.wpgen, &stats.wpgen),
+        );
 
         let output = json!({
             "stat": Value::Object(stat),
             "detail": rows
         });
-        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&output)
+                .expect("JSON serialize should not fail for Row/stat types")
+        );
     } else if opts.console {
         println!();
         let table = build_detail_table(rows, comps);
@@ -450,6 +636,14 @@ fn print_text_summary(total: usize, stats: &SummaryCounts, comps: &CheckComponen
     } else {
         println!("Semantic dict: skipped");
     }
+    if comps.wpgen {
+        println!(
+            "Wpgen config: {}/{} passed",
+            stats.wpgen.ok, stats.wpgen.total
+        );
+    } else {
+        println!("Wpgen config: skipped");
+    }
 }
 
 fn output_failure_details(rows: &[Row], comps: &CheckComponents) {
@@ -463,6 +657,7 @@ fn output_failure_details(rows: &[Row], comps: &CheckComponents) {
                 || (comps.wpl && !r.wpl.ok)
                 || (comps.oml && !r.oml.ok)
                 || (comps.semantic_dict && !r.semantic_dict.ok)
+                || (comps.wpgen && !r.wpgen.ok)
         })
         .collect();
 
@@ -490,6 +685,7 @@ fn has_failures(rows: &[Row], comps: &CheckComponents) -> bool {
             || (comps.wpl && !r.wpl.ok)
             || (comps.oml && !r.oml.ok)
             || (comps.semantic_dict && !r.semantic_dict.ok)
+            || (comps.wpgen && !r.wpgen.ok)
     })
 }
 
@@ -511,10 +707,38 @@ fn collect_connector_counts(work_root: &str, dict: &EnvDict) -> Result<Connector
     let src_defs = src_rows.len();
     let src_refs: usize = src_rows.iter().map(|row| row.refs).sum();
 
+    // Detect dead source connectors (defined but never referenced)
+    let dead_src: Vec<&str> = src_rows
+        .iter()
+        .filter(|row| row.refs == 0)
+        .map(|row| row.id.as_str())
+        .collect();
+    if !dead_src.is_empty() {
+        eprintln!(
+            "  ⚠ Dead source connectors (defined but never referenced): {}",
+            dead_src.join(", ")
+        );
+    }
+
     let (sink_map, sink_usage) = sink_connectors::list_connectors_usage(work_root, dict)
         .map_err(|e| describe_struct_error(&e))?;
     let sink_defs = sink_map.len();
     let sink_routes = sink_usage.len();
+
+    // Detect dead sink connectors (defined but never used in any route)
+    let used_sink_ids: std::collections::BTreeSet<&str> =
+        sink_usage.iter().map(|(cid, _, _)| cid.as_str()).collect();
+    let dead_sink: Vec<&str> = sink_map
+        .keys()
+        .filter(|id| !used_sink_ids.contains(id.as_str()))
+        .map(|id| id.as_str())
+        .collect();
+    if !dead_sink.is_empty() {
+        eprintln!(
+            "  ⚠ Dead sink connectors (defined but never used): {}",
+            dead_sink.join(", ")
+        );
+    }
 
     Ok(ConnectorCounts {
         source_defs: src_defs,

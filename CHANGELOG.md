@@ -4,8 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Entries may be written in both English and Chinese.
 
-## [1.21.5 Unreleased]
+## [1.21.6] - 2026-04-27
+
+### Changed
+- **Release Merge**: Merged all changes from `1.20.7` into the `1.21.x` release line.
+  中文：将 `1.20.7` 的全部变更合并到 `1.21.x` 发布线。
+
+### Fixed
+- **OML/SQL**: Fixed non-deterministic SQL parameter binding for multi-parameter `IN (...)` clauses by collecting `:param` values in SQL placeholder order instead of `HashMap` iteration order.
+  中文：修复 SQL `IN (...)` 多参数绑定顺序不稳定的问题，现在按 SQL 中 `:param` 占位符出现顺序绑定，而不是依赖 `HashMap` 遍历顺序。
+- **OML/SQL Cache**: Aligned SQL cache keys and query parameters to the same placeholder order for both sync and async evaluators, preventing partial matches such as only returning `server` while missing `db`.
+  中文：同步和异步 SQL evaluator 的缓存键与查询参数现在使用同一占位符顺序，避免只命中 `server` 而漏掉 `db` 这类部分匹配结果。
+- **wp-proj/Load Semantics**: Restored `WarpProject::load()` to load existing projects only; missing `conf/wparse.toml` now fails instead of being auto-created through `load_or_init`.
+  中文：恢复 `WarpProject::load()` 只加载已有工程的语义；缺少 `conf/wparse.toml` 时返回错误，不再通过 `load_or_init` 自动创建配置。
+
+## [1.21.5 2026-04-24]
 
 ### Added
 - **Audit**: 新增 `.cargo/audit.toml`，忽略 RUSTSEC-2023-0071（rsa crate Marvin Attack 时序侧信道 — 仅影响 loopback TLS 且默认关闭，实际风险低，计划 2026-07-25 再评估）。
@@ -60,6 +75,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **OML/Take**: 修复 `take(...)` 只能从源记录取值的问题，现支持消费当前目标记录中已生成的字段，使前序 OML 字段可以被后续 `take(...)` 正确移动复用。
 - **OML/SQL Parser**: 修复严格 SQL 模式下对 `group_concat(distinct ...)` 这类聚合表达式的校验与解析，并支持 `IN (@sip, @dip)`、`in(@sip, @dip)` 这类引用参数写法。
+
+## [1.20.7] - 2026-04-26
+
+### Changed
+- **wpgen/Config Loading**: Unified `wpgen.toml` loading through `WpGenConfig::load_from_path`, keeping parse, environment expansion, and validation semantics consistent across runtime loading, project loading, and `wproj check`.
+  中文：统一 `wpgen.toml` 加载入口到 `WpGenConfig::load_from_path`，确保运行期、项目加载和 `wproj check` 的解析、环境变量展开和校验语义一致。
+- **wproj/check**: Added `wpgen` config checks and exposed semantic-dictionary empty words, duplicates, and empty categories as structured warnings instead of mixing them into the success message.
+  中文：新增 `wpgen` 配置检查，并将语义词典空词、重复词和空类别改为结构化 warning，不再混入“配置有效”消息。
+- **Validation/Warnings**: Downgraded missing source/sink input or output directories to non-blocking warnings so clean projects are not failed before runtime-created directories exist.
+  中文：将 source/sink 输出或输入目录缺失调整为非阻断 warning，避免干净工程在目录尚未创建时被误判为配置失败。
+
+### Fixed
+- **wproj/check JSON**: Fixed warning paths that wrote directly to stdout and polluted `wproj check --json` output.
+  中文：修复多个 check 路径直接写 stdout 导致 `wproj check --json` 输出被 warning 文本污染的问题。
+- **wpgen/Schema**: Made missing `output.connect` invalid for `wpgen.toml`, and updated tests/examples to remove deprecated `mode` and `duration_secs` fields.
+  中文：明确拒绝缺失 `output.connect` 的 `wpgen.toml`，并更新测试与示例配置，移除已废弃的 `mode` 和 `duration_secs` 字段。
+- **OML/WPL Lint**: Made extra model semantic checks non-blocking lint so hand-written head parsing or empty-directory states do not override official parser results.
+  中文：将额外模型语义检查调整为非阻断 lint，避免手写 head 解析或空目录状态覆盖官方 parser 的结果。
+- **Tests/Temp Files**: Fixed the `wp-config` test that wrote temporary `framework.toml` under the source tree by using an isolated temp directory.
+  中文：修复 `wp-config` 测试把临时 `framework.toml` 写入源码目录的问题，改用隔离临时目录。
+- **Code Quality**: Cleaned clippy issues exposed by `-D warnings` in `wp-config`, `wp-cli-core`, and `wp-proj`.
+  中文：清理 `wp-config`、`wp-cli-core` 和 `wp-proj` 在 `-D warnings` 下暴露的 clippy 问题。
+
 ## [1.20.6] - 2026-04-24
 
 ### Fixed

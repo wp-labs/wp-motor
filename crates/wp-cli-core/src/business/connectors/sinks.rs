@@ -162,6 +162,63 @@ pub fn validate_routes(work_root: &str, env_dict: &EnvDict) -> OrionConfResult<(
                 );
             }
         }
+
+        // 验证 file/test_rescue 类型 sink 的输出路径
+        let file_display = rf.path.to_string_lossy();
+        validate_sink_output_paths(&conf.sink_group.sinks, &wr, &file_display)?;
+    }
+    Ok(())
+}
+
+/// Validate that file/test_rescue sink output directories exist.
+fn validate_sink_output_paths(
+    sinks: &[SinkInstanceConf],
+    work_root: &Path,
+    file_path: &str,
+) -> OrionConfResult<()> {
+    for sink in sinks {
+        let kind = sink.resolved_kind_str();
+        if kind != "file" && kind != "test_rescue" {
+            continue;
+        }
+
+        // Check base directory if base param is used
+        if let Some(base) = sink.core().params.get("base").and_then(|v| v.as_str()) {
+            let base_path = if Path::new(base).is_absolute() {
+                PathBuf::from(base)
+            } else {
+                work_root.join(base)
+            };
+            if !base_path.exists() {
+                eprintln!(
+                    "  ⚠ sink '{}' ({}): base directory '{}' does not exist, file: {}",
+                    sink.full_name(),
+                    kind,
+                    base_path.display(),
+                    file_path
+                );
+            }
+        }
+
+        // Check output file's parent directory exists
+        if let Some(resolved) = sink.resolve_file_path() {
+            let resolved_path = if Path::new(&resolved).is_absolute() {
+                PathBuf::from(&resolved)
+            } else {
+                work_root.join(&resolved)
+            };
+            if let Some(parent) = resolved_path.parent()
+                && !parent.exists()
+            {
+                eprintln!(
+                    "  ⚠ sink '{}' ({}): output directory '{}' does not exist, file: {}",
+                    sink.full_name(),
+                    kind,
+                    parent.display(),
+                    file_path
+                );
+            }
+        }
     }
     Ok(())
 }
@@ -343,6 +400,8 @@ mod tests {
     fn write_demo_connectors(base: &std::path::Path) {
         let cdir = base.join("connectors").join("sink.d");
         fs::create_dir_all(&cdir).unwrap();
+        // create default output directory for file sinks
+        fs::create_dir_all(base.join("data/out_dat")).unwrap();
         fs::write(
             cdir.join("file.toml"),
             r#"[[connectors]]

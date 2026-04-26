@@ -55,10 +55,23 @@ impl Connectors {
     ///
     /// 虽然此方法签名与 Checkable trait 不同，但返回类型已统一为 RunResult<CheckStatus>。
     pub fn check<P: AsRef<Path>>(&self, work_root: P, dict: &EnvDict) -> RunResult<CheckStatus> {
-        let errors = self.collect_lint_errors(work_root.as_ref(), dict);
+        let rows = self.lint_rows_from_root(work_root.as_ref(), dict);
+        let errors = Self::collect_lint_errors(&rows);
+        let warnings = Self::collect_lint_warnings(&rows);
+
+        for w in &warnings {
+            eprintln!("  ⚠ {}", w);
+        }
 
         if errors.is_empty() {
-            println!("✓ Connectors validation passed");
+            if !warnings.is_empty() {
+                eprintln!(
+                    "✓ Connectors validation passed ({} warning(s))",
+                    warnings.len()
+                );
+            } else {
+                eprintln!("✓ Connectors validation passed");
+            }
             Ok(CheckStatus::Suc)
         } else {
             let summary = errors.into_iter().take(3).collect::<Vec<_>>().join("; ");
@@ -68,15 +81,18 @@ impl Connectors {
         }
     }
 
-    /// 收集所有 lint 错误
-    fn collect_lint_errors(&self, work_root: &Path, dict: &EnvDict) -> Vec<String> {
-        let mut errors = Vec::new();
-        for row in self.lint_rows_from_root(work_root, dict) {
-            if matches!(row.sev, LintSeverity::Error) {
-                errors.push(format_lint_error(&row));
-            }
-        }
-        errors
+    fn collect_lint_errors(rows: &[LintRow]) -> Vec<String> {
+        rows.iter()
+            .filter(|r| matches!(r.sev, LintSeverity::Error))
+            .map(format_lint_error)
+            .collect()
+    }
+
+    fn collect_lint_warnings(rows: &[LintRow]) -> Vec<String> {
+        rows.iter()
+            .filter(|r| matches!(r.sev, LintSeverity::Warn))
+            .map(|r| format!("{}: {} ({} in {})", r.scope, r.msg, r.id, r.file))
+            .collect()
     }
 }
 
