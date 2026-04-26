@@ -44,9 +44,7 @@ mod tests {
 version = "1.0"
 
 [generator]
-mode = "rule"
 count = 10
-duration_secs = 0
 speed = 100
 parallel = 2
 
@@ -93,7 +91,6 @@ file = "default.dat"
         let toml = r#"
 version = "1.0"
 [generator]
-mode = "rule"
 count = 5
 speed = 50
 parallel = 1
@@ -140,7 +137,6 @@ port = 9000
         let toml = r#"
 version = "1.0"
 [generator]
-mode = "rule"
 speed = 1
 [output]
 connect = "tcp_src"
@@ -185,7 +181,6 @@ file = "a.dat"
         let toml = r#"
 version = "1.0"
 [generator]
-mode = "rule"
 speed = 1
 [output]
 name = "test_out"

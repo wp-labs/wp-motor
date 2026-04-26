@@ -78,7 +78,7 @@ impl WarpProject {
                     RunReason::from_conf()
                         .to_err()
                         .with_detail("load engine config failed")
-                        .with_source(err)
+                        .with_struct_source(err)
                 })?
                 .env_eval(dict)
                 .conf_absolutize(&abs_root),

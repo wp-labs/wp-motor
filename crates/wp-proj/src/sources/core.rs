@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use wp_cli_core::business::connectors::sources as sources_core;
 use wp_conf::sources::types::{SourceItem, WarpSources};
+use wp_conf::structure::SourceInstanceConf;
 use wp_conf::{engine::EngineConfig, sources::build::load_source_instances_from_file};
 use wp_engine::facade::config::WPSRC_TOML;
 use wp_engine::sources::SourceConfigParser;
@@ -87,7 +88,7 @@ impl Sources {
         // Attempt to build specifications to ensure they are valid
         self.build_source_specs(&wpsrc_path, dict)?;
 
-        println!("✓ Sources configuration validation passed");
+        eprintln!("✓ Sources configuration validation passed");
         Ok(CheckStatus::Suc)
     }
 
@@ -144,10 +145,118 @@ impl Sources {
 
     /// Builds source specifications for validation
     fn build_source_specs(&self, wpsrc_path: &Path, dict: &EnvDict) -> RunResult<()> {
-        let _specs = load_source_instances_from_file(wpsrc_path, dict)
+        let specs = load_source_instances_from_file(wpsrc_path, dict)
             .owe_conf()
             .with(wpsrc_path)
             .want("build source instances")?;
+        self.validate_source_file_paths(&specs)?;
+        Ok(())
+    }
+
+    /// 校验 file 类型 source 的文件路径存在性，以及 syslog/tcp 的端口范围
+    fn validate_source_file_paths(&self, specs: &[SourceInstanceConf]) -> RunResult<()> {
+        let work_root = self.work_root().to_path_buf();
+
+        for spec in specs {
+            let kind = spec.core.kind.as_str();
+            let name = spec.core.name.as_str();
+
+            match kind {
+                "file" => {
+                    let base = spec
+                        .core
+                        .params
+                        .get("base")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("./data/in_dat");
+                    let file = spec.core.params.get("file").and_then(|v| v.as_str());
+
+                    let base_path = if Path::new(base).is_absolute() {
+                        PathBuf::from(base)
+                    } else {
+                        work_root.join(base)
+                    };
+
+                    if !base_path.exists() {
+                        eprintln!(
+                            "  ⚠ source '{}' (file): base directory '{}' does not exist",
+                            name,
+                            base_path.display()
+                        );
+                        continue;
+                    }
+
+                    match file {
+                        Some(file_val) => {
+                            if has_glob_pattern(file_val) {
+                                let pattern_str =
+                                    base_path.join(file_val).to_string_lossy().to_string();
+                                match glob::glob(&pattern_str) {
+                                    Ok(mut paths) => {
+                                        let has_match = paths.any(|r| {
+                                            r.as_ref().map(|p| p.is_file()).unwrap_or(false)
+                                        });
+                                        if !has_match {
+                                            eprintln!(
+                                                "  ⚠ source '{}' (file): no files matched glob pattern '{}'",
+                                                name, pattern_str
+                                            );
+                                        }
+                                    }
+                                    Err(e) => {
+                                        return Err(RunReason::from_conf().to_err().with_detail(
+                                            format!(
+                                                "source '{}' (file): invalid glob pattern '{}': {}",
+                                                name, pattern_str, e
+                                            ),
+                                        ));
+                                    }
+                                }
+                            } else {
+                                let file_path = base_path.join(file_val);
+                                if !file_path.exists() || !file_path.is_file() {
+                                    eprintln!(
+                                        "  ⚠ source '{}' (file): file '{}' does not exist",
+                                        name,
+                                        file_path.display()
+                                    );
+                                }
+                            }
+                        }
+                        None => {
+                            return Err(RunReason::from_conf().to_err().with_detail(format!(
+                                "source '{}' (file): missing required 'file' parameter",
+                                name
+                            )));
+                        }
+                    }
+                }
+                "syslog" | "tcp" => {
+                    if let Some(port) = spec.core.params.get("port").and_then(|v| v.as_i64())
+                        && !(1..=65535).contains(&port)
+                    {
+                        return Err(RunReason::from_conf().to_err().with_detail(format!(
+                            "source '{}' ({}): port {} is out of valid range [1, 65535]",
+                            name, kind, port
+                        )));
+                    }
+                    if let Some(proto) = spec.core.params.get("protocol").and_then(|v| v.as_str()) {
+                        match proto.to_lowercase().as_str() {
+                            "tcp" | "udp" => {}
+                            _ => {
+                                return Err(RunReason::from_conf()
+                                    .to_err()
+                                    .with_detail(format!(
+                                        "source '{}' ({}): unsupported protocol '{}'; expected tcp or udp",
+                                        name, kind, proto
+                                    )));
+                            }
+                        }
+                    }
+                }
+                _ => {} // 其他 source 类型由其 factory 校验
+            }
+        }
         Ok(())
     }
 
@@ -281,6 +390,11 @@ impl ComponentLifecycle for Sources {
     }
 }
 
+/// 判断字符串是否包含 glob 通配符
+fn has_glob_pattern(value: &str) -> bool {
+    value.contains('*') || value.contains('?') || value.contains('[')
+}
+
 // =================== TESTS ===================
 
 #[cfg(test)]
@@ -296,7 +410,6 @@ mod tests {
         let temp = temp_workdir();
         let eng = std::sync::Arc::new(EngineConfig::init(temp.path()).conf_absolutize(temp.path()));
         let _sources = Sources::new(temp.path(), eng);
-        assert!(true); // Basic test to ensure struct can be created
     }
 
     #[test]

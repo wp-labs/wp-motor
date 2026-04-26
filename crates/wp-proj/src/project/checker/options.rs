@@ -28,6 +28,7 @@ pub struct CheckComponents {
     pub wpl: bool,
     pub oml: bool,
     pub semantic_dict: bool,
+    pub wpgen: bool,
 }
 
 impl CheckComponents {
@@ -39,6 +40,7 @@ impl CheckComponents {
         self.wpl = false;
         self.oml = false;
         self.semantic_dict = false;
+        self.wpgen = false;
     }
 
     pub fn enable<I>(&mut self, components: I)
@@ -68,6 +70,7 @@ impl CheckComponents {
             CheckComponent::Wpl => self.wpl,
             CheckComponent::Oml => self.oml,
             CheckComponent::SemanticDict => self.semantic_dict,
+            CheckComponent::Wpgen => self.wpgen,
         }
     }
 
@@ -80,6 +83,7 @@ impl CheckComponents {
             CheckComponent::Wpl => self.wpl = value,
             CheckComponent::Oml => self.oml = value,
             CheckComponent::SemanticDict => self.semantic_dict = value,
+            CheckComponent::Wpgen => self.wpgen = value,
         }
     }
 }
@@ -94,6 +98,7 @@ impl Default for CheckComponents {
             wpl: true,
             oml: true,
             semantic_dict: true,
+            wpgen: true,
         }
     }
 }
@@ -107,4 +112,5 @@ pub enum CheckComponent {
     Wpl,
     Oml,
     SemanticDict,
+    Wpgen,
 }

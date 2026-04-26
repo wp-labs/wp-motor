@@ -491,6 +491,21 @@ impl SemanticDict {
 
 // ========== 公开的 API 方法 ==========
 
+/// 校验词汇列表，返回 (空字符串数量, 重复词数量)
+fn validate_word_list(words: &[String]) -> (usize, usize) {
+    let mut seen = HashSet::new();
+    let mut empties = 0;
+    let mut dups = 0;
+    for w in words {
+        if w.is_empty() {
+            empties += 1;
+        } else if !seen.insert(w) {
+            dups += 1;
+        }
+    }
+    (empties, dups)
+}
+
 /// 检查语义词典配置文件是否有效
 ///
 /// 用于 `wproj check` 命令验证配置文件
@@ -503,6 +518,20 @@ impl SemanticDict {
 /// - Ok(None): 未配置外部语义词典（使用默认内置词典）
 /// - Err(message): 配置文件无效或加载失败
 pub fn check_semantic_dict_config(config_path: Option<&Path>) -> Result<Option<String>, String> {
+    check_semantic_dict_config_detailed(config_path).map(|result| result.map(|r| r.message))
+}
+
+/// 语义词典配置检查结果。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SemanticDictCheckResult {
+    pub message: String,
+    pub warnings: Vec<String>,
+}
+
+/// 检查语义词典配置文件是否有效，并返回非阻断性告警。
+pub fn check_semantic_dict_config_detailed(
+    config_path: Option<&Path>,
+) -> Result<Option<SemanticDictCheckResult>, String> {
     // 确定配置文件路径
     let path = resolve_semantic_dict_path(config_path);
 
@@ -545,17 +574,125 @@ pub fn check_semantic_dict_config(config_path: Option<&Path>) -> Result<Option<S
                 total_words += entity_nouns.english.len() + entity_nouns.chinese.len();
             }
 
+            // 校验词汇内容：检测空字符串、重复词、空类别。这些是非阻断性告警。
+            let mut warnings: Vec<String> = Vec::new();
+            if let Some(ref stop_words) = conf.stop_words {
+                let (empties, dups) = validate_word_list(&stop_words.chinese);
+                if empties > 0 {
+                    warnings.push(format!("stop_words.chinese: {} empty word(s)", empties));
+                }
+                if dups > 0 {
+                    warnings.push(format!("stop_words.chinese: {} duplicate(s)", dups));
+                }
+                if stop_words.chinese.is_empty() {
+                    warnings.push("stop_words.chinese: empty category".into());
+                }
+                let (empties, dups) = validate_word_list(&stop_words.english);
+                if empties > 0 {
+                    warnings.push(format!("stop_words.english: {} empty word(s)", empties));
+                }
+                if dups > 0 {
+                    warnings.push(format!("stop_words.english: {} duplicate(s)", dups));
+                }
+                if stop_words.english.is_empty() {
+                    warnings.push("stop_words.english: empty category".into());
+                }
+            }
+            if let Some(ref domain_words) = conf.domain_words {
+                for (cat, words) in &domain_words.categories {
+                    let (empties, dups) = validate_word_list(words);
+                    if empties > 0 {
+                        warnings.push(format!("domain_words.{}: {} empty word(s)", cat, empties));
+                    }
+                    if dups > 0 {
+                        warnings.push(format!("domain_words.{}: {} duplicate(s)", cat, dups));
+                    }
+                    if words.is_empty() {
+                        warnings.push(format!("domain_words.{}: empty category", cat));
+                    }
+                }
+            }
+            if let Some(ref status_words) = conf.status_words {
+                let (empties, dups) = validate_word_list(&status_words.english);
+                if empties > 0 {
+                    warnings.push(format!("status_words.english: {} empty word(s)", empties));
+                }
+                if dups > 0 {
+                    warnings.push(format!("status_words.english: {} duplicate(s)", dups));
+                }
+                if status_words.english.is_empty() {
+                    warnings.push("status_words.english: empty category".into());
+                }
+                let (empties, dups) = validate_word_list(&status_words.chinese);
+                if empties > 0 {
+                    warnings.push(format!("status_words.chinese: {} empty word(s)", empties));
+                }
+                if dups > 0 {
+                    warnings.push(format!("status_words.chinese: {} duplicate(s)", dups));
+                }
+                if status_words.chinese.is_empty() {
+                    warnings.push("status_words.chinese: empty category".into());
+                }
+            }
+            if let Some(ref action_verbs) = conf.action_verbs {
+                let (empties, dups) = validate_word_list(&action_verbs.english);
+                if empties > 0 {
+                    warnings.push(format!("action_verbs.english: {} empty word(s)", empties));
+                }
+                if dups > 0 {
+                    warnings.push(format!("action_verbs.english: {} duplicate(s)", dups));
+                }
+                if action_verbs.english.is_empty() {
+                    warnings.push("action_verbs.english: empty category".into());
+                }
+                let (empties, dups) = validate_word_list(&action_verbs.chinese);
+                if empties > 0 {
+                    warnings.push(format!("action_verbs.chinese: {} empty word(s)", empties));
+                }
+                if dups > 0 {
+                    warnings.push(format!("action_verbs.chinese: {} duplicate(s)", dups));
+                }
+                if action_verbs.chinese.is_empty() {
+                    warnings.push("action_verbs.chinese: empty category".into());
+                }
+            }
+            if let Some(ref entity_nouns) = conf.entity_nouns {
+                let (empties, dups) = validate_word_list(&entity_nouns.english);
+                if empties > 0 {
+                    warnings.push(format!("entity_nouns.english: {} empty word(s)", empties));
+                }
+                if dups > 0 {
+                    warnings.push(format!("entity_nouns.english: {} duplicate(s)", dups));
+                }
+                if entity_nouns.english.is_empty() {
+                    warnings.push("entity_nouns.english: empty category".into());
+                }
+                let (empties, dups) = validate_word_list(&entity_nouns.chinese);
+                if empties > 0 {
+                    warnings.push(format!("entity_nouns.chinese: {} empty word(s)", empties));
+                }
+                if dups > 0 {
+                    warnings.push(format!("entity_nouns.chinese: {} duplicate(s)", dups));
+                }
+                if entity_nouns.chinese.is_empty() {
+                    warnings.push("entity_nouns.chinese: empty category".into());
+                }
+            }
+
             let mode_str = match conf.mode {
                 MergeMode::Add => "ADD（扩展内置词典）",
                 MergeMode::Replace => "REPLACE（替换内置词典）",
             };
 
-            Ok(Some(format!(
-                "语义词典配置有效: {} | 模式: {} | 词汇数: {}",
-                path.display(),
-                mode_str,
-                total_words
-            )))
+            Ok(Some(SemanticDictCheckResult {
+                message: format!(
+                    "语义词典配置有效: {} | 模式: {} | 词汇数: {}",
+                    path.display(),
+                    mode_str,
+                    total_words
+                ),
+                warnings,
+            }))
         }
         Err(e) => Err(format!("语义词典配置加载失败: {}", e)),
     }
@@ -842,6 +979,40 @@ mode = "add"
 
         let result = check_semantic_dict_config(Some(temp_file.path())).unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_check_config_returns_structured_warnings() {
+        let config_content = r#"
+version = 1
+mode = "add"
+
+[stop_words]
+english = ["the", "", "the"]
+chinese = []
+"#;
+
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(config_content.as_bytes()).unwrap();
+
+        let detailed = check_semantic_dict_config_detailed(Some(temp_file.path()))
+            .unwrap()
+            .unwrap();
+        assert!(detailed.message.contains("语义词典配置有效"));
+        assert!(!detailed.message.contains("问题"));
+        assert!(detailed.warnings.iter().any(|w| w.contains("empty word")));
+        assert!(detailed.warnings.iter().any(|w| w.contains("duplicate")));
+        assert!(
+            detailed
+                .warnings
+                .iter()
+                .any(|w| w == "stop_words.chinese: empty category")
+        );
+
+        let legacy = check_semantic_dict_config(Some(temp_file.path()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(legacy, detailed.message);
     }
 
     #[test]

@@ -33,15 +33,15 @@ fn uniq_tmp_dir() -> String {
 /// 创建基础项目结构（不包含任何配置文件）
 fn create_minimal_project_structure(work_root: &str) {
     // 确保根目录存在，如果存在则先清理以避免冲突
-    if std::path::Path::new(work_root).exists() {
-        if let Err(e) = fs::remove_dir_all(work_root) {
-            // 忽略不存在的错误
-            if e.kind() != std::io::ErrorKind::NotFound {
-                eprintln!(
-                    "Warning: Failed to cleanup existing directory {}: {}",
-                    work_root, e
-                );
-            }
+    if std::path::Path::new(work_root).exists()
+        && let Err(e) = fs::remove_dir_all(work_root)
+    {
+        // 忽略不存在的错误
+        if e.kind() != std::io::ErrorKind::NotFound {
+            eprintln!(
+                "Warning: Failed to cleanup existing directory {}: {}",
+                work_root, e
+            );
         }
     }
 
@@ -148,6 +148,10 @@ base = "data/in_dat"
     // 确保父目录存在
     let wpsrc_path = format!("{}/topology/sources/wpsrc.toml", work_root);
     fs::create_dir_all(std::path::Path::new(&wpsrc_path).parent().unwrap()).unwrap();
+    // 确保 source file 的 base 目录和匹配 glob 的示例文件存在
+    let data_dir = format!("{}/data/in_dat", work_root);
+    fs::create_dir_all(&data_dir).unwrap();
+    fs::write(format!("{}/gen.dat", data_dir), "dummy").unwrap();
     fs::write(wpsrc_path, wpsrc_content).unwrap();
 }
 
@@ -254,8 +258,7 @@ impl Drop for HomeOverride {
 }
 
 #[cfg(test)]
-#[cfg(test)]
-mod tests {
+mod project_tests {
 
     use crate::{
         models::{Knowledge, Oml, Wpl},

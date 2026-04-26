@@ -328,12 +328,9 @@ impl WarpProject {
         let abs_root = normalize_work_root(work_root);
         let wpgen_config_path = abs_root.join(CONF_WPGEN_FILE);
         if !wpgen_config_path.exists() {
-            return Err(RunReason::from_conf().to_err().with_detail(format!(
-                "wpgen config not found: {}",
-                wpgen_config_path.display()
-            )));
+            return Ok(());
         }
-        WpGenConfig::env_load_toml(&wpgen_config_path, dict).owe_conf()?;
+        WpGenConfig::load_from_path(&wpgen_config_path, dict).owe_conf()?;
         Ok(())
     }
 

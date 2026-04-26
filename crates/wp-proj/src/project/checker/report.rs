@@ -70,6 +70,9 @@ pub fn component_cells<'a>(row: &'a Row, comps: &CheckComponents) -> Vec<(&'stat
     if comps.semantic_dict {
         cells.push(("SemanticDict", &row.semantic_dict));
     }
+    if comps.wpgen {
+        cells.push(("Wpgen", &row.wpgen));
+    }
     cells
 }
 
@@ -178,6 +181,22 @@ fn detail_entries_for(row: &Row, comps: &CheckComponents) -> Vec<DetailEntry> {
             item: "Config".into(),
             data: cell_data(&row.semantic_dict),
             result: status_mark(&row.semantic_dict).to_string(),
+        });
+        for warning in &row.semantic_dict.warnings {
+            entries.push(DetailEntry {
+                category: cat("SemanticDict"),
+                item: "Warning".into(),
+                data: warning.clone(),
+                result: "!".into(),
+            });
+        }
+    }
+    if comps.wpgen {
+        entries.push(DetailEntry {
+            category: cat("Wpgen"),
+            item: "Config".into(),
+            data: cell_data(&row.wpgen),
+            result: status_mark(&row.wpgen).to_string(),
         });
     }
 

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.7] - 2026-04-26
+
+### Changed
+- **wpgen/Config Loading**: 统一 `wpgen.toml` 加载入口到 `WpGenConfig::load_from_path`，确保解析、环境变量展开和校验语义在运行期、项目加载和 `wproj check` 中保持一致。
+- **wproj/check**: 新增 `wpgen` 配置检查，并将语义词典空词、重复词和空类别改为结构化 warning，不再混入“配置有效”消息。
+- **Validation/Warnings**: 将 source/sink 输出或输入目录缺失调整为非阻断 warning，避免干净工程在目录尚未创建时被误判为配置失败。
+
+### Fixed
+- **wproj/check JSON**: 修复多个 check 路径直接写 stdout 导致 `wproj check --json` 输出被 warning 文本污染的问题。
+- **wpgen/Schema**: 明确拒绝缺失 `output.connect` 的 `wpgen.toml`，并更新测试与示例配置，移除已废弃的 `mode` 和 `duration_secs` 字段。
+- **OML/WPL Lint**: 将额外模型语义检查调整为非阻断 lint，避免手写 head 解析或空目录状态覆盖官方 parser 的结果。
+- **Tests/Temp Files**: 修复 `wp-config` 测试把临时 `framework.toml` 写入源码目录的问题，改用隔离临时目录。
+- **Code Quality**: 清理 `wp-config`、`wp-cli-core` 和 `wp-proj` 在 `-D warnings` 下暴露的 clippy 问题。
+
 ## [1.20.6] - 2026-04-24
 
 ### Fixed

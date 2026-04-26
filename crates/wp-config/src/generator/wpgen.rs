@@ -2,10 +2,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::structure::ConfStdOperation;
-use crate::structure::SinkInstanceConf;
+use crate::structure::{ConfStdOperation, SinkInstanceConf, Validate};
 use crate::utils::{backup_clean, save_conf};
-use orion_conf::error::OrionConfResult;
+use orion_conf::error::{ConfIOReason, OrionConfResult};
+use orion_error::{ToStructError, UvsFrom};
 use orion_variate::EnvDict;
 use serde_derive::{Deserialize, Serialize};
 use toml;
@@ -13,9 +13,10 @@ use toml;
 use super::speed_profile::SpeedProfileConfig;
 // no external IO traits for resolved wpgen; handled in loader
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct WpGenConfig {
+    #[serde(default = "default_version")]
     pub version: String,
     pub generator: GeneratorConfig,
     pub output: OutputConfig,
@@ -24,12 +25,27 @@ pub struct WpGenConfig {
     pub presets: HashMap<String, String>,
 }
 
+fn default_version() -> String {
+    "1.0".to_string()
+}
+
+impl Default for WpGenConfig {
+    fn default() -> Self {
+        Self {
+            version: "1.0".to_string(),
+            generator: GeneratorConfig::default(),
+            output: OutputConfig::default(),
+            logging: LoggingConfig::default(),
+            presets: HashMap::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct GeneratorConfig {
-    pub mode: GenMode,
     pub count: Option<usize>,
-    pub duration_secs: Option<u64>,
     /// 恒定速率（向后兼容）
     /// 当 speed_profile 为 None 时使用此字段
     pub speed: usize,
@@ -43,9 +59,7 @@ pub struct GeneratorConfig {
 impl Default for GeneratorConfig {
     fn default() -> Self {
         Self {
-            mode: GenMode::Rule,
             count: Some(1000),
-            duration_secs: None,
             speed: 1000,
             speed_profile: None,
             parallel: 1,
@@ -84,15 +98,6 @@ impl GeneratorConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub enum GenMode {
-    #[serde(rename = "rule")]
-    #[default]
-    Rule,
-    #[serde(rename = "sample")]
-    Sample,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OutputConfig {
     // 统一走 connectors：connect + params；
@@ -117,20 +122,255 @@ impl Default for OutputConfig {
 
 // 兼容类型移除：File/Kafka/Syslog/Stdout 等旧式输出定义已废弃
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LoggingConfig {
+    #[serde(default = "default_log_level")]
     pub level: String,
+    #[serde(default = "default_log_output")]
     pub output: String,
     pub file_path: Option<String>,
     pub format: Option<String>,
     pub rotation: Option<String>,
 }
 
+fn default_log_level() -> String {
+    "info".to_string()
+}
+
+fn default_log_output() -> String {
+    "file".to_string()
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            level: "info".to_string(),
+            output: "file".to_string(),
+            file_path: Some("./data/logs".to_string()),
+            format: None,
+            rotation: None,
+        }
+    }
+}
+
 // MonitoringConfig 已移除：旧版 [monitoring] 顶层段将触发未知字段错误（deny_unknown_fields）。
 
-impl WpGenConfig {
-    pub fn validate(&self) -> OrionConfResult<()> {
+impl Validate for WpGenConfig {
+    fn validate(&self) -> OrionConfResult<()> {
+        // 1. version 非空
+        if self.version.trim().is_empty() {
+            return Err(ConfIOReason::from_validation()
+                .to_err()
+                .with_detail("wpgen.version must not be empty"));
+        }
+
+        // 2. generator.count > 0（如果 Some），=0 无意义
+        if let Some(count) = self.generator.count
+            && count == 0
+        {
+            return Err(ConfIOReason::from_validation()
+                .to_err()
+                .with_detail("wpgen.generator.count must be greater than 0"));
+        }
+
+        // 3. generator.speed 不校验：0 表示 unlimited
+
+        // 4. generator.parallel > 0
+        if self.generator.parallel == 0 {
+            return Err(ConfIOReason::from_validation()
+                .to_err()
+                .with_detail("wpgen.generator.parallel must be greater than 0"));
+        }
+
+        // 5. speed_profile 参数合法性
+        if let Some(ref profile) = self.generator.speed_profile {
+            self.validate_speed_profile(profile)?;
+        }
+
+        // 6. output.connect 必须显式指定，运行期不会回退到默认输出。
+        match self.output.connect.as_deref().map(str::trim) {
+            Some(connect) if !connect.is_empty() => {}
+            _ => {
+                return Err(ConfIOReason::from_validation()
+                    .to_err()
+                    .with_detail("wpgen.output.connect is required"));
+            }
+        }
+
+        // 7. logging.level 是已知级别
+        self.validate_logging_level()?;
+
+        // 8. logging.output 是已知类型
+        self.validate_logging_output()?;
+
         Ok(())
+    }
+}
+
+impl WpGenConfig {
+    fn validate_speed_profile(&self, profile: &SpeedProfileConfig) -> OrionConfResult<()> {
+        match profile {
+            SpeedProfileConfig::Constant { rate } => {
+                if *rate == 0 {
+                    return Err(ConfIOReason::from_validation()
+                        .to_err()
+                        .with_detail("speed_profile.constant.rate must be greater than 0"));
+                }
+            }
+            SpeedProfileConfig::Sinusoidal {
+                base, period_secs, ..
+            } => {
+                if *base == 0 {
+                    return Err(ConfIOReason::from_validation()
+                        .to_err()
+                        .with_detail("speed_profile.sinusoidal.base must be greater than 0"));
+                }
+                if *period_secs <= 0.0 {
+                    return Err(ConfIOReason::from_validation().to_err().with_detail(
+                        "speed_profile.sinusoidal.period_secs must be greater than 0",
+                    ));
+                }
+            }
+            SpeedProfileConfig::Stepped { steps, .. } => {
+                if steps.is_empty() {
+                    return Err(ConfIOReason::from_validation()
+                        .to_err()
+                        .with_detail("speed_profile.stepped.steps must not be empty"));
+                }
+                for (i, (duration_secs, rate)) in steps.iter().enumerate() {
+                    if *duration_secs <= 0.0 {
+                        return Err(ConfIOReason::from_validation()
+                            .to_err()
+                            .with_detail(format!(
+                                "speed_profile.stepped.steps[{}].duration must be greater than 0",
+                                i
+                            )));
+                    }
+                    if *rate == 0 {
+                        return Err(ConfIOReason::from_validation()
+                            .to_err()
+                            .with_detail(format!(
+                                "speed_profile.stepped.steps[{}].rate must be greater than 0",
+                                i
+                            )));
+                    }
+                }
+            }
+            SpeedProfileConfig::Burst {
+                base,
+                burst_rate,
+                burst_duration_ms,
+                burst_probability,
+            } => {
+                if *base == 0 {
+                    return Err(ConfIOReason::from_validation()
+                        .to_err()
+                        .with_detail("speed_profile.burst.base must be greater than 0"));
+                }
+                if *burst_rate == 0 {
+                    return Err(ConfIOReason::from_validation()
+                        .to_err()
+                        .with_detail("speed_profile.burst.burst_rate must be greater than 0"));
+                }
+                if *burst_duration_ms == 0 {
+                    return Err(ConfIOReason::from_validation().to_err().with_detail(
+                        "speed_profile.burst.burst_duration_ms must be greater than 0",
+                    ));
+                }
+                if !(0.0..=1.0).contains(burst_probability) {
+                    return Err(ConfIOReason::from_validation().to_err().with_detail(
+                        "speed_profile.burst.burst_probability must be between 0.0 and 1.0",
+                    ));
+                }
+            }
+            SpeedProfileConfig::Ramp {
+                start,
+                end,
+                duration_secs,
+            } => {
+                if *start == 0 {
+                    return Err(ConfIOReason::from_validation()
+                        .to_err()
+                        .with_detail("speed_profile.ramp.start must be greater than 0"));
+                }
+                if *end == 0 {
+                    return Err(ConfIOReason::from_validation()
+                        .to_err()
+                        .with_detail("speed_profile.ramp.end must be greater than 0"));
+                }
+                if *duration_secs <= 0.0 {
+                    return Err(ConfIOReason::from_validation()
+                        .to_err()
+                        .with_detail("speed_profile.ramp.duration_secs must be greater than 0"));
+                }
+            }
+            SpeedProfileConfig::RandomWalk { base, variance } => {
+                if *base == 0 {
+                    return Err(ConfIOReason::from_validation()
+                        .to_err()
+                        .with_detail("speed_profile.random_walk.base must be greater than 0"));
+                }
+                if !(0.0..=1.0).contains(variance) {
+                    return Err(ConfIOReason::from_validation().to_err().with_detail(
+                        "speed_profile.random_walk.variance must be between 0.0 and 1.0",
+                    ));
+                }
+            }
+            SpeedProfileConfig::Composite { profiles, .. } => {
+                if profiles.is_empty() {
+                    return Err(ConfIOReason::from_validation()
+                        .to_err()
+                        .with_detail("speed_profile.composite.profiles must not be empty"));
+                }
+                for sub in profiles {
+                    self.validate_speed_profile(sub)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_logging_level(&self) -> OrionConfResult<()> {
+        let level = self.logging.level.to_lowercase();
+        if Self::is_valid_level_string(&level) {
+            Ok(())
+        } else {
+            Err(ConfIOReason::from_validation()
+                .to_err()
+                .with_detail(format!(
+                    "wpgen.logging.level '{}' is invalid; expected comma-separated levels like: trace, debug, info, warn, error, or module=level pairs",
+                    self.logging.level
+                )))
+        }
+    }
+
+    fn is_valid_level_string(level: &str) -> bool {
+        const VALID_LEVELS: &[&str] = &["trace", "debug", "info", "warn", "error"];
+        level.split(',').all(|seg| {
+            let seg = seg.trim();
+            if seg.is_empty() {
+                return false;
+            }
+            let level_part = if let Some((_mod, lvl)) = seg.split_once('=') {
+                lvl.trim()
+            } else {
+                seg
+            };
+            VALID_LEVELS.contains(&level_part)
+        })
+    }
+
+    fn validate_logging_output(&self) -> OrionConfResult<()> {
+        let output = self.logging.output.to_lowercase();
+        match output.as_str() {
+            "stdout" | "console" | "file" | "both" => Ok(()),
+            _ => Err(ConfIOReason::from_validation()
+                .to_err()
+                .with_detail(format!(
+                    "wpgen.logging.output '{}' is invalid; expected one of: stdout, console, file, both",
+                    self.logging.output
+                ))),
+        }
     }
 }
 
@@ -181,7 +421,9 @@ use orion_conf::EnvTomlLoad;
 impl WpGenConfig {
     /// Load WpGenConfig from a path with generic path parameter support
     pub fn load_from_path<P: AsRef<Path>>(path: P, dict: &EnvDict) -> OrionConfResult<Self> {
-        Self::env_load_toml(path.as_ref(), dict)
+        let conf = Self::env_load_toml(path.as_ref(), dict)?;
+        Validate::validate(&conf)?;
+        Ok(conf)
     }
 
     /// Initialize WpGenConfig to a path with generic path parameter support
@@ -208,7 +450,7 @@ impl ConfStdOperation for WpGenConfig {
     where
         Self: Sized,
     {
-        WpGenConfig::env_load_toml(&PathBuf::from(path), dict)
+        WpGenConfig::load_from_path(PathBuf::from(path), dict)
     }
 
     fn init(path: &str) -> OrionConfResult<Self>
@@ -273,7 +515,6 @@ mod tests {
 version = "1.0"
 
 [generator]
-mode = "rule"
 count = 100
 speed = 1000
 parallel = 2
@@ -336,7 +577,6 @@ file_path = "${LOG_PATH}"
 version = "1.0"
 
 [generator]
-mode = "rule"
 count = 50
 speed = 500
 
@@ -368,7 +608,6 @@ output = "stdout"
 version = "1.0"
 
 [generator]
-mode = "rule"
 count = 100
 rule_root = "${APP_ROOT}/rules"
 
@@ -408,7 +647,6 @@ file_path = "${LOG_DIR}/app.log"
 version = "1.0"
 
 [generator]
-mode = "rule"
 count = 100
 
 [generator.speed_profile]
@@ -445,7 +683,6 @@ output = "file"
 version = "1.0"
 
 [generator]
-mode = "rule"
 count = 100
 
 [generator.speed_profile]
@@ -491,7 +728,6 @@ output = "file"
 version = "1.0"
 
 [generator]
-mode = "rule"
 count = 100
 
 [generator.speed_profile]
@@ -537,7 +773,6 @@ output = "file"
 version = "1.0"
 
 [generator]
-mode = "rule"
 count = 100
 
 [generator.speed_profile]
@@ -580,7 +815,6 @@ output = "file"
 version = "1.0"
 
 [generator]
-mode = "rule"
 count = 100
 speed = 3000
 
@@ -607,5 +841,43 @@ output = "file"
             profile,
             SpeedProfileConfig::Constant { rate: 3000 }
         ));
+    }
+
+    #[test]
+    fn wpgen_loaders_reject_missing_output_connect_consistently() {
+        let base = tmp_dir("wpgen_missing_connect");
+        let conf_path = base.join("wpgen.toml");
+
+        let wpgen_toml = r#"
+version = "1.0"
+
+[generator]
+count = 100
+
+[output]
+
+[logging]
+level = "info"
+output = "file"
+"#;
+        fs::write(&conf_path, wpgen_toml).unwrap();
+
+        let dict = EnvDict::new();
+        let path = conf_path.to_string_lossy().to_string();
+        let direct = WpGenConfig::load_from_path(&conf_path, &dict);
+        let trait_load = <WpGenConfig as ConfStdOperation>::load(&path, &dict);
+
+        assert!(
+            direct
+                .unwrap_err()
+                .to_string()
+                .contains("wpgen.output.connect is required")
+        );
+        assert!(
+            trait_load
+                .unwrap_err()
+                .to_string()
+                .contains("wpgen.output.connect is required")
+        );
     }
 }
