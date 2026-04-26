@@ -55,24 +55,38 @@ pub struct WarpProject {
 
 impl WarpProject {
     fn build(work_root: &Path, dict: &orion_variate::EnvDict) -> RunResult<Self> {
+        Self::build_with_engine_config(work_root, dict, true)
+    }
+
+    fn build_existing(work_root: &Path, dict: &orion_variate::EnvDict) -> RunResult<Self> {
+        Self::build_with_engine_config(work_root, dict, false)
+    }
+
+    fn build_with_engine_config(
+        work_root: &Path,
+        dict: &orion_variate::EnvDict,
+        init_missing_engine_config: bool,
+    ) -> RunResult<Self> {
         let abs_root = normalize_work_root_result(work_root)?;
         let paths = ProjectPaths::from_root(&abs_root);
-        std::fs::create_dir_all(&abs_root).map_err(|err| {
-            RunReason::from_conf()
-                .to_err()
-                .with_detail(format!("create work root '{}' failed", abs_root.display()))
-                .with_source(err)
-        })?;
-        std::fs::create_dir_all(&paths.conf_dir).map_err(|err| {
-            RunReason::from_conf()
-                .to_err()
-                .with_detail(format!(
-                    "create conf dir '{}' failed",
-                    paths.conf_dir.display()
-                ))
-                .with_source(err)
-        })?;
-        let eng_conf = Arc::new(
+        if init_missing_engine_config {
+            std::fs::create_dir_all(&abs_root).map_err(|err| {
+                RunReason::from_conf()
+                    .to_err()
+                    .with_detail(format!("create work root '{}' failed", abs_root.display()))
+                    .with_source(err)
+            })?;
+            std::fs::create_dir_all(&paths.conf_dir).map_err(|err| {
+                RunReason::from_conf()
+                    .to_err()
+                    .with_detail(format!(
+                        "create conf dir '{}' failed",
+                        paths.conf_dir.display()
+                    ))
+                    .with_source(err)
+            })?;
+        }
+        let eng_conf = if init_missing_engine_config {
             EngineConfig::load_or_init(&abs_root, dict)
                 .map_err(|err| {
                     RunReason::from_conf()
@@ -81,8 +95,19 @@ impl WarpProject {
                         .with_struct_source(err)
                 })?
                 .env_eval(dict)
-                .conf_absolutize(&abs_root),
-        );
+                .conf_absolutize(&abs_root)
+        } else {
+            EngineConfig::load(&abs_root, dict)
+                .map_err(|err| {
+                    RunReason::from_conf()
+                        .to_err()
+                        .with_detail("load engine config failed")
+                        .with_struct_source(err)
+                })?
+                .env_eval(dict)
+                .conf_absolutize(&abs_root)
+        };
+        let eng_conf = Arc::new(eng_conf);
         let connectors = Connectors::new(paths.connectors.clone());
         let sinks_c = Sinks::new(&abs_root, eng_conf.clone());
         let sources_c = Sources::new(&abs_root, eng_conf.clone());
@@ -124,7 +149,7 @@ impl WarpProject {
         mode: PrjScope,
         dict: &orion_variate::EnvDict,
     ) -> RunResult<Self> {
-        let mut project = Self::build(work_root.as_ref(), dict)?;
+        let mut project = Self::build_existing(work_root.as_ref(), dict)?;
         project.load_components(mode)?;
         Ok(project)
     }
