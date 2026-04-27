@@ -21,10 +21,33 @@ pub struct ProjectRemoteConf {
     pub repo: String,
     #[serde(default)]
     pub init_version: String,
+    #[serde(default)]
+    pub models: Option<RepoGroupConf>,
+    #[serde(default)]
+    pub infra: Option<RepoGroupConf>,
 }
 
 impl EnvEvaluable<ProjectRemoteConf> for ProjectRemoteConf {
     fn env_eval(mut self, dict: &EnvDict) -> ProjectRemoteConf {
+        self.repo = self.repo.env_eval(dict);
+        self.init_version = self.init_version.env_eval(dict);
+        self.models = self.models.map(|m| m.env_eval(dict));
+        self.infra = self.infra.map(|i| i.env_eval(dict));
+        self
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Deserialize, Serialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct RepoGroupConf {
+    #[serde(default)]
+    pub repo: String,
+    #[serde(default)]
+    pub init_version: String,
+}
+
+impl EnvEvaluable<RepoGroupConf> for RepoGroupConf {
+    fn env_eval(mut self, dict: &EnvDict) -> RepoGroupConf {
         self.repo = self.repo.env_eval(dict);
         self.init_version = self.init_version.env_eval(dict);
         self
