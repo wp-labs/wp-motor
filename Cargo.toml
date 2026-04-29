@@ -371,7 +371,7 @@ wp_ctrl_api = { package = "wp-ctrl-api", git = "https://github.com/wp-labs/wp-ad
 wp_enrich_api = { package = "wp-enrich-api", git = "https://github.com/wp-labs/wp-advanced-api", tag = "v0.1.0" }
 
 # --- External: Infrastructure Libraries ---
-wp-log = "0.2"
+wp-log = "0.3"
 wp-error = "0.8"
 wp-specs = "0.8"
 wp-conf-base = "0.2"
