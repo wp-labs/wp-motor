@@ -364,7 +364,7 @@ wp-arrow = "0.1"
 
 # --- External: Open API (Public Interfaces) ---
 wp-connector-api = "0.8"
-wp-parse-api = "0.8"
+wp-parse-api = "0.9"
 wp-model-core = "0.8"
 
 # --- External: Advanced API (Enterprise Features) ---
