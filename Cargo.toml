@@ -300,7 +300,7 @@ strum = "0.28"
 strum_macros = "0.27"
 parse-display = "0.10"
 parse-display-derive = "0.10"
-ctor = "0.10"
+ctor = "0.11"
 
 # --- System & Platform ---
 arcstr = "1.2"
