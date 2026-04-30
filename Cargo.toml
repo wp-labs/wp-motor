@@ -242,6 +242,7 @@ required-features = ["perf-ci"]
 # Metadata
 # ============================================================================
 
+
 [package.metadata.cargo-udeps.ignore]
 # ctor is used via attribute macros and may not be detected by cargo-udeps
 normal = ["ctor"]

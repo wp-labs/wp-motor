@@ -25,7 +25,7 @@ impl MultiParser {
     /// 处理单个事件
     pub fn parse_event(&mut self, event: &SourceEvent, setting: &ParseOption) -> ProcessResult {
         let mut max_depth = 0;
-        let mut best_wpl = String::new();
+        let mut best_idx: Option<usize> = None;
         let mut best_error = None;
         let rule_cnt = self.pipelines.len();
 
@@ -48,21 +48,17 @@ impl MultiParser {
                     let wpl_key = wpl_line.wpl_key().to_string();
 
                     // 根据是否有残留数据返回不同的结果
-                    if un_parsed.is_empty() || un_parsed.is_empty() {
+                    if un_parsed.is_empty() {
                         let record = Arc::new(tdo_crate);
                         info_edata!(event.event_id, "wpl parse suc! wpl:{} ", wpl_key,);
                         return ProcessResult::Success { wpl_key, record };
                     } else {
                         let parsed_len = event.payload.len() - un_parsed.len();
-                        if un_parsed.len() as f64 / event.payload.len() as f64 > 0.2 {
-                            info_edata!(
-                                event.event_id,
-                                "wpl parse not complete: {}",
-                                wpl_line.wpl_key(),
-                            );
+                        if un_parsed.len() * 5 > event.payload.len() {
+                            info_edata!(event.event_id, "wpl parse not complete: {}", wpl_key,);
                             if parsed_len > max_depth {
                                 max_depth = parsed_len;
-                                best_wpl = wpl_line.wpl_key().clone();
+                                best_idx = Some(idx);
                                 best_error = Some(WparseReason::from_data().to_err());
                             }
                         } else {
@@ -78,18 +74,17 @@ impl MultiParser {
                 Err(e) => {
                     // 记录解析深度最高的错误
                     if matches!(e.reason(), WparseReason::Uvs(UvsReason::DataError)) {
-                        best_wpl = wpl_line.wpl_key().clone();
-                        best_error = Some(e.clone());
+                        best_idx = Some(idx);
+                        best_error = Some(e);
                         if max_depth == 0 {
-                            // 当底层解析器未返回显式消费深度时，至少记录“已进入规则尝试”。
+                            // 当底层解析器未返回显式消费深度时，至少记录"已进入规则尝试"。
                             max_depth = 1;
                         }
-                        //single wpl fail!
-                        debug_edata!(event.event_id, "wpl parse fail: {}", wpl_line.wpl_key(),);
+                        debug_edata!(event.event_id, "wpl parse fail: {}", wpl_line.wpl_key());
                     } else if best_error.is_none() {
                         // 如果不是 DataError，作为备选记录第一个错误
-                        best_wpl = wpl_line.wpl_key().clone();
-                        best_error = Some(e.clone());
+                        best_idx = Some(idx);
+                        best_error = Some(e);
                         break;
                     }
 
@@ -101,6 +96,7 @@ impl MultiParser {
         }
 
         // 所有规则都失败，返回深度最高的失败信息
+        let best_wpl = best_idx.map_or(String::new(), |i| self.pipelines[i].wpl_key().to_string());
         let best_error = best_error
             .unwrap_or_else(|| WparseError::from(WparseReason::Uvs(UvsReason::system_error())));
         ProcessResult::Miss(super::types::ParseFailInfo::new(
@@ -144,6 +140,7 @@ impl MultiParser {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::core::parser::wpl_engine::pipeline::WplPipeline;
     use crate::sinks::SinkGroupAgent;
