@@ -5,6 +5,7 @@ use oml::parser::oml_parse_raw;
 use oml::types::AnyResult;
 use orion_error::TestAssert;
 use std::net::{IpAddr, Ipv4Addr};
+use std::sync::Mutex;
 use wp_data_fmt::Json;
 use wp_data_fmt::KeyValue;
 use wp_data_fmt::ProtoTxt;
@@ -17,6 +18,12 @@ use wp_model_core::model::DataRecord;
 use wp_model_core::model::Value;
 use wp_model_core::model::types::value::ObjectValue;
 use wp_primitives::WResult as ModalResult;
+
+lazy_static::lazy_static! {
+    /// Serialize tests that call `init_mem_provider` to avoid provider-overwrite races.
+    static ref PROVIDER_LOCK: Mutex<()> = Mutex::new(());
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn test_crate_get() {
     let cache = &mut FieldQueryCache::default();
@@ -764,6 +771,7 @@ async fn test_value_arr() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn test_sql_1() -> AnyResult<()> {
+    let _guard = PROVIDER_LOCK.lock().unwrap();
     let cache = &mut FieldQueryCache::default();
     // 绑定门面到全局内存库并装载 example 表
     let _ = wp_knowledge::facade::init_mem_provider(MemDB::global());
@@ -787,6 +795,7 @@ async fn test_sql_1() -> AnyResult<()> {
 
 #[tokio::test(flavor = "current_thread")]
 async fn test_sql_debug() -> AnyResult<()> {
+    let _guard = PROVIDER_LOCK.lock().unwrap();
     log_for_test()?;
     let cache = &mut FieldQueryCache::default();
     let _ = wp_knowledge::facade::init_mem_provider(MemDB::global());
@@ -809,10 +818,10 @@ async fn test_sql_debug() -> AnyResult<()> {
 
 #[tokio::test(flavor = "current_thread")]
 async fn test_sql_group_concat_in_with_oml_refs() -> AnyResult<()> {
+    let _guard = PROVIDER_LOCK.lock().unwrap();
     let cache = &mut FieldQueryCache::default();
-    let db = MemDB::global();
+    let db = MemDB::instance();
     db.table_create("CREATE TABLE IF NOT EXISTS asset_enrichment (ip TEXT, asset_type TEXT)")?;
-    db.execute("DELETE FROM asset_enrichment")?;
     db.execute("INSERT INTO asset_enrichment (ip, asset_type) VALUES ('1.1.1.1', 'server')")?;
     db.execute("INSERT INTO asset_enrichment (ip, asset_type) VALUES ('2.2.2.2', 'db')")?;
     db.execute("INSERT INTO asset_enrichment (ip, asset_type) VALUES ('2.2.2.2', 'server')")?;
@@ -844,10 +853,10 @@ async fn test_sql_group_concat_in_with_oml_refs() -> AnyResult<()> {
 
 #[tokio::test(flavor = "current_thread")]
 async fn test_sql_group_concat_in_with_take_refs() -> AnyResult<()> {
+    let _guard = PROVIDER_LOCK.lock().unwrap();
     let cache = &mut FieldQueryCache::default();
-    let db = MemDB::global();
+    let db = MemDB::instance();
     db.table_create("CREATE TABLE IF NOT EXISTS asset_data (ip TEXT, asset TEXT)")?;
-    db.execute("DELETE FROM asset_data")?;
     db.execute("INSERT INTO asset_data (ip, asset) VALUES ('1.1.1.1', 'server')")?;
     db.execute("INSERT INTO asset_data (ip, asset) VALUES ('2.2.2.2', 'db')")?;
     db.execute("INSERT INTO asset_data (ip, asset) VALUES ('2.2.2.2', 'server')")?;
@@ -877,10 +886,10 @@ async fn test_sql_group_concat_in_with_take_refs() -> AnyResult<()> {
 
 #[tokio::test(flavor = "current_thread")]
 async fn test_sql_group_concat_in_with_missing_at_ref_binds_null() -> AnyResult<()> {
+    let _guard = PROVIDER_LOCK.lock().unwrap();
     let cache = &mut FieldQueryCache::default();
-    let db = MemDB::global();
+    let db = MemDB::instance();
     db.table_create("CREATE TABLE IF NOT EXISTS asset_data (ip TEXT, asset TEXT)")?;
-    db.execute("DELETE FROM asset_data")?;
     db.execute("INSERT INTO asset_data (ip, asset) VALUES ('1.1.1.1', 'server')")?;
     db.execute("INSERT INTO asset_data (ip, asset) VALUES ('2.2.2.2', 'db')")?;
     let _ = wp_knowledge::facade::init_mem_provider(db);
@@ -910,10 +919,10 @@ async fn test_sql_group_concat_in_with_missing_at_ref_binds_null() -> AnyResult<
 
 #[tokio::test(flavor = "current_thread")]
 async fn test_sql_group_concat_in_with_missing_read_ref_binds_null() -> AnyResult<()> {
+    let _guard = PROVIDER_LOCK.lock().unwrap();
     let cache = &mut FieldQueryCache::default();
-    let db = MemDB::global();
+    let db = MemDB::instance();
     db.table_create("CREATE TABLE IF NOT EXISTS asset_data (ip TEXT, asset TEXT)")?;
-    db.execute("DELETE FROM asset_data")?;
     db.execute("INSERT INTO asset_data (ip, asset) VALUES ('1.1.1.1', 'server')")?;
     db.execute("INSERT INTO asset_data (ip, asset) VALUES ('2.2.2.2', 'db')")?;
     let _ = wp_knowledge::facade::init_mem_provider(db);
@@ -942,10 +951,10 @@ async fn test_sql_group_concat_in_with_missing_read_ref_binds_null() -> AnyResul
 
 #[tokio::test(flavor = "current_thread")]
 async fn test_sql_group_concat_in_with_missing_take_ref_binds_null() -> AnyResult<()> {
+    let _guard = PROVIDER_LOCK.lock().unwrap();
     let cache = &mut FieldQueryCache::default();
-    let db = MemDB::global();
+    let db = MemDB::instance();
     db.table_create("CREATE TABLE IF NOT EXISTS asset_data (ip TEXT, asset TEXT)")?;
-    db.execute("DELETE FROM asset_data")?;
     db.execute("INSERT INTO asset_data (ip, asset) VALUES ('1.1.1.1', 'server')")?;
     db.execute("INSERT INTO asset_data (ip, asset) VALUES ('2.2.2.2', 'db')")?;
     let _ = wp_knowledge::facade::init_mem_provider(db);
@@ -974,10 +983,10 @@ async fn test_sql_group_concat_in_with_missing_take_ref_binds_null() -> AnyResul
 
 #[tokio::test(flavor = "current_thread")]
 async fn test_sql_eq_with_bare_temp_ref() -> AnyResult<()> {
+    let _guard = PROVIDER_LOCK.lock().unwrap();
     let cache = &mut FieldQueryCache::default();
-    let db = MemDB::global();
+    let db = MemDB::instance();
     db.table_create("CREATE TABLE IF NOT EXISTS asset_data (ip TEXT, asset TEXT)")?;
-    db.execute("DELETE FROM asset_data")?;
     db.execute("INSERT INTO asset_data (ip, asset) VALUES ('1.1.1.1', 'server')")?;
     db.execute("INSERT INTO asset_data (ip, asset) VALUES ('2.2.2.2', 'db')")?;
     let _ = wp_knowledge::facade::init_mem_provider(db);
