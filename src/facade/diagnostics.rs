@@ -351,9 +351,7 @@ fn summarize_run_error(e: &RunError) -> DiagnosticSummary {
             .map(|s| s.to_string());
     }
 
-    let mut parse_excerpt = detail
-        .as_deref()
-        .and_then(extract_toml_parse_excerpt);
+    let mut parse_excerpt = detail.as_deref().and_then(extract_toml_parse_excerpt);
 
     for frame in &report.source_frames {
         if let Some(frame_loc) = frame_location(frame)
@@ -388,12 +386,7 @@ fn summarize_run_error(e: &RunError) -> DiagnosticSummary {
     }
 
     let root_cause = e.root_cause_frame().and_then(|frame| {
-        root_cause_candidate(
-            frame,
-            &reason,
-            detail.as_deref(),
-            parse_excerpt.as_deref(),
-        )
+        root_cause_candidate(frame, &reason, detail.as_deref(), parse_excerpt.as_deref())
     });
 
     DiagnosticSummary {
@@ -421,130 +414,181 @@ pub fn collect_hints(stable_code: &str, detail: Option<&str>) -> Vec<&'static st
     match stable_code {
         // ── 配置错误 ──
         "conf.core_invalid" => {
-            push_hint_once(&mut hints, i18n(
-                "检查配置文件语法和必需字段",
-                "Check configuration file syntax and required fields",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "检查配置文件语法和必需字段",
+                    "Check configuration file syntax and required fields",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
         "conf.feature_invalid" => {
-            push_hint_once(&mut hints, i18n(
-                "检查是否启用了所需特性（feature flag），或使用了不支持的配置项",
-                "Check whether required feature flags are enabled, or unsupported config fields are used",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "检查是否启用了所需特性（feature flag），或使用了不支持的配置项",
+                    "Check whether required feature flags are enabled, or unsupported config fields are used",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
         "conf.dynamic_invalid" => {
-            push_hint_once(&mut hints, i18n(
-                "动态配置加载失败，检查配置源是否可访问、格式是否正确",
-                "Dynamic config load failed — check whether config source is accessible and has valid format",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "动态配置加载失败，检查配置源是否可访问、格式是否正确",
+                    "Dynamic config load failed — check whether config source is accessible and has valid format",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
 
         // ── 系统 / IO ──
         "sys.io_error" => {
-            push_hint_once(&mut hints, i18n(
-                "检查文件系统状态和文件权限",
-                "Check filesystem state and file permissions",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "检查文件系统状态和文件权限",
+                    "Check filesystem state and file permissions",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
         "sys.network_error" => {
-            push_hint_once(&mut hints, i18n(
-                "检查网络连接和服务可达性",
-                "Check network connectivity and service reachability",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "检查网络连接和服务可达性",
+                    "Check network connectivity and service reachability",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
         "sys.timeout" => {
-            push_hint_once(&mut hints, i18n(
-                "操作超时，可稍后重试或检查下游服务延迟",
-                "Operation timed out — retry later or inspect downstream service latency",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "操作超时，可稍后重试或检查下游服务延迟",
+                    "Operation timed out — retry later or inspect downstream service latency",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
         "sys.resource_exhausted" => {
-            push_hint_once(&mut hints, i18n(
-                "资源不足，检查磁盘空间和内存使用",
-                "Resource exhausted — check disk space and memory usage",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "资源不足，检查磁盘空间和内存使用",
+                    "Resource exhausted — check disk space and memory usage",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
         "sys.data_error" => {
-            push_hint_once(&mut hints, i18n(
-                "数据处理失败，检查输入数据格式和内容完整性",
-                "Data processing failed — check input format and content integrity",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "数据处理失败，检查输入数据格式和内容完整性",
+                    "Data processing failed — check input format and content integrity",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
         "sys.external_service_error" => {
-            push_hint_once(&mut hints, i18n(
-                "外部服务调用失败，检查服务是否可用以及认证信息是否正确",
-                "External service call failed — check service availability and authentication",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "外部服务调用失败，检查服务是否可用以及认证信息是否正确",
+                    "External service call failed — check service availability and authentication",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
 
         // ── 业务逻辑 ──
         "biz.validation_error" => {
-            push_hint_once(&mut hints, i18n(
-                "检查输入数据格式和字段值是否符合要求",
-                "Check whether input data format and field values meet requirements",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "检查输入数据格式和字段值是否符合要求",
+                    "Check whether input data format and field values meet requirements",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
         "biz.business_error" => {
-            push_hint_once(&mut hints, i18n(
-                "业务规则校验未通过，检查输入是否满足业务约束",
-                "Business rule validation failed — check whether input meets business constraints",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "业务规则校验未通过，检查输入是否满足业务约束",
+                    "Business rule validation failed — check whether input meets business constraints",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
         "biz.not_found" => {
-            push_hint_once(&mut hints, i18n(
-                "确认资源路径和标识符是否正确，目标文件或目录是否存在",
-                "Verify resource path and identifier — check whether the target file or directory exists",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "确认资源路径和标识符是否正确，目标文件或目录是否存在",
+                    "Verify resource path and identifier — check whether the target file or directory exists",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
         "biz.permission_denied" => {
-            push_hint_once(&mut hints, i18n(
-                "检查文件或目录的读写权限，必要时使用 chmod 或切换用户",
-                "Check file/directory read/write permissions — use chmod or switch user if needed",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "检查文件或目录的读写权限，必要时使用 chmod 或切换用户",
+                    "Check file/directory read/write permissions — use chmod or switch user if needed",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
         "biz.run_rule_error" => {
-            push_hint_once(&mut hints, i18n(
-                "规则执行失败，检查规则文件语法和数据格式是否匹配",
-                "Rule execution failed — check rule file syntax and whether data format matches",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "规则执行失败，检查规则文件语法和数据格式是否匹配",
+                    "Rule execution failed — check rule file syntax and whether data format matches",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
 
         // ── 分发层 ──
         "biz.dist" => {
-            push_hint_once(&mut hints, i18n(
-                "数据分发失败，检查 sink 配置和下游服务状态",
-                "Data distribution failed — check sink configuration and downstream service status",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "数据分发失败，检查 sink 配置和下游服务状态",
+                    "Data distribution failed — check sink configuration and downstream service status",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
         "biz.source" => {
-            push_hint_once(&mut hints, i18n(
-                "数据源访问失败，检查 source 配置、文件是否存在、网络是否可达",
-                "Data source access failed — check source config, file existence, and network reachability",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "数据源访问失败，检查 source 配置、文件是否存在、网络是否可达",
+                    "Data source access failed — check source config, file existence, and network reachability",
+                ),
+            );
             hint_by_detail(&mut hints, detail);
         }
 
         // ── 内部逻辑异常 ──
         "logic.internal_invariant_broken" => {
-            push_hint_once(&mut hints, i18n(
-                "内部逻辑错误，请联系开发者并提供复现步骤",
-                "Internal logic error — please contact the developer and provide reproduction steps",
-            ));
+            push_hint_once(
+                &mut hints,
+                i18n(
+                    "内部逻辑错误，请联系开发者并提供复现步骤",
+                    "Internal logic error — please contact the developer and provide reproduction steps",
+                ),
+            );
         }
 
         _ => {
@@ -564,36 +608,51 @@ fn hint_by_detail(hints: &mut Vec<&'static str>, detail: Option<&str>) {
 
     // ── 样本 / 规则 ──
     if d.contains("no sample.dat") || d.contains("no rule file") {
-        push_hint_once(hints, i18n(
-            "在规则目录下放置 sample.dat 和对应的 .wpl 文件，或使用 'wpgen rule -n 1000' 生成样本数据",
-            "Place sample.dat and matching .wpl files in the rule directory, or run 'wpgen rule -n 1000' to generate sample data",
-        ));
-        push_hint_once(hints, i18n(
-            "规则目录默认位于 <work_root>/rule/，sample.dat 和 parse.wpl 需在同一目录下",
-            "Rule directory defaults to <work_root>/rule/ — sample.dat and parse.wpl must be in the same directory",
-        ));
+        push_hint_once(
+            hints,
+            i18n(
+                "在规则目录下放置 sample.dat 和对应的 .wpl 文件，或使用 'wpgen rule -n 1000' 生成样本数据",
+                "Place sample.dat and matching .wpl files in the rule directory, or run 'wpgen rule -n 1000' to generate sample data",
+            ),
+        );
+        push_hint_once(
+            hints,
+            i18n(
+                "规则目录默认位于 <work_root>/rule/，sample.dat 和 parse.wpl 需在同一目录下",
+                "Rule directory defaults to <work_root>/rule/ — sample.dat and parse.wpl must be in the same directory",
+            ),
+        );
     }
 
     // ── 特性 / feature ──
     if d.contains("requires feature") || (d.contains("kafka") && d.contains("feature")) {
-        push_hint_once(hints, i18n(
-            "缺少编译特性，使用 'cargo build --features kafka --bins' 或启用 'community' 特性",
-            "Missing compile feature — use 'cargo build --features kafka --bins' or enable the 'community' feature",
-        ));
+        push_hint_once(
+            hints,
+            i18n(
+                "缺少编译特性，使用 'cargo build --features kafka --bins' 或启用 'community' 特性",
+                "Missing compile feature — use 'cargo build --features kafka --bins' or enable the 'community' feature",
+            ),
+        );
     }
 
     // ── 废弃字段 ──
     if d.contains("unknown field `mode`") {
-        push_hint_once(hints, i18n(
-            "\"mode\" 字段已废弃，请从 wpgen.toml 中删除该字段",
-            "The \"mode\" field is deprecated — remove it from wpgen.toml",
-        ));
+        push_hint_once(
+            hints,
+            i18n(
+                "\"mode\" 字段已废弃，请从 wpgen.toml 中删除该字段",
+                "The \"mode\" field is deprecated — remove it from wpgen.toml",
+            ),
+        );
     }
     if d.contains("unknown field `duration_secs`") {
-        push_hint_once(hints, i18n(
-            "\"duration_secs\" 字段已废弃，请从 wpgen.toml 中删除该字段",
-            "The \"duration_secs\" field is deprecated — remove it from wpgen.toml",
-        ));
+        push_hint_once(
+            hints,
+            i18n(
+                "\"duration_secs\" 字段已废弃，请从 wpgen.toml 中删除该字段",
+                "The \"duration_secs\" field is deprecated — remove it from wpgen.toml",
+            ),
+        );
     }
 }
 
@@ -715,24 +774,36 @@ mod tests {
     #[test]
     fn test_hint_file_source() {
         let hs = collect_hints("biz.source", Some("missing 'path'"));
-        assert!(hs.iter().any(|h| h.contains("Data source access failed") || h.contains("数据源访问失败")));
+        assert!(
+            hs.iter()
+                .any(|h| h.contains("Data source access failed") || h.contains("数据源访问失败"))
+        );
     }
 
     #[test]
     fn test_collect_hints_by_stable_code_conf() {
         let hs = collect_hints("conf.core_invalid", Some("missing field 'sources'"));
-        assert!(hs.iter().any(|h| h.contains("Check configuration file") || h.contains("检查配置文件语法")));
+        assert!(
+            hs.iter()
+                .any(|h| h.contains("Check configuration file") || h.contains("检查配置文件语法"))
+        );
     }
 
     #[test]
     fn test_collect_hints_by_stable_code_io() {
         let hs = collect_hints("sys.io_error", None);
-        assert!(hs.iter().any(|h| h.contains("filesystem") || h.contains("文件系统")));
+        assert!(
+            hs.iter()
+                .any(|h| h.contains("filesystem") || h.contains("文件系统"))
+        );
     }
 
     #[test]
     fn test_collect_hints_by_stable_code_with_detail() {
-        let hs = collect_hints("conf.core_invalid", Some("no sample.dat with matching .wpl found"));
+        let hs = collect_hints(
+            "conf.core_invalid",
+            Some("no sample.dat with matching .wpl found"),
+        );
         assert!(hs.iter().any(|h| h.contains("wpgen rule")));
     }
 
@@ -792,7 +863,10 @@ Caused by:
     #[test]
     fn test_collect_hints_is_case_insensitive() {
         let hs = collect_hints_from_text("No Sample.dat with matching .wpl found");
-        assert!(hs.iter().any(|h| h.contains("wpgen rule") || h.contains("sample.dat")));
+        assert!(
+            hs.iter()
+                .any(|h| h.contains("wpgen rule") || h.contains("sample.dat"))
+        );
     }
 
     #[test]

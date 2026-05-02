@@ -6,7 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
-## [1.21.8 Unreleased]
+## [1.21.9 Unreleased]
+
+### Added
+- **Diagnostics/CLI**: Error hints are now driven by `stable_code` (from `#[derive(OrionError)]`) as primary key, with bilingual Chinese/English support; language is selected via `WP_LANG` environment variable (fallback to `LANG` then `LC_ALL`).
+  中文：错误提示改为以 `stable_code`（来自 `#[derive(OrionError)]`）为主键索引，支持中英双语；通过 `WP_LANG` 环境变量切换（fallback `LANG` → `LC_ALL`）。
+- **Diagnostics/CLI**: Error output now shows `doing:` context (operation being performed when error occurred).
+  中文：错误输出新增 `doing:` 上下文展示（发生错误时正在执行的操作）。
+- **CLI/Help**: Added `after_long_help` documenting `WP_LANG` and `NO_COLOR` environment variables in `wparse` and `wproj` CLI help output.
+  中文：在 `wparse` 和 `wproj` 的 CLI `--help` 输出中添加 `WP_LANG` 和 `NO_COLOR` 环境变量说明。
+
+### Changed
+- **Diagnostics/CLI**: Refactored `collect_hints` to use `stable_code` match branches (13 categories), with `detail` string matching only for subcategorization in 4 scenarios.
+  中文：重构 `collect_hints`，使用 `stable_code` 匹配分支（13 个类别），仅在 4 种场景下通过 `detail` 字符串做二次细分。
+
+## [1.21.8] - 2026-05-02
 
 ### Changed
 - **Dependencies**: Upgraded `orion-error` from 0.6 to 0.7, adapting to the new `#[derive(OrionError)]` derive macro and updated trait paths (`ErrorOweBase`, `ToStructError`, `ContextRecord`).
