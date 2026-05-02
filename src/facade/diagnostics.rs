@@ -1,6 +1,6 @@
 //! 运行时错误的美化与提示收集，供各 CLI 共享使用。
 
-use orion_error::{ErrorCode, runtime::SourceFrame};
+use orion_error::{ErrorCode, ErrorIdentityProvider, runtime::SourceFrame};
 use wp_error::run_error::{RunError, RunReason};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,12 +13,23 @@ struct DiagnosticTriplet {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DiagnosticSummary {
     triplet: DiagnosticTriplet,
+    want: Option<String>,
     parse_excerpt: Option<String>,
     root_cause: Option<String>,
 }
 
 fn no_color() -> bool {
     std::env::var("NO_COLOR").is_ok()
+}
+fn is_english() -> bool {
+    let raw = std::env::var("WP_LANG")
+        .or_else(|_| std::env::var("LANG"))
+        .or_else(|_| std::env::var("LC_ALL"))
+        .unwrap_or_default();
+    raw.starts_with("en_") || raw.starts_with("C.") || raw == "C" || raw == "POSIX"
+}
+fn i18n(zh: &'static str, en: &'static str) -> &'static str {
+    if is_english() { en } else { zh }
 }
 fn colorize(s: &str, code: &str) -> String {
     if no_color() {
@@ -178,6 +189,7 @@ fn extract_toml_parse_excerpt(raw: &str) -> Option<String> {
     Some(excerpt.to_string())
 }
 
+#[allow(dead_code)]
 fn enrich_triplet_from_fallback(
     primary: DiagnosticTriplet,
     fallback_raw: &str,
@@ -324,46 +336,54 @@ fn root_cause_candidate(
 }
 
 fn summarize_run_error(e: &RunError) -> DiagnosticSummary {
-    let reason = e.reason().to_string();
-    let mut triplet = DiagnosticTriplet {
-        reason: reason.clone(),
-        detail: e.detail().clone().map(|detail| sanitize_detail(&detail)),
-        location: e.target_path(),
-    };
-    if let Some(detail_location) = triplet.detail.as_deref().and_then(extract_location) {
-        triplet.location = Some(detail_location);
-    }
-    let mut parse_excerpt = triplet
-        .detail
-        .as_deref()
-        .and_then(extract_toml_parse_excerpt)
-        .or_else(|| extract_toml_parse_excerpt(&e.display_chain()));
+    let report = e.report();
+    let reason = report.reason;
+    let mut detail = report.detail.clone().map(|d| sanitize_detail(&d));
 
-    for frame in e.source_frames() {
-        if let Some(location) = frame_location(frame)
-            && (triplet
-                .location
+    // Location: structured path first, then context metadata, then source frames
+    let mut location = report.path.clone();
+    if location.is_none() {
+        location = report
+            .root_metadata
+            .get_str("file.path")
+            .or_else(|| report.root_metadata.get_str("config.path"))
+            .or_else(|| report.root_metadata.get_str("path"))
+            .map(|s| s.to_string());
+    }
+
+    let mut parse_excerpt = detail
+        .as_deref()
+        .and_then(extract_toml_parse_excerpt);
+
+    for frame in &report.source_frames {
+        if let Some(frame_loc) = frame_location(frame)
+            && (location
                 .as_deref()
                 .is_none_or(|current| !looks_like_file_location(current))
-                || looks_like_file_location(&location))
+                || looks_like_file_location(&frame_loc))
         {
-            triplet.location = Some(location);
+            location = Some(frame_loc);
         }
         if parse_excerpt.is_none() {
             parse_excerpt = frame_parse_excerpt(frame);
         }
-        if !has_effective_detail(&reason, triplet.detail.as_deref()) {
-            triplet.detail = frame_detail_candidate(frame, &reason);
+        if !has_effective_detail(&reason, detail.as_deref()) {
+            detail = frame_detail_candidate(frame, &reason).or(detail);
         }
     }
 
-    if !has_effective_detail(&reason, triplet.detail.as_deref())
-        || triplet.location.is_none()
+    // Fallback to display_chain string parsing only when structured data is insufficient
+    if !has_effective_detail(&reason, detail.as_deref())
+        || location.is_none()
         || parse_excerpt.is_none()
     {
         let display_chain = e.display_chain();
-        let (enriched, fallback_excerpt) = enrich_triplet_from_fallback(triplet, &display_chain);
-        triplet = enriched;
+        let fallback = derive_error_triplet(&display_chain);
+        let fallback_excerpt = extract_toml_parse_excerpt(&display_chain);
+        if !has_effective_detail(&reason, detail.as_deref()) {
+            detail = fallback.detail.or(detail);
+        }
+        location = location.or(fallback.location);
         parse_excerpt = parse_excerpt.or(fallback_excerpt);
     }
 
@@ -371,13 +391,18 @@ fn summarize_run_error(e: &RunError) -> DiagnosticSummary {
         root_cause_candidate(
             frame,
             &reason,
-            triplet.detail.as_deref(),
+            detail.as_deref(),
             parse_excerpt.as_deref(),
         )
     });
 
     DiagnosticSummary {
-        triplet,
+        triplet: DiagnosticTriplet {
+            reason,
+            detail,
+            location,
+        },
+        want: report.want,
         parse_excerpt,
         root_cause,
     }
@@ -389,96 +414,193 @@ fn push_hint_once(hints: &mut Vec<&'static str>, hint: &'static str) {
     }
 }
 
-/// 提示收集：根据错误文本提取常见修复建议（启发式）。
-pub fn collect_hints(es: &str) -> Vec<&'static str> {
+/// 提示收集：基于 stable_code 提供修复建议。
+pub fn collect_hints(stable_code: &str, detail: Option<&str>) -> Vec<&'static str> {
     let mut hints: Vec<&'static str> = Vec::new();
-    let lower = es.to_lowercase();
-    if lower.contains("not exists")
-        || lower.contains("filesource")
-        || lower.contains("missing 'path'")
-        || lower.contains("file source missing 'path'")
-    {
-        push_hint_once(
-            &mut hints,
-            "生成输入数据: 'wpgen conf init && wpgen rule -n 1000'，默认写入 ./data/in_dat/gen.dat；若启用并行则生成 ./data/in_dat/gen-r*.dat",
-        );
-        push_hint_once(
-            &mut hints,
-            "确认工作目录是否正确，必要时使用 --work_root 指定",
-        );
-        push_hint_once(
-            &mut hints,
-            "文件源示例: [[sources]] key='file_1' connect='file_main' enable=true params_override={ base='./data/in_dat', file='gen*.dat', encode='text' }",
-        );
-    }
-    if lower.contains("requires feature 'kafka'")
-        || (lower.contains("kafka") && lower.contains("feature"))
-    {
-        push_hint_once(
-            &mut hints,
-            "Kafka 源需要启用 'kafka' 特性：如 'cargo build --features kafka --bins' 或启用 'community'",
-        );
-    }
-    if lower.contains("duplicate source key") {
-        push_hint_once(
-            &mut hints,
-            "sources 中存在重复 key；请确保每个源的 key 唯一",
-        );
-    }
-    if lower.contains("unknown source kind")
-        || lower.contains("no builder registered for source kind")
-    {
-        push_hint_once(
-            &mut hints,
-            "type 取值必须是 'file'/'syslog'/'tcp'/'kafka'（kafka 需启用 'kafka' 特性）",
-        );
-    }
-    if lower.contains("failed to parse unified [[sources]] config")
-        || (lower.contains("failed to parse toml") && lower.contains("wpsrc"))
-        || (lower.contains("toml parse error") && lower.contains("wpsrc"))
-    {
-        push_hint_once(
-            &mut hints,
-            "检查 wpsrc.toml 结构：使用 [[sources]]，字段包含 key/type/enable/tags/path 等",
-        );
-    }
-    if lower.contains("no data sources configured") || lower.contains("sources is empty") {
-        push_hint_once(&mut hints, "确保至少有一个源 enable=true，并填写必需参数");
-    }
-    if lower.contains("invalid protocol") && lower.contains("syslog") {
-        push_hint_once(
-            &mut hints,
-            "Syslog 协议仅支持 UDP/TCP：protocol='UDP' 或 'TCP'",
-        );
-    }
-    if lower.contains("expect: ratio/tol cannot be combined with min/max") {
-        push_hint_once(
-            &mut hints,
-            "sink.expect: 二选一使用 'ratio/tol' 或 'min/max'，不要混用",
-        );
-        push_hint_once(&mut hints, "示例1: [sink.expect] ratio=0.02 tol=0.01");
-        push_hint_once(&mut hints, "示例2: [sink.expect] min=0.98 max=1.0");
-    }
-    if lower.contains("output.connect") && lower.contains("not found in sink connector") {
-        push_hint_once(
-            &mut hints,
-            "wpgen 的 [output].connect 必须填写 sink connector id，例如 'tcp_sink'、'file_raw_sink'；不要填写 'tcp_src' 这类 source connector id",
-        );
-    }
-    if lower.contains("wpgen.toml") && lower.contains("toml parse error") {
-        if lower.contains("unknown field `mode`") {
-            push_hint_once(
-                &mut hints,
-                "\"mode\" 字段已不再使用，为了避免配置错误，请删除该字段",
-            );
+
+    match stable_code {
+        // ── 配置错误 ──
+        "conf.core_invalid" => {
+            push_hint_once(&mut hints, i18n(
+                "检查配置文件语法和必需字段",
+                "Check configuration file syntax and required fields",
+            ));
+            hint_by_detail(&mut hints, detail);
         }
-        if lower.contains("unknown field `duration_secs`") {
-            push_hint_once(
-                &mut hints,
-                "\"duration_secs\" 字段已不再使用，为了避免理解错误，请删除该字段",
-            );
+        "conf.feature_invalid" => {
+            push_hint_once(&mut hints, i18n(
+                "检查是否启用了所需特性（feature flag），或使用了不支持的配置项",
+                "Check whether required feature flags are enabled, or unsupported config fields are used",
+            ));
+            hint_by_detail(&mut hints, detail);
+        }
+        "conf.dynamic_invalid" => {
+            push_hint_once(&mut hints, i18n(
+                "动态配置加载失败，检查配置源是否可访问、格式是否正确",
+                "Dynamic config load failed — check whether config source is accessible and has valid format",
+            ));
+            hint_by_detail(&mut hints, detail);
+        }
+
+        // ── 系统 / IO ──
+        "sys.io_error" => {
+            push_hint_once(&mut hints, i18n(
+                "检查文件系统状态和文件权限",
+                "Check filesystem state and file permissions",
+            ));
+            hint_by_detail(&mut hints, detail);
+        }
+        "sys.network_error" => {
+            push_hint_once(&mut hints, i18n(
+                "检查网络连接和服务可达性",
+                "Check network connectivity and service reachability",
+            ));
+            hint_by_detail(&mut hints, detail);
+        }
+        "sys.timeout" => {
+            push_hint_once(&mut hints, i18n(
+                "操作超时，可稍后重试或检查下游服务延迟",
+                "Operation timed out — retry later or inspect downstream service latency",
+            ));
+            hint_by_detail(&mut hints, detail);
+        }
+        "sys.resource_exhausted" => {
+            push_hint_once(&mut hints, i18n(
+                "资源不足，检查磁盘空间和内存使用",
+                "Resource exhausted — check disk space and memory usage",
+            ));
+            hint_by_detail(&mut hints, detail);
+        }
+        "sys.data_error" => {
+            push_hint_once(&mut hints, i18n(
+                "数据处理失败，检查输入数据格式和内容完整性",
+                "Data processing failed — check input format and content integrity",
+            ));
+            hint_by_detail(&mut hints, detail);
+        }
+        "sys.external_service_error" => {
+            push_hint_once(&mut hints, i18n(
+                "外部服务调用失败，检查服务是否可用以及认证信息是否正确",
+                "External service call failed — check service availability and authentication",
+            ));
+            hint_by_detail(&mut hints, detail);
+        }
+
+        // ── 业务逻辑 ──
+        "biz.validation_error" => {
+            push_hint_once(&mut hints, i18n(
+                "检查输入数据格式和字段值是否符合要求",
+                "Check whether input data format and field values meet requirements",
+            ));
+            hint_by_detail(&mut hints, detail);
+        }
+        "biz.business_error" => {
+            push_hint_once(&mut hints, i18n(
+                "业务规则校验未通过，检查输入是否满足业务约束",
+                "Business rule validation failed — check whether input meets business constraints",
+            ));
+            hint_by_detail(&mut hints, detail);
+        }
+        "biz.not_found" => {
+            push_hint_once(&mut hints, i18n(
+                "确认资源路径和标识符是否正确，目标文件或目录是否存在",
+                "Verify resource path and identifier — check whether the target file or directory exists",
+            ));
+            hint_by_detail(&mut hints, detail);
+        }
+        "biz.permission_denied" => {
+            push_hint_once(&mut hints, i18n(
+                "检查文件或目录的读写权限，必要时使用 chmod 或切换用户",
+                "Check file/directory read/write permissions — use chmod or switch user if needed",
+            ));
+            hint_by_detail(&mut hints, detail);
+        }
+        "biz.run_rule_error" => {
+            push_hint_once(&mut hints, i18n(
+                "规则执行失败，检查规则文件语法和数据格式是否匹配",
+                "Rule execution failed — check rule file syntax and whether data format matches",
+            ));
+            hint_by_detail(&mut hints, detail);
+        }
+
+        // ── 分发层 ──
+        "biz.dist" => {
+            push_hint_once(&mut hints, i18n(
+                "数据分发失败，检查 sink 配置和下游服务状态",
+                "Data distribution failed — check sink configuration and downstream service status",
+            ));
+            hint_by_detail(&mut hints, detail);
+        }
+        "biz.source" => {
+            push_hint_once(&mut hints, i18n(
+                "数据源访问失败，检查 source 配置、文件是否存在、网络是否可达",
+                "Data source access failed — check source config, file existence, and network reachability",
+            ));
+            hint_by_detail(&mut hints, detail);
+        }
+
+        // ── 内部逻辑异常 ──
+        "logic.internal_invariant_broken" => {
+            push_hint_once(&mut hints, i18n(
+                "内部逻辑错误，请联系开发者并提供复现步骤",
+                "Internal logic error — please contact the developer and provide reproduction steps",
+            ));
+        }
+
+        _ => {
+            hint_by_detail(&mut hints, detail);
         }
     }
+
+    hints
+}
+
+/// 基于 detail 文本的补充提示（仅保留 stable_code 无法区分的少量关键场景）。
+fn hint_by_detail(hints: &mut Vec<&'static str>, detail: Option<&str>) {
+    let d = detail.unwrap_or("").to_lowercase();
+    if d.is_empty() {
+        return;
+    }
+
+    // ── 样本 / 规则 ──
+    if d.contains("no sample.dat") || d.contains("no rule file") {
+        push_hint_once(hints, i18n(
+            "在规则目录下放置 sample.dat 和对应的 .wpl 文件，或使用 'wpgen rule -n 1000' 生成样本数据",
+            "Place sample.dat and matching .wpl files in the rule directory, or run 'wpgen rule -n 1000' to generate sample data",
+        ));
+        push_hint_once(hints, i18n(
+            "规则目录默认位于 <work_root>/rule/，sample.dat 和 parse.wpl 需在同一目录下",
+            "Rule directory defaults to <work_root>/rule/ — sample.dat and parse.wpl must be in the same directory",
+        ));
+    }
+
+    // ── 特性 / feature ──
+    if d.contains("requires feature") || (d.contains("kafka") && d.contains("feature")) {
+        push_hint_once(hints, i18n(
+            "缺少编译特性，使用 'cargo build --features kafka --bins' 或启用 'community' 特性",
+            "Missing compile feature — use 'cargo build --features kafka --bins' or enable the 'community' feature",
+        ));
+    }
+
+    // ── 废弃字段 ──
+    if d.contains("unknown field `mode`") {
+        push_hint_once(hints, i18n(
+            "\"mode\" 字段已废弃，请从 wpgen.toml 中删除该字段",
+            "The \"mode\" field is deprecated — remove it from wpgen.toml",
+        ));
+    }
+    if d.contains("unknown field `duration_secs`") {
+        push_hint_once(hints, i18n(
+            "\"duration_secs\" 字段已废弃，请从 wpgen.toml 中删除该字段",
+            "The \"duration_secs\" field is deprecated — remove it from wpgen.toml",
+        ));
+    }
+}
+
+/// 基于文本的提示收集（用于无 RunError 的通用错误）。
+pub fn collect_hints_from_text(text: &str) -> Vec<&'static str> {
+    let mut hints: Vec<&'static str> = Vec::new();
+    hint_by_detail(&mut hints, Some(text));
     hints
 }
 
@@ -495,6 +617,7 @@ struct DiagnosticPrint<'a> {
     app: &'a str,
     reason: &'a str,
     detail: Option<String>,
+    want: Option<String>,
     location: Option<String>,
     parse_excerpt: Option<String>,
     root_cause: Option<String>,
@@ -511,17 +634,12 @@ fn print_diagnostic(diag: DiagnosticPrint<'_>) {
     });
 
     eprintln!("{} {}", bg_red(" ERROR "), bold(&title));
+    eprintln!("{}", red(pretty_msg.trim()));
     if let Some(d) = &detail_opt {
-        eprintln!(
-            "{} {}",
-            red(pretty_msg.trim()),
-            red(format!("- {}", pretty_reason(d).trim()))
-        );
-    } else {
-        eprintln!("{}", red(pretty_msg.trim()));
+        eprintln!("{} {}", bold("detail:"), pretty_reason(d).trim());
     }
-    if let Some(d) = detail_opt {
-        eprintln!("{} {}", bold("detail:"), pretty_reason(&d).trim());
+    if let Some(want) = diag.want {
+        eprintln!("{} {}", bold("doing:"), yellow(want));
     }
     if let Some(location) = diag.location {
         let pretty_location = location
@@ -556,12 +674,13 @@ fn print_diagnostic(diag: DiagnosticPrint<'_>) {
 /// 打印更友好的错误信息（含建议与上下文）。
 pub fn print_run_error(app: &str, e: &RunError) {
     let summary = summarize_run_error(e);
-    let hints = collect_hints(&e.display_chain());
+    let hints = collect_hints(e.stable_code(), summary.triplet.detail.as_deref());
     let code = exit_code_for(e.reason());
     print_diagnostic(DiagnosticPrint {
         app,
         reason: &summary.triplet.reason,
         detail: summary.triplet.detail,
+        want: summary.want,
         location: summary.triplet.location,
         parse_excerpt: summary.parse_excerpt,
         root_cause: summary.root_cause,
@@ -576,11 +695,12 @@ pub fn print_error(app: &str, err: &impl std::fmt::Display) {
     let raw = err.to_string();
     let triplet = derive_error_triplet(&raw);
     let parse_excerpt = extract_toml_parse_excerpt(&raw);
-    let hints = collect_hints(&raw);
+    let hints = collect_hints_from_text(&raw);
     print_diagnostic(DiagnosticPrint {
         app,
         reason: &triplet.reason,
         detail: triplet.detail,
+        want: None,
         location: triplet.location,
         parse_excerpt,
         root_cause: None,
@@ -594,8 +714,26 @@ mod tests {
     use super::*;
     #[test]
     fn test_hint_file_source() {
-        let hs = collect_hints("File source missing 'path'");
-        assert!(hs.iter().any(|h| h.contains("生成输入数据")));
+        let hs = collect_hints("biz.source", Some("missing 'path'"));
+        assert!(hs.iter().any(|h| h.contains("Data source access failed") || h.contains("数据源访问失败")));
+    }
+
+    #[test]
+    fn test_collect_hints_by_stable_code_conf() {
+        let hs = collect_hints("conf.core_invalid", Some("missing field 'sources'"));
+        assert!(hs.iter().any(|h| h.contains("Check configuration file") || h.contains("检查配置文件语法")));
+    }
+
+    #[test]
+    fn test_collect_hints_by_stable_code_io() {
+        let hs = collect_hints("sys.io_error", None);
+        assert!(hs.iter().any(|h| h.contains("filesystem") || h.contains("文件系统")));
+    }
+
+    #[test]
+    fn test_collect_hints_by_stable_code_with_detail() {
+        let hs = collect_hints("conf.core_invalid", Some("no sample.dat with matching .wpl found"));
+        assert!(hs.iter().any(|h| h.contains("wpgen rule")));
     }
 
     #[test]
@@ -653,8 +791,8 @@ Caused by:
 
     #[test]
     fn test_collect_hints_is_case_insensitive() {
-        let hs = collect_hints("duplicate source key");
-        assert!(hs.iter().any(|h| h.contains("重复 key")));
+        let hs = collect_hints_from_text("No Sample.dat with matching .wpl found");
+        assert!(hs.iter().any(|h| h.contains("wpgen rule") || h.contains("sample.dat")));
     }
 
     #[test]

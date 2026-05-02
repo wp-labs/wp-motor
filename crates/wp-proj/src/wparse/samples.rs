@@ -14,7 +14,8 @@ pub fn parse_wpl_samples(work_root: &str, dict: &EnvDict) -> RunResult<()> {
     if jobs.is_empty() {
         return Err(RunReason::from_conf()
             .to_err()
-            .with_detail("no sample.dat with matching .wpl found"));
+            .with_detail("no sample.dat with matching .wpl found")
+            .doing("parse wpl samples"));
     }
 
     let mut results: u32 = 0;
