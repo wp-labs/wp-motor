@@ -1,6 +1,6 @@
 use crate::traits::Component;
 use orion_conf::error::OrionConfResult;
-use orion_error::{UvsFrom, WrapStructError};
+use orion_error::{UvsFrom, conversion::WrapStructErrorAs};
 use wp_error::run_error::{RunReason, RunResult};
 
 // 重新导出 wp-cli-core 的类型，保持向后兼容
@@ -83,7 +83,7 @@ impl Knowledge {
 }
 
 fn wrap_knowledge_err<T>(result: OrionConfResult<T>, detail: &'static str) -> RunResult<T> {
-    result.map_err(|err| err.wrap(RunReason::from_conf()).with_detail(detail))
+    result.map_err(|err| err.wrap_as(RunReason::from_conf(), detail))
 }
 
 impl Component for Knowledge {

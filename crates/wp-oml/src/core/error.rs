@@ -1,12 +1,11 @@
-use orion_error::{DomainReason, StructError};
-use thiserror::Error;
+use derive_more::From;
+use orion_error::{OrionError, StructError};
 
-#[derive(Error, Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, From, OrionError)]
 pub enum OMLRunReason {
-    #[error("format conv fail{0}")]
+    #[orion_error(identity = "biz.oml_fmt_conv")]
     FmtConv(String),
 }
-impl DomainReason for OMLRunReason {}
 
 pub type OMLRunError = StructError<OMLRunReason>;
 

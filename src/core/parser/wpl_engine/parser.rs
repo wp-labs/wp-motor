@@ -142,7 +142,6 @@ impl MultiParser {
 mod tests {
 
     use super::*;
-    use crate::core::parser::wpl_engine::pipeline::WplPipeline;
     use crate::sinks::SinkGroupAgent;
     use wpl::WplEvaluator;
 

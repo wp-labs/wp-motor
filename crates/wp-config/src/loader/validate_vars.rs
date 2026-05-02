@@ -3,7 +3,7 @@
 //! 提供通用的未替换变量检测功能，用于在配置加载后验证所有变量是否已被正确替换。
 
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ToStructError, UvsFrom};
+use orion_error::{UvsFrom, conversion::ToStructError};
 use serde::Serialize;
 
 /// 检测序列化后的配置中是否存在未替换的变量

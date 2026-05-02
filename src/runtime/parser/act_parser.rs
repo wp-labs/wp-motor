@@ -1,3 +1,4 @@
+use orion_error::{UvsFrom, compat_prelude::ErrorOweBase};
 use std::time::Duration;
 
 use crate::core::parser::WplEngine;
@@ -10,7 +11,7 @@ use crate::sinks::SinkRouteAgent;
 use crate::stat::{MonSend, STAT_INTERVAL_MS};
 use crate::types::EventBatchRecv;
 use tokio::time::{MissedTickBehavior, interval};
-use wp_error::run_error::RunResult;
+use wp_error::run_error::{RunReason, RunResult};
 use wp_log::info_ctrl;
 use wp_stat::StatReq;
 use wpl::OPTIMIZE_TIMES;
@@ -32,7 +33,7 @@ impl ActParser {
         infra: InfraSinkAgent,
     ) -> RunResult<Self> {
         trace_ctrl!("setting depend");
-        let pipe_lines = WplEngine::from(pipelines, infra).owe_conf()?;
+        let pipe_lines = WplEngine::from(pipelines, infra).owe(RunReason::from_conf())?;
         //let pipe_lines = ParseEngine::from(pipelines, infra).to_uvs::<ConfErrReader>()?;
         Ok(ActParser { engine: pipe_lines })
     }
@@ -44,8 +45,9 @@ impl ActParser {
         _stat_reqs: Vec<StatReq>,
     ) -> RunResult<Self> {
         trace_ctrl!("setting depend");
-        let wpl_pkgs = WplRepository::from_wpl_tolerant(wpl_code, infra.error.end()).owe_rule()?;
-        let pipe_lines = WplEngine::from_code(&wpl_pkgs, infra).owe_conf()?;
+        let wpl_pkgs = WplRepository::from_wpl_tolerant(wpl_code, infra.error.end())
+            .owe(RunReason::from_rule())?;
+        let pipe_lines = WplEngine::from_code(&wpl_pkgs, infra).owe(RunReason::from_conf())?;
         Ok(ActParser { engine: pipe_lines })
     }
 }

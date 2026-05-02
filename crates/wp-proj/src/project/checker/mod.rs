@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use super::warp::WarpProject;
 use crate::types::CheckStatus;
 use orion_conf::UvsFrom;
-use orion_error::{DomainReason, ErrorCode, StructError, ToStructError};
+use orion_error::{DomainReason, ErrorCode, StructError, conversion::ToStructError};
 use orion_variate::EnvDict;
 use wp_cli_core::business::connectors::{sinks as sink_connectors, sources as source_connectors};
 use wp_conf::generator::wpgen::WpGenConfig;
@@ -751,7 +751,7 @@ fn collect_connector_counts(work_root: &str, dict: &EnvDict) -> Result<Connector
 #[cfg(test)]
 mod tests {
     use super::{describe_run_error, shorten_semantic_dict_message};
-    use orion_error::{ToStructError, UvsFrom};
+    use orion_error::{UvsFrom, conversion::ToStructError};
     use std::path::Path;
     use wp_error::run_error::RunReason;
 

@@ -1,8 +1,6 @@
 use clap::{Args, Parser, Subcommand};
-use orion_conf::ErrorOwe;
 use orion_conf::ErrorWith;
-use orion_conf::ToStructError;
-use orion_conf::UvsFrom;
+use orion_error::{UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError};
 use std::env;
 use std::path::PathBuf;
 use wpl::check_level_or_stop;
@@ -148,9 +146,9 @@ pub fn resolve_run_work_root(raw: &Option<String>) -> RunResult<String> {
         }
         None => {
             let cwd = env::current_dir()
-                .owe_conf()
-                .with("cwd")
-                .want("resolve current work root")?;
+                .owe(RunReason::from_conf())
+                .with_context("cwd")
+                .doing("resolve current work root")?;
             Ok(cwd.to_string_lossy().to_string())
         }
     }

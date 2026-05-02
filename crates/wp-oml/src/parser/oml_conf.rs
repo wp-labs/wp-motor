@@ -784,7 +784,7 @@ version      : chars   = pipe take(ip) | to_str |  base64_encode ;
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_conf_pipe_optional_keyword() -> ModalResult<()> {
-        use orion_error::TestAssert;
+        use orion_error::testcase::TestAssert;
 
         // Test pipe without 'pipe' keyword - should parse successfully
         let mut code = r#"
@@ -1204,7 +1204,7 @@ update_time  : auto = take () { _ :  time(2020-10-01 12:30:30) };
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_conf_quoted_chars() -> ModalResult<()> {
-        use orion_error::TestAssert;
+        use orion_error::testcase::TestAssert;
 
         // Test that chars() supports both quoted and unquoted strings
         let mut code1 = r#"
@@ -1231,7 +1231,7 @@ msg = chars('hello\nworld');
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_temp_field_filter() -> ModalResult<()> {
-        use orion_error::TestAssert;
+        use orion_error::testcase::TestAssert;
         use wp_knowledge::cache::FieldQueryCache;
         use wp_model_core::model::{DataRecord, DataType};
 
@@ -1285,7 +1285,7 @@ __another_temp = chars(also_temp);
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_temp_field_in_computation() -> ModalResult<()> {
-        use orion_error::TestAssert;
+        use orion_error::testcase::TestAssert;
         use wp_knowledge::cache::FieldQueryCache;
         use wp_model_core::model::{DataRecord, DataType};
 
@@ -1335,7 +1335,7 @@ result = match read(__temp_type) {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_temp_field_flag() -> ModalResult<()> {
-        use orion_error::TestAssert;
+        use orion_error::testcase::TestAssert;
 
         // Test case 1: Model with no temporary fields
         let mut code_no_temp = r#"
@@ -1382,7 +1382,7 @@ __temp2 = chars(value3);
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_enable_config_default() -> ModalResult<()> {
-        use orion_error::TestAssert;
+        use orion_error::testcase::TestAssert;
 
         // Test case 1: Default enable (no enable config)
         let mut code_default = r#"
@@ -1398,7 +1398,7 @@ field = chars(value);
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_enable_config_true() -> ModalResult<()> {
-        use orion_error::TestAssert;
+        use orion_error::testcase::TestAssert;
 
         // Test case 2: Explicit enable = true
         let mut code_enable_true = r#"
@@ -1415,7 +1415,7 @@ field = chars(value);
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_enable_config_false() -> ModalResult<()> {
-        use orion_error::TestAssert;
+        use orion_error::testcase::TestAssert;
 
         // Test case 3: Explicit enable = false
         let mut code_enable_false = r#"
@@ -1432,7 +1432,7 @@ field = chars(value);
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_enable_config_with_rule() -> ModalResult<()> {
-        use orion_error::TestAssert;
+        use orion_error::testcase::TestAssert;
 
         // Test case 4: enable with rule
         let mut code_with_rule = r#"

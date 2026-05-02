@@ -507,6 +507,7 @@ mod tests {
     use crate::parser::utils::for_test::assert_oml_parse;
     use crate::parser::{sql_prm::oml_sql, utils::for_test::err_of_oml};
     use winnow::Parser;
+    use wp_error::parse_error::OMLCodeReason;
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_oml_sql() -> ModalResult<()> {
@@ -711,7 +712,7 @@ mod tests {
 
     use crate::core::AsyncDataTransformer;
     use crate::parser::oml_parse_raw;
-    use orion_error::TestAssert;
+    use orion_error::testcase::TestAssert;
     use wp_know::mem::memdb::MemDB;
     use wp_knowledge::facade as kdb;
     #[tokio::test(flavor = "current_thread")]
@@ -833,12 +834,14 @@ payload = object {
         let mut code = r#" selec a, b from table_1 where x = read (src);"#;
         let e = err_of_oml(&mut code, oml_sql);
         println!("err:{}, \nwhere:{}", e, code);
-        assert!(e.to_string().contains("need 'select' keyword"));
+        assert!(
+            matches!(e.reason(), OMLCodeReason::Syntax(s) if s.contains("need 'select' keyword"))
+        );
 
         let mut code = r#" select a, b from table_1 whare x = read (src);"#;
         let e = err_of_oml(&mut code, oml_sql);
         println!("err:{}, \nwhere:{}", e, code);
-        assert!(e.to_string().contains("end to 'where'"));
+        assert!(matches!(e.reason(), OMLCodeReason::Syntax(s) if s.contains("end to 'where'")));
 
         let mut code = r#" select a, b from table_1 where x = src;"#;
         let e = err_of_oml(&mut code, oml_sql);

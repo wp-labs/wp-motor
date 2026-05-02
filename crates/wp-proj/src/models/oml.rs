@@ -1,5 +1,5 @@
 use orion_conf::ErrorWith;
-use orion_error::{ErrorOwe, ToStructError, UvsFrom};
+use orion_error::{UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError};
 use orion_variate::EnvDict;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -83,9 +83,9 @@ impl Oml {
                 .with_detail("oml root path is not valid UTF-8")
         })?;
         let oml_files = find_conf_files(root_str, WPARSE_OML_FILE)
-            .owe_conf()
-            .with(root_str)
-            .want("find oml files")?;
+            .owe(RunReason::from_conf())
+            .with_context(root_str)
+            .doing("find oml files")?;
         if oml_files.is_empty() {
             return Ok(CheckStatus::Miss);
         }
@@ -95,9 +95,9 @@ impl Oml {
 
         // Structural parse via fetch_oml_data (syntax + basic parse)
         fetch_oml_data(root_str, WPARSE_OML_FILE)
-            .owe_rule()
-            .with(root_str)
-            .want("parse oml models")?;
+            .owe(RunReason::from_rule())
+            .with_context(root_str)
+            .doing("parse oml models")?;
 
         // Semantic validation: model name uniqueness and rule pattern format
         validate_oml_semantics(&oml_files)?;

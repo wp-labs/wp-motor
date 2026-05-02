@@ -5,7 +5,7 @@
 
 use crate::sources::event_id::next_event_id;
 use bytes::{Buf, BytesMut};
-use orion_error::ToStructError;
+use orion_error::conversion::ToStructError;
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::net::IpAddr;

@@ -4,7 +4,7 @@ use crate::sinks::utils::buffer_monitor::BufferMonitor;
 use crate::sinks::utils::formatter::FormatAdapter;
 use crate::sinks::{SinkEndpoint, SinkRecUnit};
 use crate::types::{Build1, SafeH};
-use orion_error::ErrorOweBase;
+use orion_error::compat_prelude::ErrorOweBase;
 use std::fs;
 use std::fs::File;
 use std::io::{Cursor, ErrorKind, Write};
@@ -32,9 +32,10 @@ pub struct FileSink {
 
 impl FileSink {
     pub fn new(out_path: &str) -> SinkResult<Self> {
-        let out_io = File::create(out_path).map_err(|e| {
-            SinkReason::sink(format!("create output file '{}'", out_path)).err_source(e)
-        })?;
+        let out_io = File::create(out_path).owe(SinkReason::sink(format!(
+            "create output file '{}'",
+            out_path
+        )))?;
         Ok(Self {
             path: out_path.to_string(),
             out_io: SafeH::build(out_io),

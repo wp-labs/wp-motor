@@ -4,6 +4,7 @@ use crate::facade::test_helpers::SinkTerminal;
 use crate::sinks::SinkGroupAgent;
 use crate::stat::MonSend;
 use crate::stat::metric_collect::MetricCollectors;
+use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
 use std::cmp::Ordering as CmpOrdering;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
@@ -12,6 +13,7 @@ use wp_model_core::raw::RawData;
 use wp_parse_api::DataResult;
 use wp_stat::StatRecorder;
 use wp_stat::StatReq;
+use wpl::WparseReason;
 use wpl::WparseResult;
 use wpl::{AnnotationFunc, AnnotationType};
 use wpl::{OPTIMIZE_TIMES, WplEvaluator};
@@ -146,7 +148,10 @@ impl WplPipeline {
                 self.stat_ext.touch_task_unit(self.wpl_key.as_str());
             }
         }
-        self.stat_ext.send_stat(mon_send).await.owe_sys()?;
+        self.stat_ext
+            .send_stat(mon_send)
+            .await
+            .owe(WparseReason::Uvs(UvsReason::system_error()))?;
         Ok(())
     }
     pub fn stop(&mut self) {

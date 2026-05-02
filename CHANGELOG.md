@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
+## [1.21.8 Unreleased]
+
+### Changed
+- **Dependencies**: Upgraded `orion-error` from 0.6 to 0.7, adapting to the new `#[derive(OrionError)]` derive macro and updated trait paths (`ErrorOweBase`, `ToStructError`, `ContextRecord`).
+  中文：升级 `orion-error` 从 0.6 到 0.7，适配新的 `#[derive(OrionError)]` 宏和更新的 trait 路径。
+- **Error Handling**: Replaced `.map_err()` with idiomatic `.owe()` across sources, sinks, and runtime modules; migrated integration and unit tests from `anyhow::Result<()>` to `StructError<T>`-based Result types.
+  中文：使用 `.owe()` 惯用模式替换 `.map_err()`，将测试从 `anyhow::Result` 迁移到基于 `StructError<T>` 的 Result 类型。
+
+### Removed
+- **Sinks/Rescue**: Removed unused `sink_err` helper method.
+  中文：移除不再使用的 `sink_err` 辅助方法。
+
+## [1.21.7] - 2026-04-27
+
+### Added
+- **Config/Engine**: Added `RepoGroupConf` for repository group configuration support in engine config.
+  中文：新增 `RepoGroupConf` 支持引擎配置中的仓库组配置。
+
 ## [1.21.6] - 2026-04-27
 
 ### Changed

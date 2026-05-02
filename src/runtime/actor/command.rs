@@ -4,14 +4,16 @@ use crate::runtime::actor::signal::ShutdownCmd;
 use crate::types::Abstract;
 use derive_getters::Getters;
 #[cfg(any(test, feature = "dev-tools"))]
-use orion_error::ErrorOwe;
+use orion_error::UvsFrom;
+#[cfg(any(test, feature = "dev-tools"))]
+use orion_error::compat_prelude::ErrorOweBase;
 
 use std::fmt::Display;
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
 use wp_connector_api::ControlEvent;
 #[cfg(any(test, feature = "dev-tools"))]
-use wp_error::run_error::RunResult;
+use wp_error::run_error::{RunReason, RunResult};
 use wp_log::info_ctrl;
 
 pub enum TaskEndReason {
@@ -213,7 +215,7 @@ impl TaskController {
     #[cfg(any(test, feature = "dev-tools"))]
     #[allow(dead_code)]
     pub async fn recv_update_cmd(&mut self) -> RunResult<()> {
-        let cmd = self.cmds_sub.recv().await.owe_sys()?;
+        let cmd = self.cmds_sub.recv().await.owe(RunReason::from_sys())?;
         self.update_cmd(cmd);
         Ok(())
     }

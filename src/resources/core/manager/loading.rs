@@ -6,8 +6,11 @@ use crate::resources::utils::{load_engine_code, load_oml_code};
 use crate::sinks::SinkGroupAgent;
 use oml::core::ConfADMExt;
 use oml::language::{DataModel, ObjModel};
-use orion_conf::{ErrorWith, UvsFrom};
-use orion_error::{ErrorConv, ErrorOwe, ErrorWrap, OperationContext, ToStructError};
+use orion_conf::ErrorWith;
+use orion_error::{
+    ErrorConv, ErrorWrapAs, OperationContext, UvsFrom, compat_prelude::ErrorOweBase,
+    conversion::ToStructError,
+};
 use orion_variate::EnvDict;
 use wp_conf::engine::EngineConfig;
 use wp_error::RunReason;
@@ -25,8 +28,8 @@ impl ResManager {
     ) -> RunResult<()> {
         info_ctrl!("load all wpl code beg...");
         let wpl_code = load_engine_code(main_conf).await?;
-        let wpl_space =
-            WplRepository::from_wpl_tolerant(wpl_code, error_sink.end_point()).owe_rule()?;
+        let wpl_space = WplRepository::from_wpl_tolerant(wpl_code, error_sink.end_point())
+            .owe(RunReason::from_rule())?;
         self.wpl_index = Some(SpaceIndex::from(&wpl_space));
         self.wpl_space = Some(wpl_space);
         info_ctrl!("load all wpl code end");
@@ -42,8 +45,8 @@ impl ResManager {
                 let mdl = ObjModel::load(path.as_str())
                     .await
                     .err_conv()
-                    .want("load oml")
-                    .with(path.as_str())?;
+                    .doing("load oml")
+                    .with_context(path.as_str())?;
                 // Skip disabled models
                 if !mdl.enable() {
                     info_data!("oml disabled, skip: {} ", path);
@@ -76,7 +79,7 @@ impl ResManager {
         sink_root: &str,
         dict: &EnvDict,
     ) -> RunResult<SinkRouteTable> {
-        let mut op = OperationContext::want("load all sink").with_auto_log();
+        let mut op = OperationContext::doing("load all sink").with_auto_log();
         let wpl_index = self.wpl_index.clone().ok_or(RunReason::from_logic())?;
 
         let mut sink_route = SinkRouteTable::default();
@@ -84,9 +87,8 @@ impl ResManager {
         let infra_d = Path::new(sink_root).join("infra.d");
         if busin_d.exists() || infra_d.exists() {
             let confs = wp_conf::sinks::load_business_route_confs_with(sink_root, &Lookup, dict)
-                .err_wrap(RunReason::from_conf())
-                .with(sink_root)
-                .want("load sink route confs")?;
+                .wrap_as(RunReason::from_conf(), "load sink route confs")
+                .with_context(sink_root)?;
             for mut conf in confs {
                 // 现有的方法正确处理 FlexGroup rule 和 oml 字段
                 self.update_sink_rule_index(&wpl_index, &mut conf);

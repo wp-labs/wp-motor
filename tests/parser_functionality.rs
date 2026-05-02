@@ -1,9 +1,11 @@
 //use wp_log::conf::{log_init, LogConf};
 use std::io::Cursor;
 
+use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
 use wp_conf::RunArgs;
 use wp_engine::facade::test_helpers::SinkTerminal;
-use wp_engine::types::{AnyResult, SafeH};
+use wp_engine::types::SafeH;
+use wp_error::run_error::{RunReason, RunResult};
 use wp_model_core::model::fmt_def::TextFmt;
 
 use wp_engine::facade::kit::{WplCodePKG, engine_proc_file, wpl_workshop_parse};
@@ -40,7 +42,7 @@ fn assert_buffer_starts_with(buffer: SafeH<Cursor<Vec<u8>>>, expect: &str, prefi
 }
 
 #[test]
-fn should_parse_nginx_access_log() -> AnyResult<()> {
+fn should_parse_nginx_access_log() -> RunResult<()> {
     // Test case: Verify normal nginx access log parsing functionality
     // This test validates parsing of standard nginx access logs with HTTP request/response data
 
@@ -49,14 +51,15 @@ fn should_parse_nginx_access_log() -> AnyResult<()> {
     let (buffer, out) = create_watch_out(TextFmt::Kv);
     let args = RunArgs::for_test().expect("args");
     let infra = InfraSinkAgent::only_default(SinkTerminal::Storage(out));
-    wpl_workshop_parse(args, WplCodePKG::from_code(conf)?, in_path, infra)?;
+    let pkg = WplCodePKG::from_code(conf).owe(RunReason::Uvs(UvsReason::rule_error()))?;
+    wpl_workshop_parse(args, pkg, in_path, infra)?;
     let expect = r#"ip: 192.168.1.2, time: 2019-08-06 12:12:19, http/request: "GET /nginx-logo.png HTTP/1.1", http/status: 200, length: 368, chars: "http://119.122.1.4/", http/agent: "Mozilla/5.0(Macintosh; Intel Mac OS X 10_14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.142 Safari/537.36 ""#;
     assert_buffer_eq(buffer, expect);
     Ok(())
 }
 
 #[test]
-fn should_parse_json_with_escaped_quotes() -> AnyResult<()> {
+fn should_parse_json_with_escaped_quotes() -> RunResult<()> {
     // Test case: Verify JSON quota escaping functionality
     // This test validates parsing of JSON data with escaped quotes and special characters
 
@@ -68,14 +71,15 @@ fn should_parse_json_with_escaped_quotes() -> AnyResult<()> {
     let mut args = RunArgs::for_test().expect("args");
     args.line_max = Some(1);
     let infra = InfraSinkAgent::only_default(SinkTerminal::Storage(_out));
-    wpl_workshop_parse(args, WplCodePKG::from_code(conf)?, in_path, infra)?;
+    let pkg = WplCodePKG::from_code(conf).owe(RunReason::Uvs(UvsReason::rule_error()))?;
+    wpl_workshop_parse(args, pkg, in_path, infra)?;
     assert_buffer_eq(buffer, expect);
     Ok(())
 }
 
 #[test]
 #[ignore = "format dismatch"]
-fn should_parse_huawei_zhuru_traffic_prefix() -> AnyResult<()> {
+fn should_parse_huawei_zhuru_traffic_prefix() -> RunResult<()> {
     // Test case: Verify Huawei ZhuRu network traffic probe parsing
     // This test validates parsing of Huawei firewall network traffic logs with base64 data
 
@@ -85,7 +89,8 @@ fn should_parse_huawei_zhuru_traffic_prefix() -> AnyResult<()> {
     let in_path = "tests/sample/huawei_zhuru/sample.dat";
     let (buffer, _out) = create_watch_out(TextFmt::Kv);
     let infra = InfraSinkAgent::only_default(SinkTerminal::Storage(_out));
-    engine_proc_file(WplCodePKG::from_code(rule)?, in_path, infra, 1)?;
+    let pkg = WplCodePKG::from_code(rule).owe(RunReason::Uvs(UvsReason::rule_error()))?;
+    engine_proc_file(pkg, in_path, infra, 1)?;
     assert_buffer_starts_with(buffer, expect, 200);
     Ok(())
 }

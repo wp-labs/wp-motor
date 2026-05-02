@@ -1,4 +1,4 @@
-use orion_error::{ToStructError, UvsFrom};
+use orion_error::{UvsFrom, conversion::ToStructError};
 use orion_variate::EnvDict;
 
 use crate::utils::LogHandler;

@@ -1,7 +1,7 @@
 use crate::structure::Protocol;
 use educe::Educe;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ToStructError, UvsFrom};
+use orion_error::{UvsFrom, conversion::ToStructError};
 use orion_variate::EnvDict;
 use std::path::Path;
 

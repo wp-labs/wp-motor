@@ -7,7 +7,7 @@ use std::io::{Cursor, Write};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use orion_error::ErrorOwe;
+use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
 use wp_connector_api::{SinkReason, SinkResult};
 use wp_model_core::model::Value;
 
@@ -85,8 +85,12 @@ where
                 error_data!("buffer full");
             }
             let formatted = extract_formatted(data.data());
-            buffer.write_all(formatted.as_bytes()).owe_data()?;
-            buffer.write_all(b"\n").owe_data()?;
+            buffer
+                .write_all(formatted.as_bytes())
+                .owe(SinkReason::Uvs(UvsReason::data_error()))?;
+            buffer
+                .write_all(b"\n")
+                .owe(SinkReason::Uvs(UvsReason::data_error()))?;
         }
         if let Some(ref next_proc) = self.next_proc {
             next_proc.send_to_sink(data)?;
@@ -159,7 +163,9 @@ where
             if buffer.get_ref().len() >= 10240 {
                 error_data!("buffer full");
             }
-            buffer.write_fmt(format_args!("{}", data)).owe_data()?;
+            buffer
+                .write_fmt(format_args!("{}", data))
+                .owe(SinkReason::Uvs(UvsReason::data_error()))?;
         }
         // StubOuter 没有实现 AsyncRawdatSink，所以我们不能调用
         Ok(())
@@ -169,7 +175,9 @@ where
             if buffer.get_ref().len() >= 10240 {
                 error_data!("buffer full");
             }
-            buffer.write_all(data).owe_data()?;
+            buffer
+                .write_all(data)
+                .owe(SinkReason::Uvs(UvsReason::data_error()))?;
         }
         // StubOuter 没有实现 AsyncRawdatSink，所以我们不能调用
         Ok(())
@@ -197,11 +205,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::AnyResult;
-    use wp_connector_api::AsyncRawDataSink;
+    use wp_connector_api::{AsyncRawDataSink, SinkResult};
 
     #[tokio::test]
-    async fn test_realtime_monitoring() -> AnyResult<()> {
+    async fn test_realtime_monitoring() -> SinkResult<()> {
         let mut monitor = BufferMonitor::new();
         let buffer_ref = monitor.buffer.clone();
 
@@ -220,7 +227,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_incremental_visibility() -> AnyResult<()> {
+    async fn test_incremental_visibility() -> SinkResult<()> {
         let mut monitor = BufferMonitor::new();
         let buffer_ref = monitor.buffer.clone();
 

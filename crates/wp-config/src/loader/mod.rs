@@ -14,7 +14,7 @@
 //! let sources = Vec::<SourceInstanceConf>::load_from_path(
 //!     Path::new("config/sources.toml"),
 //!     &EnvDict::default(),
-//! )?;
+//! ).map_err(|e| format!("failed to load: {e}"))?;
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 

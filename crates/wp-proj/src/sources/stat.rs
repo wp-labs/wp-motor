@@ -1,10 +1,10 @@
 use orion_conf::ErrorWith;
-use orion_error::ErrorOwe;
+use orion_error::{UvsFrom, compat_prelude::ErrorOweBase};
 use orion_variate::EnvDict;
 use std::path::Path;
 use wp_cli_core::Ctx;
 use wp_engine::facade::config;
-use wp_error::run_error::RunResult;
+use wp_error::run_error::{RunReason, RunResult};
 
 /// Result structure for file source statistics
 ///
@@ -25,9 +25,9 @@ pub struct SourceStatResult {
 pub fn stat_file_sources(work_root: &str, dict: &EnvDict) -> RunResult<SourceStatResult> {
     // Load engine configuration to get source settings
     let (cm, main) = config::load_warp_engine_confs(work_root, dict)
-        .owe_conf()
-        .with(work_root)
-        .want("load engine config for source stats")?;
+        .owe(RunReason::from_conf())
+        .with_context(work_root)
+        .doing("load engine config for source stats")?;
 
     // Resolve the actual work root path
     let resolved = cm.work_root_path();
@@ -37,9 +37,9 @@ pub fn stat_file_sources(work_root: &str, dict: &EnvDict) -> RunResult<SourceSta
 
     // Gather statistics from file sources using business layer
     let report = wp_cli_core::list_file_sources_with_lines(Path::new(&resolved), &main, &ctx, dict)
-        .owe_conf()
-        .with(resolved.as_str())
-        .want("collect source file stats")?;
+        .owe(RunReason::from_conf())
+        .with_context(resolved.as_str())
+        .doing("collect source file stats")?;
 
     // Return the statistics result
     Ok(SourceStatResult {

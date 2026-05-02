@@ -3,8 +3,10 @@ use crate::facade::config::{ENGINE_CONF_FILE, WPARSE_LOG_PATH};
 use crate::orchestrator::config::WPSRC_TOML;
 use futures_util::TryFutureExt;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_conf::{EnvTomlLoad, ErrorOwe, ToStructError, TomlIO};
-use orion_error::{ErrorWith, UvsFrom};
+use orion_conf::{EnvTomlLoad, TomlIO};
+use orion_error::compat_prelude::ErrorOweBase;
+use orion_error::conversion::ToStructError;
+use orion_error::{ErrorWith, UvsFrom, UvsReason};
 use orion_variate::{EnvDict, EnvEvaluable};
 use std::cell::OnceCell;
 use std::path::{Path, PathBuf};
@@ -70,7 +72,9 @@ impl WarpConf {
     pub fn ensure_config_path_exists(&self, file_name: &str) -> OrionConfResult<PathBuf> {
         let target = self.conf_root_path().join(file_name);
         if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent).owe_res().with(parent)?;
+            std::fs::create_dir_all(parent)
+                .owe(ConfIOReason::Uvs(UvsReason::resource_error()))
+                .with_context(parent)?;
         }
         Ok(target)
     }
@@ -102,8 +106,8 @@ impl WarpConf {
     pub fn load_engine_config(&self, dict: &EnvDict) -> OrionConfResult<EngineConfig> {
         let path = self.config_path(ENGINE_CONF_FILE);
         let conf = EngineConfig::env_load_toml(&path, dict)
-            .owe_res()
-            .with(&path)?
+            .owe(ConfIOReason::Uvs(UvsReason::resource_error()))
+            .with_context(&path)?
             .env_eval(dict)
             .conf_absolutize(self.work_root());
         Ok(conf)

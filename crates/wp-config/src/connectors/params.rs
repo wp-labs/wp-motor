@@ -5,7 +5,7 @@
 
 use crate::connectors::ParamMap;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ToStructError, UvsFrom};
+use orion_error::{UvsFrom, conversion::ToStructError};
 
 /// Merge connector parameters with user overrides, respecting whitelist.
 ///

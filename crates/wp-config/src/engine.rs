@@ -1,4 +1,8 @@
-use orion_conf::{EnvTomlLoad, ErrorOwe, ErrorWith, TomlIO, error::OrionConfResult};
+use orion_conf::{
+    EnvTomlLoad, ErrorWith, TomlIO,
+    error::{ConfIOReason, OrionConfResult},
+};
+use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
 use orion_variate::{EnvDict, EnvEvaluable};
 use serde_derive::{Deserialize, Serialize};
 use std::{
@@ -539,9 +543,9 @@ impl EngineConfig {
         } else {
             if let Some(parent) = engine_conf_path.parent() {
                 create_dir_all(parent)
-                    .owe_res()
-                    .want("create path")
-                    .with(parent)?;
+                    .owe(ConfIOReason::Uvs(UvsReason::resource_error()))
+                    .doing("create path")
+                    .with_context(parent)?;
             }
             let conf = EngineConfig::init(&work_root);
             conf.save_toml(&engine_conf_path)?;
@@ -552,8 +556,8 @@ impl EngineConfig {
         use crate::constants::ENGINE_CONF_FILE;
         let engine_conf_path = work_root.as_ref().join("conf").join(ENGINE_CONF_FILE);
         EngineConfig::env_load_toml(&engine_conf_path, dict)
-            .want("load engine config")
-            .with(ENGINE_CONF_FILE)
+            .doing("load engine config")
+            .with_context(ENGINE_CONF_FILE)
     }
 
     // Add a gen_default method for StatConf compatibility

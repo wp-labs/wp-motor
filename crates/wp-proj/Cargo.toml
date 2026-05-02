@@ -25,7 +25,7 @@ wp-engine = { path = "../..", package = "wp-engine" }
 wp_core_connectors = { workspace = true }
 wp-error = { workspace = true }
 wp-log = { workspace = true }
-wpl = { package = "wp-lang", version = "0.1.0" }
+wpl = { package = "wp-lang", version = "0.2.0" }
 
 [dev-dependencies]
 rand = { workspace = true }

@@ -3,7 +3,7 @@ use crate::knowledge::KnowdbHandler;
 use crate::resources::ResManager;
 use crate::runtime::sink::act_sink::SinkService;
 use crate::runtime::sink::infrastructure::InfraSinkService;
-use orion_error::{ToStructError, UvsFrom};
+use orion_error::{UvsFrom, conversion::ToStructError};
 use std::sync::Arc;
 use wp_connector_api::{AcceptorHandle, DataSource, ServiceAcceptor, SourceHandle};
 use wp_error::run_error::{RunReason, RunResult};

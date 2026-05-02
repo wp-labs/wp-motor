@@ -1,5 +1,5 @@
 use orion_conf::ErrorWith;
-use orion_error::{ErrorOwe, ToStructError, UvsFrom};
+use orion_error::{UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError};
 use orion_variate::EnvDict;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -55,15 +55,15 @@ impl Wpl {
             PathBuf::from("example/nginx/parse.wpl"),
             example_wpl_content,
         )
-        .owe_conf()
-        .with("example/nginx/parse.wpl")
-        .want("build example wpl")?;
+        .owe(RunReason::from_conf())
+        .with_context("example/nginx/parse.wpl")
+        .doing("build example wpl")?;
 
         let _pkg = code
             .parse_pkg()
-            .owe_conf()
-            .with("example/nginx/parse.wpl")
-            .want("parse example wpl")?;
+            .owe(RunReason::from_conf())
+            .with_context("example/nginx/parse.wpl")
+            .doing("parse example wpl")?;
 
         // Create WPL directory and example files
         self.create_example_files(work_root)?;
@@ -155,14 +155,14 @@ fn parse_and_collect_wpl_files(
                 .with_detail(format!("wpl file is empty: {}", fp.display())));
         }
         let code = WplCode::build(fp.clone(), raw.as_str())
-            .owe_conf()
-            .with(fp)
-            .want("build wpl code")?;
+            .owe(RunReason::from_conf())
+            .with_context(fp)
+            .doing("build wpl code")?;
         let pkg = code
             .parse_pkg()
-            .owe_conf()
-            .with(fp)
-            .want("parse wpl package")?;
+            .owe(RunReason::from_conf())
+            .with_context(fp)
+            .doing("parse wpl package")?;
 
         // Check for empty package
         if pkg.rules.is_empty() {

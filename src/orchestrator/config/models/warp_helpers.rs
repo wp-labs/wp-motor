@@ -2,7 +2,7 @@ use crate::{
     core::parser::wpl_engine, facade::diagnostics::print_run_error,
     orchestrator::config::loader::WarpConf,
 };
-use orion_error::{ErrorConv, ErrorWrapAs, ToStructError, UvsFrom};
+use orion_error::{ErrorConv, ErrorWrapAs, UvsFrom, conversion::ToStructError};
 use orion_variate::{EnvDict, EnvEvaluable};
 use std::{env, path::PathBuf};
 use wp_conf::engine::EngineConfig;

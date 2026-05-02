@@ -1,6 +1,6 @@
 //! 运行时错误的美化与提示收集，供各 CLI 共享使用。
 
-use orion_error::{ErrorCode, SourceFrame};
+use orion_error::{ErrorCode, runtime::SourceFrame};
 use wp_error::run_error::{RunError, RunReason};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

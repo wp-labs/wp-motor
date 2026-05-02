@@ -1,6 +1,6 @@
 use orion_conf::EnvTomlLoad;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorOweSource, ErrorWith, ToStructError, UvsFrom};
+use orion_error::{ErrorWith, UvsFrom, compat_prelude::ErrorOweSource, conversion::ToStructError};
 use orion_variate::EnvDict;
 use serde::Serialize;
 use std::fs;
@@ -155,8 +155,8 @@ pub fn init(work_root: &str, full: bool) -> OrionConfResult<()> {
     let models_dir = wr.join("models").join("knowledge");
     fs::create_dir_all(&models_dir)
         .owe_conf_source()
-        .with(&models_dir)
-        .want("create models knowledge dir")?;
+        .with_context(&models_dir)
+        .doing("create models knowledge dir")?;
     let mut body = toml::to_string_pretty(&spec).unwrap_or_else(|_| {
         "version = 2\n\n[[tables]]\nname = \"example\"\ncolumns.by_header = [\"name\", \"pinying\"]\n"
             .to_string()
@@ -168,37 +168,37 @@ pub fn init(work_root: &str, full: bool) -> OrionConfResult<()> {
     let knowdb_path = models_dir.join("knowdb.toml");
     fs::write(&knowdb_path, body)
         .owe_conf_source()
-        .with(&knowdb_path)
-        .want("write knowdb config")?;
+        .with_context(&knowdb_path)
+        .doing("write knowdb config")?;
     let ex = models_dir.join("example");
     fs::create_dir_all(&ex)
         .owe_conf_source()
-        .with(&ex)
-        .want("create knowdb example dir")?;
+        .with_context(&ex)
+        .doing("create knowdb example dir")?;
     let create_sql = ex.join("create.sql");
     fs::write(
         &create_sql,
         "CREATE TABLE IF NOT EXISTS {table} (\n  id      INTEGER PRIMARY KEY,\n  name    TEXT NOT NULL,\n  pinying TEXT NOT NULL\n);\nCREATE INDEX IF NOT EXISTS idx_{table}_name ON {table}(name);\n",
     )
     .owe_conf_source()
-    .with(&create_sql)
-    .want("write knowdb create.sql")?;
+    .with_context(&create_sql)
+    .doing("write knowdb create.sql")?;
     let insert_sql = ex.join("insert.sql");
     fs::write(
         &insert_sql,
         "INSERT INTO {table} (name, pinying) VALUES (?1, ?2);\n",
     )
     .owe_conf_source()
-    .with(&insert_sql)
-    .want("write knowdb insert.sql")?;
+    .with_context(&insert_sql)
+    .doing("write knowdb insert.sql")?;
     let data_csv = ex.join("data.csv");
     fs::write(
         &data_csv,
         "name,pinying\n令狐冲,linghuchong\n任盈盈,renyingying\n",
     )
     .owe_conf_source()
-    .with(&data_csv)
-    .want("write knowdb data.csv")?;
+    .with_context(&data_csv)
+    .doing("write knowdb data.csv")?;
     Ok(())
 }
 
@@ -210,19 +210,20 @@ pub fn check(work_root: &str, dict: &EnvDict) -> OrionConfResult<CheckReport> {
         return Err(ConfIOReason::from_validation()
             .to_err()
             .with_detail(format!("knowdb config not found: {}", conf_path.display()))
-            .with(&conf_path));
+            .with_context(&conf_path));
     }
     let txt = std::fs::read_to_string(&conf_path)
         .owe_conf_source()
-        .with(&conf_path)
-        .want("read knowdb config")?;
+        .with_context(&conf_path)
+        .doing("read knowdb config")?;
     let conf: KnowDbConf = KnowDbConf::env_parse_toml(&txt, dict)
-        .map_err(|e| e.with(&conf_path).want("parse knowdb config"))?;
+        .with_context(&conf_path)
+        .doing("parse knowdb config")?;
     if conf.version != 2 {
         return Err(ConfIOReason::from_validation()
             .to_err()
             .with_detail("knowdb.version must be 2")
-            .with(&conf_path));
+            .with_context(&conf_path));
     }
     let base_dir = conf_path
         .parent()
@@ -269,7 +270,7 @@ pub fn clean(work_root: &str) -> OrionConfResult<CleanReport> {
                 return Err(ConfIOReason::from_validation()
                     .to_err()
                     .with_detail(format!("remove '{}' failed", models_dir.display()))
-                    .with(&models_dir));
+                    .with_context(&models_dir));
             }
         }
     }
@@ -277,8 +278,8 @@ pub fn clean(work_root: &str) -> OrionConfResult<CleanReport> {
     if auth.exists() {
         std::fs::remove_file(&auth)
             .owe_conf_source()
-            .with(&auth)
-            .want("remove authority cache")?;
+            .with_context(&auth)
+            .doing("remove authority cache")?;
         rep.removed_authority_cache = true;
     }
     Ok(rep)

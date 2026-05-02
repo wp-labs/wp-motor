@@ -7,7 +7,7 @@ use crate::utils::fs::{count_lines_file, resolve_path};
 use glob::glob;
 use orion_conf::EnvTomlLoad;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorOweSource, ErrorWith, ToStructError, UvsFrom};
+use orion_error::{ErrorWith, UvsFrom, compat_prelude::ErrorOweSource, conversion::ToStructError};
 use orion_variate::{EnvDict, EnvEvaluable};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -35,8 +35,8 @@ fn read_wpsrc_toml(path: &Path) -> OrionConfResult<Option<String>> {
     if path.exists() {
         return std::fs::read_to_string(path)
             .owe_conf_source()
-            .with(path)
-            .want("read wpsrc config")
+            .with_context(path)
+            .doing("read wpsrc config")
             .map(Some);
     }
     Ok(None)
@@ -53,11 +53,12 @@ fn load_wpsrc_sources(
     };
 
     let parsed: WpSourcesConfig = WpSourcesConfig::env_parse_toml(&content, dict)
-        .map_err(|e| e.with(&path).want("parse wpsrc config"))?
+        .with_context(&path)
+        .doing("parse wpsrc config")?
         .env_eval(dict);
     let instances = wp_conf::sources::load_source_instances_from_file(&path, dict)
-        .with(&path)
-        .want("load wpsrc source instances")?;
+        .with_context(&path)
+        .doing("load wpsrc source instances")?;
 
     let mut instances_by_name: BTreeMap<String, SourceInstanceConf> = instances
         .into_iter()
@@ -82,7 +83,8 @@ fn load_wpsrc_config(
         return Ok(None);
     };
     let parsed: WpSourcesConfig = WpSourcesConfig::env_parse_toml(&content, dict)
-        .map_err(|e| e.with(&path).want("parse wpsrc config"))?
+        .with_context(&path)
+        .doing("parse wpsrc config")?
         .env_eval(dict);
     Ok(Some((path, parsed)))
 }
@@ -98,8 +100,8 @@ fn load_wpsrc_connectors_map(
         .or_else(|| wp_conf::find_connectors_base_dir(&ctx.work_root.join("sources"), "source.d"));
     match conn_dir.as_ref() {
         Some(path) => wp_conf::sources::load_connectors_for(path.as_path(), dict)
-            .with(path)
-            .want("load source connectors"),
+            .with_context(path)
+            .doing("load source connectors"),
         None => Ok(BTreeMap::new()),
     }
 }
@@ -208,12 +210,12 @@ pub fn total_input_from_wpsrc(
         saw_enabled_file_source = true;
         let key = source.source.key;
         let path = validated_file_source_path(&source.instance.core.params).map_err(|e| {
-            e.with(&wpsrc_path)
-                .want(format!("validate source '{}' path spec", key))
+            e.with_context(&wpsrc_path)
+                .doing(format!("validate source '{}' path spec", key))
         })?;
         let paths = expand_source_paths(&path, &ctx.work_root).map_err(|e| {
-            e.with(&wpsrc_path)
-                .want(format!("expand source '{}' files", key))
+            e.with_context(&wpsrc_path)
+                .doing(format!("expand source '{}' files", key))
         })?;
         for pathbuf in paths {
             let n = count_lines_file(&pathbuf).map_err(|e| {
@@ -225,7 +227,7 @@ pub fn total_input_from_wpsrc(
                         pathbuf.display(),
                         e
                     ))
-                    .with(&pathbuf)
+                    .with_context(&pathbuf)
             })?;
             sum += n;
         }

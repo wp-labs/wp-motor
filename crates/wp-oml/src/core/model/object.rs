@@ -6,7 +6,9 @@ use crate::language::ObjModel;
 use crate::parser::error::OMLCodeErrorTait;
 use crate::parser::oml_parse_raw;
 use async_trait::async_trait;
-use orion_error::{ContextRecord, ErrorOweBase, ErrorWith, WithContext};
+use orion_error::{
+    ErrorWith, compat_prelude::ErrorOweBase, runtime::ContextRecord, runtime::WithContext,
+};
 use tokio::fs;
 use wp_error::parse_error::{OMLCodeError, OMLCodeReason, OMLCodeResult};
 use wp_knowledge::cache::FieldQueryCache;
@@ -93,20 +95,20 @@ impl ConfADMExt for ObjModel {
     where
         Self: Sized,
     {
-        let mut ctx = WithContext::want("load oml model");
+        let mut ctx = WithContext::doing("load oml model");
         ctx.record("path", path);
         let content = fs::read_to_string(path)
             .await
             //.owe_rule::<OMLCodeError>()
             .owe(OMLCodeReason::NotFound("oml load fail".into()))
-            .with(&ctx)?;
+            .with_context(&ctx)?;
         let mut raw_code = content.as_str();
         let code = CommentParser::ignore_comment(&mut raw_code)
             .map_err(|e| OMLCodeError::from_syntax(e, raw_code, path))?;
         let mut pure_code = code.as_str();
         match oml_parse_raw(&mut pure_code).await {
             Ok(res) => Ok(res),
-            Err(e) => Err(OMLCodeError::from_syntax(e, pure_code, path)).with(&ctx),
+            Err(e) => Err(OMLCodeError::from_syntax(e, pure_code, path)).with_context(&ctx),
         }
     }
 }

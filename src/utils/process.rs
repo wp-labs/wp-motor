@@ -3,8 +3,8 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 
-use orion_error::{ErrorOwe, ErrorWith};
-use wp_error::run_error::RunResult;
+use orion_error::{ErrorWith, UvsFrom, compat_prelude::ErrorOweBase};
+use wp_error::run_error::{RunReason, RunResult};
 
 pub struct PidRec {
     pid_file: String,
@@ -12,12 +12,15 @@ pub struct PidRec {
 impl PidRec {
     pub fn current(name: &str) -> RunResult<Self> {
         let id = sysinfo::get_current_pid()
-            .owe_sys()
-            .want("want current pid")?;
+            .owe(RunReason::from_sys())
+            .doing("want current pid")?;
         // 将进程ID写入文件
         let path = Path::new(name);
-        let mut file = File::create(path).owe_sys().want("crate Pid file")?;
-        file.write_all(id.to_string().as_bytes()).owe_sys()?;
+        let mut file = File::create(path)
+            .owe(RunReason::from_sys())
+            .doing("crate Pid file")?;
+        file.write_all(id.to_string().as_bytes())
+            .owe(RunReason::from_sys())?;
         Ok(Self {
             pid_file: name.to_string(),
         })

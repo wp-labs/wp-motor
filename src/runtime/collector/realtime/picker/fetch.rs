@@ -5,7 +5,7 @@ use crate::runtime::{
 };
 use crate::sample_log_with_hits;
 use async_broadcast::RecvError;
-use orion_error::ConvStructError;
+use orion_error::conversion_ext::ConvStructError;
 use std::time::{Duration, Instant};
 // stride uses crate::LOG_SAMPLE_STRIDE globally; no per-site stride import here
 use tokio::time::sleep;

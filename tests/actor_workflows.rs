@@ -4,6 +4,7 @@
 //! including actor workflows, rule generation, and data processing pipelines.
 
 use async_broadcast::broadcast;
+use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use wp_connector_api::Tags;
@@ -16,6 +17,7 @@ use wp_engine::facade::test_helpers::SinkTerminal;
 use wp_engine::facade::test_helpers::{
     ActParser, ActorWork, ParseWorkerSender, RuleGRA, async_test_prepare, read_data,
 };
+use wp_error::run_error::{RunReason, RunResult};
 use wp_model_core::model::fmt_def::TextFmt;
 
 use wp_engine::facade::kit::WplCodePKG;
@@ -31,7 +33,6 @@ use wp_engine::sinks::{SinkRegistry, SinkRouteAgent};
 
 use wp_conf::RunArgs;
 use wp_conf::structure::SinkInstanceConf;
-use wp_engine::types::AnyResult;
 use wpl::WplCode;
 
 //=============================================================================
@@ -39,7 +40,7 @@ use wpl::WplCode;
 //=============================================================================
 
 #[tokio::test(flavor = "multi_thread")]
-async fn actor_workflows_process_http_logs_with_base64_decoding() -> AnyResult<()> {
+async fn actor_workflows_process_http_logs_with_base64_decoding() -> RunResult<()> {
     // Test configuration: Parse H3C WAF logs with base64 decoding
     let rule =
         r#"package /test_pkg { rule test {|decode/base64|(digit:id<<,>>,time,sn,time,*_)} }"#;
@@ -87,7 +88,7 @@ async fn actor_workflows_process_http_logs_with_base64_decoding() -> AnyResult<(
     ));
 
     // Parse and build service definition
-    let service_code = WplCodePKG::from_code(rule)?;
+    let service_code = WplCodePKG::from_code(rule).owe(RunReason::Uvs(UvsReason::rule_error()))?;
 
     // Initialize actor processor
     let mut actor_processor = ActorWork::new(
@@ -105,7 +106,8 @@ async fn actor_workflows_process_http_logs_with_base64_decoding() -> AnyResult<(
     // Execute processing with timeout shutdown
     command_sender
         .broadcast(ActorCtrlCmd::Stop(ShutdownCmd::Timeout(100)))
-        .await?;
+        .await
+        .owe(RunReason::Uvs(UvsReason::system_error()))?;
 
     let processing_result = actor_processor.proc(parsing_settings).await;
     println!("Processing result: {:?}", processing_result);
@@ -141,7 +143,7 @@ async fn actor_workflows_process_http_logs_with_base64_decoding() -> AnyResult<(
 //=============================================================================
 
 #[tokio::test(flavor = "multi_thread")]
-async fn rule_generator_end_to_end_processing() -> AnyResult<()> {
+async fn rule_generator_end_to_end_processing() -> RunResult<()> {
     // Test configuration: Generate complex log patterns with multiple fields
     let generation_rule = "package /test_pkg { rule test { (digit,time,sn,chars,time,kv,sn,chars,time,time,ip,kv,chars,kv,kv,chars,kv,kv,chars,chars,ip,chars,http/request,http/agent)\\,} }";
 
@@ -160,11 +162,16 @@ async fn rule_generator_end_to_end_processing() -> AnyResult<()> {
 
     // Create output target
     let output_target = SinkBackendType::Proxy(Box::new(
-        build_file_sink(&sink_configuration, "/tmp/rule_generator_test.log").await?,
+        build_file_sink(&sink_configuration, "/tmp/rule_generator_test.log")
+            .await
+            .owe(RunReason::Uvs(UvsReason::system_error()))?,
     ));
 
     // Parse and compile generation rules
-    let language_rules = WplCode::try_from(generation_rule)?.parse_pkg()?;
+    let language_rules = WplCode::try_from(generation_rule)
+        .owe(RunReason::Uvs(UvsReason::rule_error()))?
+        .parse_pkg()
+        .owe(RunReason::Uvs(UvsReason::rule_error()))?;
     let rule_unit = GenRuleUnit::new(language_rules.clone(), HashMap::new());
 
     // Execute rule generation
@@ -186,7 +193,7 @@ async fn rule_generator_end_to_end_processing() -> AnyResult<()> {
     let generated_data_path = "/tmp/rule_generator_test.log";
     engine_check(
         validation_args,
-        WplCodePKG::from_code(generation_rule)?,
+        WplCodePKG::from_code(generation_rule).owe(RunReason::Uvs(UvsReason::rule_error()))?,
         generated_data_path,
         SinkRegistry::for_test(validation_output),
     )

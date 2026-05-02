@@ -2,7 +2,7 @@ use comfy_table::{Cell as TCell, Table};
 use oml::core::ConfADMExt;
 use oml::language::ObjModel;
 use orion_conf::ErrorWith;
-use orion_error::{ErrorOwe, ToStructError, UvsFrom};
+use orion_error::{UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError};
 use orion_variate::EnvDict;
 use serde_json::json;
 use wildmatch::WildMatch;
@@ -196,17 +196,17 @@ pub async fn collect_oml_models(work_root: &str, dict: &EnvDict) -> RunResult<Ve
             .with_detail("oml root path is not valid UTF-8")
     })?;
     let files = find_conf_files(root_str, WPARSE_OML_FILE)
-        .owe_conf()
-        .with(root_str)
-        .want("find oml files")?;
+        .owe(RunReason::from_conf())
+        .with_context(root_str)
+        .doing("find oml files")?;
     let mut items = Vec::new();
     for path in files {
         let path_str = path.to_string_lossy().to_string();
         let model = ObjModel::load(path_str.as_str())
             .await
-            .owe_rule()
-            .with(path_str.as_str())
-            .want("load oml model")?;
+            .owe(RunReason::from_rule())
+            .with_context(path_str.as_str())
+            .doing("load oml model")?;
         // Skip disabled models
         if !model.enable() {
             continue;

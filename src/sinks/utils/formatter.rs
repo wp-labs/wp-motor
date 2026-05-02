@@ -3,7 +3,7 @@ use crate::sinks::prelude::*;
 use crate::{core::sinks::sync_sink::traits::SyncCtrl, sinks::pdm_outer::TDMDataAble};
 
 use async_trait::async_trait;
-use orion_error::ErrorOwe;
+use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
 use wp_data_fmt::{FormatType, RecordFormatter};
 use wp_model_core::model::fmt_def::TextFmt;
 use wp_model_core::raw::RawData;
@@ -81,7 +81,10 @@ where
 {
     async fn sink_record(&mut self, data: &DataRecord) -> SinkResult<()> {
         if let Some(ref mut next_proc) = self.next_proc {
-            let data: RawData = self.fmt.cov_data(data.clone()).owe_data()?;
+            let data: RawData = self
+                .fmt
+                .cov_data(data.clone())
+                .owe(SinkReason::Uvs(UvsReason::data_error()))?;
             match data {
                 RawData::String(data_str) => {
                     next_proc.sink_str(&data_str).await?;
@@ -106,7 +109,10 @@ where
             let mut bytes_batch: Vec<Vec<u8>> = Vec::new();
 
             for record in &data {
-                let raw: RawData = self.fmt.cov_data(record.as_ref().clone()).owe_data()?;
+                let raw: RawData = self
+                    .fmt
+                    .cov_data(record.as_ref().clone())
+                    .owe(SinkReason::Uvs(UvsReason::data_error()))?;
                 match raw {
                     RawData::String(s) => str_batch.push(s),
                     RawData::Bytes(b) => bytes_batch.push(b.to_vec()),

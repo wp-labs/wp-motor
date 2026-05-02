@@ -1,7 +1,9 @@
 use super::super::prelude::*;
 use oml::parser::code::OMLCode;
 use orion_conf::EnvTomlLoad;
-use orion_error::{ContextRecord, ErrorOweBase, WithContext};
+use orion_error::{
+    UvsReason, compat_prelude::ErrorOweBase, runtime::ContextRecord, runtime::WithContext,
+};
 use orion_variate::EnvDict;
 use std::{
     collections::{HashMap, VecDeque},
@@ -14,7 +16,7 @@ use wp_conf::{
 };
 use wp_error::{
     config_error::{ConfError, ConfReason, ConfResult},
-    parse_error::OMLCodeResult,
+    parse_error::{OMLCodeReason, OMLCodeResult},
 };
 use wp_model_core::model::DataType;
 use wpl::{
@@ -104,28 +106,30 @@ impl GenRuleUnit {
 pub fn load_gen_confs(path: &str, dict: &EnvDict) -> ConfResult<Vec<GenRuleUnit>> {
     let files = find_group_conf(path, GEN_RULE_FILE, GEN_FIELD_FILE)?;
     if files.is_empty() {
-        return Err(ConfError::from(ConfReason::NotFound(
-            "gen rule conf file is empty".into(),
-        )));
+        return Err(ConfError::from(ConfReason::NotFound(String::new()))
+            .with_detail("gen rule conf file is empty"));
     }
 
     let mut result_vec = Vec::new();
     for f in files {
         let mut package_opt = None;
         if let Some(fst) = &f.fst {
-            let mut ctx = WithContext::want("load gen code");
+            let mut ctx = WithContext::doing("load gen code");
             ctx.record("fst", fst.to_str().unwrap_or("unknow"));
             let mut f = File::open(fst)
                 .owe(ConfReason::NotFound("open file fail!".into()))
-                .with(&ctx)?;
+                .with_context(&ctx)?;
             let mut buffer = Vec::with_capacity(10240);
             f.read_to_end(&mut buffer).expect("read conf file error");
             let data = String::from_utf8(buffer).expect("conf file is not utf8");
             let code_build = WplCode::build(fst.clone(), data.as_str())
-                .owe_conf()
-                .with(&ctx)?;
+                .owe(ConfReason::Uvs(UvsReason::core_conf()))
+                .with_context(&ctx)?;
             info_ctrl!("load conf file: {:?}", fst);
-            let package = code_build.parse_pkg().owe_conf().with(&ctx)?;
+            let package = code_build
+                .parse_pkg()
+                .owe(ConfReason::Uvs(UvsReason::core_conf()))
+                .with_context(&ctx)?;
             if package.is_empty() {
                 return Err(ConfError::from(ConfReason::NotFound(
                     "gen rule package is empty".into(),
@@ -135,12 +139,14 @@ pub fn load_gen_confs(path: &str, dict: &EnvDict) -> ConfResult<Vec<GenRuleUnit>
         }
         let mut fields = HashMap::new();
         if let Some(sec) = &f.sec {
-            let mut ctx = WithContext::want("loadd field gen rule");
+            let mut ctx = WithContext::doing("loadd field gen rule");
             ctx.record("sec", sec.to_str().unwrap_or("unknow"));
-            let toml = std::fs::read_to_string(sec).owe_conf().with(&ctx)?;
+            let toml = std::fs::read_to_string(sec)
+                .owe(ConfReason::Uvs(UvsReason::core_conf()))
+                .with_context(&ctx)?;
             let conf: FieldsGenRule = FieldsGenRule::env_parse_toml(toml.as_str(), dict)
-                .owe_conf()
-                .with(&ctx)?;
+                .owe(ConfReason::Uvs(UvsReason::core_conf()))
+                .with_context(&ctx)?;
             fields = conf.items;
             info_ctrl!("load conf file: {:?}", sec);
         }
@@ -152,17 +158,25 @@ pub fn load_gen_confs(path: &str, dict: &EnvDict) -> ConfResult<Vec<GenRuleUnit>
 }
 
 pub fn fetch_oml_data(path: &str, target: &str) -> OMLCodeResult<OmlRepository> {
-    let mut ctx = WithContext::want("load oml");
+    let mut ctx = WithContext::doing("load oml");
     ctx.record("path", path);
-    let files = find_conf_files(path, target).owe_conf().with(&ctx)?;
+    let files = find_conf_files(path, target)
+        .owe(OMLCodeReason::Uvs(UvsReason::core_conf()))
+        .with_context(&ctx)?;
 
     let mut spc = OmlRepository::default();
     for f_name in &files {
         info_ctrl!("load conf file: {:?}", f_name);
-        let mut f = File::open(f_name).owe_conf().with(&ctx)?;
+        let mut f = File::open(f_name)
+            .owe(OMLCodeReason::Uvs(UvsReason::core_conf()))
+            .with_context(&ctx)?;
         let mut buffer = Vec::with_capacity(10240);
-        f.read_to_end(&mut buffer).owe_conf().with(&ctx)?;
-        let file_data = String::from_utf8(buffer).owe_conf().with(&ctx)?;
+        f.read_to_end(&mut buffer)
+            .owe(OMLCodeReason::Uvs(UvsReason::core_conf()))
+            .with_context(&ctx)?;
+        let file_data = String::from_utf8(buffer)
+            .owe(OMLCodeReason::Uvs(UvsReason::core_conf()))
+            .with_context(&ctx)?;
         spc.push(OMLCode::from((
             f_name.to_str().unwrap_or("").to_string(),
             file_data,

@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use bytes::{Bytes, BytesMut};
 use tokio::net::UdpSocket;
+use orion_error::compat_prelude::ErrorOweBase;
 use wp_connector_api::{DataSource, EventPreHook, SourceBatch, SourceEvent, Tags};
 use wp_connector_api::{SourceReason, SourceResult};
 use wp_model_core::raw::RawData;
@@ -411,7 +412,7 @@ impl UdpSyslogSource {
         // Parse address
         let target: SocketAddr = addr
             .parse()
-            .map_err(|e| SourceReason::from_conf().err_source(e))?;
+            .owe(SourceReason::from_conf())?;
 
         // Create socket with socket2 to set buffer size before binding
         let domain = if target.is_ipv4() {
@@ -420,34 +421,26 @@ impl UdpSyslogSource {
             Domain::IPV6
         };
         let socket2 = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))
-            .map_err(|e| {
-                SourceReason::Disconnect("create udp socket failed".to_string()).err_source(e)
-            })?;
+            .owe(SourceReason::Disconnect("create udp socket failed".to_string()))?;
 
         // Set receive buffer size before binding
         if recv_buffer > 0 {
-            socket2.set_recv_buffer_size(recv_buffer).map_err(|e| {
-                SourceReason::Disconnect("set udp recv buffer failed".to_string()).err_source(e)
-            })?;
+            socket2.set_recv_buffer_size(recv_buffer)
+                .owe(SourceReason::Disconnect("set udp recv buffer failed".to_string()))?;
         }
 
         // Bind the socket
-        socket2.bind(&target.into()).map_err(|e| {
-            SourceReason::Disconnect("bind udp socket failed".to_string()).err_source(e)
-        })?;
-        socket2.set_nonblocking(true).map_err(|e| {
-            SourceReason::Disconnect("set udp socket nonblocking failed".to_string())
-                .err_source(e)
-        })?;
+        socket2.bind(&target.into())
+            .owe(SourceReason::Disconnect("bind udp socket failed".to_string()))?;
+        socket2.set_nonblocking(true)
+            .owe(SourceReason::Disconnect("set udp socket nonblocking failed".to_string()))?;
 
         let actual_size = socket2.recv_buffer_size().unwrap_or(0);
 
         // Convert to tokio UdpSocket
         let std_socket: std::net::UdpSocket = socket2.into();
-        let socket = UdpSocket::from_std(std_socket).map_err(|e| {
-            SourceReason::Disconnect("adopt udp socket into tokio failed".to_string())
-                .err_source(e)
-        })?;
+        let socket = UdpSocket::from_std(std_socket)
+            .owe(SourceReason::Disconnect("adopt udp socket into tokio failed".to_string()))?;
 
         let local = socket
             .local_addr()

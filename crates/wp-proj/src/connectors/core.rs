@@ -7,7 +7,7 @@ use crate::connectors::{
 };
 use crate::traits::Component;
 use crate::types::CheckStatus;
-use orion_error::{ToStructError, UvsFrom};
+use orion_error::{UvsFrom, conversion::ToStructError};
 use orion_variate::EnvDict;
 
 use super::paths::ConnectorsPaths;

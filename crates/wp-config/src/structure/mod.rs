@@ -20,8 +20,8 @@ pub use bool_de::de_opt_bool_onoff;
 /// 稳定别名：对外重导出基础接口与工具。
 /// 建议新代码可直接依赖 `wp-conf-base`，也可以继续通过 `wp-conf` 引用这些接口。
 pub use wp_conf_base::structure::{ConfStdOperation, Protocol, Validate, de_bool_onoff};
-// Re-export orion_error ErrorOwe so downstream can `use crate::structure::ErrorOwe` for `.owe_conf()` etc.
-pub use orion_error::ErrorOwe;
+// Re-export orion_error ErrorOweBase for `.owe()` etc.
+pub use orion_error::compat_prelude::ErrorOweBase;
 
 // No ConfStdOperation impl for MDBConf in V2
 

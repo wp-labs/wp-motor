@@ -23,7 +23,7 @@ use crate::runtime::actor::{ExitPolicyKind, TaskGroup, TaskManager, TaskRole};
 use crate::sinks::SinkRuntime;
 use crate::sinks::{SinkBackendType, SinkDatASender, SinkDataEnum, make_blackhole_sink};
 use crate::stat::MonSend;
-use orion_error::{ErrorOwe, ToStructError, UvsBizFrom};
+use orion_error::{UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError, UvsBizFrom};
 use std::any::type_name_of_val;
 use wp_conf::structure::SinkInstanceConf;
 use wp_error::run_error::RunResult;
@@ -205,7 +205,7 @@ pub async fn gen_run(
                 mon_s.clone(),
                 g_one.clone(),
             )
-            .owe_sys()?;
+            .owe(RunReason::from_sys())?;
         info_ctrl!(
             "spawn gen worker {} with total_line={:?}, speed={}, parallel={}",
             i,
@@ -292,7 +292,7 @@ impl SpawnGen for SampleGenRoutine {
     ) -> RunResult<JoinHandle<()>> {
         info_ctrl!("gen samples from : {:?}", self.samples);
         let mut gen_actor = SampleGenerator::from_file(self.samples.clone())
-            .map_err(|e| RunReason::from_conf().to_err().with_source(e))?;
+            .owe(RunReason::from_conf())?;
         let dat_s_cp = dat_s;
         let h = tokio::spawn(async move {
             match gen_actor.gen_data(cmd_r, dat_s_cp, gen_conf, mon_s).await {

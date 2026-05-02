@@ -1,10 +1,11 @@
 use super::defaults::{ConnectorTemplate, registered_templates};
-use orion_conf::{ErrorOwe, ErrorWith};
+use orion_conf::ErrorWith;
+use orion_error::{UvsFrom, compat_prelude::ErrorOweBase};
 use std::fs;
 use std::path::Path;
 use toml::Value;
 use wp_conf::connectors::{ConnectorDef, ConnectorScope, param_map_to_table};
-use wp_error::run_error::RunResult;
+use wp_error::run_error::{RunReason, RunResult};
 
 pub fn init_definitions<P: AsRef<Path>>(work_root: P) -> RunResult<()> {
     for template in registered_templates() {
@@ -19,18 +20,18 @@ fn write_template_if_absent(work_root: &Path, template: &ConnectorTemplate) -> R
         ConnectorScope::Sink => work_root.join("connectors/sink.d"),
     };
     fs::create_dir_all(&dir)
-        .owe_res()
-        .want("create connector template dir")
-        .with(&dir)?;
+        .owe(RunReason::from_res())
+        .doing("create connector template dir")
+        .with_context(&dir)?;
     let path = dir.join(&template.file_name);
     if path.exists() {
         return Ok(());
     }
     let body = render_connector_file(&template.connectors)?;
     fs::write(&path, body.as_bytes())
-        .owe_res()
-        .want("write connector template")
-        .with(&path)?;
+        .owe(RunReason::from_res())
+        .doing("write connector template")
+        .with_context(&path)?;
     Ok(())
 }
 
@@ -42,8 +43,8 @@ fn render_connector_file(connectors: &[ConnectorDef]) -> RunResult<String> {
     let mut root = toml::value::Table::new();
     root.insert("connectors".to_string(), Value::Array(entries));
     toml::to_string(&Value::Table(root))
-        .owe_res()
-        .want("serialize connector template")
+        .owe(RunReason::from_res())
+        .doing("serialize connector template")
 }
 
 fn connector_to_value(def: &ConnectorDef) -> Value {

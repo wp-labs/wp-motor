@@ -19,8 +19,8 @@ pub fn build_groups_v2(
 
     for conf in
         wp_conf::sinks::load_business_route_confs(sink_root.to_string_lossy().as_ref(), env_dict)
-            .with(sink_root)
-            .want("load business sink routes")?
+            .with_context(sink_root)
+            .doing("load business sink routes")?
     {
         let g = conf.sink_group;
         if !crate::utils::fs::is_match(g.name().as_str(), &ctx.group_filters) {
@@ -39,8 +39,8 @@ pub fn build_groups_v2(
     }
     for conf in
         wp_conf::sinks::load_infra_route_confs(sink_root.to_string_lossy().as_ref(), env_dict)
-            .with(sink_root)
-            .want("load infra sink routes")?
+            .with_context(sink_root)
+            .doing("load infra sink routes")?
     {
         let g = conf.sink_group;
         if !crate::utils::fs::is_match(g.name().as_str(), &ctx.group_filters) {

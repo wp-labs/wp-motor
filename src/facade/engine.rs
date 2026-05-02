@@ -9,9 +9,9 @@ use tokio::sync::mpsc::Receiver;
 use tokio::time::timeout;
 use wp_knowledge::facade::init_thread_cloned_from_knowdb;
 
-use orion_error::{ErrorConv, ErrorOwe, ErrorWith, OperationContext};
+use orion_error::{ErrorConv, ErrorWith, OperationContext, UvsFrom, compat_prelude::ErrorOweBase};
 use wp_conf::{RunArgs, RunMode};
-use wp_error::run_error::RunResult;
+use wp_error::run_error::{RunReason, RunResult};
 use wp_log::conf::log_init;
 // bring logging macros into scope (Rust 2018+ requires explicit import for macro_rules! macros)
 use wp_log::{info_ctrl, warn_ctrl};
@@ -20,7 +20,7 @@ use wp_stat::{StatRequires, StatStage};
 use crate::facade::args::ParseArgs;
 use crate::facade::args::resolve_run_work_root;
 use crate::facade::runtime_ctrl::{
-    RuntimeCommandReq, RuntimeCommandResp, RuntimeCommandResult, RuntimeControlHandle,
+    CommandType, RuntimeCommandReq, RuntimeCommandResp, RuntimeCommandResult, RuntimeControlHandle,
     default_runtime_command_bus,
 };
 use crate::orchestrator::config::loader::WarpConf;
@@ -41,7 +41,6 @@ use crate::sources::SourceConfigParser;
 use crate::utils::process::PidRec;
 use wp_conf::constants;
 use wp_conf::engine::EngineConfig;
-use wp_ctrl_api::CommandType;
 
 #[derive(Clone, Copy)]
 struct ProcessingLoadOptions {
@@ -129,7 +128,7 @@ impl WpApp {
         {
             crate::wp_ctrl_enterprise::start(self.control_handle.command_sender())
                 .await
-                .owe_conf()?;
+                .owe(RunReason::from_conf())?;
             Ok(())
         }
         #[cfg(not(feature = "enterprise-backend"))]
@@ -413,7 +412,7 @@ async fn load_engine_res(
     run_mode: RunMode,
     env_dict: &EnvDict,
 ) -> RunResult<EngineResource> {
-    let mut ctx = OperationContext::want("load-engine-res").with_auto_log();
+    let mut ctx = OperationContext::doing("load-engine-res").with_auto_log();
     let knowdb_path = knowdb_config_path(main_conf);
     let mut knowdb_handler = None;
     if knowdb_path.exists() {
@@ -459,7 +458,7 @@ async fn load_engine_res(
         .build_source_handles(&wpsrc_path, run_mode, env_dict)
         .await
         .err_conv()
-        .want("parse/build sources")?;
+        .doing("parse/build sources")?;
 
     let mut res_center = ResManager::build(main_conf, &infra_sinks, env_dict).await?;
     let sink_service = SinkService::async_sinks_spawn(
@@ -479,7 +478,7 @@ async fn load_engine_res(
     // 输出 rule_mapping.dat 至工作目录 .run/rule_mapping.dat
     let res_path = conf_manager.runtime_path("rule_mapping.dat");
     if Path::new(&res_path).exists() {
-        std::fs::remove_file(&res_path).owe_res()?;
+        std::fs::remove_file(&res_path).owe(RunReason::from_res())?;
     }
 
     // 若未加载到任何 WPL/OML 资源，提前给出提醒，便于定位空映射问题
@@ -509,7 +508,8 @@ async fn load_engine_res(
         );
     }
 
-    wp_conf::utils::save_data(Some(res_center.to_string()), res_path.as_str(), true).owe_res()?;
+    wp_conf::utils::save_data(Some(res_center.to_string()), res_path.as_str(), true)
+        .owe(RunReason::from_res())?;
 
     let builder = WarpResourceBuilder::new()
         .with_infra(infra_sinks)
@@ -529,7 +529,7 @@ async fn load_processing_res(
     env_dict: &EnvDict,
     options: ProcessingLoadOptions,
 ) -> RunResult<EngineResource> {
-    let mut ctx = OperationContext::want("load-processing-res").with_auto_log();
+    let mut ctx = OperationContext::doing("load-processing-res").with_auto_log();
     let knowdb_path = knowdb_config_path(main_conf);
     let mut knowdb_handler = None;
     if knowdb_path.exists() {
@@ -620,10 +620,10 @@ async fn load_processing_res(
     if options.persist_runtime_state {
         let res_path = conf_manager.runtime_path("rule_mapping.dat");
         if Path::new(&res_path).exists() {
-            std::fs::remove_file(&res_path).owe_res()?;
+            std::fs::remove_file(&res_path).owe(RunReason::from_res())?;
         }
         wp_conf::utils::save_data(Some(res_center.to_string()), res_path.as_str(), true)
-            .owe_res()?;
+            .owe(RunReason::from_res())?;
     }
 
     let builder = WarpResourceBuilder::new()

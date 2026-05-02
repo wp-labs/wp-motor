@@ -4,8 +4,8 @@ use std::path::Path;
 use crate::facade::config::{load_warp_engine_confs, stat_reqs_from};
 use crate::resources::ResManager;
 use crate::runtime::sink::infrastructure::InfraSinkService;
-use orion_error::ErrorOwe;
 use orion_error::UvsFrom;
+use orion_error::compat_prelude::ErrorOweBase;
 use orion_variate::EnvDict;
 use wp_conf::utils::save_data;
 use wp_error::RunReason;
@@ -44,13 +44,13 @@ async fn test_res() -> RunResult<()> {
 
     res_center
         .load_all_sink(main_conf.sinks_root(), &env_dict)
-        .owe_conf()?;
+        .owe(RunReason::from_conf())?;
 
     let res_path = "res.dat";
     if Path::new(res_path).exists() {
-        remove_file(res_path).owe_res()?;
+        remove_file(res_path).owe(RunReason::from_res())?;
     }
-    save_data(Some(res_center.to_string()), res_path, true).owe_res()?;
+    save_data(Some(res_center.to_string()), res_path, true).owe(RunReason::from_res())?;
     println!(
         "{:?}",
         res_center

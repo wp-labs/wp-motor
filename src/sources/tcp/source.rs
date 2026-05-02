@@ -3,7 +3,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use async_trait::async_trait;
-use orion_error::ToStructError;
+use orion_error::conversion::ToStructError;
 use tokio::sync::mpsc;
 use wp_connector_api::{CtrlRx, DataSource, SourceBatch, SourceReason, SourceResult, Tags};
 

@@ -3,8 +3,6 @@ use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc::{Receiver, Sender};
 use wp_connector_api::{SourceBatch, SourceEvent};
 
-pub type AnyResult<T> = anyhow::Result<T>;
-
 pub type EventBatchRecv = Receiver<SourceBatch>;
 pub type EventBatchSend = Sender<SourceBatch>;
 

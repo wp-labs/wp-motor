@@ -367,6 +367,7 @@ fn pipe_fun_simple_extra(data: &mut &str) -> WResult<PipeFun> {
 mod tests {
     use crate::parser::pipe_prm::oml_aga_pipe;
     use crate::parser::utils::for_test::{assert_oml_parse, err_of_oml};
+    use wp_error::parse_error::OMLCodeReason;
     use wp_primitives::WResult;
 
     #[test]
@@ -405,12 +406,14 @@ mod tests {
         let mut code = r#" pipe take(ip) | xyz_get()"#;
         let e = err_of_oml(&mut code, oml_aga_pipe);
         println!("err:{}, \nwhere:{}", e, code);
-        assert!(e.to_string().contains("fun not found"));
+        assert!(matches!(e.reason(), OMLCodeReason::Syntax(s) if s.contains("fun not found")));
 
         let mut code = r#" ipe take(ip) | xyz_get()"#;
         let e = err_of_oml(&mut code, oml_aga_pipe);
         println!("err:{}, \nwhere:{}", e, code);
-        assert!(e.to_string().contains("need 'pipe' keyword"));
+        assert!(
+            matches!(e.reason(), OMLCodeReason::Syntax(s) if s.contains("need 'pipe' keyword"))
+        );
     }
 
     #[test]

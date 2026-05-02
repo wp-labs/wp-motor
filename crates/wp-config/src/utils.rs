@@ -3,17 +3,17 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use anyhow::Context;
+use orion_conf::TomlIO;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_conf::{ToStructError, TomlIO};
-use orion_error::{ErrorOweSource, ErrorOweSourceBase, ErrorWith, UvsFrom};
+use orion_error::compat_prelude::{ErrorOweBase, ErrorOweSource};
+use orion_error::conversion::ToStructError;
+use orion_error::{ErrorWith, UvsFrom, UvsReason};
 use orion_variate::EnvEvaluable;
 use serde::Serialize;
 use wp_connector_api::ParamMap;
 use wp_error::config_error::{ConfReason, ConfResult};
 use wp_log::info_ctrl;
 
-use crate::types::AnyResult;
 use glob::glob;
 use serde::de::DeserializeOwned;
 
@@ -41,8 +41,8 @@ where
             if let Some(parent) = path_ref.parent() {
                 std::fs::create_dir_all(parent)
                     .owe_conf_source()
-                    .want("crate dir")
-                    .with(parent)?;
+                    .doing("crate dir")
+                    .with_context(parent)?;
             }
             //export_toml(&conf, path)?;
             conf.save_toml(&PathBuf::from(path_ref))?;
@@ -65,17 +65,17 @@ pub fn save_data<P: AsRef<Path>>(
             if let Some(value) = path.parent() {
                 std::fs::create_dir_all(value)
                     .owe_conf_source()
-                    .want("create dir")
-                    .with(value)?;
+                    .doing("create dir")
+                    .with_context(value)?;
             }
             let mut file = std::fs::File::create(path)
                 .owe_conf_source()
-                .want("create file")
-                .with(path)?;
+                .doing("create file")
+                .with_context(path)?;
             file.write_all(conf.as_bytes())
                 .owe_conf_source()
-                .want("save data")
-                .with(path)?;
+                .doing("save data")
+                .with_context(path)?;
             info_ctrl!("save data file suc : {} ", dst_ref.display());
         }
     }
@@ -87,12 +87,12 @@ pub fn backup_clean<P: AsRef<Path>>(path: P) -> OrionConfResult<()> {
     if path_ref.exists() {
         std::fs::copy(path_ref, format!("{}.bak", path_ref.display()))
             .owe_conf_source()
-            .want("copy file")
-            .with(path_ref)?;
+            .doing("copy file")
+            .with_context(path_ref)?;
         std::fs::remove_file(path_ref)
             .owe_conf_source()
-            .want("remove file")
-            .with(path_ref)?;
+            .doing("remove file")
+            .with_context(path_ref)?;
     }
     Ok(())
 }
@@ -105,11 +105,11 @@ pub fn file_clear<P: AsRef<Path>>(path: P) {
         error!("clean {} failed: {}", path_ref.display(), e);
     }
 }
-pub fn conf_init<T, P: AsRef<Path>>(conf: T, path: P) -> AnyResult<T>
+pub fn conf_init<T, P: AsRef<Path>>(conf: T, path: P) -> anyhow::Result<T>
 where
     T: Serialize + DeserializeOwned + Clone + TomlIO<T>,
 {
-    save_conf(Some(conf.clone()), path, true)?;
+    save_conf(Some(conf.clone()), path, true).map_err(|e| anyhow::anyhow!("{}", e))?;
     Ok(conf)
 }
 
@@ -162,13 +162,14 @@ fn is_valid_tag_val_char(c: char) -> bool {
 
 //pub type NomResult<I, O> = IResult<I, O, nom::error::VerboseError<I>>;
 
-pub fn find_conf_files<P: AsRef<Path>>(path: P, target: &str) -> AnyResult<Vec<PathBuf>> {
+pub fn find_conf_files<P: AsRef<Path>>(path: P, target: &str) -> ConfResult<Vec<PathBuf>> {
     let path_ref = path.as_ref();
     let mut found = Vec::new();
     info_ctrl!("find conf files in: {}", path_ref.display());
     let glob_path = format!("{}/**/{}", path_ref.display(), target);
     for entry in glob(glob_path.as_str())
-        .with_context(|| format!("read_dir  fail: {}", path_ref.display()))?
+        .owe(ConfReason::Uvs(UvsReason::core_conf()))
+        .with_context(("path", format!("read_dir fail: {}", path_ref.display())))?
     {
         match entry {
             Ok(path) => {
@@ -189,15 +190,15 @@ pub fn find_group_conf(
 ) -> ConfResult<Vec<PathGroup>> {
     let mut found = Vec::new();
     let entries = fs::read_dir(path)
-        .owe_source(ConfReason::NotFound("file miss".into()))
-        .with(path.to_string())?;
+        .owe(ConfReason::NotFound("file miss".into()))
+        .with_context(path.to_string())?;
     let mut first = None;
     let mut second = None;
     for entry in entries {
-        let entry = entry.owe_source(ConfReason::Syntax("bad entry".into()))?;
+        let entry = entry.owe(ConfReason::Syntax("bad entry".into()))?;
         let file_type = entry
             .file_type()
-            .owe_source(ConfReason::NotFound("file type error".into()))?;
+            .owe(ConfReason::NotFound("file type error".into()))?;
         if file_type.is_dir() {
             let sub = entry.path();
             if let Some(sub_str) = sub.to_str() {
@@ -255,10 +256,10 @@ pub fn env_eval_vec<T: EnvEvaluable<T> + Clone>(
 
 #[cfg(test)]
 mod test {
-    use crate::types::AnyResult;
+    use wp_error::config_error::ConfResult;
 
     #[test]
-    fn test_find_conf_files() -> AnyResult<()> {
+    fn test_find_conf_files() -> ConfResult<()> {
         // 使用 crate 根目录进行定位，避免受当前工作目录影响
         let base = env!("CARGO_MANIFEST_DIR");
         let path = std::path::Path::new(base).join("src").join("structure");
@@ -277,7 +278,7 @@ mod test {
         Ok(())
     }
     #[test]
-    fn test_find_group_files() -> AnyResult<()> {
+    fn test_find_group_files() -> ConfResult<()> {
         // 查找同时含有 mod.rs 与 group.rs 的目录对（至少一组）
         let base = env!("CARGO_MANIFEST_DIR");
         let path = std::path::Path::new(base).join("src").join("structure");

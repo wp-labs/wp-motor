@@ -1,6 +1,9 @@
 use glob::glob;
-use orion_conf::error::OrionConfResult;
-use orion_error::{ErrorOwe, ErrorOweSource, ErrorWith, UvsFrom, WrapStructError};
+use orion_conf::ErrorWith;
+use orion_conf::error::{ConfIOReason, OrionConfResult};
+use orion_error::{
+    UvsFrom, UvsReason, compat_prelude::ErrorOweBase, conversion::WrapStructErrorAs,
+};
 use orion_variate::EnvDict;
 use std::path::{Path, PathBuf};
 use wp_conf::structure::SinkInstanceConf;
@@ -17,7 +20,9 @@ pub fn load_wpgen_resolved(
     god: &WarpConf,
     dict: &EnvDict,
 ) -> OrionConfResult<WpGenResolved> {
-    let rt = god.load_wpgen_config(conf_name, dict).owe_conf()?;
+    let rt = god
+        .load_wpgen_config(conf_name, dict)
+        .owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
     Ok(rt)
 }
 
@@ -136,10 +141,8 @@ pub fn clean_wpgen_output_file(
         });
     }
     let god = WarpConf::new(work_root);
-    let conf = load_wpgen_resolved(conf_name, &god, dict).map_err(|e| {
-        e.wrap(RunReason::from_conf())
-            .with(format!("load {conf_name}"))
-    })?;
+    let conf = load_wpgen_resolved(conf_name, &god, dict)
+        .map_err(|e| e.wrap_as(RunReason::from_conf(), format!("load {conf_name}")))?;
     if let Some(p) = conf.out_sink.resolve_file_path() {
         let full_path = absolute_output_path(work_root, &p);
         let targets = cleanup_targets(&conf, work_root);
@@ -149,9 +152,9 @@ pub fn clean_wpgen_output_file(
             if target.exists() {
                 existed = true;
                 std::fs::remove_file(&target)
-                    .owe_conf_source()
-                    .with(&target)
-                    .want("remove wpgen output")?;
+                    .owe(RunReason::from_conf())
+                    .with_context(&target)
+                    .doing("remove wpgen output")?;
                 cleaned_any = true;
             }
         }

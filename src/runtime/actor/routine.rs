@@ -7,8 +7,8 @@ use super::signal::stop_signals;
 use crate::runtime::actor::command::ActorCtrlCmd;
 use crate::runtime::actor::signal::ShutdownCmd;
 use futures_lite::prelude::*;
-use orion_error::ToStructError;
 use orion_error::UvsFrom;
+use orion_error::conversion::ToStructError;
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 use tokio::time::{sleep, timeout};
@@ -363,7 +363,6 @@ impl TaskManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::actor::command::ActorCtrlCmd;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 

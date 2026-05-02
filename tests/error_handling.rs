@@ -1,13 +1,13 @@
+use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
 use wp_model_core::model::fmt_def::TextFmt;
 
 use wp_conf::RunArgs;
 use wp_engine::facade::kit::{WplCodePKG, wpl_workshop_parse};
 use wp_engine::sinks::InfraSinkAgent;
 use wp_engine::sinks::create_watch_out;
-use wp_engine::types::AnyResult;
-
+use wp_error::run_error::{RunReason, RunResult};
 #[test]
-fn should_handle_empty_input_gracefully() -> AnyResult<()> {
+fn should_handle_empty_input_gracefully() -> RunResult<()> {
     // Test case: Verify graceful handling of empty input data
     // This test ensures the parser can handle cases where input files contain no data
 
@@ -15,12 +15,8 @@ fn should_handle_empty_input_gracefully() -> AnyResult<()> {
     let in_path = "tests/err_test/sample.dat";
     let (_, _out) = create_watch_out(TextFmt::Kv);
     let args = RunArgs::for_test().expect("args");
-    wpl_workshop_parse(
-        args,
-        WplCodePKG::from_code(conf)?,
-        in_path,
-        InfraSinkAgent::use_null(),
-    )?;
+    let pkg = WplCodePKG::from_code(conf).owe(RunReason::Uvs(UvsReason::rule_error()))?;
+    wpl_workshop_parse(args, pkg, in_path, InfraSinkAgent::use_null())?;
     //assert_eq!(x.suc_cnt(), 0);
     Ok(())
 }

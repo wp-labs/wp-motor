@@ -327,7 +327,7 @@ pub fn oml_aga_match(data: &mut &str) -> WResult<PreciseEvaluator> {
 mod tests {
     use super::*;
     use crate::core::AsyncDataTransformer;
-    use orion_error::TestAssert;
+    use orion_error::testcase::TestAssert;
     use wp_model_core::model::{DataField, FieldStorage};
 
     use wp_primitives::WResult as ModalResult;
@@ -335,10 +335,9 @@ mod tests {
     use crate::language::MatchCase;
     use crate::parser::match_prm::{match_cond_multi_item, match_cond1_item, oml_aga_match};
     use crate::parser::utils::for_test::assert_oml_parse;
-    use crate::types::AnyResult;
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_match_item() -> AnyResult<()> {
+    async fn test_match_item() -> anyhow::Result<()> {
         let mut code = r#"chars(3) => chars(高危(漏洞));"#;
         let x = match_cond1_item(&mut code).assert();
         println!("{:?}", x);
@@ -373,7 +372,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_match_err() -> AnyResult<()> {
+    async fn test_match_err() -> anyhow::Result<()> {
         let mut code = r#"chas(A) => chars(5),"#;
         disp_err(code, match_cond1_item(&mut code));
         let mut code = r#"chars(A) > chars(5),"#;
@@ -788,7 +787,7 @@ Result = match read(status) {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_match_with_quoted_strings() {
-        use orion_error::TestAssert;
+        use orion_error::testcase::TestAssert;
         use wp_knowledge::cache::FieldQueryCache;
         use wp_model_core::model::DataRecord;
 

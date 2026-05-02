@@ -286,7 +286,7 @@ impl AsyncFieldExtractor for CalcOperation {
 mod tests {
     use crate::core::AsyncDataTransformer;
     use crate::parser::oml_parse_raw;
-    use orion_error::TestAssert;
+    use orion_error::testcase::TestAssert;
     use wp_knowledge::cache::FieldQueryCache;
     use wp_model_core::model::{DataField, DataRecord, DataType, FieldStorage, Value};
 

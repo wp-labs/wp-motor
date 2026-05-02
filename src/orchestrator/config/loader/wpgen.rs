@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use orion_conf::TomlIO;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorOwe, ErrorWith, ToStructError, UvsFrom};
+use orion_error::{
+    ErrorWith, UvsFrom, UvsReason, compat_prelude::ErrorOweBase, conversion::ToStructError,
+};
 use orion_variate::{EnvDict, EnvEvaluable};
 use serde_json::json;
 use wp_conf::connectors::{ParamMap, param_value_from_toml};
@@ -15,7 +17,6 @@ use wp_model_core::model::fmt_def::TextFmt;
 use super::WarpConf;
 use crate::orchestrator::config::WPGEN_TOML;
 use crate::orchestrator::config::models::wpgen::{WpGenConfig, WpGenResolved};
-use crate::types::AnyResult;
 use wp_conf::engine::EngineConfig;
 
 impl WarpConf {
@@ -88,9 +89,9 @@ impl WarpConf {
         dict: &EnvDict,
     ) -> OrionConfResult<(String, ConnectorRec)> {
         let wp_conf = EngineConfig::load_or_init(self.work_root(), dict)
-            .owe_res()
-            .with("load_or_init")
-            .want("load engine config")?
+            .owe(ConfIOReason::Uvs(UvsReason::resource_error()))
+            .with_context("load_or_init")
+            .doing("load engine config")?
             .env_eval(dict)
             .conf_absolutize(self.work_root());
         let configured_root = wp_conf.sinks_root().to_string();
@@ -135,14 +136,14 @@ impl WarpConf {
             if k == "params" || k == "params_override" {
                 return Err(ConfIOReason::from_validation()
                     .to_err()
-                    .with(conn_id)
-                    .want("nested params/params_override is not allowed"));
+                    .with_context(conn_id)
+                    .doing("nested params/params_override is not allowed"));
             }
             if !conn.allow_override.iter().any(|x| x == k) {
                 return Err(ConfIOReason::from_validation()
                     .to_err()
-                    .with(conn_id)
-                    .want(format!("override '{}' not allowed", k)));
+                    .with_context(conn_id)
+                    .doing(format!("override '{}' not allowed", k)));
             }
             merged.insert(k.clone(), param_value_from_toml(v));
         }

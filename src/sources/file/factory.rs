@@ -2,7 +2,7 @@ use super::source::{FileEncoding, FileSource, MultiFileSource, compute_file_rang
 use async_trait::async_trait;
 use glob::glob;
 use orion_conf::{ErrorWith, UvsFrom};
-use orion_error::{ErrorOweBase, ToStructError};
+use orion_error::{compat_prelude::ErrorOweBase, conversion::ToStructError};
 use std::path::Path;
 use wp_conf::connectors::ConnectorDef;
 use wp_conf_base::ConfParser;
@@ -127,11 +127,11 @@ impl SourceFactory for FileSourceFactory {
             return Err(SourceReason::from_conf()
                 .to_err()
                 .with_detail(format!("Invalid tags: {}", e))
-                .with(resolved.name.as_str()));
+                .with_context(resolved.name.as_str()));
         }
         FileSourceSpec::from_resolved(resolved)
-            .with(resolved.name.as_str())
-            .want("validate file source spec")?;
+            .with_context(resolved.name.as_str())
+            .doing("validate file source spec")?;
         Ok(())
     }
 
@@ -168,8 +168,8 @@ impl SourceFactory for FileSourceFactory {
                 .expect("single file path should exist");
             let ranges = compute_file_ranges(Path::new(&source_path), spec.instances)
                 .owe(SourceReason::from_data())
-                .with(source_path.as_str())
-                .want("open source file")?;
+                .with_context(source_path.as_str())
+                .doing("open source file")?;
             let mut handles = Vec::with_capacity(ranges.len());
             let multi = ranges.len() > 1;
             for (idx, (start, end)) in ranges.into_iter().enumerate() {
@@ -204,8 +204,8 @@ impl SourceFactory for FileSourceFactory {
 
         let fut: SourceResult<SourceSvcIns> = fut.await;
         fut
-            .with(resolved.name.as_str())
-            .want("build file source service")
+            .with_context(resolved.name.as_str())
+            .doing("build file source service")
     }
 }
 

@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use orion_conf::EnvTomlLoad;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_conf::{EnvTomlLoad, ToStructError};
 use orion_error::UvsFrom;
+use orion_error::conversion::ToStructError;
 use orion_variate::{EnvDict, EnvEvalable};
 use wp_conf::connectors::{
     ConnectorScope, ParamMap, load_connector_defs_from_dir, merge_params, param_map_to_table,

@@ -1,6 +1,5 @@
 use crate::language::prelude::*;
 use crate::language::syntax::accessors::NestedAccessor;
-use crate::types::AnyResult;
 use derive_getters::Getters;
 use orion_exp::CmpOperator;
 use smallvec::SmallVec;
@@ -569,7 +568,7 @@ impl MatchCase {
     pub fn result_mut(&mut self) -> &mut NestedAccessor {
         &mut self.result
     }
-    pub fn eq_const<S: Into<String>>(meta_str: &str, m_val: S, t_val: S) -> AnyResult<Self> {
+    pub fn eq_const<S: Into<String>>(meta_str: &str, m_val: S, t_val: S) -> anyhow::Result<Self> {
         let meta = DataType::from(meta_str)?;
         let m_obj = DataField::from_str(meta.clone(), "".to_string(), m_val.into())?;
         let target = DataField::from_str(meta, "".to_string(), t_val.into())?;
@@ -579,7 +578,7 @@ impl MatchCase {
         ))
     }
     /*
-    pub fn eq_var<S: Into<String>>(meta_str: &str, m_val: S, t_val: S) -> AnyResult<Self> {
+    pub fn eq_var<S: Into<String>>(meta_str: &str, m_val: S, t_val: S) -> anyhow::Result<Self> {
         let meta = Meta::from(meta_str).unwrap();
         let m_obj = TDOEnum::from_str(meta.clone(), "".to_string(), m_val.into())?;
         Ok(Self::new(MatchCond::Eq(m_obj), SubGetWay::Direct(t_val.into())))
@@ -590,7 +589,7 @@ impl MatchCase {
         m_beg: S,
         m_end: S,
         t_val: S,
-    ) -> AnyResult<Self> {
+    ) -> anyhow::Result<Self> {
         let meta = DataType::from(meta_str)?;
         let beg_obj = DataField::from_str(meta.clone(), "".to_string(), m_beg.into())?;
         let end_obj = DataField::from_str(meta.clone(), "".to_string(), m_end.into())?;
@@ -605,7 +604,7 @@ impl MatchCase {
         m_beg: S,
         m_end: S,
         t_val: S,
-    ) -> AnyResult<Self> {
+    ) -> anyhow::Result<Self> {
         let meta = DataType::from(meta_str)?;
         let beg_obj = DataField::from_str(meta.clone(), "".to_string(), m_beg.into())?;
         let end_obj = DataField::from_str(meta.clone(), "".to_string(), m_end.into())?;

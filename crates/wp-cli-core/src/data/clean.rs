@@ -32,8 +32,8 @@ pub fn clean_outputs(sink_root: &Path, env_dict: &EnvDict) -> OrionConfResult<Da
     }
     for conf in
         wp_conf::sinks::load_infra_route_confs(sink_root.to_string_lossy().as_ref(), env_dict)
-            .with(sink_root)
-            .want("load infra sink routes for clean")?
+            .with_context(sink_root)
+            .doing("load infra sink routes for clean")?
     {
         for s in conf.sink_group.sinks.iter() {
             append_clean_item(&mut rep, s)?;
@@ -41,8 +41,8 @@ pub fn clean_outputs(sink_root: &Path, env_dict: &EnvDict) -> OrionConfResult<Da
     }
     for conf in
         wp_conf::sinks::load_business_route_confs(sink_root.to_string_lossy().as_ref(), env_dict)
-            .with(sink_root)
-            .want("load business sink routes for clean")?
+            .with_context(sink_root)
+            .doing("load business sink routes for clean")?
     {
         for s in conf.sink_group.sinks.iter() {
             append_clean_item(&mut rep, s)?;

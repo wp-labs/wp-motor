@@ -9,7 +9,7 @@ use crate::resources::{ModelName, SinkID};
 use crate::resources::{SinkModelIndex, SinkRuleRegistry};
 use crate::runtime::sink::infrastructure::InfraSinkService;
 use crate::sinks::{InfraSinkAgent, SinkRouteAgent};
-use orion_error::{ToStructError, UvsFrom};
+use orion_error::{UvsFrom, conversion::ToStructError};
 use wp_conf::engine::EngineConfig;
 use wp_error::RunReason;
 use wp_error::run_error::RunResult;

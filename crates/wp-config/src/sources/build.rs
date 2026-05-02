@@ -5,7 +5,11 @@ use crate::sources::types::SourceConnector;
 use crate::structure::{SourceInstanceConf, Validate};
 use orion_conf::EnvTomlLoad;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorOweSource, ErrorWith, ToStructError, UvsFrom, WrapStructError};
+use orion_error::compat_prelude::ErrorOweSource;
+use orion_error::{
+    ErrorWith, UvsFrom,
+    conversion::{ToStructError, WrapStructErrorAs},
+};
 use orion_variate::{EnvDict, EnvEvaluable};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -18,7 +22,7 @@ pub fn parse_and_validate_only(
     dict: &EnvDict,
 ) -> OrionConfResult<Vec<wp_specs::CoreSourceSpec>> {
     let wrapper: WpSourcesConfig = WpSourcesConfig::env_parse_toml(config_str, dict)
-        .map_err(|e| e.want("parse sources v2"))?;
+        .map_err(|e| e.doing("parse sources v2"))?;
     let mut out: Vec<wp_specs::CoreSourceSpec> = Vec::new();
     for s in wrapper.sources.into_iter() {
         if !s.enable.unwrap_or(true) {
@@ -65,7 +69,7 @@ fn merge_source_params(
                     k,
                     allow.join(", ")
                 ))
-                .with(allow.join(",")));
+                .with_context(allow.join(",")));
         }
         out.insert(k.clone(), v.clone());
     }
@@ -79,7 +83,7 @@ pub fn load_source_instances_from_str(
     dict: &EnvDict,
 ) -> OrionConfResult<Vec<SourceInstanceConf>> {
     let src_conf: WpSourcesConfig = WpSourcesConfig::env_parse_toml(config_str, dict)
-        .map_err(|e| e.want("parse sources"))?
+        .map_err(|e| e.doing("parse sources"))?
         .env_eval(dict);
     let cnn_dict = load_connectors_for(start, dict)?;
     build_source_instances(src_conf, &cnn_dict)
@@ -92,8 +96,8 @@ pub fn load_source_instances_from_file(
 ) -> OrionConfResult<Vec<SourceInstanceConf>> {
     let content = std::fs::read_to_string(path)
         .owe_conf_source()
-        .want("load sources config")
-        .with(path)?;
+        .doing("load sources config")
+        .with_context(path)?;
     let start = if path.is_dir() {
         path.to_path_buf()
     } else {
@@ -163,10 +167,13 @@ pub fn validate_specs_with_factory(
                 item.connector_id.clone().unwrap_or_default(),
             );
             factory.validate_spec(&resolved).map_err(|e| {
-                e.wrap(ConfIOReason::from_validation()).with(format!(
-                    "plugin validate failed for source '{}' of kind '{}'",
-                    core.name, core.kind
-                ))
+                e.wrap_as(
+                    ConfIOReason::from_validation(),
+                    format!(
+                        "plugin validate failed for source '{}' of kind '{}'",
+                        core.name, core.kind
+                    ),
+                )
             })?;
         }
     }
@@ -185,7 +192,7 @@ impl ConfigLoader for Vec<SourceInstanceConf> {
     fn load_from_str(content: &str, base: &Path, dict: &EnvDict) -> OrionConfResult<Self> {
         // 解析 TOML 并进行环境变量替换
         let src_conf: WpSourcesConfig = WpSourcesConfig::env_parse_toml(content, dict)
-            .map_err(|e| e.want("parse sources"))?
+            .map_err(|e| e.doing("parse sources"))?
             .env_eval(dict);
 
         // 加载 connectors

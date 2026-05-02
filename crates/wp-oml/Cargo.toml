@@ -12,6 +12,7 @@ arcstr = { workspace = true }
 winnow = { workspace = true }
 orion-error = { workspace = true }
 orion_conf= { workspace = true }
+derive_more = { workspace = true }
 wp-knowledge = { workspace = true }
 wp_primitives = { workspace = true }
 wp_condition = { package = "wp-condition", path = "../wp-condition" }
@@ -22,7 +23,8 @@ wp-data-fmt= { workspace=true }
 wp-error = { workspace = true }
 wp-log = { workspace = true }
 wp-specs = { workspace = true }
-wpl = { package = "wp-lang", version = "0.1" }
+wpl = { package = "wp-lang", version = "0.2" }
+#wpl = { package = "wp-lang" , workspace = true  }
 derive-getters = { workspace = true }
 md5 = { workspace = true }
 log = { workspace = true }

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use orion_conf::{ErrorWith, ToStructError, UvsFrom};
-use orion_error::ErrorOwe;
+use orion_conf::ErrorWith;
+use orion_error::{UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError};
 use orion_variate::EnvDict;
 use wp_cli_core as wlib;
 use wp_engine::facade::config;
@@ -47,12 +47,12 @@ pub fn stat_sink_files(filters: &SinkStatFilters<'_>, dict: &EnvDict) -> RunResu
     let ctx = build_ctx(&cm.work_root_path(), filters);
     let sink_root = Path::new(&cm.work_root_path()).join(main.sink_root());
     ensure_sink_dirs(&sink_root, main.sink_root())
-        .with(&sink_root)
-        .want("validate sink directory layout")?;
+        .with_context(&sink_root)
+        .doing("validate sink directory layout")?;
     let (rows, total) = wp_cli_core::collect_sink_statistics(&sink_root, &ctx, dict)
-        .owe_conf()
-        .with(&sink_root)
-        .want("collect sink statistics")?;
+        .owe(RunReason::from_conf())
+        .with_context(&sink_root)
+        .doing("collect sink statistics")?;
     Ok(SinkStatResult { rows, total })
 }
 
@@ -70,19 +70,19 @@ pub fn stat_file_combined(
         &ctx,
         dict,
     )
-    .owe_conf()
-    .with(&ctx.work_root)
-    .want("collect source file stats")?;
+    .owe(RunReason::from_conf())
+    .with_context(&ctx.work_root)
+    .doing("collect source file stats")?;
 
     // Collect sink statistics
     let sink_root = Path::new(&cm.work_root_path()).join(main.sink_root());
     ensure_sink_dirs(&sink_root, main.sink_root())
-        .with(&sink_root)
-        .want("validate sink directory layout")?;
+        .with_context(&sink_root)
+        .doing("validate sink directory layout")?;
     let (rows, total) = wp_cli_core::collect_sink_statistics(&sink_root, &ctx, dict)
-        .owe_conf()
-        .with(&sink_root)
-        .want("collect sink statistics")?;
+        .owe(RunReason::from_conf())
+        .with_context(&sink_root)
+        .doing("collect sink statistics")?;
 
     Ok(CombinedStatResult {
         src,

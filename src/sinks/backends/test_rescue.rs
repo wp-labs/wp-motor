@@ -2,9 +2,9 @@ use crate::sinks::backends::file::FileSinkSpec;
 use crate::sinks::sink_build::build_file_sink;
 use crate::sinks::{ASinkTestProxy, HealthController};
 use async_trait::async_trait;
-use orion_error::ErrorOwe;
+use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
 use wp_conf::connectors::{ConnectorDef, SinkDefProvider};
-use wp_connector_api::{SinkBuildCtx, SinkFactory, SinkResult, SinkSpec};
+use wp_connector_api::{SinkBuildCtx, SinkFactory, SinkReason, SinkResult, SinkSpec};
 
 pub struct TestRescueFactory;
 
@@ -14,7 +14,8 @@ impl SinkFactory for TestRescueFactory {
         "test_rescue"
     }
     fn validate_spec(&self, spec: &SinkSpec) -> SinkResult<()> {
-        FileSinkSpec::from_resolved("test_rescue", spec).owe_conf()?;
+        FileSinkSpec::from_resolved("test_rescue", spec)
+            .owe(SinkReason::Uvs(UvsReason::core_conf()))?;
         Ok(())
     }
     async fn build(
@@ -22,11 +23,14 @@ impl SinkFactory for TestRescueFactory {
         spec: &SinkSpec,
         ctx: &SinkBuildCtx,
     ) -> SinkResult<wp_connector_api::SinkHandle> {
-        let resolved = FileSinkSpec::from_resolved("test_rescue", spec).owe_conf()?;
+        let resolved = FileSinkSpec::from_resolved("test_rescue", spec)
+            .owe(SinkReason::Uvs(UvsReason::core_conf()))?;
         let path = resolved.resolve_path(ctx);
         let fmt = resolved.text_fmt();
         let dummy = wp_conf::structure::SinkInstanceConf::null_new(spec.name.clone(), fmt, None);
-        let f = build_file_sink(&dummy, &path).await.owe_res()?;
+        let f = build_file_sink(&dummy, &path)
+            .await
+            .owe(SinkReason::Uvs(UvsReason::resource_error()))?;
         let stg = HealthController::new();
         let proxy = ASinkTestProxy::new(f, stg);
         Ok(wp_connector_api::SinkHandle::new(Box::new(proxy)))

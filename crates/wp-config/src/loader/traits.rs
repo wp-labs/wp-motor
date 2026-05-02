@@ -11,7 +11,8 @@
 //! ```
 
 use orion_conf::error::OrionConfResult;
-use orion_error::{ErrorOweSource, ErrorWith};
+use orion_error::ErrorWith;
+use orion_error::compat_prelude::ErrorOweSource;
 use orion_variate::EnvDict;
 use std::path::Path;
 
@@ -49,7 +50,7 @@ pub trait ConfigLoader: Sized {
     /// let sources = Vec::<SourceInstanceConf>::load_from_path(
     ///     Path::new("sources.toml"),
     ///     &EnvDict::default(),
-    /// )?;
+    /// ).map_err(|e| format!("failed to load: {e}"))?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     fn load_from_path(path: &Path, dict: &EnvDict) -> OrionConfResult<Self>
@@ -58,8 +59,8 @@ pub trait ConfigLoader: Sized {
     {
         let content = std::fs::read_to_string(path)
             .owe_conf_source()
-            .with(path)
-            .want(format!("无法读取 {} 配置文件", Self::config_type_name()))?;
+            .with_context(path)
+            .doing(format!("无法读取 {} 配置文件", Self::config_type_name()))?;
 
         let base = path.parent().unwrap_or_else(|| Path::new("."));
         let config = Self::load_from_str(&content, base, dict)?;
@@ -126,7 +127,7 @@ mod tests {
     use super::*;
     use crate::test_support::ForTest;
     use orion_conf::error::ConfIOReason;
-    use orion_error::{ToStructError, UvsFrom};
+    use orion_error::{UvsFrom, conversion::ToStructError};
     use serde::Serialize;
 
     // 用于测试的简单配置类型

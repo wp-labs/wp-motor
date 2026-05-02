@@ -6,7 +6,7 @@
 use crate::utils::fs::{count_lines_file, is_match, resolve_path};
 use crate::utils::types::{Ctx, GroupAccum, Row, SinkAccum};
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorWith, ToStructError, UvsFrom};
+use orion_error::{ErrorWith, UvsFrom, conversion::ToStructError};
 use orion_variate::EnvDict;
 use std::path::Path;
 use wp_conf::sinks::{load_business_route_confs, load_infra_route_confs};
@@ -212,7 +212,7 @@ pub fn collect_sink_statistics(
                 "缺少 sinks 配置目录：在 '{}' 下未发现 business.d/ 或 infra.d/",
                 sink_root.display()
             ))
-            .with(sink_root));
+            .with_context(sink_root));
     }
 
     let mut rows = Vec::new();
@@ -220,8 +220,8 @@ pub fn collect_sink_statistics(
 
     // Process business route configurations
     for conf in load_business_route_confs(sink_root.to_string_lossy().as_ref(), dict)
-        .with(sink_root)
-        .want("load business sink routes")?
+        .with_context(sink_root)
+        .doing("load business sink routes")?
     {
         let g = conf.sink_group;
         if !is_match(g.name().as_str(), &ctx.group_filters) {
@@ -240,8 +240,8 @@ pub fn collect_sink_statistics(
 
     // Process infra route configurations
     for conf in load_infra_route_confs(sink_root.to_string_lossy().as_ref(), dict)
-        .with(sink_root)
-        .want("load infra sink routes")?
+        .with_context(sink_root)
+        .doing("load infra sink routes")?
     {
         let g = conf.sink_group;
         if !is_match(g.name().as_str(), &ctx.group_filters) {

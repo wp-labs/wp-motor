@@ -171,11 +171,9 @@ mod tests {
 
     use super::{join_string, opt_string};
     use crate::{DataDim, StatTarget};
-    type AnyResult<T> = Result<T, anyhow::Error>;
-
     //test for StatRule Serialize and Deserialize
     #[test]
-    fn test_stat_rule() -> AnyResult<()> {
+    fn test_stat_rule() -> anyhow::Result<()> {
         // 序列化示例
         let rule1 = StatTarget::All;
         let rule2 = StatTarget::Ignore;

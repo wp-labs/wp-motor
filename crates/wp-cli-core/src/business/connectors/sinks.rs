@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use orion_conf::ToStructError;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorOwe, ErrorWith, UvsFrom};
+use orion_error::{ErrorWith, UvsFrom, UvsReason, compat_prelude::ErrorOweBase};
 use orion_variate::EnvDict;
 
 use wp_conf::connectors::{
@@ -18,8 +18,8 @@ use wp_conf::structure::SinkInstanceConf;
 /// List immediate child directories of `p`, sorted.
 fn read_dirs_sorted(p: &Path) -> OrionConfResult<Vec<PathBuf>> {
     let mut v: Vec<_> = std::fs::read_dir(p)
-        .owe_conf()
-        .with(p)?
+        .owe(ConfIOReason::Uvs(UvsReason::core_conf()))
+        .with_context(p)?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.is_dir())

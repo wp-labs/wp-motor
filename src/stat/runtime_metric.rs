@@ -29,14 +29,13 @@ mod test {
     use crate::stat::metric_collect::MetricCollectors;
 
     use crate::stat::runtime_metric::RuntimeMetrics;
-    use crate::types::AnyResult;
     use wp_model_core::model::{DataField, DataRecord};
     use wp_stat::StatRecorder;
     use wp_stat::StatReq;
     use wp_stat::StatTarget;
 
     #[test]
-    fn test_top_n_stat() -> AnyResult<()> {
+    fn test_top_n_stat() -> anyhow::Result<()> {
         let mut main_stat = RuntimeMetrics::default();
         let p = StatReq::simple_test(StatTarget::All, vec!["value".to_string()], 10);
         let mut stat = MetricCollectors::new("/".to_string(), vec![p.clone()]);
@@ -63,7 +62,7 @@ mod test {
 
     /*
     #[test]
-    fn test_stat() -> AnyResult<()> {
+    fn test_stat() -> anyhow::Result<()> {
         let mut stat = wparseMainStat::default();
         let mut x = ParseSlices::new(StatStage::Parse, "!!sys".to_string());
         x.stat.rec_in();

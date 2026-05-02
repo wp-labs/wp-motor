@@ -3,7 +3,7 @@ use orion_conf::{
     ToStructError,
     error::{ConfIOReason, OrionConfResult},
 };
-use orion_error::{ErrorWith, UvsFrom, WrapStructError};
+use orion_error::{UvsFrom, conversion::WrapStructErrorAs};
 use orion_variate::EnvEvaluable;
 use wp_model_core::model::fmt_def::TextFmt;
 
@@ -308,9 +308,7 @@ impl crate::structure::Validate for FlexGroup {
         if let Some(g) = &self.expect
             && let Err(e) = g.validate()
         {
-            return Err(e
-                .wrap(ConfIOReason::from_validation())
-                .with("group.expect validate"));
+            return Err(e.wrap_as(ConfIOReason::from_validation(), "group.expect validate"));
         }
         if self.sinks.is_empty() {
             return Err(ConfIOReason::from_validation()
@@ -336,9 +334,7 @@ impl crate::structure::Validate for FixedGroup {
         if let Some(g) = &self.expect
             && let Err(e) = g.validate()
         {
-            return Err(e
-                .wrap(ConfIOReason::from_validation())
-                .with("group.expect validate"));
+            return Err(e.wrap_as(ConfIOReason::from_validation(), "group.expect validate"));
         }
         if self.sinks.is_empty() {
             return Err(ConfIOReason::from_validation()
@@ -354,16 +350,12 @@ impl crate::structure::Validate for SinkGroupConf {
         match self {
             SinkGroupConf::Flexi(x) => {
                 if let Err(e) = x.validate() {
-                    return Err(e
-                        .wrap(ConfIOReason::from_validation())
-                        .with_detail("flexi group validate"));
+                    return Err(e.wrap_as(ConfIOReason::from_validation(), "flexi group validate"));
                 }
             }
             SinkGroupConf::Fixed(x) => {
                 if let Err(e) = x.validate() {
-                    return Err(e
-                        .wrap(ConfIOReason::from_validation())
-                        .with_detail("fixed group validate"));
+                    return Err(e.wrap_as(ConfIOReason::from_validation(), "fixed group validate"));
                 }
             }
         }

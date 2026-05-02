@@ -1,7 +1,7 @@
 use crate::sources::event_id::next_event_id;
 use crate::sources::tcp::framing::{FramingExtractor, FramingMode};
 use bytes::{Bytes, BytesMut};
-use orion_error::ToStructError;
+use orion_error::conversion::ToStructError;
 use std::collections::VecDeque;
 use std::io::ErrorKind;
 use std::net::{IpAddr, SocketAddr};

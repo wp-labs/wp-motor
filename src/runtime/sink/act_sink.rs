@@ -22,8 +22,9 @@ use crate::sinks::{
 };
 use crate::sinks::{InfraSinkAgent, SinkGroupAgent};
 use crate::stat::{MonSend, STAT_INTERVAL_MS};
-use orion_error::ContextRecord;
 use orion_error::OperationContext;
+use orion_error::UvsFrom;
+use orion_error::runtime::ContextRecord;
 use orion_overload::append::Appendable;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -31,6 +32,7 @@ use wp_conf::TCondParser;
 use wp_conf::structure::SinkInstanceConf;
 use wp_conf::structure::{FlexGroup, SinkGroupConf};
 use wp_connector_api::SinkResult;
+use wp_error::run_error::RunReason;
 use wp_error::run_error::{RunError, RunResult};
 use wp_log::{info_ctrl, warn_ctrl};
 use wp_stat::StatReq;
@@ -162,7 +164,7 @@ impl SinkWork {
         infra: InfraSinkAgent,
         mut ctx_args: SinkProcCtx,
     ) -> SinkResult<()> {
-        let mut ctx = OperationContext::want("sink start proc");
+        let mut ctx = OperationContext::doing("sink start proc");
         let name = format!("work-sink:{:20}", sink.conf().name());
         let mut run_ctrl = TaskController::new(name.as_str(), ctx_args.cmd_r.clone(), None);
         let mut cache = FieldQueryCache::with_capacity(1000);
@@ -543,7 +545,7 @@ impl SinkService {
 
         let mut filter = None;
         if let Some(code) = conf.read_filter_content() {
-            let parsed = TCondParser::exp(&mut code.as_str()).owe_rule()?;
+            let parsed = TCondParser::exp(&mut code.as_str()).owe(RunReason::from_rule())?;
             filter = Some(parsed);
             info_data!("sink load filter: {}", conf.name())
         }

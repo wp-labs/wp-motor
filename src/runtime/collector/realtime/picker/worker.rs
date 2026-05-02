@@ -6,8 +6,10 @@ use crate::runtime::collector::realtime::constants::{
     PICKER_FETCH_TIMEOUT_MS,
 };
 use crate::runtime::collector::realtime::picker::round::{RoundStat, SrcStatus};
-// stop_routine_run/err4_dispatch_data 仅在 dispatch.rs 中使用
 use crate::runtime::parser::workflow::ParseDispatchRouter;
+use orion_error::{UvsFrom, compat_prelude::ErrorOweBase};
+use wp_error::run_error::RunReason;
+// stop_routine_run/err4_dispatch_data 仅在 dispatch.rs 中使用
 use crate::runtime::prelude::*;
 use crate::stat::metric_collect::MetricCollectors;
 use crate::stat::{MonSend, STAT_INTERVAL_MS};
@@ -263,8 +265,8 @@ impl SourceWorker {
                 stat_ext
                     .send_stat(&self.mon_s)
                     .await
-                    .owe_sys()
-                    .want("mon-stat")?;
+                    .owe(RunReason::from_sys())
+                    .doing("mon-stat")?;
             }
             // 外层根据“限速/等待”计算应休眠的时间，避免在数据路径处直接 sleep
             let sleep_dur = self.calc_sleep_duration(&total_round, &task_ctrl);
@@ -280,8 +282,8 @@ impl SourceWorker {
         stat_ext
             .send_stat(&self.mon_s)
             .await
-            .owe_sys()
-            .want("mon-stat")?;
+            .owe(RunReason::from_sys())
+            .doing("mon-stat")?;
         Ok(())
     }
 

@@ -1,8 +1,8 @@
 use orion_conf::ErrorWith;
-use orion_error::ErrorOwe;
+use orion_error::{UvsFrom, compat_prelude::ErrorOweBase};
 use orion_variate::EnvDict;
 use std::path::Path;
-use wp_error::run_error::RunResult;
+use wp_error::run_error::{RunReason, RunResult};
 
 /// 清理 sinks 输出数据
 pub fn clean_outputs(work_root: &str, dict: &EnvDict) -> RunResult<bool> {
@@ -15,9 +15,9 @@ pub fn clean_outputs(work_root: &str, dict: &EnvDict) -> RunResult<bool> {
     }
 
     let (_, main_conf) = wp_engine::facade::config::load_warp_engine_confs(work_root, dict)
-        .owe_conf()
-        .with(work_root)
-        .want("load engine config for sink clean")?;
+        .owe(RunReason::from_conf())
+        .with_context(work_root)
+        .doing("load engine config for sink clean")?;
 
     let sink_root = Path::new(&conf_manager.work_root_path()).join(main_conf.sink_root());
 
@@ -27,7 +27,7 @@ pub fn clean_outputs(work_root: &str, dict: &EnvDict) -> RunResult<bool> {
             println!("✓ Cleaned sink outputs from {}", main_conf.sink_root());
             true
         })
-        .owe_conf()
-        .with(&sink_root)
-        .want("清理 sinks 输出失败")
+        .owe(RunReason::from_conf())
+        .with_context(&sink_root)
+        .doing("清理 sinks 输出失败")
 }

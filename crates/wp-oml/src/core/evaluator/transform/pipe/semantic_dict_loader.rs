@@ -1,7 +1,6 @@
 use once_cell::sync::Lazy;
-use orion_conf::ErrorWith;
 use orion_conf::error::OrionConfResult;
-use orion_error::{ToStructError, UvsFrom};
+use orion_error::{UvsFrom, conversion::ToStructError};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -143,7 +142,7 @@ pub fn load_semantic_dict(config_path: &Path) -> OrionConfResult<SemanticDictCon
                 "unsupported semantic_dict version: {} (expected {})",
                 conf.version, SUPPORTED_VERSION
             ))
-            .with(config_path));
+            .with_context(config_path));
     }
 
     Ok(conf)

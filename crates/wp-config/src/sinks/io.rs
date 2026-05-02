@@ -63,7 +63,7 @@ pub fn load_route_files_from(dir: &Path, dict: &EnvDict) -> OrionConfResult<Vec<
     for fstr in uniq.into_iter() {
         let fp = Path::new(&fstr).to_path_buf();
         let mut rf: RouteFile = RouteFile::env_load_toml(&fp, dict)
-            .with(&fp)?
+            .with_context(&fp)?
             .env_eval(dict);
         rf.origin = Some(fp.clone());
         out.push(rf);
@@ -80,8 +80,8 @@ pub fn load_sink_defaults<P: AsRef<Path>>(
         return Ok(None);
     }
     let f: super::types::DefaultsFile = DefaultsFile::env_load_toml(&p, _dict)
-        .with(&p)
-        .want("load sink defaults")?;
+        .with_context(&p)
+        .doing("load sink defaults")?;
     Ok(Some(f.defaults))
 }
 

@@ -25,11 +25,14 @@ pub fn make_blackhole_sink() -> Box<dyn wp_connector_api::AsyncSink> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wp_connector_api::{AsyncRawDataSink, AsyncRecordSink, SinkFactory};
+    use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
+    use wp_connector_api::{
+        AsyncRawDataSink, AsyncRecordSink, SinkFactory, SinkReason, SinkResult,
+    };
     use wp_model_core::model::DataRecord;
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn file_factory_supports_fmt_param() -> anyhow::Result<()> {
+    async fn file_factory_supports_fmt_param() -> SinkResult<()> {
         let tmp = std::env::temp_dir().join(format!("wp_file_factory_fmt_{}.log", nano_ts()));
         let mut params = toml::value::Table::new();
         params.insert(
@@ -57,13 +60,13 @@ mod tests {
         AsyncRawDataSink::sink_str(sink.as_mut(), "\n").await?;
         AsyncRawDataSink::sink_str(sink.as_mut(), "").await?;
         drop(sink);
-        let body = std::fs::read_to_string(tmp)?;
+        let body = std::fs::read_to_string(tmp).owe(SinkReason::Uvs(UvsReason::system_error()))?;
         assert!(body.trim_start().starts_with("{"));
         Ok(())
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn null_factory_is_noop() -> anyhow::Result<()> {
+    async fn null_factory_is_noop() -> SinkResult<()> {
         let spec = wp_connector_api::SinkSpec {
             group: String::new(),
             name: "n".into(),

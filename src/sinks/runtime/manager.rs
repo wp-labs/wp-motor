@@ -27,7 +27,7 @@ use wp_connector_api::{SinkReason, SinkResult};
 use wp_error::error_handling::{ErrorHandlingStrategy, sys_robust_mode};
 use wp_model_core::raw::RawData;
 
-use orion_error::{ErrorOwe, ErrorWith};
+use orion_error::{ErrorWith, UvsReason, compat_prelude::ErrorOweBase};
 use wp_connector_api::SinkError;
 use wp_stat::StatRecorder;
 use wp_stat::StatReq;
@@ -181,8 +181,8 @@ impl SinkRuntime {
         self.normal_stat
             .send_stat(mon_send)
             .await
-            .owe_sys()
-            .want("sink stat")?;
+            .owe(SinkReason::Uvs(UvsReason::system_error()))
+            .doing("sink stat")?;
         if self.backup_used {
             let backup_name = format!("{}_bak", self.name);
             if !self.backup_stat.has_pending_data() {
@@ -196,8 +196,8 @@ impl SinkRuntime {
             self.backup_stat
                 .send_stat(mon_send)
                 .await
-                .owe_sys()
-                .want("back sink stat")?;
+                .owe(SinkReason::Uvs(UvsReason::system_error()))
+                .doing("back sink stat")?;
         }
         Ok(())
     }
@@ -238,7 +238,8 @@ impl SinkRuntime {
                 SinkDataEnum::FFV(dat) => {
                     let raw = TextFmt::Raw
                         .gen_data(dat.clone())
-                        .map_err(|e| e.with("ffv").want("render raw payload"))?;
+                        .with_context("ffv")
+                        .doing("render raw payload")?;
                     match raw {
                         RawData::String(line) => self.primary.sink_str(&line).await,
                         RawData::Bytes(bytes) => self.primary.sink_bytes(&bytes).await,
@@ -427,7 +428,8 @@ impl SinkRuntime {
             for unit in package.iter() {
                 let raw = TextFmt::Raw
                     .gen_data(unit.data().clone())
-                    .map_err(|e| e.with("ffv_batch").want("render raw payload"))
+                    .with_context("ffv_batch")
+                    .doing("render raw payload")
                     .unwrap_or_else(|_| RawData::String("".to_string()));
                 match raw {
                     RawData::String(s) => raw_strings.push(s),
@@ -860,10 +862,10 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn swap_back_routes_records_to_rescue_file() -> anyhow::Result<()> {
-        let temp = tempdir()?;
+    async fn swap_back_routes_records_to_rescue_file() -> SinkResult<()> {
+        let temp = tempdir().owe(SinkReason::Uvs(UvsReason::system_error()))?;
         let rescue_root = temp.path().join("rescue_root");
-        std::fs::create_dir_all(&rescue_root)?;
+        std::fs::create_dir_all(&rescue_root).owe(SinkReason::Uvs(UvsReason::system_error()))?;
 
         let mut params = wp_connector_api::ParamMap::new();
         params.insert(
@@ -903,15 +905,19 @@ mod tests {
         }
 
         let benchmark_rescue = rescue_root.join("sink").join("benchmark");
-        let entries = std::fs::read_dir(&benchmark_rescue)?.collect::<Result<Vec<_>, _>>()?;
+        let entries = std::fs::read_dir(&benchmark_rescue)
+            .owe(SinkReason::Uvs(UvsReason::system_error()))?
+            .collect::<Result<Vec<_>, _>>()
+            .owe(SinkReason::Uvs(UvsReason::system_error()))?;
         assert!(!entries.is_empty(), "expect rescue file created");
-        let meta = std::fs::metadata(entries[0].path())?;
+        let meta =
+            std::fs::metadata(entries[0].path()).owe(SinkReason::Uvs(UvsReason::system_error()))?;
         assert!(meta.len() > 0, "rescue file should contain payload");
         Ok(())
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn small_package_stays_in_pending_buffer_until_flush() -> anyhow::Result<()> {
+    async fn small_package_stays_in_pending_buffer_until_flush() -> SinkResult<()> {
         let calls = Arc::new(AtomicUsize::new(0));
         let primary = SinkBackendType::Proxy(Box::new(CountingSink::new(calls.clone())));
         let conf = SinkInstanceConf::new_type(
@@ -941,7 +947,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn large_package_bypasses_pending_buffer() -> anyhow::Result<()> {
+    async fn large_package_bypasses_pending_buffer() -> SinkResult<()> {
         let calls = Arc::new(AtomicUsize::new(0));
         let primary = SinkBackendType::Proxy(Box::new(CountingSink::new(calls.clone())));
         let conf = SinkInstanceConf::new_type(

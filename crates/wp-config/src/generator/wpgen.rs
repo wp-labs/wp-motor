@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::structure::{ConfStdOperation, SinkInstanceConf, Validate};
 use crate::utils::{backup_clean, save_conf};
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ToStructError, UvsFrom};
+use orion_error::{UvsFrom, conversion::ToStructError};
 use orion_variate::EnvDict;
 use serde_derive::{Deserialize, Serialize};
 use toml;

@@ -33,9 +33,9 @@
 //! 对于标准库错误或第三方错误，优先统一映射为领域错误：
 //!
 //! ```rust,ignore
-//! use orion_error::ErrorOwe;
+//! use orion_error::compat_prelude::ErrorOweBase;
 //!
-//! let content = fs::read_to_string(&path).owe_conf()?;
+//! let content = fs::read_to_string(&path).owe(RunReason::from_conf())?;
 //! ```
 //!
 //! **模式 C: 使用 `ErrorHandler` 辅助函数**
@@ -87,7 +87,7 @@
 //! ```
 
 use orion_conf::ErrorWith;
-use orion_error::{ErrorOweSource, ToStructError, UvsFrom};
+use orion_error::{UvsFrom, compat_prelude::ErrorOweSource, conversion::ToStructError};
 use std::path::Path;
 use wp_error::run_error::{RunReason, RunResult};
 
@@ -139,7 +139,7 @@ impl ErrorHandler {
         path: &Path,
         op: impl FnOnce() -> Result<T, std::io::Error>,
     ) -> RunResult<T> {
-        op().owe_conf_source().with(path).want(operation)
+        op().owe_conf_source().with_context(path).doing(operation)
     }
 
     /// 安全创建目录
@@ -176,8 +176,8 @@ impl ErrorHandler {
     {
         result
             .owe_conf_source()
-            .with(context)
-            .want(actual_operation)
+            .with_context(context)
+            .doing(actual_operation)
     }
 
     /// 转换和包装错误 (支持 &str context)
@@ -191,8 +191,8 @@ impl ErrorHandler {
     {
         result
             .owe_conf_source()
-            .with(context)
-            .want(actual_operation)
+            .with_context(context)
+            .doing(actual_operation)
     }
 
     /// 创建验证错误

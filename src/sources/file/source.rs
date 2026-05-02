@@ -5,7 +5,7 @@ use base64::Engine;
 use base64::engine::general_purpose;
 use bytes::Bytes;
 use orion_conf::{ErrorWith, UvsFrom};
-use orion_error::ToStructError;
+use orion_error::conversion::ToStructError;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::Arc;
@@ -51,28 +51,20 @@ impl FileSource {
             return Err(SourceReason::from_conf()
                 .to_err()
                 .with_detail(format!("source file not found: {}", file_path.display()))
-                .with(file_path));
+                .with_context(file_path));
         }
         let mut file = tokio::fs::File::open(file_path)
             .await
-            .map_err(|e| {
-                SourceReason::Disconnect("open source file failed".to_string())
-                    .to_err()
-                    .with_source(e)
-            })
-            .with(file_path)
-            .want("open source file")?;
+            .owe(SourceReason::Disconnect("open source file failed".to_string()))
+            .with_context(file_path)
+            .doing("open source file")?;
         use std::io::SeekFrom;
         use tokio::io::AsyncSeekExt;
         file.seek(SeekFrom::Start(range_start))
             .await
-            .map_err(|e| {
-                SourceReason::Disconnect("seek source file failed".to_string())
-                    .to_err()
-                    .with_source(e)
-            })
-            .with(file_path)
-            .want("seek to position")?;
+            .owe(SourceReason::Disconnect("seek source file failed".to_string()))
+            .with_context(file_path)
+            .doing("seek to position")?;
         tags.set("access_source", path.to_string());
         let batch_lines = DEFAULT_BATCH_LINES;
         let batch_bytes_budget = DEFAULT_BATCH_BYTES;
@@ -93,23 +85,20 @@ impl FileSource {
         match encode {
             FileEncoding::Text => Ok(RawData::Bytes(Bytes::from(line))),
             FileEncoding::Base64 => {
-                let s = std::str::from_utf8(&line).map_err(|e| {
-                    SourceReason::SupplierError("invalid utf8 in base64 text".to_string())
-                        .err_source(e)
-                })?;
-                let val = general_purpose::STANDARD.decode(s.trim()).map_err(|e| {
-                    SourceReason::SupplierError("base64 decode error".to_string()).err_source(e)
-                })?;
+                let s = std::str::from_utf8(&line).owe(
+                    SourceReason::SupplierError("invalid utf8 in base64 text".to_string()),
+                )?;
+                let val = general_purpose::STANDARD
+                    .decode(s.trim())
+                    .owe(SourceReason::SupplierError("base64 decode error".to_string()))?;
                 Ok(RawData::Bytes(Bytes::from(val)))
             }
             FileEncoding::Hex => {
-                let s = std::str::from_utf8(&line).map_err(|e| {
-                    SourceReason::SupplierError("invalid utf8 in hex text".to_string())
-                        .err_source(e)
-                })?;
-                let val = hex::decode(s.trim()).map_err(|e| {
-                    SourceReason::SupplierError("hex decode error".to_string()).err_source(e)
-                })?;
+                let s = std::str::from_utf8(&line).owe(
+                    SourceReason::SupplierError("invalid utf8 in hex text".to_string()),
+                )?;
+                let val = hex::decode(s.trim())
+                    .owe(SourceReason::SupplierError("hex decode error".to_string()))?;
                 Ok(RawData::Bytes(Bytes::from(val)))
             }
         }
@@ -165,13 +154,9 @@ impl MultiFileSource {
             return Ok(false);
         };
         let ranges = compute_file_ranges(Path::new(&path), self.instances)
-            .map_err(|e| {
-                SourceReason::Disconnect("compute file ranges failed".to_string())
-                    .to_err()
-                    .with_source(e)
-            })
-            .with(path.as_str())
-            .want("compute source file ranges")?;
+            .owe(SourceReason::Disconnect("compute file ranges failed".to_string()))
+            .with_context(path.as_str())
+            .doing("compute source file ranges")?;
         let (tx, rx) = unbounded_channel();
         let shard_total = ranges.len();
         let mut tasks = Vec::with_capacity(shard_total);

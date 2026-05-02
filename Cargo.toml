@@ -54,7 +54,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.21.7" # @gxl:set(version)
+version = "1.21.8" # @gxl:set(version)
 edition = "2024"
 license = "Apache-2.0"
 
@@ -161,7 +161,7 @@ wp-knowledge = { workspace = true }
 
 # --- Internal: Language & Parsing ---
 wp_primitives = { workspace = true }
-wpl = { package = "wp-lang", version = "0.1" }
+wpl = { package = "wp-lang", version = "0.2" }
 oml = { package = "wp-oml", path = "crates/wp-oml", features = ["oml-diag"] }
 
 # --- Internal: Data & Stats ---
@@ -169,7 +169,7 @@ oml = { package = "wp-oml", path = "crates/wp-oml", features = ["oml-diag"] }
 wp_stat = { package = "wp-stats", path = "crates/wp-stats" }
 
 # --- Internal: CLI Core ---
-wp_cli_core = { package = "wp-cli-core", path = "crates/wp-cli-core" }
+#wp_cli_core = { package = "wp-cli-core", path = "crates/wp-cli-core" }
 wp_core_connectors = { workspace = true }
 
 # --- External: API Layer ---
@@ -177,8 +177,8 @@ wp-connector-api = { workspace = true }
 wp-parse-api = { workspace = true }
 wp-model-core = { workspace = true }
 wp_data_model = { workspace = true }
-wp_ctrl_api = { workspace = true }
-wp_enrich_api = { workspace = true }
+#wp_ctrl_api = { workspace = true }
+#wp_enrich_api = { workspace = true }
 wp-specs = { workspace = true }
 wp-data-fmt = { workspace = true }
 wp-arrow = { workspace = true }
@@ -265,7 +265,7 @@ anyhow = "1.0"
 thiserror = "2.0"
 log = "0.4"
 env_logger = "0.11"
-orion-error = "0.6"
+orion-error = "0.7"
 
 # --- Parsing & Text ---
 winnow = "1.0"
@@ -334,9 +334,9 @@ md5 = "0.8"
 encoding_rs = "0.8"
 
 # --- Cryptography ---
-orion_conf = { version = "0.5", features = ["yaml", "toml"] }
-orion-sec = "0.4"
-orion-variate = "0.11"
+orion_conf = { version = "0.6", features = ["yaml", "toml"] }
+orion-sec = "0.5"
+orion-variate = "0.12"
 
 # --- Testing ---
 criterion = "0.8"
@@ -353,27 +353,27 @@ orion_exp = { path = "./crates/orion_exp" }
 wp_primitives = { package = "wp-primitives", version = "0.2" }
 wp_config = { package = "wp-config", path = "./crates/wp-config" }
 wp_data_model = { package = "wp-data-utils", path = "./crates/wp-data-utils" }
-wp-knowledge = "0.11"
-wp_lang = { package = "wp-lang", version = "0.1" }
+wp-knowledge = "0.12"
+#wp_lang = { package = "wp-lang", version = "0.1" }
 wp_oml = { package = "wp-oml", path = "./crates/wp-oml" }
 wp_proj = { package = "wp-proj", path = "./crates/wp-proj" }
-wp_core_connectors = { package = "wp-core-connectors", version = "0.1.4" }
+wp_core_connectors = { package = "wp-core-connectors", version = "0.2.0" }
 
 # --- External: Arrow ---
 wp-arrow = "0.1"
 
 # --- External: Open API (Public Interfaces) ---
-wp-connector-api = "0.8"
-wp-parse-api = "0.8"
+wp-connector-api = "0.9"
+wp-parse-api = "0.9"
 wp-model-core = "0.8"
 
 # --- External: Advanced API (Enterprise Features) ---
-wp_ctrl_api = { package = "wp-ctrl-api", git = "https://github.com/wp-labs/wp-advanced-api", tag = "v0.1.0" }
-wp_enrich_api = { package = "wp-enrich-api", git = "https://github.com/wp-labs/wp-advanced-api", tag = "v0.1.0" }
+#wp_ctrl_api = { package = "wp-ctrl-api", git = "https://github.cjm/wp-labs/wp-advanced-api", tag = "v0.2.0" }
+#wp_enrich_api = { package = "wp-enrich-api", git = "https://github.com/wp-labs/wp-advanced-api", tag = "v0.2.0" }
 
 # --- External: Infrastructure Libraries ---
-wp-log = "0.2"
-wp-error = "0.8"
-wp-specs = "0.8"
-wp-conf-base = "0.2"
+wp-log = "0.3"
+wp-error = "0.9"
+wp-specs = "0.9"
+wp-conf-base = "0.3"
 wp-data-fmt = "0.2"

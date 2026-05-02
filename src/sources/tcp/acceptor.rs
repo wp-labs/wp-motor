@@ -1,7 +1,7 @@
 //! TCP acceptor implementation bridging engine `ServiceAcceptor` to the listener loop.
 
 use async_trait::async_trait;
-use orion_error::ToStructError;
+use orion_error::conversion::ToStructError;
 use tokio::sync::{broadcast, mpsc};
 
 use wp_connector_api::{CtrlRx, ServiceAcceptor, SourceError, SourceReason, SourceResult};

@@ -1,4 +1,4 @@
-use orion_error::{ErrStrategy, UvsReason};
+use orion_error::{UvsReason, types::ErrStrategy};
 use wp_connector_api::{SinkError, SinkReason};
 use wp_connector_api::{SourceError, SourceReason};
 use wp_error::error_handling::ErrorHandlingStrategy;

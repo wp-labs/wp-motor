@@ -8,7 +8,10 @@ use super::{Connectors, Oml, ProjectPaths, Sinks, Sources, Wpl, init::PrjScope};
 use crate::{
     models::knowledge::Knowledge, sinks::clean_outputs, wparse::WParseManager, wpgen::WpGenManager,
 };
-use orion_error::{ToStructError, UvsFrom, WrapStructError};
+use orion_error::{
+    UvsFrom,
+    conversion::{ToStructError, WrapStructErrorAs},
+};
 use orion_variate::{EnvDict, EnvEvaluable};
 use wp_conf::engine::EngineConfig;
 use wp_error::run_error::{RunError, RunReason, RunResult};
@@ -92,7 +95,7 @@ impl WarpProject {
                     RunReason::from_conf()
                         .to_err()
                         .with_detail("load engine config failed")
-                        .with_struct_source(err)
+                        .with_source(err)
                 })?
                 .env_eval(dict)
                 .conf_absolutize(&abs_root)
@@ -102,7 +105,7 @@ impl WarpProject {
                     RunReason::from_conf()
                         .to_err()
                         .with_detail("load engine config failed")
-                        .with_struct_source(err)
+                        .with_source(err)
                 })?
                 .env_eval(dict)
                 .conf_absolutize(&abs_root)
@@ -250,7 +253,7 @@ impl WarpProject {
                     .join(" | ")
             );
             let first = failures.into_iter().next().expect("checked non-empty");
-            return Err(first.error.wrap(RunReason::from_conf()).with_detail(detail));
+            return Err(first.error.wrap_as(RunReason::from_conf(), detail));
         }
 
         if !cleaned_any {

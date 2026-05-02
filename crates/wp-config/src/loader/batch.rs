@@ -9,7 +9,8 @@
 
 use super::traits::ConfigLoader;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorOweSource, ErrorWith, ToStructError, UvsFrom};
+use orion_error::compat_prelude::ErrorOweSource;
+use orion_error::{ErrorWith, UvsFrom, conversion::ToStructError};
 use orion_variate::EnvDict;
 use std::path::{Path, PathBuf};
 
@@ -54,11 +55,11 @@ where
 
     let entries = std::fs::read_dir(dir)
         .owe_conf_source()
-        .want("无法读取目录")
-        .with(dir)?;
+        .doing("无法读取目录")
+        .with_context(dir)?;
 
     for entry in entries {
-        let entry: std::fs::DirEntry = entry.owe_conf_source().want("读取目录项失败")?;
+        let entry: std::fs::DirEntry = entry.owe_conf_source().doing("读取目录项失败")?;
 
         let path = entry.path();
 

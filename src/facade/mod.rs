@@ -23,5 +23,5 @@ pub use runtime_ctrl::{
     RuntimeControlHandle, RuntimeStatusSnapshot,
 };
 
-// 可选便捷导出：在保持命名空间清晰的同时，减少上层使用样板。
-pub use enrich::{EnrichLibAble, EnrichingAble};
+// 可选便捷导出：wp_enrich_api 依赖已注释，暂不可用
+// pub use enrich::{EnrichLibAble, EnrichingAble};

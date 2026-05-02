@@ -1,5 +1,5 @@
 use crate::sources::tcp::ConnectionRegistry;
-use orion_error::ToStructError;
+use orion_error::conversion::ToStructError;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc};
 use tokio::time;

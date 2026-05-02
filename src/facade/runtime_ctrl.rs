@@ -5,7 +5,11 @@ use std::time::SystemTime;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
-use wp_ctrl_api::CommandType;
+/// Local mirror of `wp_ctrl_api::CommandType` to avoid optional dependency.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommandType {
+    LoadModel,
+}
 
 const DEFAULT_COMMAND_BUFFER: usize = 64;
 

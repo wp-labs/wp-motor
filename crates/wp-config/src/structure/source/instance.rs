@@ -4,7 +4,7 @@ use orion_conf::{
     ToStructError,
     error::{ConfIOReason, OrionConfResult},
 };
-use orion_error::{ErrorWith, UvsFrom};
+use orion_error::UvsFrom;
 use serde::{Deserialize, Serialize};
 
 /// Source 实例级配置（最小实现）：
@@ -81,7 +81,7 @@ impl Validate for SourceInstanceConf {
             return Err(ConfIOReason::from_validation()
                 .to_err()
                 .with_detail(e)
-                .with(self.core.name.clone()));
+                .with_context(self.core.name.clone()));
         }
         Ok(())
     }

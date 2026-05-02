@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 use async_signal::{Signal, Signals};
-use orion_error::{ErrorOwe, ErrorWith};
+use orion_error::{ErrorWith, UvsFrom, compat_prelude::ErrorOweBase};
 use std::{
     fmt::Display,
     sync::atomic::{AtomicBool, Ordering},
 };
-use wp_error::run_error::RunResult;
+use wp_error::run_error::{RunReason, RunResult};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ShutdownCmd {
@@ -28,8 +28,8 @@ impl Display for ShutdownCmd {
 
 pub fn stop_signals() -> RunResult<Signals> {
     let signals = Signals::new([Signal::Term, Signal::Quit, Signal::Int])
-        .owe_sys()
-        .want("set signal")?;
+        .owe(RunReason::from_sys())
+        .doing("set signal")?;
     Ok(signals)
 }
 

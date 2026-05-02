@@ -71,7 +71,7 @@ impl ASinkTestProxy {
 impl AsyncCtrl for ASinkTestProxy {
     async fn stop(&mut self) -> SinkResult<()> {
         if !self.ctrl_stg.decide_health() {
-            Err(SinkError::from(SinkReason::StgCtrl).want("stop send to AsinkTestStub"))?;
+            Err(SinkError::from(SinkReason::StgCtrl).doing("stop send to AsinkTestStub"))?;
         }
         self.impl_ins.stop().await?;
         Ok(())

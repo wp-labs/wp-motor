@@ -26,7 +26,7 @@ impl ChunkedLineReader {
             .reader
             .read_until(b'\n', &mut self.buf)
             .await
-            .map_err(|e| SourceReason::Disconnect("read source file failed".to_string()).err_source(e))?;
+            .owe(SourceReason::Disconnect("read source file failed".to_string()))?;
         if read == 0 {
             return Ok(None);
         }

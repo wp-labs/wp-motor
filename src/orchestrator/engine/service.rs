@@ -13,7 +13,7 @@ use crate::runtime::tasks::{
     start_parser_tasks_frames, start_picker_tasks,
 };
 use crate::stat::MonSend;
-use orion_error::{ToStructError, UvsFrom};
+use orion_error::{UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError};
 use tokio::time::sleep;
 use wp_conf::{RunArgs, RunMode};
 use wp_error::{RunReason, run_error::RunResult};
@@ -154,7 +154,7 @@ impl EngineRuntime {
             let wait_timeout = remaining_timeout(deadline)?;
             let event = tokio::time::timeout(wait_timeout, self.active_processing.recv())
                 .await
-                .map_err(|_| RunReason::from_logic().to_err())?
+                .owe(RunReason::from_logic())?
                 .ok_or_else(|| RunReason::from_logic().to_err())?;
             self.active_processing
                 .observe(&event)

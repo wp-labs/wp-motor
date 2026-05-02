@@ -1,7 +1,5 @@
 use derive_more::Display;
 
-use crate::types::AnyResult;
-
 /// 运行模式：批处理/常驻
 #[derive(Clone, Debug, PartialEq, Eq, Display)]
 pub enum RuntimeMode {
@@ -53,7 +51,7 @@ impl Default for RuntimeArgs {
 }
 
 impl RuntimeArgs {
-    pub fn for_test() -> AnyResult<Self> {
+    pub fn for_test() -> anyhow::Result<Self> {
         Ok(Self {
             line_max: Some(10),
             ..Default::default()

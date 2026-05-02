@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use orion_error::{ToStructError, UvsFrom, WrapStructError};
+use orion_error::{
+    UvsFrom,
+    conversion::{ToStructError, WrapStructErrorAs},
+};
 use orion_variate::EnvDict;
 use wp_error::{RunReason, RunResult};
 
@@ -57,9 +60,7 @@ impl WpGenManager {
                     Ok(false)
                 }
             }
-            Err(e) => Err(e
-                .wrap(RunReason::from_conf())
-                .with_detail("清理 wpgen 数据失败")),
+            Err(e) => Err(e.wrap_as(RunReason::from_conf(), "清理 wpgen 数据失败")),
         }
     }
 
@@ -76,7 +77,7 @@ impl WpGenManager {
 
 #[cfg(test)]
 mod tests {
-    use orion_error::TestAssertWithMsg;
+    use orion_error::testcase::TestAssertWithMsg;
     use tempfile::tempdir;
     use wp_conf::test_support::ForTest;
 

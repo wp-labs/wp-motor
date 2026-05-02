@@ -4,13 +4,14 @@ use crate::core::parser::WplRepository;
 use crate::orchestrator::engine::definition::WplCodePKG;
 use crate::sinks::InfraSinkAgent;
 use crate::sinks::SinkRegistry;
-use crate::types::AnyResult;
+use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::sync::Arc;
 use wp_conf::RunArgs;
 use wp_connector_api::{SourceEvent, Tags};
+use wp_error::run_error::{RunReason, RunResult};
 use wp_model_core::raw::RawData;
 use wpl::{DEFAULT_KEY, gen_pkg_id};
 // Import macros
@@ -29,13 +30,14 @@ pub fn engine_check(
     wpl_code: WplCodePKG,
     in_path: &str,
     _sinks: SinkRegistry,
-) -> AnyResult<()> {
+) -> RunResult<()> {
     args.need_complete = true;
 
-    let wpl_pkgs = WplRepository::from_wpl_strict(wpl_code)?;
+    let wpl_pkgs =
+        WplRepository::from_wpl_strict(wpl_code).owe(RunReason::Uvs(UvsReason::rule_error()))?;
     let engine = WplEngine::from_code(&wpl_pkgs, InfraSinkAgent::use_null())?;
 
-    let in_io = File::open(in_path)?;
+    let in_io = File::open(in_path).owe(RunReason::Uvs(UvsReason::system_error()))?;
     let source_key = Arc::new(DEFAULT_KEY.to_string());
     let source_tags = Arc::new(Tags::new());
     for (line_count, line_data) in BufReader::new(in_io)
@@ -77,10 +79,11 @@ pub fn engine_proc_file<T: AsRef<Path>>(
     in_path: T,
     infra: InfraSinkAgent,
     max_event: usize,
-) -> AnyResult<()> {
-    let wpl_pkgs = WplRepository::from_wpl_strict(wpl_code)?;
+) -> RunResult<()> {
+    let wpl_pkgs =
+        WplRepository::from_wpl_strict(wpl_code).owe(RunReason::Uvs(UvsReason::rule_error()))?;
     let engine = WplEngine::from_code(&wpl_pkgs, infra)?;
-    let in_io = File::open(in_path)?;
+    let in_io = File::open(in_path).owe(RunReason::Uvs(UvsReason::system_error()))?;
 
     let source_key = Arc::new(DEFAULT_KEY.to_string());
     let source_tags = Arc::new(Tags::new());
@@ -124,10 +127,11 @@ pub fn wpl_workshop_parse(
     wpl_code: WplCodePKG,
     in_path: &str,
     infra: InfraSinkAgent,
-) -> AnyResult<()> {
-    let wpl_pkgs = WplRepository::from_wpl_strict(wpl_code)?;
+) -> RunResult<()> {
+    let wpl_pkgs =
+        WplRepository::from_wpl_strict(wpl_code).owe(RunReason::Uvs(UvsReason::rule_error()))?;
     let engine = WplEngine::from_code(&wpl_pkgs, infra)?;
-    let in_io = File::open(in_path)?;
+    let in_io = File::open(in_path).owe(RunReason::Uvs(UvsReason::system_error()))?;
     let source_key = Arc::new(DEFAULT_KEY.to_string());
     let source_tags = Arc::new(Tags::new());
     for (line_count, line_data) in BufReader::new(in_io)
