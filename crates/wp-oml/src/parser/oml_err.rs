@@ -174,7 +174,7 @@ time*     : auto    = Time::now() ;
     }
     fn report_err(code: &mut &str, pos: &str) {
         match oml_parse_syntax_raw.parse_next(code).map_err(|e| {
-            WplCodeError::from(WplCodeReason::Syntax("".into()))
+            WplCodeError::from(WplCodeReason::Syntax)
                 .with_detail(e.to_string())
                 .with_position(code.to_string())
         }) {

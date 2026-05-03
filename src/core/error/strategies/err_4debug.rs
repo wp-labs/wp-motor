@@ -61,10 +61,10 @@ impl ErrorHandlingPolicy for Err4Debug {
     }
     fn err4_load_wpl(&self, err: &WplCodeError) -> ErrStrategy {
         match err.reason() {
-            WplCodeReason::Plugin(_) => ErrStrategy::Throw,
-            WplCodeReason::Syntax(_) => ErrStrategy::Ignore,
-            WplCodeReason::Empty(_) => ErrStrategy::Ignore,
-            WplCodeReason::UnSupport(_) => ErrStrategy::Ignore,
+            WplCodeReason::Plugin => ErrStrategy::Throw,
+            WplCodeReason::Syntax => ErrStrategy::Ignore,
+            WplCodeReason::Empty => ErrStrategy::Ignore,
+            WplCodeReason::UnSupport => ErrStrategy::Ignore,
             WplCodeReason::Uvs(e) => self.err_4universal(e),
         }
     }

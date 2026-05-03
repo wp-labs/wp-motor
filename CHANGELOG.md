@@ -6,7 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
-## [1.21.9 Unreleased]
+## [1.21.10 Unreleased]
+
+### Changed
+- **Error/Reason**: Simplified `OMLRunReason::FmtConv(String)` to unit variant `FmtConv`; dynamic error messages are now carried via `StructError::detail()` instead of the variant payload.
+  中文：`OMLRunReason::FmtConv(String)` 简化为单位变体 `FmtConv`，动态错误信息改为通过 `StructError::detail()` 承载。
+- **Error/Strategies**: Updated `WplCodeReason` match patterns in `err_4stoic`, `err_4normal`, `err_4debug` to use unit variants, aligning with wp-lang's Reason enum simplification.
+  中文：更新 `err_4stoic`、`err_4normal`、`err_4debug` 中 `WplCodeReason` 的匹配模式，适配 wp-lang 的 Reason 枚举简化。
+
+## [1.21.9] - 2026-05-03
 
 ### Added
 - **Diagnostics/CLI**: Error hints are now driven by `stable_code` (from `#[derive(OrionError)]`) as primary key, with bilingual Chinese/English support; language is selected via `WP_LANG` environment variable (fallback to `LANG` then `LC_ALL`).

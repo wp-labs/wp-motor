@@ -1,10 +1,9 @@
-use derive_more::From;
 use orion_error::{OrionError, StructError};
 
-#[derive(Debug, Clone, PartialEq, Serialize, From, OrionError)]
+#[derive(Debug, Clone, PartialEq, Serialize, OrionError)]
 pub enum OMLRunReason {
     #[orion_error(identity = "biz.oml_fmt_conv")]
-    FmtConv(String),
+    FmtConv,
 }
 
 pub type OMLRunError = StructError<OMLRunReason>;
