@@ -5,9 +5,8 @@ use std::path::{Path, PathBuf};
 
 use orion_conf::TomlIO;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::compat_prelude::{ErrorOweBase, ErrorOweSource};
-use orion_error::conversion::ToStructError;
-use orion_error::{ErrorWith, UvsFrom, UvsReason};
+use orion_error::conversion::ErrorWith;
+use orion_error::conversion::{SourceRawErr, ToStructError};
 use orion_variate::EnvEvaluable;
 use serde::Serialize;
 use wp_connector_api::ParamMap;
@@ -21,7 +20,7 @@ pub fn ignore_check(ignore: bool, msg: &str) -> OrionConfResult<()> {
     if ignore {
         info_ctrl!("ignore! : {}", msg);
     } else {
-        return Err(ConfIOReason::from_validation()
+        return Err(ConfIOReason::validation_error()
             .to_err()
             .with_detail(msg.to_string()));
     }
@@ -40,7 +39,7 @@ where
             // ensure parent directory exists
             if let Some(parent) = path_ref.parent() {
                 std::fs::create_dir_all(parent)
-                    .owe_conf_source()
+                    .source_raw_err(ConfIOReason::core_conf(), "source error")
                     .doing("crate dir")
                     .with_context(parent)?;
             }
@@ -64,16 +63,16 @@ pub fn save_data<P: AsRef<Path>>(
             let path = dst_ref;
             if let Some(value) = path.parent() {
                 std::fs::create_dir_all(value)
-                    .owe_conf_source()
+                    .source_raw_err(ConfIOReason::core_conf(), "source error")
                     .doing("create dir")
                     .with_context(value)?;
             }
             let mut file = std::fs::File::create(path)
-                .owe_conf_source()
+                .source_raw_err(ConfIOReason::core_conf(), "source error")
                 .doing("create file")
                 .with_context(path)?;
             file.write_all(conf.as_bytes())
-                .owe_conf_source()
+                .source_raw_err(ConfIOReason::core_conf(), "source error")
                 .doing("save data")
                 .with_context(path)?;
             info_ctrl!("save data file suc : {} ", dst_ref.display());
@@ -86,11 +85,11 @@ pub fn backup_clean<P: AsRef<Path>>(path: P) -> OrionConfResult<()> {
     let path_ref = path.as_ref();
     if path_ref.exists() {
         std::fs::copy(path_ref, format!("{}.bak", path_ref.display()))
-            .owe_conf_source()
+            .source_raw_err(ConfIOReason::core_conf(), "source error")
             .doing("copy file")
             .with_context(path_ref)?;
         std::fs::remove_file(path_ref)
-            .owe_conf_source()
+            .source_raw_err(ConfIOReason::core_conf(), "source error")
             .doing("remove file")
             .with_context(path_ref)?;
     }
@@ -168,7 +167,7 @@ pub fn find_conf_files<P: AsRef<Path>>(path: P, target: &str) -> ConfResult<Vec<
     info_ctrl!("find conf files in: {}", path_ref.display());
     let glob_path = format!("{}/**/{}", path_ref.display(), target);
     for entry in glob(glob_path.as_str())
-        .owe(ConfReason::Uvs(UvsReason::core_conf()))
+        .source_raw_err(ConfReason::core_conf(), "compile glob pattern")
         .with_context(("path", format!("read_dir fail: {}", path_ref.display())))?
     {
         match entry {
@@ -190,15 +189,17 @@ pub fn find_group_conf(
 ) -> ConfResult<Vec<PathGroup>> {
     let mut found = Vec::new();
     let entries = fs::read_dir(path)
-        .owe(ConfReason::NotFound("file miss".into()))
+        .source_raw_err(ConfReason::NotFound("file miss".into()), "read group dir")
         .with_context(path.to_string())?;
     let mut first = None;
     let mut second = None;
     for entry in entries {
-        let entry = entry.owe(ConfReason::Syntax("bad entry".into()))?;
-        let file_type = entry
-            .file_type()
-            .owe(ConfReason::NotFound("file type error".into()))?;
+        let entry =
+            entry.source_raw_err(ConfReason::Syntax("bad entry".into()), "read dir entry")?;
+        let file_type = entry.file_type().source_raw_err(
+            ConfReason::NotFound("file type error".into()),
+            "read file type",
+        )?;
         if file_type.is_dir() {
             let sub = entry.path();
             if let Some(sub_str) = sub.to_str() {

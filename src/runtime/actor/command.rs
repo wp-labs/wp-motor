@@ -1,12 +1,10 @@
 use super::limit::{RateLimiter, SystemInstant};
+#[cfg(any(test, feature = "dev-tools"))]
+use crate::compat::LegacyOwe;
 use crate::runtime::actor::constants::ACTOR_CMD_POLL_TIMEOUT_MS;
 use crate::runtime::actor::signal::ShutdownCmd;
 use crate::types::Abstract;
 use derive_getters::Getters;
-#[cfg(any(test, feature = "dev-tools"))]
-use orion_error::UvsFrom;
-#[cfg(any(test, feature = "dev-tools"))]
-use orion_error::compat_prelude::ErrorOweBase;
 
 use std::fmt::Display;
 use std::time::{Duration, Instant};
@@ -215,7 +213,7 @@ impl TaskController {
     #[cfg(any(test, feature = "dev-tools"))]
     #[allow(dead_code)]
     pub async fn recv_update_cmd(&mut self) -> RunResult<()> {
-        let cmd = self.cmds_sub.recv().await.owe(RunReason::from_sys())?;
+        let cmd = self.cmds_sub.recv().await.owe(RunReason::system_error())?;
         self.update_cmd(cmd);
         Ok(())
     }

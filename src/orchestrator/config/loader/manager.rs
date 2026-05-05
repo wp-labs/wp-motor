@@ -1,12 +1,13 @@
 use super::ConfDelegate;
+use crate::compat::LegacyOwe;
 use crate::facade::config::{ENGINE_CONF_FILE, WPARSE_LOG_PATH};
 use crate::orchestrator::config::WPSRC_TOML;
 use futures_util::TryFutureExt;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
 use orion_conf::{EnvTomlLoad, TomlIO};
-use orion_error::compat_prelude::ErrorOweBase;
+use orion_error::conversion::SourceRawErr;
 use orion_error::conversion::ToStructError;
-use orion_error::{ErrorWith, UvsFrom, UvsReason};
+use orion_error::{UnifiedReason, conversion::ErrorWith};
 use orion_variate::{EnvDict, EnvEvaluable};
 use std::cell::OnceCell;
 use std::path::{Path, PathBuf};
@@ -73,7 +74,7 @@ impl WarpConf {
         let target = self.conf_root_path().join(file_name);
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)
-                .owe(ConfIOReason::Uvs(UvsReason::resource_error()))
+                .owe(ConfIOReason::resource_error())
                 .with_context(parent)?;
         }
         Ok(target)
@@ -106,7 +107,7 @@ impl WarpConf {
     pub fn load_engine_config(&self, dict: &EnvDict) -> OrionConfResult<EngineConfig> {
         let path = self.config_path(ENGINE_CONF_FILE);
         let conf = EngineConfig::env_load_toml(&path, dict)
-            .owe(ConfIOReason::Uvs(UvsReason::resource_error()))
+            .owe(ConfIOReason::resource_error())
             .with_context(&path)?
             .env_eval(dict)
             .conf_absolutize(self.work_root());
@@ -117,19 +118,19 @@ impl WarpConf {
     pub fn cleanup_work_directory(&self, dict: &EnvDict) -> RunResult<()> {
         let wp_conf = EngineConfig::load_or_init(self.work_root(), dict)
             .map_err(|e| {
-                RunReason::from_conf()
+                RunReason::core_conf()
                     .to_err()
                     .with_detail(format!("load engine config for cleanup failed: {}", e))
             })?
             .env_eval(dict)
             .conf_absolutize(self.work_root());
         backup_clean(self.config_path_string(ENGINE_CONF_FILE)).map_err(|e| {
-            RunReason::from_conf()
+            RunReason::core_conf()
                 .to_err()
                 .with_detail(format!("cleanup engine config backup failed: {}", e))
         })?;
         backup_clean(wp_conf.src_conf_of(WPSRC_TOML)).map_err(|e| {
-            RunReason::from_conf()
+            RunReason::core_conf()
                 .to_err()
                 .with_detail(format!("cleanup source config backup failed: {}", e))
         })?;
@@ -141,13 +142,13 @@ impl WarpConf {
                 connector_template_by_id(&self.work_root().join("connectors/source.d"), "file_src")
             {
                 backup_clean(conn_path).map_err(|e| {
-                    RunReason::from_conf()
+                    RunReason::core_conf()
                         .to_err()
                         .with_detail(format!("cleanup source connector backup failed: {}", e))
                 })?;
             }
             backup_clean(wp_conf.src_conf_of(WPSRC_TOML)).map_err(|e| {
-                RunReason::from_conf()
+                RunReason::core_conf()
                     .to_err()
                     .with_detail(format!("cleanup source config backup failed: {}", e))
             })?;

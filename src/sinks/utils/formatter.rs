@@ -1,9 +1,10 @@
+use crate::compat::LegacyOwe;
 use crate::core::sinks::sync_sink::{RecSyncSink, TrySendStatus};
 use crate::sinks::prelude::*;
 use crate::{core::sinks::sync_sink::traits::SyncCtrl, sinks::pdm_outer::TDMDataAble};
 
 use async_trait::async_trait;
-use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
+use orion_error::UnifiedReason;
 use wp_data_fmt::{FormatType, RecordFormatter};
 use wp_model_core::model::fmt_def::TextFmt;
 use wp_model_core::raw::RawData;
@@ -29,7 +30,7 @@ pub fn gen_fmt_dat(fmt: TextFmt, line: FmtFieldVec) -> SinkResult<RawData> {
         TextFmt::Csv => RawData::String(format!("{}\n", CSVGenFmt(&line))),
         TextFmt::Raw => RawData::String(format!("{}\n", RAWGenFmt(&line))),
         TextFmt::Proto => {
-            return Err(SinkReason::sink("unsupported proto buf generation").err());
+            return Err(SinkReason::sink("unsupported proto buf generation"));
         }
         TextFmt::ProtoText => RawData::String(format!("{}\n", ProtoGenFmt(&line))),
     };
@@ -84,7 +85,7 @@ where
             let data: RawData = self
                 .fmt
                 .cov_data(data.clone())
-                .owe(SinkReason::Uvs(UvsReason::data_error()))?;
+                .owe(SinkReason::Uvs(UnifiedReason::data_error()))?;
             match data {
                 RawData::String(data_str) => {
                     next_proc.sink_str(&data_str).await?;
@@ -112,7 +113,7 @@ where
                 let raw: RawData = self
                     .fmt
                     .cov_data(record.as_ref().clone())
-                    .owe(SinkReason::Uvs(UvsReason::data_error()))?;
+                    .owe(SinkReason::Uvs(UnifiedReason::data_error()))?;
                 match raw {
                     RawData::String(s) => str_batch.push(s),
                     RawData::Bytes(b) => bytes_batch.push(b.to_vec()),

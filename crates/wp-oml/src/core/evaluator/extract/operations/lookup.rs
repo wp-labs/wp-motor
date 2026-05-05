@@ -56,7 +56,7 @@ impl AsyncFieldExtractor for LookupOperation {
 mod tests {
     use crate::core::AsyncDataTransformer;
     use crate::parser::oml_parse_raw;
-    use orion_error::testcase::TestAssert;
+    use orion_error::dev::testing::TestAssert;
     use wp_knowledge::cache::FieldQueryCache;
     use wp_model_core::model::{DataField, DataRecord, FieldStorage, Value};
 

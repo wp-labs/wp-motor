@@ -22,9 +22,7 @@ pub async fn build_file_sink_with_sync(
     out.next_pipe(
         AsyncFileSink::with_sync(out_path, sync)
             .await
-            .map_err(|e| {
-                SinkReason::sink("build async file sink failed").err_detail(e.to_string())
-            })?,
+            .map_err(|e| SinkReason::sink("build async file sink failed").with_source(e))?,
     );
     Ok(out)
 }

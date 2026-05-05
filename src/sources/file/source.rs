@@ -1,10 +1,11 @@
+use crate::compat::LegacyOwe;
 use super::chunk_reader::ChunkedLineReader;
 use crate::sources::event_id::next_event_id;
 use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose;
 use bytes::Bytes;
-use orion_conf::{ErrorWith, UvsFrom};
+use orion_conf::{ErrorWith};
 use orion_error::conversion::ToStructError;
 use std::collections::VecDeque;
 use std::path::Path;
@@ -48,7 +49,7 @@ impl FileSource {
         use std::path::Path;
         let file_path = Path::new(path);
         if !file_path.exists() {
-            return Err(SourceReason::from_conf()
+            return Err(SourceReason::core_conf()
                 .to_err()
                 .with_detail(format!("source file not found: {}", file_path.display()))
                 .with_context(file_path));

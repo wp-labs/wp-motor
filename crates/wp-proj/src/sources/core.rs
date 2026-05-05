@@ -4,8 +4,9 @@
 //! validation, initialization, and routing operations for data sources
 //! in the Warp Flow System.
 
+use crate::compat::{ErrorConv, ErrorOweBase, UvsFrom};
 use orion_conf::{EnvTomlLoad, ErrorWith, TomlIO};
-use orion_error::{ErrorConv, UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -125,7 +126,7 @@ impl Sources {
         let parser = SourceConfigParser::new(work_root.to_path_buf());
 
         // Load configuration from TOML file
-        let sources_config = WarpSources::env_load_toml(wpsrc_path, dict).err_conv()?;
+        let sources_config = WarpSources::env_load_toml(wpsrc_path, dict).conv_err()?;
 
         // Serialize configuration to validate structure
         let config_content = toml::to_string_pretty(&sources_config)

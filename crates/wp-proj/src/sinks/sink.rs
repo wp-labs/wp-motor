@@ -1,4 +1,4 @@
-use orion_error::ErrorConv;
+use crate::compat::ErrorConv;
 use orion_variate::EnvDict;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -51,7 +51,7 @@ impl Sinks {
     // 校验路由（严格）
     pub fn check(&self, dict: &orion_variate::EnvDict) -> RunResult<CheckStatus> {
         sinks_core::validate_routes(self.work_root().to_string_lossy().as_ref(), dict)
-            .err_conv()?;
+            .conv_err()?;
         Ok(CheckStatus::Suc)
         //.map_err(|e| RunReason::from_conf().to_err())
     }
@@ -67,18 +67,18 @@ impl Sinks {
         }
 
         let sink_root = self.sink_root();
-        let defaults = load_sink_defaults(&sink_root, dict).err_conv()?;
+        let defaults = load_sink_defaults(&sink_root, dict).conv_err()?;
         let conn_map =
-            load_connectors_for(sink_root.to_string_lossy().as_ref(), dict).err_conv()?;
+            load_connectors_for(sink_root.to_string_lossy().as_ref(), dict).conv_err()?;
         let mut rows = Vec::new();
 
         for (scope, dir) in [
             ("biz", business_dir(&sink_root)),
             ("infra", infra_dir(&sink_root)),
         ] {
-            let route_files = load_route_files_from(&dir, dict).err_conv()?;
+            let route_files = load_route_files_from(&dir, dict).conv_err()?;
             for rf in route_files {
-                let conf = build_route_conf_from(&rf, defaults.as_ref(), &conn_map).err_conv()?;
+                let conf = build_route_conf_from(&rf, defaults.as_ref(), &conn_map).conv_err()?;
                 let group = conf.sink_group;
                 if !matched(group.name(), group_filters) {
                     continue;

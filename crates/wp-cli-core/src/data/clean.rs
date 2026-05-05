@@ -1,5 +1,5 @@
+use orion_conf::ErrorWith;
 use orion_conf::error::OrionConfResult;
-use orion_error::ErrorWith;
 use orion_variate::EnvDict;
 use std::fs;
 use std::path::Path;

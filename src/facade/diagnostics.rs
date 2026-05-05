@@ -1,6 +1,9 @@
 //! 运行时错误的美化与提示收集，供各 CLI 共享使用。
 
-use orion_error::{ErrorCode, ErrorIdentityProvider, runtime::SourceFrame};
+use orion_error::{
+    reason::{ErrorCode, ErrorIdentityProvider},
+    runtime::source::SourceFrame,
+};
 use wp_error::run_error::{RunError, RunReason};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -287,7 +290,8 @@ fn has_effective_detail(reason: &str, detail: Option<&str>) -> bool {
 fn frame_location(frame: &SourceFrame) -> Option<String> {
     frame
         .path
-        .clone()
+        .as_ref()
+        .map(ToString::to_string)
         .or_else(|| frame.display.as_deref().and_then(extract_location))
         .or_else(|| frame.detail.as_deref().and_then(extract_location))
         .or_else(|| extract_location(&frame.message))
@@ -307,7 +311,7 @@ fn frame_detail_candidate(frame: &SourceFrame, reason: &str) -> Option<String> {
         .detail
         .as_deref()
         .and_then(normalize_message)
-        .filter(|detail| has_effective_detail(reason, Some(detail.as_str())));
+        .filter(|detail: &String| has_effective_detail(reason, Some(detail.as_str())));
     if detail.is_some() {
         return detail;
     }
@@ -337,23 +341,24 @@ fn root_cause_candidate(
 
 fn summarize_run_error(e: &RunError) -> DiagnosticSummary {
     let report = e.report();
-    let reason = report.reason;
-    let mut detail = report.detail.clone().map(|d| sanitize_detail(&d));
+    let reason = report.reason().to_string();
+    let mut detail = report.detail().map(sanitize_detail);
 
     // Location: structured path first, then context metadata, then source frames
-    let mut location = report.path.clone();
+    let mut location = report.position().map(ToString::to_string);
     if location.is_none() {
-        location = report
-            .root_metadata
-            .get_str("file.path")
-            .or_else(|| report.root_metadata.get_str("config.path"))
-            .or_else(|| report.root_metadata.get_str("path"))
-            .map(|s| s.to_string());
+        location = report.context().iter().find_map(|ctx| {
+            ctx.metadata()
+                .get_str("file.path")
+                .or_else(|| ctx.metadata().get_str("config.path"))
+                .or_else(|| ctx.metadata().get_str("path"))
+                .map(ToString::to_string)
+        });
     }
 
     let mut parse_excerpt = detail.as_deref().and_then(extract_toml_parse_excerpt);
 
-    for frame in &report.source_frames {
+    for frame in e.source_frames() {
         if let Some(frame_loc) = frame_location(frame)
             && (location
                 .as_deref()
@@ -395,7 +400,7 @@ fn summarize_run_error(e: &RunError) -> DiagnosticSummary {
             detail,
             location,
         },
-        want: report.want,
+        want: None,
         parse_excerpt,
         root_cause,
     }
@@ -922,11 +927,11 @@ Caused by:
 
     #[test]
     fn test_exit_code_mapping() {
-        use orion_error::UvsReason;
+        use orion_error::UnifiedReason;
         use wp_error::run_error::{DistFocus, SourceFocus};
         assert_eq!(exit_code_for(&RunReason::Dist(DistFocus::StgCtrl)), 1);
         assert_eq!(exit_code_for(&RunReason::Source(SourceFocus::NoData)), 2);
-        let uv = UvsReason::core_conf();
+        let uv = UnifiedReason::core_conf();
         assert_eq!(exit_code_for(&RunReason::Uvs(uv)), 300);
     }
 }

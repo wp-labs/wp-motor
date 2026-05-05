@@ -2,7 +2,7 @@ use socket2::{Domain, Protocol, Socket, Type};
 use std::net::SocketAddr;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpStream, UdpSocket};
-use wp_connector_api::{SinkReason, SinkResult};
+use wp_connector_api::{SinkErrorOwe, SinkReason, SinkResult};
 
 use super::config::*; // reuse constants/policy/adaptive toggles
 
@@ -58,31 +58,31 @@ impl NetWriter {
     pub async fn connect_udp(addr: &str) -> SinkResult<Self> {
         let target: SocketAddr = addr
             .parse()
-            .owe(SinkReason::sink("parse udp target address failed"))?;
+            .owe_sink("parse udp target address failed")?;
         let domain = match target {
             SocketAddr::V4(_) => Domain::IPV4,
             SocketAddr::V6(_) => Domain::IPV6,
         };
         let sock = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))
-            .owe(SinkReason::sink("create udp socket failed"))?;
+            .owe_sink("create udp socket failed")?;
         let _ = sock.set_send_buffer_size(4 * 1024 * 1024);
         let local: SocketAddr = match target {
             SocketAddr::V4(_) => "0.0.0.0:0"
                 .parse()
-                .owe(SinkReason::sink("parse local udp bind address failed"))?,
+                .owe_sink("parse local udp bind address failed")?,
             SocketAddr::V6(_) => "[::]:0"
                 .parse()
-                .owe(SinkReason::sink("parse local udp bind address failed"))?,
+                .owe_sink("parse local udp bind address failed")?,
         };
         sock.bind(&local.into())
-            .owe(SinkReason::sink("bind udp socket failed"))?;
+            .owe_sink("bind udp socket failed")?;
         sock.connect(&target.into())
-            .owe(SinkReason::sink("connect udp socket failed"))?;
+            .owe_sink("connect udp socket failed")?;
         sock.set_nonblocking(true)
-            .owe(SinkReason::sink("set udp socket nonblocking failed"))?;
+            .owe_sink("set udp socket nonblocking failed")?;
         let std_sock = std::net::UdpSocket::from(sock);
         let socket = UdpSocket::from_std(std_sock)
-            .owe(SinkReason::sink("adopt udp socket into tokio failed"))?;
+            .owe_sink("adopt udp socket into tokio failed")?;
         let peer = socket.peer_addr().ok().map(|a| a.to_string());
         let local = socket.local_addr().ok().map(|a| a.to_string());
         Ok(Self {
@@ -114,7 +114,7 @@ impl NetWriter {
     pub async fn connect_tcp(addr: &str) -> SinkResult<Self> {
         let stream = TcpStream::connect(addr)
             .await
-            .owe(SinkReason::sink("connect tcp socket failed"))?;
+            .owe_sink("connect tcp socket failed")?;
         // 默认保留 Nagle，以提升小包高 EPS 的吞吐（降低 PPS 与系统调用次数）。
         // 同时尽力扩大发送缓冲区，减小对端拥塞造成的写错误风险。
         let peer = stream.peer_addr().ok().map(|a| a.to_string());
@@ -184,7 +184,7 @@ impl NetWriter {
         }
         match &mut self.transport {
             Transport::Udp(sock) => {
-                sock.send(bytes).await.owe(SinkReason::sink("udp send failed"))?;
+                sock.send(bytes).await.owe_sink("udp send failed")?;
                 self.sent_cnt = self.sent_cnt.saturating_add(1);
                 Ok(())
             }
@@ -192,7 +192,7 @@ impl NetWriter {
                 if let Err(e) = stream.write_all(bytes).await {
                     // 发送失败时，记录策略与水位的快照，便于定位“发送过快”或对端复位等问题
                     self.log_tcp_send_error(&e, bytes.len());
-                    return Err(SinkReason::sink("tcp send failed").err_source(e));
+                    return Err(SinkReason::sink("tcp send failed").with_source(e));
                 }
                 self.sent_cnt = self.sent_cnt.saturating_add(1);
                 Ok(())
@@ -210,7 +210,7 @@ impl NetWriter {
     /// 尝试优雅关闭 TCP 写端，促使对端尽快读取完所有已提交数据并收到 FIN。
     pub async fn shutdown(&mut self) -> SinkResult<()> {
         if let Transport::Tcp(stream) = &mut self.transport {
-            stream.shutdown().await.owe(SinkReason::sink("tcp shutdown failed"))?;
+            stream.shutdown().await.owe_sink("tcp shutdown failed")?;
         }
         Ok(())
     }

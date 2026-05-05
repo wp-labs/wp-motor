@@ -1,6 +1,6 @@
+use crate::compat::{UvsFrom, WrapStructErrorAs};
 use crate::traits::Component;
 use orion_conf::error::OrionConfResult;
-use orion_error::{UvsFrom, conversion::WrapStructErrorAs};
 use wp_error::run_error::{RunReason, RunResult};
 
 // 重新导出 wp-cli-core 的类型，保持向后兼容

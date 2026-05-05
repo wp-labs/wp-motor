@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 use tokio::time::{Duration, timeout};
 use wp_conf::RunMode;
-use wp_connector_api::{SourceError, SourceReason, SourceResult};
+use wp_connector_api::{SourceReason, SourceResult};
 use wp_core_connectors::registry as reg;
 use wp_engine::sources::SourceConfigParser;
 use wp_model_core::raw::RawData;
@@ -379,11 +379,8 @@ async fn mixed_sources_integration_processes_multiple_data_types() -> SourceResu
         .with_tags(vec!["source:file", "type:access"])
         .build();
 
-    let file_factory = reg::get_source_factory("file").ok_or_else(|| {
-        SourceError::from(SourceReason::SupplierError(
-            "File factory not registered".into(),
-        ))
-    })?;
+    let file_factory = reg::get_source_factory("file")
+        .ok_or_else(|| SourceReason::supplier_error("File factory not registered"))?;
 
     let access_source = file_factory.build(&access_spec, &ctx).await?;
     sources.push(access_source);
@@ -403,11 +400,8 @@ async fn mixed_sources_integration_processes_multiple_data_types() -> SourceResu
             .with_tags(vec!["source:syslog", "protocol:udp"])
             .build();
 
-        let syslog_factory = reg::get_source_factory("syslog").ok_or_else(|| {
-            SourceError::from(SourceReason::SupplierError(
-                "Syslog factory not registered".into(),
-            ))
-        })?;
+        let syslog_factory = reg::get_source_factory("syslog")
+            .ok_or_else(|| SourceReason::supplier_error("Syslog factory not registered"))?;
 
         let syslog_udp_source = syslog_factory.build(&syslog_udp_spec, &ctx).await?;
         sources.push(syslog_udp_source);
@@ -544,11 +538,8 @@ async fn source_configuration_validation_catches_parameter_errors() -> SourceRes
         serde_json::Value::String("invalid_encoding".to_string()),
     );
 
-    let file_factory = reg::get_source_factory("file").ok_or_else(|| {
-        SourceError::from(SourceReason::SupplierError(
-            "File factory not registered".into(),
-        ))
-    })?;
+    let file_factory = reg::get_source_factory("file")
+        .ok_or_else(|| SourceReason::supplier_error("File factory not registered"))?;
 
     let result = file_factory.build(&invalid_file_spec, &ctx).await;
     assert!(
@@ -561,11 +552,8 @@ async fn source_configuration_validation_catches_parameter_errors() -> SourceRes
     let invalid_protocol_spec =
         SyslogSourceBuilder::new("invalid_protocol", "invalid_protocol").build();
 
-    let syslog_factory = reg::get_source_factory("syslog").ok_or_else(|| {
-        SourceError::from(SourceReason::SupplierError(
-            "Syslog factory not registered".into(),
-        ))
-    })?;
+    let syslog_factory = reg::get_source_factory("syslog")
+        .ok_or_else(|| SourceReason::supplier_error("Syslog factory not registered"))?;
 
     let result = syslog_factory.build(&invalid_protocol_spec, &ctx).await;
     assert!(result.is_err(), "Expected failure for invalid protocol");
@@ -604,11 +592,8 @@ async fn source_tags_are_preserved_and_accessible() -> SourceResult<()> {
         .with_tags(vec!["env:test", "type:log", "service:demo", "version:1.0"])
         .build();
 
-    let factory = reg::get_source_factory("file").ok_or_else(|| {
-        SourceError::from(SourceReason::SupplierError(
-            "File factory not registered".into(),
-        ))
-    })?;
+    let factory = reg::get_source_factory("file")
+        .ok_or_else(|| SourceReason::supplier_error("File factory not registered"))?;
 
     let ctx = create_build_context();
     let mut source = factory.build(&spec, &ctx).await?;
@@ -618,11 +603,9 @@ async fn source_tags_are_preserved_and_accessible() -> SourceResult<()> {
         .source
         .receive()
         .await?;
-    let frame = batch.pop().ok_or_else(|| {
-        SourceError::from(SourceReason::SupplierError(
-            "empty batch from source".into(),
-        ))
-    })?;
+    let frame = batch
+        .pop()
+        .ok_or_else(|| SourceReason::supplier_error("empty batch from source"))?;
     let tags = frame.tags;
 
     // Verify custom tags
@@ -655,11 +638,8 @@ async fn file_source_handles_long_lines() -> SourceResult<()> {
     let test_file = create_test_file(&test_dir, "long.log", &[&long_line]).await;
 
     let spec = FileSourceBuilder::new("long_file", &test_file.display().to_string()).build();
-    let factory = reg::get_source_factory("file").ok_or_else(|| {
-        SourceError::from(SourceReason::SupplierError(
-            "File factory not registered".into(),
-        ))
-    })?;
+    let factory = reg::get_source_factory("file")
+        .ok_or_else(|| SourceReason::supplier_error("File factory not registered"))?;
     let ctx = create_build_context();
     let mut source = factory.build(&spec, &ctx).await?;
 
@@ -668,11 +648,9 @@ async fn file_source_handles_long_lines() -> SourceResult<()> {
         .source
         .receive()
         .await?;
-    let frame = batch.pop().ok_or_else(|| {
-        SourceError::from(SourceReason::SupplierError(
-            "empty batch from source".into(),
-        ))
-    })?;
+    let frame = batch
+        .pop()
+        .ok_or_else(|| SourceReason::supplier_error("empty batch from source"))?;
     let msg = match frame.payload {
         RawData::String(s) => s,
         RawData::Bytes(b) => String::from_utf8_lossy(&b).to_string(),

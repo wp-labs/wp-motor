@@ -1,11 +1,10 @@
+use crate::compat::LegacyOwe;
 use crate::runtime::actor::command::{ActorCtrlCmd, CmdPublisher, CmdSubscriber, TaskScope};
 use crate::runtime::actor::signal::ShutdownCmd;
 use async_broadcast::broadcast;
 use derive_getters::Getters;
-use orion_error::ErrorWith;
-use orion_error::{
-    UvsFrom, compat_prelude::ErrorOweBase, runtime::ContextRecord, runtime::WithContext,
-};
+use orion_error::conversion::ErrorWith;
+use orion_error::runtime::WithContext;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, timeout};
@@ -47,7 +46,7 @@ impl TaskGroup {
         self.cmd_pub
             .broadcast(cmd.clone())
             .await
-            .owe(RunReason::from_sys())?;
+            .owe(RunReason::system_error())?;
         Ok(())
     }
     pub async fn cmd_execute_all(&self) -> RunResult<()> {
@@ -56,7 +55,7 @@ impl TaskGroup {
         self.cmd_pub
             .broadcast(cmd)
             .await
-            .owe(RunReason::from_sys())?;
+            .owe(RunReason::system_error())?;
         Ok(())
     }
     pub async fn cmd_stop_now(&self) -> RunResult<()> {
@@ -65,7 +64,7 @@ impl TaskGroup {
         self.cmd_pub
             .broadcast(ActorCtrlCmd::Stop(cmd))
             .await
-            .owe(RunReason::from_sys())?;
+            .owe(RunReason::system_error())?;
         Ok(())
     }
     pub async fn cmd_stop(&self, stop: ShutdownCmd) -> RunResult<()> {
@@ -78,7 +77,7 @@ impl TaskGroup {
         self.cmd_pub
             .broadcast(ActorCtrlCmd::Stop(stop))
             .await
-            .owe(RunReason::from_sys())?;
+            .owe(RunReason::system_error())?;
         Ok(())
     }
     pub async fn broadcast_cmd(&mut self, cmd: ActorCtrlCmd) {
@@ -95,13 +94,13 @@ impl TaskGroup {
         self.cmd_pub
             .broadcast(cmd)
             .await
-            .owe(RunReason::from_sys())
+            .owe(RunReason::system_error())
             .with_context(&ctx)?;
         let mut index = 0;
         while let Some(h) = self.handles.pop() {
             if !h.is_finished() {
                 info_ctrl!("{} group routines [{}] wait... ", self.name, index);
-                h.await.owe(RunReason::from_sys()).with_context(&ctx)?;
+                h.await.owe(RunReason::system_error()).with_context(&ctx)?;
             }
             debug_ctrl!("{} group routines[{}] finished end", self.name, index);
             index += 1;
@@ -117,7 +116,7 @@ impl TaskGroup {
         while let Some(h) = self.handles.pop() {
             if !h.is_finished() {
                 info_ctrl!("{} group routines [{}] wait finished... ", self.name, index);
-                h.await.owe(RunReason::from_sys()).with_context(&ctx)?;
+                h.await.owe(RunReason::system_error()).with_context(&ctx)?;
             }
             debug_ctrl!("{} group routines[{}] finished end", self.name, index);
             index += 1;
@@ -142,7 +141,7 @@ impl TaskGroup {
         self.cmd_pub
             .broadcast(cmd)
             .await
-            .owe(RunReason::from_sys())
+            .owe(RunReason::system_error())
             .with_context(&ctx)?;
 
         let mut index = 0;
@@ -151,7 +150,9 @@ impl TaskGroup {
                 info_ctrl!("{} group routines [{}] wait... ", self.name, index);
                 match timeout(wait_timeout, &mut h).await {
                     Ok(join_result) => {
-                        join_result.owe(RunReason::from_sys()).with_context(&ctx)?;
+                        join_result
+                            .owe(RunReason::system_error())
+                            .with_context(&ctx)?;
                     }
                     Err(_) => {
                         warn_ctrl!(
@@ -205,7 +206,7 @@ impl TaskGroup {
         self.cmd_pub
             .broadcast(out_cmd)
             .await
-            .owe(RunReason::from_sys())?;
+            .owe(RunReason::system_error())?;
         Ok(())
     }
 }

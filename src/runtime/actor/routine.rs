@@ -7,7 +7,6 @@ use super::signal::stop_signals;
 use crate::runtime::actor::command::ActorCtrlCmd;
 use crate::runtime::actor::signal::ShutdownCmd;
 use futures_lite::prelude::*;
-use orion_error::UvsFrom;
 use orion_error::conversion::ToStructError;
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
@@ -127,7 +126,7 @@ impl TaskManager {
                 break;
             }
             if started_at.elapsed() >= wait_timeout {
-                return Err(RunReason::from_logic().to_err());
+                return Err(RunReason::validation_error().to_err());
             }
             sleep(Duration::from_millis(100)).await;
         }
@@ -160,7 +159,7 @@ impl TaskManager {
         initial_signal_received: bool,
     ) -> RunResult<()> {
         if self.role_groups.is_empty() {
-            return Err(RunReason::from_logic().to_err());
+            return Err(RunReason::validation_error().to_err());
         }
 
         let mut policy = build_exit_policy(policy_kind);
@@ -224,7 +223,7 @@ impl TaskManager {
         signal_received: bool,
     ) -> RunResult<ExitAction> {
         if self.role_groups.is_empty() {
-            return Err(RunReason::from_logic().to_err());
+            return Err(RunReason::validation_error().to_err());
         }
         let mut policy = build_exit_policy(policy_kind);
         let snapshot =
@@ -234,7 +233,7 @@ impl TaskManager {
 
     pub async fn all_down_force_policy(&mut self, policy_kind: ExitPolicyKind) -> RunResult<()> {
         if self.role_groups.is_empty() {
-            return Err(RunReason::from_logic().to_err());
+            return Err(RunReason::validation_error().to_err());
         }
         let policy = build_exit_policy(policy_kind);
         info_ctrl!("exit-policy {:?}: force stopping", policy_kind);

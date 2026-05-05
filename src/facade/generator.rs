@@ -1,10 +1,11 @@
 //! Facade: 生成器（规则/样本）对外入口（稳定 re-export）。
 
+use crate::compat::LegacyOwe;
 pub use crate::core::generator::rules::{GenRuleUnit, fetch_oml_data, load_gen_confs};
 pub use crate::runtime::generator::types::{GenGRA, RuleGRA, SampleGRA};
 
 use crate::sinks::SinkBackendType;
-use orion_error::ErrorWith;
+use orion_error::conversion::ErrorWith;
 use wp_error::run_error::{RunReason, RunResult};
 
 /// Backward‑compatible helper: run rule generator with preloaded rule units and a ready sink.
@@ -19,13 +20,11 @@ pub async fn rule_gen_run(
 ) -> RunResult<()> {
     // 全局 backoff gate 已移除；由发送单元在构建期与实时水位自决。
     use crate::runtime::generator::rule_source::RuleGenSource;
-    use orion_error::UvsFrom;
-    use orion_error::compat_prelude::ErrorOweBase;
     use wp_error::run_error::RunErrorOwe;
 
     // Compile rules once; map compile error into RunError (UVS/conf)
     let src = RuleGenSource::from_units(rules)
-        .owe(RunReason::from_conf())
+        .owe(RunReason::core_conf())
         .with_context("rule_gen_run")
         .doing("build rule generator source")?;
 
@@ -49,7 +48,7 @@ pub async fn rule_gen_run(
         let step = batch.min(remain).max(1);
         let rows = src
             .gen_batch(cur, step)
-            .owe(RunReason::from_conf())
+            .owe(RunReason::core_conf())
             .with_context(format!("offset={},count={}", cur, step))
             .doing("generate rule batch")?;
         cur = (cur + step) % src.rule_len().max(1);
@@ -78,8 +77,6 @@ pub async fn sample_gen_run(
     files: Vec<std::path::PathBuf>,
 ) -> RunResult<()> {
     // 全局 backoff gate 已移除；由发送单元在构建期与实时水位自决。
-    use orion_error::UvsFrom;
-    use orion_error::compat_prelude::ErrorOweBase;
     use std::io::BufRead;
     use wp_connector_api::AsyncRawDataSink;
     use wp_error::run_error::RunErrorOwe;
@@ -88,7 +85,7 @@ pub async fn sample_gen_run(
     let mut samples: Vec<String> = Vec::new();
     for f in files {
         let file = std::fs::File::open(&f)
-            .owe(RunReason::from_conf())
+            .owe(RunReason::core_conf())
             .with_context(&f)
             .doing("open sample file")?;
         let reader = std::io::BufReader::new(file);

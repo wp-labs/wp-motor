@@ -23,7 +23,7 @@
 //! 对于实现了 `ErrorConv` trait 的类型（如 orion-error 家族的错误）：
 //!
 //! ```rust,ignore
-//! use orion_error::ErrorConv;
+//! use crate::compat::ErrorConv;
 //!
 //! let config = WarpSources::env_load_toml(path, dict).err_conv()?;
 //! ```
@@ -86,8 +86,9 @@
 //! # let _ = demo();
 //! ```
 
+use crate::compat::{ErrorOweSource, UvsFrom};
 use orion_conf::ErrorWith;
-use orion_error::{UvsFrom, compat_prelude::ErrorOweSource, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use std::path::Path;
 use wp_error::run_error::{RunReason, RunResult};
 

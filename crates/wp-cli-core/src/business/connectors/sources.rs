@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 
 use orion_conf::EnvTomlLoad;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::UvsFrom;
 use orion_error::conversion::ToStructError;
 use orion_variate::{EnvDict, EnvEvalable};
 use wp_conf::connectors::{
@@ -65,7 +64,7 @@ pub fn list_connectors(
 ) -> OrionConfResult<Vec<ConnectorListRow>> {
     let wpsrc_path = resolve_wpsrc_path(work_root, eng_conf)?;
     let conn_base = find_connectors_dir(&wpsrc_path).ok_or_else(|| {
-        ConfIOReason::from_validation()
+        ConfIOReason::validation_error()
             .to_err()
             .with_detail(format!(
                 "connectors/source.d not found (start from: {})",
@@ -104,7 +103,7 @@ pub fn route_table(
 ) -> OrionConfResult<Vec<RouteRow>> {
     let wpsrc_path = resolve_wpsrc_path(work_root, eng_conf)?;
     let conn_base = find_connectors_dir(&wpsrc_path).ok_or_else(|| {
-        ConfIOReason::from_validation()
+        ConfIOReason::validation_error()
             .to_err()
             .with_detail(format!(
                 "connectors/source.d not found (start from: {})",
@@ -116,7 +115,7 @@ pub fn route_table(
     let mut rows: Vec<RouteRow> = Vec::new();
     for src in wrapper.sources.into_iter() {
         let conn = conn_map.get(&src.connect).ok_or_else(|| {
-            ConfIOReason::from_validation()
+            ConfIOReason::validation_error()
                 .to_err()
                 .with_detail(format!("connector not found: {}", src.connect))
         })?;

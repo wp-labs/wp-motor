@@ -23,7 +23,7 @@ wp-data-fmt= { workspace=true }
 wp-error = { workspace = true }
 wp-log = { workspace = true }
 wp-specs = { workspace = true }
-wpl = { package = "wp-lang", version = "0.2" }
+wp-lang = { workspace = true }
 #wpl = { package = "wp-lang" , workspace = true  }
 derive-getters = { workspace = true }
 md5 = { workspace = true }

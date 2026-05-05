@@ -8,10 +8,9 @@ use crate::sinks::{ASinkSender, SinkDatYReceiver, SinkDatYSender, SinkPackage, S
 use crate::stat::MonSend;
 use crate::stat::metric_collect::MetricCollectors;
 use derive_getters::Getters;
-use orion_error::compat_prelude::ErrorOweBase;
 use orion_overload::append::Appendable;
 use wp_conf::structure::SinkGroupConf;
-use wp_connector_api::{SinkReason, SinkResult};
+use wp_connector_api::{SinkErrorOwe, SinkResult};
 use wp_knowledge::cache::FieldQueryCache;
 use wp_stat::StatReq;
 
@@ -112,7 +111,7 @@ impl SinkDispatcher {
         self.ingress_stat
             .send_stat(mon_send)
             .await
-            .owe(SinkReason::sink("send ingress stat failed"))
+            .owe_sink("send ingress stat failed")
     }
 
     pub fn get_dat_r_mut(&mut self) -> &mut SinkDatYReceiver {

@@ -1,7 +1,8 @@
 use super::warp::{WarpProject, normalize_work_root};
+use crate::compat::{ErrorOweBase, UvsFrom};
 use crate::utils::error_handler::ErrorHandler;
 use orion_conf::{EnvTomlLoad, TomlIO};
-use orion_error::{UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;

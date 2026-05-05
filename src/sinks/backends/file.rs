@@ -4,12 +4,11 @@ use crate::sinks::utils::buffer_monitor::BufferMonitor;
 use crate::sinks::utils::formatter::FormatAdapter;
 use crate::sinks::{SinkEndpoint, SinkRecUnit};
 use crate::types::{Build1, SafeH};
-use orion_error::compat_prelude::ErrorOweBase;
 use std::fs;
 use std::fs::File;
 use std::io::{Cursor, ErrorKind, Write};
 use std::sync::Arc;
-use wp_connector_api::{SinkReason, SinkResult};
+use wp_connector_api::{SinkErrorOwe, SinkResult};
 use wp_data_fmt::{FormatType, RecordFormatter};
 use wp_model_core::model::fmt_def::TextFmt;
 
@@ -32,10 +31,8 @@ pub struct FileSink {
 
 impl FileSink {
     pub fn new(out_path: &str) -> SinkResult<Self> {
-        let out_io = File::create(out_path).owe(SinkReason::sink(format!(
-            "create output file '{}'",
-            out_path
-        )))?;
+        let out_io =
+            File::create(out_path).owe_sink(format!("create output file '{}'", out_path))?;
         Ok(Self {
             path: out_path.to_string(),
             out_io: SafeH::build(out_io),
@@ -81,7 +78,7 @@ impl SyncCtrl for FileSink {
         if let Ok(mut out_io) = self.out_io.write() {
             out_io
                 .write_all(&self.buffer.clone().into_inner())
-                .owe(SinkReason::Sink("file stop fail".into()))?;
+                .owe_sink("file stop fail")?;
         }
         if let Err(e) = self.unlock_lockfile() {
             error_data!("unlock rescue file on stop failed: {}", e);
@@ -97,7 +94,7 @@ impl RecSyncSink for FileSink {
                 .fmt_record(data.data());
             out_io
                 .write_all(format!("{}\n", formatted).as_bytes())
-                .owe(SinkReason::sink("file out fail"))?;
+                .owe_sink("file out fail")?;
         }
         Ok(())
     }

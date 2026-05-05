@@ -1,6 +1,7 @@
+use crate::compat::LegacyOwe;
 use clap::{Args, Parser, Subcommand};
 use orion_conf::ErrorWith;
-use orion_error::{UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use std::env;
 use std::path::PathBuf;
 use wpl::check_level_or_stop;
@@ -141,7 +142,7 @@ pub fn resolve_run_work_root(raw: &Option<String>) -> RunResult<String> {
         Some(raw) => {
             let path = PathBuf::from(raw);
             if !path.is_absolute() {
-                return Err(RunReason::from_conf()
+                return Err(RunReason::core_conf()
                     .to_err()
                     .with_detail(format!("work_root must be an absolute path, got '{}'", raw)));
             }
@@ -149,7 +150,7 @@ pub fn resolve_run_work_root(raw: &Option<String>) -> RunResult<String> {
         }
         None => {
             let cwd = env::current_dir()
-                .owe(RunReason::from_conf())
+                .owe(RunReason::core_conf())
                 .with_context("cwd")
                 .doing("resolve current work root")?;
             Ok(cwd.to_string_lossy().to_string())

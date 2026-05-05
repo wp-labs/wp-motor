@@ -2,7 +2,6 @@ use orion_conf::{
     ToStructError,
     error::{ConfIOReason, OrionConfResult},
 };
-use orion_error::UvsFrom;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone, derive_getters::Getters, Default)]
@@ -28,35 +27,35 @@ impl SinkExpectOverride {
         if let Some(r) = self.ratio
             && !in_min_max(r)
         {
-            return Err(ConfIOReason::from_validation()
+            return Err(ConfIOReason::validation_error()
                 .to_err()
                 .with_detail(format!("ratio must be in [0,1], got {}", r)));
         }
         if let Some(t) = self.tol
             && !(t >= 0.0 && t.is_finite())
         {
-            return Err(ConfIOReason::from_validation()
+            return Err(ConfIOReason::validation_error()
                 .to_err()
                 .with_detail(format!("tol must be >= 0, got {}", t)));
         }
         if let Some(mn) = self.min
             && !in_min_max(mn)
         {
-            return Err(ConfIOReason::from_validation()
+            return Err(ConfIOReason::validation_error()
                 .to_err()
                 .with_detail(format!("min must be in [0,1000], got {}", mn)));
         }
         if let Some(mx) = self.max
             && !in_min_max(mx)
         {
-            return Err(ConfIOReason::from_validation()
+            return Err(ConfIOReason::validation_error()
                 .to_err()
                 .with_detail(format!("max must be in [0,1000], got {}", mx)));
         }
         if let (Some(mn), Some(mx)) = (self.min, self.max)
             && mn > mx
         {
-            return Err(ConfIOReason::from_validation()
+            return Err(ConfIOReason::validation_error()
                 .to_err()
                 .with_detail(format!("min must be <= max ({} > {})", mn, mx)));
         }
@@ -64,7 +63,7 @@ impl SinkExpectOverride {
         let has_rt = self.ratio.is_some() || self.tol.is_some();
         let has_mm = self.min.is_some() || self.max.is_some();
         if has_rt && has_mm {
-            return Err(ConfIOReason::from_validation().to_err().with_detail(
+            return Err(ConfIOReason::validation_error().to_err().with_detail(
                 "expect: ratio/tol cannot be combined with min/max; choose one style",
             ));
         }

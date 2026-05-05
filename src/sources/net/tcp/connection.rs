@@ -5,7 +5,6 @@
 
 use crate::sources::event_id::next_event_id;
 use bytes::{Buf, BytesMut};
-use orion_error::conversion::ToStructError;
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::net::IpAddr;
@@ -164,7 +163,7 @@ impl ConnectionManager {
                     match r {
                         Ok(0) => {
                             info_data!("TCP '{}' client {} disconnected", key, client_ip);
-                            return Err(SourceReason::Disconnect(format!("client {} closed", client_ip)).into());
+                            return Err(SourceReason::disconnect(format!("client {} closed", client_ip)));
                         }
                         Ok(_n) => {
                             // Read additional data in bursts
@@ -176,11 +175,10 @@ impl ConnectionManager {
                                     }
                                     Err(ref e) if e.kind() == ErrorKind::WouldBlock => break,
                                     Err(e) => {
-                                        return Err(SourceReason::SupplierError(format!(
+                                        return Err(SourceReason::supplier_error(format!(
                                             "read {} failed",
                                             client_ip
                                         ))
-                                        .to_err()
                                         .with_source(e));
                                     }
                                 }
@@ -201,11 +199,10 @@ impl ConnectionManager {
                             }
                         }
                         Err(e) => {
-                            return Err(SourceReason::SupplierError(format!(
+                            return Err(SourceReason::supplier_error(format!(
                                 "read {} failed",
                                 client_ip
                             ))
-                            .to_err()
                             .with_source(e));
                         }
                     }
@@ -290,7 +287,7 @@ impl ConnectionManager {
                     match r {
                         Ok(0) => {
                             info_data!("TCP direct '{}' client {} disconnected", key, client_ip);
-                            return Err(SourceReason::Disconnect(format!("client {} closed", client_ip)).into());
+                            return Err(SourceReason::disconnect(format!("client {} closed", client_ip)));
                         }
                         Ok(_n) => {
                             // Read additional data in bursts
@@ -302,11 +299,10 @@ impl ConnectionManager {
                                     }
                                     Err(ref e) if e.kind() == ErrorKind::WouldBlock => break,
                                     Err(e) => {
-                                        return Err(SourceReason::SupplierError(format!(
+                                        return Err(SourceReason::supplier_error(format!(
                                             "read {} failed",
                                             client_ip
                                         ))
-                                        .to_err()
                                         .with_source(e));
                                     }
                                 }
@@ -326,11 +322,10 @@ impl ConnectionManager {
                             }
                         }
                         Err(e) => {
-                            return Err(SourceReason::SupplierError(format!(
+                            return Err(SourceReason::supplier_error(format!(
                                 "read {} failed",
                                 client_ip
                             ))
-                            .to_err()
                             .with_source(e));
                         }
                     }

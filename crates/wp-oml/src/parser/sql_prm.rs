@@ -712,7 +712,7 @@ mod tests {
 
     use crate::core::AsyncDataTransformer;
     use crate::parser::oml_parse_raw;
-    use orion_error::testcase::TestAssert;
+    use orion_error::dev::testing::TestAssert;
     use wp_know::mem::memdb::MemDB;
     use wp_knowledge::facade as kdb;
     #[tokio::test(flavor = "current_thread")]

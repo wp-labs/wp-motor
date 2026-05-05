@@ -29,7 +29,7 @@ mod tests {
     use crate::core::AsyncDataTransformer;
     use crate::parser::collect_prm::oml_aga_collect;
     use crate::parser::oml_parse_raw;
-    use orion_error::testcase::TestAssert;
+    use orion_error::dev::testing::TestAssert;
     use wp_knowledge::cache::FieldQueryCache;
     use wp_model_core::model::{DataField, DataRecord, FieldStorage};
     use wp_primitives::WResult as ModalResult;

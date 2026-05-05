@@ -4,7 +4,6 @@ use crate::resources::sinks::sink_resources::SinkResUnit;
 use crate::resources::utils::multi_code_ins_parse_units;
 use crate::resources::{RuleKey, SinkID};
 use crate::sinks::{SinkGroupAgent, SinkRouteAgent};
-use orion_error::UvsFrom;
 use wp_error::RunReason;
 use wp_error::run_error::RunResult;
 use wp_log::info_ctrl;
@@ -16,7 +15,10 @@ impl ParserResAlloc for ResManager {
     fn alloc_parse_res(&self, rule_key: &RuleKey) -> RunResult<Vec<SinkGroupAgent>> {
         info_ctrl!("alloc parse res : wpl rule {}  ", rule_key);
         let mut res = Vec::new();
-        let route_agent = self.route_agent.clone().ok_or(RunReason::from_logic())?;
+        let route_agent = self
+            .route_agent
+            .clone()
+            .ok_or(RunReason::validation_error())?;
 
         if let Some((idx, _)) = self.rule_sink_db.rule_sink_idx().get(rule_key) {
             for item in &route_agent.items {
@@ -35,7 +37,7 @@ impl ParserResAlloc for ResManager {
             res.push(
                 self.infra_agent
                     .clone()
-                    .ok_or(RunReason::from_logic())?
+                    .ok_or(RunReason::validation_error())?
                     .default()
                     .clone(),
             );
@@ -74,7 +76,10 @@ impl ResManager {
         stat_reqs: Vec<StatReq>,
     ) -> RunResult<()> {
         self.route_agent = Some(agent);
-        let wpl_space = self.wpl_space.clone().ok_or(RunReason::from_logic())?;
+        let wpl_space = self
+            .wpl_space
+            .clone()
+            .ok_or(RunReason::validation_error())?;
         let mut idx_keeper = ResourceIndexer::default();
         for wpl_pkg in wpl_space.packages.iter() {
             let mut parsers =

@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::compat::UvsFrom;
 use crate::connectors::{
     lint::lint_rows_from_root,
     templates::init_definitions,
@@ -7,7 +8,7 @@ use crate::connectors::{
 };
 use crate::traits::Component;
 use crate::types::CheckStatus;
-use orion_error::{UvsFrom, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
 
 use super::paths::ConnectorsPaths;

@@ -1,5 +1,6 @@
+use crate::compat::{ErrorOweBase, UvsFrom};
 use orion_conf::ErrorWith;
-use orion_error::{UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};

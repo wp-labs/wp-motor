@@ -9,7 +9,7 @@ use crate::resources::{ModelName, SinkID};
 use crate::resources::{SinkModelIndex, SinkRuleRegistry};
 use crate::runtime::sink::infrastructure::InfraSinkService;
 use crate::sinks::{InfraSinkAgent, SinkRouteAgent};
-use orion_error::{UvsFrom, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use wp_conf::engine::EngineConfig;
 use wp_error::RunReason;
 use wp_error::run_error::RunResult;
@@ -62,7 +62,7 @@ impl ResManager {
     pub(crate) fn must_get_sink_table(&self) -> RunResult<&SinkRouteTable> {
         self.sink_table
             .as_ref()
-            .ok_or(RunReason::from_logic().to_err())
+            .ok_or(RunReason::validation_error().to_err())
     }
     pub fn get_parse_units(&self) -> &Vec<WplPipeline> {
         &self.parse_units

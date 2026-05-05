@@ -425,7 +425,7 @@ mod tests {
     use crate::core::DataRecordRef;
     use crate::language::CondAccessor;
     use once_cell::sync::OnceCell;
-    use orion_error::testcase::TestAssert;
+    use orion_error::dev::testing::TestAssert;
     use wp_know::mem::memdb::MemDB;
     use wp_knowledge::facade as kdb;
     use wp_model_core::model::{DataField, DataRecord, Value};

@@ -1,3 +1,4 @@
+use crate::compat::LegacyOwe;
 use crate::core::sinks::sync_sink::RecSyncSink;
 use crate::orchestrator::engine::definition::WplCodePKG;
 use crate::{
@@ -7,9 +8,9 @@ use crate::{
 use std::sync::Arc;
 use wp_model_core::model::DataRecord;
 
+use crate::compat::ErrStrategy;
 use derive_getters::Getters;
-use orion_error::UvsReason;
-use orion_error::types::ErrStrategy;
+use orion_error::UnifiedReason;
 use std::collections::HashSet;
 use wpl::WplPackage;
 use wpl::parser::error::WplCodeReason;
@@ -52,7 +53,7 @@ impl WplRepository {
         for wpl_code in value.code_vec() {
             let mut code = wpl_code.get_code().as_str();
             let path = wpl_code.path().to_str().unwrap_or("unknown").to_string();
-            let rule = WplPackage::parse(&mut code, path.as_str()); //.owe(WplCodeReason::Uvs(UvsReason::rule_error()))?;
+            let rule = WplPackage::parse(&mut code, path.as_str()); //.owe(WplCodeReason::Uvs(UnifiedReason::rule_error()))?;
             match rule {
                 Ok(rule_ok) => {
                     info_ctrl!("success load & parse code : {:?}", wpl_code.path());
@@ -75,7 +76,7 @@ impl WplRepository {
                                     ProcMeta::Null,
                                     Arc::new(record),
                                 ))
-                                .owe(WplCodeReason::Uvs(UvsReason::rule_error()))?;
+                                .owe(WplCodeReason::Uvs(UnifiedReason::rule_error()))?;
                             }
                         }
                         ErrStrategy::Throw => {

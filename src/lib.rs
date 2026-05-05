@@ -13,6 +13,7 @@ mod debug;
 #[macro_use]
 pub mod utils;
 // Legacy alias modules can be added here if needed.
+pub mod compat;
 pub mod core;
 pub(crate) mod orchestrator;
 //pub mod dm_run;

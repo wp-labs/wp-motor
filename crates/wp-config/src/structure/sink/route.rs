@@ -4,7 +4,6 @@ use orion_conf::{
     ToStructError,
     error::{ConfIOReason, OrionConfResult},
 };
-use orion_error::{UvsFrom, conversion::WrapStructErrorAs};
 use serde::{Deserialize, Serialize};
 use wp_model_core::model::fmt_def::TextFmt;
 
@@ -43,13 +42,16 @@ impl Default for SinkRouteConf {
 impl crate::structure::Validate for SinkRouteConf {
     fn validate(&self) -> OrionConfResult<()> {
         if self.version.trim().is_empty() {
-            return Err(ConfIOReason::from_validation()
+            return Err(ConfIOReason::validation_error()
                 .to_err()
                 .with_detail("sink route version must not be empty"));
         }
         for s in &self.sink_group.sinks {
             if let Err(e) = s.validate() {
-                return Err(e.wrap_as(ConfIOReason::from_validation(), "sink validate fail"));
+                return Err(ConfIOReason::validation_error()
+                    .to_err()
+                    .with_detail("sink validate fail")
+                    .with_source(e));
             }
         }
         Ok(())

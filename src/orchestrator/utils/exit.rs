@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use orion_error::ErrorCode;
+use orion_error::reason::ErrorCode;
 use wp_error::run_error::RunReason;
 
 /// Map RunReason to process exit code.
@@ -17,7 +17,7 @@ pub fn code_for_run_reason(reason: &RunReason) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orion_error::UvsReason;
+    use orion_error::UnifiedReason;
     use wp_error::run_error::{DistFocus, SourceFocus};
 
     #[test]
@@ -27,7 +27,7 @@ mod tests {
             code_for_run_reason(&RunReason::Source(SourceFocus::NoData)),
             2
         );
-        let uv = UvsReason::core_conf();
+        let uv = UnifiedReason::core_conf();
         assert_eq!(code_for_run_reason(&RunReason::Uvs(uv)), 300);
     }
 }

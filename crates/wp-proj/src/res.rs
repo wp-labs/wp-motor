@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use orion_error::{UvsFrom, compat_prelude::ErrorOweBase};
+use crate::compat::{ErrorOweBase, UvsFrom};
 use wp_engine::facade::kit::WplCodePKG;
 use wp_engine::sinks::ViewOuter;
 use wp_engine::sinks::{SinkEndpoint, SinkRegistry};

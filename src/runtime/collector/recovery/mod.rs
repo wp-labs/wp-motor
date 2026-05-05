@@ -1,3 +1,4 @@
+use crate::compat::LegacyOwe;
 use crate::facade::test_helpers::SinkTerminal;
 use crate::runtime::actor::command::{CmdSubscriber, TaskController, TaskEndReason};
 use crate::sinks::{ProcMeta, RescueEntry, RescuePayload, SinkRouteAgent};
@@ -12,8 +13,6 @@ use wp_stat::StatReq;
 
 use wp_stat::StatRecorder;
 
-use orion_error::UvsFrom;
-use orion_error::compat_prelude::ErrorOweBase;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -65,11 +64,13 @@ impl ActCovPicker {
         info_dfx!("recover begin");
         let rescues = RescueFiles::new(self.rescue_path.as_str());
         // 加载上次读取文件位置
-        let mut check_point = CheckPoint::load_point().owe(RunReason::from_data())?;
+        let mut check_point = CheckPoint::load_point().owe(RunReason::data_error())?;
         let mut idle_since: Option<Instant> = None;
         loop {
             //当前还在写入的救急文件(文件后缀有.lock), 不能马上 recover.
-            let paths = rescues.tack_lasts_file("dat").owe(RunReason::from_data())?;
+            let paths = rescues
+                .tack_lasts_file("dat")
+                .owe(RunReason::data_error())?;
             if let Some(paths) = paths {
                 idle_since = None; // 重置空闲计时
                 self.recov_file(paths, &mut check_point, &mut route_agent, stat_reqs.clone())
@@ -175,7 +176,7 @@ impl ActCovPicker {
 
         let stat_interval = Duration::from_millis(STAT_INTERVAL_MS as u64);
         let mut last_stat_tick = Instant::now();
-        let file = File::open(file_path).await.owe(RunReason::from_data())?;
+        let file = File::open(file_path).await.owe(RunReason::data_error())?;
         let mut reader = BufReader::new(file);
         #[allow(unused_assignments)]
         let mut end_reason = TaskEndReason::Interrupt;
@@ -192,10 +193,10 @@ impl ActCovPicker {
                 let size = reader
                     .read_line(&mut buffer)
                     .await
-                    .owe(RunReason::from_data())?;
+                    .owe(RunReason::data_error())?;
                 if size.eq(&0) {
                     stat.record_task(stat_target.as_str(), None);
-                    fs::remove_file(file_path).owe(RunReason::from_sys())?;
+                    fs::remove_file(file_path).owe(RunReason::system_error())?;
                     check_point.remove_point(file_path);
                     info_dfx!("recover end! clean file : {}", file_path);
                     println!("recover file finished! : {}", file_path);
@@ -207,7 +208,7 @@ impl ActCovPicker {
                     continue;
                 }
 
-                let entry = RescueEntry::parse(trimmed).owe(RunReason::from_data())?;
+                let entry = RescueEntry::parse(trimmed).owe(RunReason::data_error())?;
                 Self::send_payload_with_failover(
                     &sink_agents,
                     &mut active_sink_idx,
@@ -222,8 +223,8 @@ impl ActCovPicker {
             if last_stat_tick.elapsed() >= stat_interval {
                 stat.send_stat(&self.mon_s)
                     .await
-                    .owe(RunReason::from_res())?;
-                check_point.save_point().owe(RunReason::from_sys())?;
+                    .owe(RunReason::resource_error())?;
+                check_point.save_point().owe(RunReason::system_error())?;
                 last_stat_tick = Instant::now();
             }
             let wait_during = run_ctrl.unit_speed_limit_left();
@@ -242,10 +243,10 @@ impl ActCovPicker {
         }
 
         end_reason = TaskEndReason::Interrupt;
-        check_point.save_point().owe(RunReason::from_sys())?;
+        check_point.save_point().owe(RunReason::system_error())?;
         stat.send_stat(&self.mon_s)
             .await
-            .owe(RunReason::from_res())?;
+            .owe(RunReason::resource_error())?;
         Ok(end_reason)
     }
 
@@ -278,7 +279,7 @@ impl ActCovPicker {
         F: FnMut(&SinkTerminal) -> SinkResult<()>,
     {
         if sink_agents.is_empty() {
-            return Err(SinkReason::sink("no sink candidates for recovery").err());
+            return Err(SinkReason::sink("no sink candidates for recovery"));
         }
 
         let total = sink_agents.len();
@@ -356,7 +357,7 @@ impl RescueFiles {
         let mut files = Vec::new();
         let paths = WalkDir::new(&self.path);
         for entry in paths {
-            let entry = entry.owe(RunReason::from_data())?;
+            let entry = entry.owe(RunReason::data_error())?;
             let path = entry.path();
 
             // 收集 rescue 根目录下的所有子孙文件（不再限制必须为直接子文件）
@@ -379,18 +380,18 @@ pub struct CheckPoint(HashMap<String, usize>);
 
 impl CheckPoint {
     pub fn save_point(&mut self) -> RunResult<()> {
-        let point = serde_json::to_string(self).owe(RunReason::from_data())?;
+        let point = serde_json::to_string(self).owe(RunReason::data_error())?;
         let path = Path::new(POINT_PATH);
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).owe(RunReason::from_sys())?;
+            fs::create_dir_all(parent).owe(RunReason::system_error())?;
         }
-        fs::write(POINT_PATH, point).owe(RunReason::from_sys())?;
+        fs::write(POINT_PATH, point).owe(RunReason::system_error())?;
         Ok(())
     }
 
     pub fn load_point() -> RunResult<CheckPoint> {
         let point = match fs::read_to_string(POINT_PATH) {
-            Ok(val) => serde_json::from_str(&val).owe(RunReason::from_data())?,
+            Ok(val) => serde_json::from_str(&val).owe(RunReason::data_error())?,
             Err(_) => CheckPoint::default(),
         };
         Ok(point)
@@ -414,7 +415,7 @@ mod tests {
     use crate::runtime::collector::recovery::{
         ActCovPicker, CheckPoint, RescueFiles, relative_rescue_display_path,
     };
-    use orion_error::testcase::TestAssert;
+    use orion_error::dev::testing::TestAssert;
     use wp_error::run_error::RunResult;
 
     use std::fs;

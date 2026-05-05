@@ -1,4 +1,5 @@
-use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
+use orion_error::UnifiedReason as UvsReason;
+use wp_engine::compat::LegacyOwe;
 use wp_model_core::model::fmt_def::TextFmt;
 
 use wp_conf::RunArgs;

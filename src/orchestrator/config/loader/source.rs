@@ -1,9 +1,9 @@
 use super::WarpConf;
+use crate::compat::LegacyOwe;
 use crate::orchestrator::config::WPSRC_TOML;
 use crate::orchestrator::config::sources_types::{DataEncoding, FileSourceConf, SourceConfig};
 use orion_conf::ErrorWith;
-use orion_error::UvsFrom;
-use orion_error::compat_prelude::ErrorOweBase;
+use orion_error::conversion::SourceRawErr;
 use orion_variate::{EnvDict, EnvEvaluable};
 use std::path::PathBuf;
 use wp_conf::engine::EngineConfig;
@@ -15,14 +15,14 @@ impl WarpConf {
         use crate::sources::config::SourceConfigParser;
 
         let wp_conf = EngineConfig::load_or_init(self.work_root(), dict)
-            .owe(RunReason::from_conf())
+            .owe(RunReason::core_conf())
             .with_context(self.work_root())
             .doing("load engine config")?
             .env_eval(dict)
             .conf_absolutize(self.work_root());
         let path = PathBuf::from(wp_conf.src_conf_of(WPSRC_TOML));
         let content = std::fs::read_to_string(&path)
-            .owe(RunReason::from_conf())
+            .owe(RunReason::core_conf())
             .with_context(&path)
             .doing("read source config file")?;
 
@@ -30,7 +30,7 @@ impl WarpConf {
         let parser = SourceConfigParser::new(self.work_root().to_path_buf());
         let specs = parser
             .parse_and_validate_only(&content, dict)
-            .owe(RunReason::from_conf())
+            .owe(RunReason::core_conf())
             .with_context(&path)
             .doing("parse source config")?;
         let mut out = Vec::new();

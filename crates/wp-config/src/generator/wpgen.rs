@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::structure::{ConfStdOperation, SinkInstanceConf, Validate};
 use crate::utils::{backup_clean, save_conf};
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{UvsFrom, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
 use serde_derive::{Deserialize, Serialize};
 use toml;
@@ -159,7 +159,7 @@ impl Validate for WpGenConfig {
     fn validate(&self) -> OrionConfResult<()> {
         // 1. version 非空
         if self.version.trim().is_empty() {
-            return Err(ConfIOReason::from_validation()
+            return Err(ConfIOReason::validation_error()
                 .to_err()
                 .with_detail("wpgen.version must not be empty"));
         }
@@ -168,7 +168,7 @@ impl Validate for WpGenConfig {
         if let Some(count) = self.generator.count
             && count == 0
         {
-            return Err(ConfIOReason::from_validation()
+            return Err(ConfIOReason::validation_error()
                 .to_err()
                 .with_detail("wpgen.generator.count must be greater than 0"));
         }
@@ -177,7 +177,7 @@ impl Validate for WpGenConfig {
 
         // 4. generator.parallel > 0
         if self.generator.parallel == 0 {
-            return Err(ConfIOReason::from_validation()
+            return Err(ConfIOReason::validation_error()
                 .to_err()
                 .with_detail("wpgen.generator.parallel must be greater than 0"));
         }
@@ -191,7 +191,7 @@ impl Validate for WpGenConfig {
         match self.output.connect.as_deref().map(str::trim) {
             Some(connect) if !connect.is_empty() => {}
             _ => {
-                return Err(ConfIOReason::from_validation()
+                return Err(ConfIOReason::validation_error()
                     .to_err()
                     .with_detail("wpgen.output.connect is required"));
             }
@@ -212,7 +212,7 @@ impl WpGenConfig {
         match profile {
             SpeedProfileConfig::Constant { rate } => {
                 if *rate == 0 {
-                    return Err(ConfIOReason::from_validation()
+                    return Err(ConfIOReason::validation_error()
                         .to_err()
                         .with_detail("speed_profile.constant.rate must be greater than 0"));
                 }
@@ -221,38 +221,38 @@ impl WpGenConfig {
                 base, period_secs, ..
             } => {
                 if *base == 0 {
-                    return Err(ConfIOReason::from_validation()
+                    return Err(ConfIOReason::validation_error()
                         .to_err()
                         .with_detail("speed_profile.sinusoidal.base must be greater than 0"));
                 }
                 if *period_secs <= 0.0 {
-                    return Err(ConfIOReason::from_validation().to_err().with_detail(
+                    return Err(ConfIOReason::validation_error().to_err().with_detail(
                         "speed_profile.sinusoidal.period_secs must be greater than 0",
                     ));
                 }
             }
             SpeedProfileConfig::Stepped { steps, .. } => {
                 if steps.is_empty() {
-                    return Err(ConfIOReason::from_validation()
+                    return Err(ConfIOReason::validation_error()
                         .to_err()
                         .with_detail("speed_profile.stepped.steps must not be empty"));
                 }
                 for (i, (duration_secs, rate)) in steps.iter().enumerate() {
                     if *duration_secs <= 0.0 {
-                        return Err(ConfIOReason::from_validation()
-                            .to_err()
-                            .with_detail(format!(
+                        return Err(ConfIOReason::validation_error().to_err().with_detail(
+                            format!(
                                 "speed_profile.stepped.steps[{}].duration must be greater than 0",
                                 i
-                            )));
+                            ),
+                        ));
                     }
                     if *rate == 0 {
-                        return Err(ConfIOReason::from_validation()
-                            .to_err()
-                            .with_detail(format!(
+                        return Err(ConfIOReason::validation_error().to_err().with_detail(
+                            format!(
                                 "speed_profile.stepped.steps[{}].rate must be greater than 0",
                                 i
-                            )));
+                            ),
+                        ));
                     }
                 }
             }
@@ -263,22 +263,22 @@ impl WpGenConfig {
                 burst_probability,
             } => {
                 if *base == 0 {
-                    return Err(ConfIOReason::from_validation()
+                    return Err(ConfIOReason::validation_error()
                         .to_err()
                         .with_detail("speed_profile.burst.base must be greater than 0"));
                 }
                 if *burst_rate == 0 {
-                    return Err(ConfIOReason::from_validation()
+                    return Err(ConfIOReason::validation_error()
                         .to_err()
                         .with_detail("speed_profile.burst.burst_rate must be greater than 0"));
                 }
                 if *burst_duration_ms == 0 {
-                    return Err(ConfIOReason::from_validation().to_err().with_detail(
+                    return Err(ConfIOReason::validation_error().to_err().with_detail(
                         "speed_profile.burst.burst_duration_ms must be greater than 0",
                     ));
                 }
                 if !(0.0..=1.0).contains(burst_probability) {
-                    return Err(ConfIOReason::from_validation().to_err().with_detail(
+                    return Err(ConfIOReason::validation_error().to_err().with_detail(
                         "speed_profile.burst.burst_probability must be between 0.0 and 1.0",
                     ));
                 }
@@ -289,36 +289,36 @@ impl WpGenConfig {
                 duration_secs,
             } => {
                 if *start == 0 {
-                    return Err(ConfIOReason::from_validation()
+                    return Err(ConfIOReason::validation_error()
                         .to_err()
                         .with_detail("speed_profile.ramp.start must be greater than 0"));
                 }
                 if *end == 0 {
-                    return Err(ConfIOReason::from_validation()
+                    return Err(ConfIOReason::validation_error()
                         .to_err()
                         .with_detail("speed_profile.ramp.end must be greater than 0"));
                 }
                 if *duration_secs <= 0.0 {
-                    return Err(ConfIOReason::from_validation()
+                    return Err(ConfIOReason::validation_error()
                         .to_err()
                         .with_detail("speed_profile.ramp.duration_secs must be greater than 0"));
                 }
             }
             SpeedProfileConfig::RandomWalk { base, variance } => {
                 if *base == 0 {
-                    return Err(ConfIOReason::from_validation()
+                    return Err(ConfIOReason::validation_error()
                         .to_err()
                         .with_detail("speed_profile.random_walk.base must be greater than 0"));
                 }
                 if !(0.0..=1.0).contains(variance) {
-                    return Err(ConfIOReason::from_validation().to_err().with_detail(
+                    return Err(ConfIOReason::validation_error().to_err().with_detail(
                         "speed_profile.random_walk.variance must be between 0.0 and 1.0",
                     ));
                 }
             }
             SpeedProfileConfig::Composite { profiles, .. } => {
                 if profiles.is_empty() {
-                    return Err(ConfIOReason::from_validation()
+                    return Err(ConfIOReason::validation_error()
                         .to_err()
                         .with_detail("speed_profile.composite.profiles must not be empty"));
                 }
@@ -335,7 +335,7 @@ impl WpGenConfig {
         if Self::is_valid_level_string(&level) {
             Ok(())
         } else {
-            Err(ConfIOReason::from_validation()
+            Err(ConfIOReason::validation_error()
                 .to_err()
                 .with_detail(format!(
                     "wpgen.logging.level '{}' is invalid; expected comma-separated levels like: trace, debug, info, warn, error, or module=level pairs",
@@ -364,7 +364,7 @@ impl WpGenConfig {
         let output = self.logging.output.to_lowercase();
         match output.as_str() {
             "stdout" | "console" | "file" | "both" => Ok(()),
-            _ => Err(ConfIOReason::from_validation()
+            _ => Err(ConfIOReason::validation_error()
                 .to_err()
                 .with_detail(format!(
                     "wpgen.logging.output '{}' is invalid; expected one of: stdout, console, file, both",

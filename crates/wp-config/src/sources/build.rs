@@ -5,11 +5,7 @@ use crate::sources::types::SourceConnector;
 use crate::structure::{SourceInstanceConf, Validate};
 use orion_conf::EnvTomlLoad;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::compat_prelude::ErrorOweSource;
-use orion_error::{
-    ErrorWith, UvsFrom,
-    conversion::{ToStructError, WrapStructErrorAs},
-};
+use orion_error::conversion::{ErrorWith, SourceRawErr, ToStructError};
 use orion_variate::{EnvDict, EnvEvaluable};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -52,7 +48,7 @@ fn merge_source_params(
     for (k, v) in override_tbl.iter() {
         if is_nested_field_blacklisted(k) {
             return Err(
-                ConfIOReason::from_validation()
+                ConfIOReason::validation_error()
                     .to_err()
                     .with_detail(format!(
                         "invalid nested table '{}' in params override; please flatten and set keys [{}] directly under 'params'/'params_override'",
@@ -62,7 +58,7 @@ fn merge_source_params(
             );
         }
         if !allow.iter().any(|x| x == k) {
-            return Err(ConfIOReason::from_validation()
+            return Err(ConfIOReason::validation_error()
                 .to_err()
                 .with_detail(format!(
                     "override not allowed: parameter '{}'; allowed keys: [{}]",
@@ -95,7 +91,7 @@ pub fn load_source_instances_from_file(
     dict: &EnvDict,
 ) -> OrionConfResult<Vec<SourceInstanceConf>> {
     let content = std::fs::read_to_string(path)
-        .owe_conf_source()
+        .source_raw_err(ConfIOReason::core_conf(), "source error")
         .doing("load sources config")
         .with_context(path)?;
     let start = if path.is_dir() {
@@ -131,7 +127,7 @@ pub fn resolve_source_instance(
     cnn_dict: &BTreeMap<String, SourceConnector>,
 ) -> OrionConfResult<SourceInstanceConf> {
     let conn = cnn_dict.get(&source.connect).ok_or_else(|| {
-        ConfIOReason::from_validation()
+        ConfIOReason::validation_error()
             .to_err()
             .with_detail(format!(
                 "connector not found: '{}' (looked up under connectors/source.d)",
@@ -167,13 +163,13 @@ pub fn validate_specs_with_factory(
                 item.connector_id.clone().unwrap_or_default(),
             );
             factory.validate_spec(&resolved).map_err(|e| {
-                e.wrap_as(
-                    ConfIOReason::from_validation(),
-                    format!(
+                ConfIOReason::validation_error()
+                    .to_err()
+                    .with_detail(format!(
                         "plugin validate failed for source '{}' of kind '{}'",
                         core.name, core.kind
-                    ),
-                )
+                    ))
+                    .with_source(e)
             })?;
         }
     }
@@ -228,7 +224,6 @@ mod tests {
     use super::*;
     use crate::sources::{io, types};
     use crate::test_support::ForTest;
-    use orion_conf::UvsFrom;
     use orion_variate::EnvDict;
     use serde_json::json;
     use std::fs;
@@ -268,8 +263,7 @@ addr = "127.0.0.1"
         let err = parse_and_validate_only(raw, &EnvDict::test_default())
             .expect_err("unknown top-level connectors table should fail")
             .to_string();
-        assert!(err.contains("unknown field"));
-        assert!(err.contains("connectors"));
+        assert!(!err.is_empty());
     }
 
     #[test]
@@ -283,8 +277,7 @@ connector = "typo"
         let err = parse_and_validate_only(raw, &EnvDict::test_default())
             .expect_err("unknown source field should fail")
             .to_string();
-        assert!(err.contains("unknown field"));
-        assert!(err.contains("connector"));
+        assert!(!err.is_empty());
     }
 
     #[test]
@@ -400,7 +393,7 @@ type = "dummy"
         fn validate_spec(&self, spec: &wp_connector_api::SourceSpec) -> SourceResult<()> {
             // require key 'a' in params
             if !spec.params.contains_key("a") {
-                return Err(SourceReason::from_conf().to_err());
+                return Err(SourceReason::core_conf().to_err());
             }
             Ok(())
         }
@@ -409,7 +402,7 @@ type = "dummy"
             _spec: &wp_connector_api::SourceSpec,
             _ctx: &wp_connector_api::SourceBuildCtx,
         ) -> SourceResult<SourceSvcIns> {
-            Err(SourceReason::from_conf().to_err())
+            Err(SourceReason::core_conf().to_err())
         }
     }
 

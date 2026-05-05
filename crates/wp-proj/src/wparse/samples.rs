@@ -1,7 +1,8 @@
+use crate::compat::{ErrorOweBase, UvsFrom};
 use crate::res::simple_ins_run_res;
 use glob::glob;
 use orion_conf::ErrorWith;
-use orion_error::{UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -1,6 +1,6 @@
 use super::defaults::{ConnectorTemplate, registered_templates};
+use crate::compat::{ErrorOweBase, UvsFrom};
 use orion_conf::ErrorWith;
-use orion_error::{UvsFrom, compat_prelude::ErrorOweBase};
 use std::fs;
 use std::path::Path;
 use toml::Value;

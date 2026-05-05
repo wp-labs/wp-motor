@@ -5,13 +5,11 @@ use std::{
 };
 
 use super::{Connectors, Oml, ProjectPaths, Sinks, Sources, Wpl, init::PrjScope};
+use crate::compat::{UvsFrom, WrapStructErrorAs};
 use crate::{
     models::knowledge::Knowledge, sinks::clean_outputs, wparse::WParseManager, wpgen::WpGenManager,
 };
-use orion_error::{
-    UvsFrom,
-    conversion::{ToStructError, WrapStructErrorAs},
-};
+use orion_error::conversion::ToStructError;
 use orion_variate::{EnvDict, EnvEvaluable};
 use wp_conf::engine::EngineConfig;
 use wp_error::run_error::{RunError, RunReason, RunResult};

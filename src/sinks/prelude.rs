@@ -1,4 +1,4 @@
-pub use orion_error::ErrorWith;
+pub use orion_error::conversion::ErrorWith;
 pub use wp_model_core::model::DataRecord;
 pub use wpl::PkgID;
 pub use wpl::generator::FmtFieldVec;

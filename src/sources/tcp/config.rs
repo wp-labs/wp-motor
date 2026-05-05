@@ -22,7 +22,7 @@ impl TcpSourceSpec {
             .to_string();
         let port_i64 = params.get("port").and_then(|v| v.as_i64()).unwrap_or(9000);
         if !(0..=65535).contains(&port_i64) {
-            return Err(SourceReason::from_conf().err_detail(format!(
+            return Err(SourceReason::core_conf().err_detail(format!(
                 "invalid port: {}",
                 port_i64
             )));
@@ -34,7 +34,7 @@ impl TcpSourceSpec {
             .filter(|&v| v > 0)
             .unwrap_or(DEFAULT_TCP_RECV_BYTES as i64) as usize;
         if tcp_recv_bytes == 0 {
-            return Err(SourceReason::from_conf().err_detail("tcp_recv_bytes must be > 0"));
+            return Err(SourceReason::core_conf().err_detail("tcp_recv_bytes must be > 0"));
         }
         let framing = match params
             .get("framing")
@@ -47,7 +47,7 @@ impl TcpSourceSpec {
             "len" | "length" => FramingMode::Len,
             "auto" => FramingMode::Auto,
             other => {
-                return Err(SourceReason::from_conf()
+                return Err(SourceReason::core_conf()
                     .err_detail(format!("invalid framing: {} (expect auto|line|len)", other)));
             }
         };
@@ -57,7 +57,7 @@ impl TcpSourceSpec {
             .and_then(|v| v.as_i64())
             .unwrap_or(DEFAULT_TCP_SOURCE_INSTANCES as i64);
         if !(1..=MAX_TCP_SOURCE_INSTANCES as i64).contains(&instances) {
-            return Err(SourceReason::from_conf().err_detail(format!(
+            return Err(SourceReason::core_conf().err_detail(format!(
                 "tcp.instances must be between 1 and {}",
                 MAX_TCP_SOURCE_INSTANCES
             )));

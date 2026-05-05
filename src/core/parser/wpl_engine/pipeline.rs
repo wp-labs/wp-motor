@@ -1,10 +1,11 @@
+use crate::compat::LegacyOwe;
 use crate::core::prelude::*;
 use crate::core::sinks::sync_sink::traits::SyncCtrl;
 use crate::facade::test_helpers::SinkTerminal;
 use crate::sinks::SinkGroupAgent;
 use crate::stat::MonSend;
 use crate::stat::metric_collect::MetricCollectors;
-use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
+use orion_error::UnifiedReason;
 use std::cmp::Ordering as CmpOrdering;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
@@ -151,7 +152,7 @@ impl WplPipeline {
         self.stat_ext
             .send_stat(mon_send)
             .await
-            .owe(WparseReason::Uvs(UvsReason::system_error()))?;
+            .owe(WparseReason::Uvs(UnifiedReason::system_error()))?;
         Ok(())
     }
     pub fn stop(&mut self) {

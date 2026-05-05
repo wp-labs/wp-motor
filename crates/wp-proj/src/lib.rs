@@ -1,4 +1,5 @@
 //pub mod cli_connectors;
+mod compat;
 pub mod connectors;
 pub mod consts;
 pub mod models;

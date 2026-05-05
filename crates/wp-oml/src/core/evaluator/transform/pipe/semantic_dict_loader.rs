@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 use orion_conf::error::OrionConfResult;
-use orion_error::{UvsFrom, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -116,7 +116,7 @@ pub struct EntityNounsConf {
 /// 加载外部语义词典配置
 pub fn load_semantic_dict(config_path: &Path) -> OrionConfResult<SemanticDictConf> {
     let content = fs::read_to_string(config_path).map_err(|e| {
-        orion_conf::error::ConfIOReason::from_conf()
+        orion_conf::error::ConfIOReason::core_conf()
             .to_err()
             .with_detail(format!(
                 "read semantic dict config '{}' failed",
@@ -126,7 +126,7 @@ pub fn load_semantic_dict(config_path: &Path) -> OrionConfResult<SemanticDictCon
     })?;
 
     let conf: SemanticDictConf = toml::from_str(&content).map_err(|e| {
-        orion_conf::error::ConfIOReason::from_conf()
+        orion_conf::error::ConfIOReason::core_conf()
             .to_err()
             .with_detail(format!(
                 "parse semantic dict config '{}' failed",
@@ -136,7 +136,7 @@ pub fn load_semantic_dict(config_path: &Path) -> OrionConfResult<SemanticDictCon
     })?;
 
     if conf.version != SUPPORTED_VERSION {
-        return Err(orion_conf::error::ConfIOReason::from_validation()
+        return Err(orion_conf::error::ConfIOReason::validation_error()
             .to_err()
             .with_detail(format!(
                 "unsupported semantic_dict version: {} (expected {})",

@@ -1,3 +1,4 @@
+use crate::compat::LegacyOwe;
 use crate::core::sinks::sync_sink::traits::SyncCtrl;
 use crate::core::sinks::sync_sink::{RecSyncSink, TrySendStatus};
 use crate::sinks::decorators::stub::StubOuter;
@@ -7,7 +8,7 @@ use std::io::{Cursor, Write};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
+use orion_error::UnifiedReason;
 use wp_connector_api::{SinkReason, SinkResult};
 use wp_model_core::model::Value;
 
@@ -87,10 +88,10 @@ where
             let formatted = extract_formatted(data.data());
             buffer
                 .write_all(formatted.as_bytes())
-                .owe(SinkReason::Uvs(UvsReason::data_error()))?;
+                .owe(SinkReason::Uvs(UnifiedReason::data_error()))?;
             buffer
                 .write_all(b"\n")
-                .owe(SinkReason::Uvs(UvsReason::data_error()))?;
+                .owe(SinkReason::Uvs(UnifiedReason::data_error()))?;
         }
         if let Some(ref next_proc) = self.next_proc {
             next_proc.send_to_sink(data)?;
@@ -105,12 +106,12 @@ where
             let formatted = extract_formatted(data.data());
             if let Err(e) = buffer.write_all(formatted.as_bytes()) {
                 return TrySendStatus::Err(Arc::new(
-                    SinkReason::sink("buffer write failed").err_source(e),
+                    SinkReason::sink("buffer write failed").with_source(e),
                 ));
             }
             if let Err(e) = buffer.write_all(b"\n") {
                 return TrySendStatus::Err(Arc::new(
-                    SinkReason::sink("buffer newline write failed").err_source(e),
+                    SinkReason::sink("buffer newline write failed").with_source(e),
                 ));
             }
         }
@@ -165,7 +166,7 @@ where
             }
             buffer
                 .write_fmt(format_args!("{}", data))
-                .owe(SinkReason::Uvs(UvsReason::data_error()))?;
+                .owe(SinkReason::Uvs(UnifiedReason::data_error()))?;
         }
         // StubOuter 没有实现 AsyncRawdatSink，所以我们不能调用
         Ok(())
@@ -177,7 +178,7 @@ where
             }
             buffer
                 .write_all(data)
-                .owe(SinkReason::Uvs(UvsReason::data_error()))?;
+                .owe(SinkReason::Uvs(UnifiedReason::data_error()))?;
         }
         // StubOuter 没有实现 AsyncRawdatSink，所以我们不能调用
         Ok(())

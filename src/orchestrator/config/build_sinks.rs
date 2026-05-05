@@ -1,6 +1,6 @@
+use crate::compat::LegacyOwe;
 use orion_error::OperationContext;
-use orion_error::compat_prelude::ErrorOweBase;
-use orion_error::runtime::ContextRecord;
+use orion_error::conversion::SourceRawErr;
 use wp_error::DistFocus;
 
 use crate::resources::SinkResUnit;

@@ -10,9 +10,9 @@
 //!
 //! ```
 
-use orion_conf::error::OrionConfResult;
-use orion_error::ErrorWith;
-use orion_error::compat_prelude::ErrorOweSource;
+use orion_conf::error::{ConfIOReason, OrionConfResult};
+use orion_error::conversion::ErrorWith;
+use orion_error::conversion::SourceRawErr;
 use orion_variate::EnvDict;
 use std::path::Path;
 
@@ -58,7 +58,7 @@ pub trait ConfigLoader: Sized {
         Self: serde::Serialize,
     {
         let content = std::fs::read_to_string(path)
-            .owe_conf_source()
+            .source_raw_err(ConfIOReason::core_conf(), "source error")
             .with_context(path)
             .doing(format!("无法读取 {} 配置文件", Self::config_type_name()))?;
 
@@ -127,7 +127,7 @@ mod tests {
     use super::*;
     use crate::test_support::ForTest;
     use orion_conf::error::ConfIOReason;
-    use orion_error::{UvsFrom, conversion::ToStructError};
+    use orion_error::conversion::ToStructError;
     use serde::Serialize;
 
     // 用于测试的简单配置类型
@@ -149,7 +149,7 @@ mod tests {
 
         fn validate(&self) -> OrionConfResult<()> {
             if self.value.is_empty() {
-                return Err(ConfIOReason::from_validation()
+                return Err(ConfIOReason::validation_error()
                     .to_err()
                     .with_detail("value 不能为空"));
             }
@@ -185,7 +185,7 @@ mod tests {
             }
 
             fn validate(&self) -> OrionConfResult<()> {
-                Err(ConfIOReason::from_validation()
+                Err(ConfIOReason::validation_error()
                     .to_err()
                     .with_detail("验证失败"))
             }

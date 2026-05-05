@@ -23,7 +23,7 @@ wp-model-core = { workspace =true  }
 wp_data_model = { workspace =true  }
 wp-error =  { workspace = true }
 wp-log =  { workspace = true }
-wpl = { package = "wp-lang", version = "0.2.0" }
+wp-lang =  { workspace = true }
 wp-specs =  { workspace = true }
 wp-conf-base = { workspace = true }
 wp-connector-api ={ workspace=true }

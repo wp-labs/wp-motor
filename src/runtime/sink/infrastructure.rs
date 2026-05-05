@@ -6,7 +6,7 @@ use crate::sinks::InfraSinkAgent;
 use crate::sinks::SinkDispatcher;
 use crate::sinks::SinkGroupAgent;
 use derive_getters::Getters;
-use orion_error::ErrorConv;
+use orion_error::conversion::ConvErr;
 use orion_variate::EnvDict;
 use orion_variate::EnvEvaluable;
 use wp_conf::structure::SinkGroupConf;
@@ -88,7 +88,7 @@ impl InfraSinkService {
         dict: &EnvDict,
     ) -> RunResult<Self> {
         let table_conf = InfraSinkConf::load(sink_root, dict)
-            .err_conv()?
+            .conv_err()?
             .env_eval(dict);
         //.doing("load sink_root")?;
         let default_group = infra_sink_group(

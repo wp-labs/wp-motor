@@ -1,3 +1,4 @@
+use crate::compat::LegacyOwe;
 // Loader: aggregate submodules for config loading
 mod manager;
 mod source;
@@ -8,11 +9,11 @@ pub use wp_conf::loader::ConfDelegate;
 
 #[cfg(test)]
 mod tests {
+    use crate::compat::LegacyOwe;
     use crate::orchestrator::config::WPGEN_TOML;
     use crate::orchestrator::config::loader::WarpConf;
     use crate::test_support::TestCasePath;
     use orion_conf::error::{ConfIOReason, OrionConfResult};
-    use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
     use orion_variate::EnvDict;
     use std::fs;
     use std::path::Path;
@@ -22,8 +23,7 @@ mod tests {
     #[test]
     fn test_wpgen_conf_init_clean() -> OrionConfResult<()> {
         use crate::orchestrator::config::models::wpgen::WpGenConfig;
-        let tw =
-            TestCasePath::new("wp", "wpgen_conf").owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        let tw = TestCasePath::new("wp", "wpgen_conf").owe(ConfIOReason::core_conf())?;
         let path = tw.path_string();
         let conf_manager = WarpConf::new(&path);
         conf_manager.clear_work_directory();
@@ -36,8 +36,7 @@ mod tests {
 
     #[test]
     fn test_wpgen_resolved_without_connector() -> OrionConfResult<()> {
-        let tw = TestCasePath::new("wp", "wpgen_no_conn")
-            .owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        let tw = TestCasePath::new("wp", "wpgen_no_conn").owe(ConfIOReason::core_conf())?;
         let path = tw.path_string();
         let cm = WarpConf::new(&path);
         // 写入最小新格式配置（不使用 connectors）
@@ -56,7 +55,7 @@ level = "info"
 output = "stdout"
 "#;
         let p = cm.ensure_config_path_exists(WPGEN_TOML)?;
-        fs::write(&p, toml).owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        fs::write(&p, toml).owe(ConfIOReason::core_conf())?;
         assert!(
             cm.load_wpgen_config(WPGEN_TOML, &EnvDict::test_default())
                 .is_err()
@@ -66,14 +65,13 @@ output = "stdout"
 
     #[test]
     fn test_wpgen_resolved_with_connector_and_override() -> OrionConfResult<()> {
-        let tw = TestCasePath::new("wp", "wpgen_resolved")
-            .owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        let tw = TestCasePath::new("wp", "wpgen_resolved").owe(ConfIOReason::core_conf())?;
         let path = tw.path_string();
         let cm = WarpConf::new(&path);
 
         // 准备 sink 连接器文件（id = file_json_sink）
         let cdir = format!("{}/connectors/sink.d", cm.work_root_path());
-        std::fs::create_dir_all(&cdir).owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        std::fs::create_dir_all(&cdir).owe(ConfIOReason::core_conf())?;
         let cfile = format!(
             "{}/connectors/sink.d/file_json_sink.toml",
             cm.work_root_path()
@@ -88,7 +86,7 @@ fmt = "json"
 base = "./data/out_dat"
 file = "default.dat"
 "#;
-        fs::write(cfile, connectors).owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        fs::write(cfile, connectors).owe(ConfIOReason::core_conf())?;
         // 写入新格式配置：引用 file_json_sink，并覆盖 file 名称
         let toml = r#"
 version = "1.0"
@@ -105,7 +103,7 @@ level = "info"
 output = "file"
 "#;
         let p = cm.ensure_config_path_exists(WPGEN_TOML)?;
-        fs::write(&p, toml).owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        fs::write(&p, toml).owe(ConfIOReason::core_conf())?;
         let rt = cm.load_wpgen_config(WPGEN_TOML, &EnvDict::test_default())?;
         assert_eq!(rt.out_sink.resolved_kind_str(), "file");
         // 覆盖应生效，最终路径包含 over.dat
@@ -119,13 +117,12 @@ output = "file"
 
     #[test]
     fn test_wpgen_output_connect_reports_missing_sink_detail() -> OrionConfResult<()> {
-        let tw = TestCasePath::new("wp", "wpgen_missing_sink")
-            .owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        let tw = TestCasePath::new("wp", "wpgen_missing_sink").owe(ConfIOReason::core_conf())?;
         let path = tw.path_string();
         let cm = WarpConf::new(&path);
 
         let cdir = format!("{}/connectors/sink.d", cm.work_root_path());
-        std::fs::create_dir_all(&cdir).owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        std::fs::create_dir_all(&cdir).owe(ConfIOReason::core_conf())?;
         let cfile = format!("{}/connectors/sink.d/tcp_sink.toml", cm.work_root_path());
         let connectors = r#"
 [[connectors]]
@@ -136,7 +133,7 @@ allow_override = ["addr", "port"]
 addr = "127.0.0.1"
 port = 9000
 "#;
-        fs::write(cfile, connectors).owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        fs::write(cfile, connectors).owe(ConfIOReason::core_conf())?;
         let toml = r#"
 version = "1.0"
 [generator]
@@ -148,7 +145,7 @@ level = "info"
 output = "stdout"
 "#;
         let p = cm.ensure_config_path_exists(WPGEN_TOML)?;
-        fs::write(&p, toml).owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        fs::write(&p, toml).owe(ConfIOReason::core_conf())?;
         let err = cm
             .load_wpgen_config(WPGEN_TOML, &EnvDict::test_default())
             .unwrap_err();
@@ -163,13 +160,12 @@ output = "stdout"
 
     #[test]
     fn test_wpgen_resolved_override_not_allowed() -> OrionConfResult<()> {
-        let tw = TestCasePath::new("wp", "wpgen_resolved_2")
-            .owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        let tw = TestCasePath::new("wp", "wpgen_resolved_2").owe(ConfIOReason::core_conf())?;
         let path = tw.path_string();
         let cm = WarpConf::new(&path);
         // 仅允许 base/file
         let cdir = format!("{}/connectors/sink.d", cm.work_root_path());
-        std::fs::create_dir_all(&cdir).owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        std::fs::create_dir_all(&cdir).owe(ConfIOReason::core_conf())?;
         let cfile = format!("{}/connectors/sink.d/01-file-raw.toml", cm.work_root_path());
         let connectors = r#"
 [[connectors]]
@@ -181,7 +177,7 @@ fmt = "raw"
 base = "./data/out_dat"
 file = "a.dat"
 "#;
-        fs::write(cfile, connectors).owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        fs::write(cfile, connectors).owe(ConfIOReason::core_conf())?;
         let toml = r#"
 version = "1.0"
 [generator]
@@ -195,7 +191,7 @@ level = "info"
 output = "stdout"
 "#;
         let p = cm.ensure_config_path_exists(WPGEN_TOML)?;
-        fs::write(&p, toml).owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        fs::write(&p, toml).owe(ConfIOReason::core_conf())?;
         let err = cm
             .load_wpgen_config(WPGEN_TOML, &EnvDict::test_default())
             .unwrap_err();

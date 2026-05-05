@@ -1,5 +1,6 @@
 //! wparse 引擎的 Facade 封装：装配/启动/重载/优雅退出 与 PID 管理。
 
+use crate::compat::LegacyOwe;
 use futures_lite::StreamExt;
 use orion_variate::EnvDict;
 use std::path::Path;
@@ -9,7 +10,10 @@ use tokio::sync::mpsc::Receiver;
 use tokio::time::timeout;
 use wp_knowledge::facade::init_thread_cloned_from_knowdb;
 
-use orion_error::{ErrorConv, ErrorWith, OperationContext, UvsFrom, compat_prelude::ErrorOweBase};
+use orion_error::{
+    OperationContext,
+    conversion::{ConvErr, ErrorWith},
+};
 use wp_conf::{RunArgs, RunMode};
 use wp_error::run_error::{RunReason, RunResult};
 use wp_log::conf::log_init;
@@ -86,7 +90,7 @@ impl WpApp {
         }
         let run_args = args.completion_from(&main_conf)?;
         let stat_reqs = stat_reqs_from(main_conf.stat_conf());
-        log_init(main_conf.log_conf()).err_conv()?;
+        log_init(main_conf.log_conf()).conv_err()?;
         info_ctrl!("log conf: {} ", main_conf.log_conf());
         // 初始化引擎侧注册表：注册内置工厂 + 导入 API 已注册工厂 + 打印注册清单
         crate::connectors::startup::init_runtime_registries();
@@ -128,7 +132,7 @@ impl WpApp {
         {
             crate::wp_ctrl_enterprise::start(self.control_handle.command_sender())
                 .await
-                .owe(RunReason::from_conf())?;
+                .owe(RunReason::core_conf())?;
             Ok(())
         }
         #[cfg(not(feature = "enterprise-backend"))]
@@ -457,7 +461,7 @@ async fn load_engine_res(
     let (_src_keys, source_inits, acceptor_inits) = parser
         .build_source_handles(&wpsrc_path, run_mode, env_dict)
         .await
-        .err_conv()
+        .conv_err()
         .doing("parse/build sources")?;
 
     let mut res_center = ResManager::build(main_conf, &infra_sinks, env_dict).await?;
@@ -478,7 +482,7 @@ async fn load_engine_res(
     // 输出 rule_mapping.dat 至工作目录 .run/rule_mapping.dat
     let res_path = conf_manager.runtime_path("rule_mapping.dat");
     if Path::new(&res_path).exists() {
-        std::fs::remove_file(&res_path).owe(RunReason::from_res())?;
+        std::fs::remove_file(&res_path).owe(RunReason::resource_error())?;
     }
 
     // 若未加载到任何 WPL/OML 资源，提前给出提醒，便于定位空映射问题
@@ -509,7 +513,7 @@ async fn load_engine_res(
     }
 
     wp_conf::utils::save_data(Some(res_center.to_string()), res_path.as_str(), true)
-        .owe(RunReason::from_res())?;
+        .owe(RunReason::resource_error())?;
 
     let builder = WarpResourceBuilder::new()
         .with_infra(infra_sinks)
@@ -620,10 +624,10 @@ async fn load_processing_res(
     if options.persist_runtime_state {
         let res_path = conf_manager.runtime_path("rule_mapping.dat");
         if Path::new(&res_path).exists() {
-            std::fs::remove_file(&res_path).owe(RunReason::from_res())?;
+            std::fs::remove_file(&res_path).owe(RunReason::resource_error())?;
         }
         wp_conf::utils::save_data(Some(res_center.to_string()), res_path.as_str(), true)
-            .owe(RunReason::from_res())?;
+            .owe(RunReason::resource_error())?;
     }
 
     let builder = WarpResourceBuilder::new()

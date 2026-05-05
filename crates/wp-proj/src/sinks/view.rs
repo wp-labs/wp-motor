@@ -1,8 +1,9 @@
+use crate::compat::{ErrorOweBase, UvsFrom};
 use comfy_table::{Cell as TCell, Table};
 use oml::core::ConfADMExt;
 use oml::language::ObjModel;
 use orion_conf::ErrorWith;
-use orion_error::{UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
 use serde_json::json;
 use wildmatch::WildMatch;

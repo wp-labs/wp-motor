@@ -31,7 +31,7 @@ impl SyslogSourceSpec {
         if let Some(v) = params.get("protocol").and_then(|v| v.as_str()) {
             let p = v.to_ascii_lowercase();
             if p != "udp" && p != "tcp" {
-                return Err(SourceReason::from_conf().err_detail(format!(
+                return Err(SourceReason::core_conf().err_detail(format!(
                     "invalid protocol: {} (must be 'udp' or 'tcp')",
                     v
                 )));
@@ -39,19 +39,19 @@ impl SyslogSourceSpec {
         }
         if let Some(v) = params.get("tcp_recv_bytes").and_then(|v| v.as_i64()) {
             if v <= 0 {
-                return Err(SourceReason::from_conf()
+                return Err(SourceReason::core_conf()
                     .err_detail(format!("tcp_recv_bytes must be > 0 (got {})", v)));
             }
         }
         if let Some(v) = params.get("udp_recv_buffer").and_then(|v| v.as_i64()) {
             if v <= 0 {
-                return Err(SourceReason::from_conf()
+                return Err(SourceReason::core_conf()
                     .err_detail(format!("udp_recv_buffer must be > 0 (got {})", v)));
             }
         }
         if let Some(v) = params.get("port").and_then(|v| v.as_i64()) {
             if !(0..=65535).contains(&v) {
-                return Err(SourceReason::from_conf().err_detail(format!(
+                return Err(SourceReason::core_conf().err_detail(format!(
                     "port out of range: {} (allow 0 or 1..=65535)",
                     v
                 )));

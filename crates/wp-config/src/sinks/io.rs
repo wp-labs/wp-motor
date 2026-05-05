@@ -2,7 +2,7 @@ use super::types::*;
 use crate::connectors::load_connector_defs_from_dir;
 use orion_conf::EnvTomlLoad;
 use orion_conf::error::OrionConfResult;
-use orion_error::ErrorWith;
+use orion_error::conversion::ErrorWith;
 use orion_variate::{EnvDict, EnvEvalable};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

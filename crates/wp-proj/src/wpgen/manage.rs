@@ -1,9 +1,7 @@
 use std::path::Path;
 
-use orion_error::{
-    UvsFrom,
-    conversion::{ToStructError, WrapStructErrorAs},
-};
+use crate::compat::{UvsFrom, WrapStructErrorAs};
+use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
 use wp_error::{RunReason, RunResult};
 
@@ -77,7 +75,7 @@ impl WpGenManager {
 
 #[cfg(test)]
 mod tests {
-    use orion_error::testcase::TestAssertWithMsg;
+    use orion_error::dev::testing::TestAssertWithMsg;
     use tempfile::tempdir;
     use wp_conf::test_support::ForTest;
 

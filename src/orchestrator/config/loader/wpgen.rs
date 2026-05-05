@@ -1,9 +1,11 @@
+use crate::compat::LegacyOwe;
 use std::path::{Path, PathBuf};
 
 use orion_conf::TomlIO;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
 use orion_error::{
-    ErrorWith, UvsFrom, UvsReason, compat_prelude::ErrorOweBase, conversion::ToStructError,
+    UnifiedReason,
+    conversion::{ErrorWith, SourceRawErr, ToStructError},
 };
 use orion_variate::{EnvDict, EnvEvaluable};
 use serde_json::json;
@@ -52,7 +54,7 @@ impl WarpConf {
         let conn_id = match conf.output.connect.clone() {
             Some(cnn) => cnn,
             None => {
-                return Err(ConfIOReason::from_validation()
+                return Err(ConfIOReason::validation_error()
                     .to_err()
                     .with_detail("wpgen.output.connect is required"));
             }
@@ -89,7 +91,7 @@ impl WarpConf {
         dict: &EnvDict,
     ) -> OrionConfResult<(String, ConnectorRec)> {
         let wp_conf = EngineConfig::load_or_init(self.work_root(), dict)
-            .owe(ConfIOReason::Uvs(UvsReason::resource_error()))
+            .owe(ConfIOReason::resource_error())
             .with_context("load_or_init")
             .doing("load engine config")?
             .env_eval(dict)
@@ -118,7 +120,7 @@ impl WarpConf {
             if conn_id.ends_with("_src") {
                 detail.push_str("; output.connect must reference a sink connector id, not a source connector id");
             }
-            ConfIOReason::from_validation()
+            ConfIOReason::validation_error()
                 .to_err()
                 .with_detail(detail)
         })?;
@@ -134,13 +136,13 @@ impl WarpConf {
         let mut merged = conn.default_params.clone();
         for (k, v) in override_tbl.iter() {
             if k == "params" || k == "params_override" {
-                return Err(ConfIOReason::from_validation()
+                return Err(ConfIOReason::validation_error()
                     .to_err()
                     .with_context(conn_id)
                     .doing("nested params/params_override is not allowed"));
             }
             if !conn.allow_override.iter().any(|x| x == k) {
-                return Err(ConfIOReason::from_validation()
+                return Err(ConfIOReason::validation_error()
                     .to_err()
                     .with_context(conn_id)
                     .doing(format!("override '{}' not allowed", k)));

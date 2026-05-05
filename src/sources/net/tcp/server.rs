@@ -7,7 +7,7 @@ use tokio::net::TcpListener;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
-use orion_error::{compat_prelude::ErrorOweBase, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use wp_connector_api::{ControlEvent, CtrlRx, SourceError, SourceReason, SourceResult};
 
 use crate::sources::tcp::MessageBatch;

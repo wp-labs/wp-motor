@@ -2,11 +2,11 @@ pub mod err_4debug;
 pub mod err_4normal;
 pub mod err_4stoic;
 
+use crate::compat::ErrStrategy;
 use chrono::{DateTime, Local};
 use err_4debug::Err4Debug;
 use err_4normal::Err4Normal;
 use err_4stoic::Err4Stoic;
-use orion_error::types::ErrStrategy;
 use std::fmt::{Display, Formatter};
 use wp_connector_api::SinkError;
 use wp_connector_api::SourceError;

@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use orion_error::ErrorConv;
+use orion_error::conversion::ConvErr;
 use orion_variate::EnvDict;
 use wp_conf::RunArgs;
 use wp_error::run_error::RunResult;
@@ -38,7 +38,7 @@ impl WpRescueApp {
         crate::knowledge::ensure_stats_telemetry_bridge_installed();
         let run_args = args.completion_from(&main_conf)?;
         let stat_reqs = stat_reqs_from(main_conf.stat_conf());
-        log_init(main_conf.log_conf()).err_conv()?;
+        log_init(main_conf.log_conf()).conv_err()?;
         Ok(Self {
             main_conf,
             conf_manager,

@@ -1,4 +1,4 @@
-use orion_error::{UvsFrom, compat_prelude::ErrorOweBase};
+use crate::compat::LegacyOwe;
 use std::time::Duration;
 
 use crate::core::parser::WplEngine;
@@ -33,7 +33,7 @@ impl ActParser {
         infra: InfraSinkAgent,
     ) -> RunResult<Self> {
         trace_ctrl!("setting depend");
-        let pipe_lines = WplEngine::from(pipelines, infra).owe(RunReason::from_conf())?;
+        let pipe_lines = WplEngine::from(pipelines, infra).owe(RunReason::core_conf())?;
         //let pipe_lines = ParseEngine::from(pipelines, infra).to_uvs::<ConfErrReader>()?;
         Ok(ActParser { engine: pipe_lines })
     }
@@ -46,8 +46,8 @@ impl ActParser {
     ) -> RunResult<Self> {
         trace_ctrl!("setting depend");
         let wpl_pkgs = WplRepository::from_wpl_tolerant(wpl_code, infra.error.end())
-            .owe(RunReason::from_rule())?;
-        let pipe_lines = WplEngine::from_code(&wpl_pkgs, infra).owe(RunReason::from_conf())?;
+            .owe(RunReason::rule_error())?;
+        let pipe_lines = WplEngine::from_code(&wpl_pkgs, infra).owe(RunReason::core_conf())?;
         Ok(ActParser { engine: pipe_lines })
     }
 }

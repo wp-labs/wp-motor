@@ -1,5 +1,6 @@
 use super::common::{DEFAULT_UNIT_SIZE, build_sink_instance};
 use super::speed::{DynamicRateLimiter, SpeedProfile};
+use crate::compat::LegacyOwe;
 use crate::orchestrator::config::models::stat_reqs_from;
 use crate::runtime::actor::TaskGroup;
 use crate::runtime::actor::signal::ShutdownCmd;
@@ -8,7 +9,7 @@ use crate::runtime::supervisor::monitor::{ActorMonitor, MonitorSinkHandle};
 use crate::sinks::SinkBackendType;
 use crate::stat::metric_collect::MetricCollectors;
 use orion_conf::ErrorWith;
-use orion_error::{UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::task::JoinHandle;
@@ -22,12 +23,12 @@ fn load_samples(rule_root: &str, find_name: &str) -> RunResult<Vec<String>> {
     use std::io::BufRead;
     // discover files
     let files = wp_conf::utils::find_conf_files(rule_root, find_name)
-        .owe(RunReason::from_conf())
+        .owe(RunReason::core_conf())
         .with_context(rule_root)
         .doing("find sample files")?;
     info_ctrl!("run_sample_direct: found {} files", files.len());
     if files.is_empty() {
-        return Err(RunReason::from_conf().to_err().with_detail(format!(
+        return Err(RunReason::core_conf().to_err().with_detail(format!(
             "sample files not found under '{}' for pattern '{}'",
             rule_root, find_name
         )));
@@ -36,7 +37,7 @@ fn load_samples(rule_root: &str, find_name: &str) -> RunResult<Vec<String>> {
     let mut out = Vec::new();
     for f in files {
         let file = std::fs::File::open(&f)
-            .owe(RunReason::from_conf())
+            .owe(RunReason::core_conf())
             .with_context(&f)
             .doing("open sample file")?;
         let reader = std::io::BufReader::new(file);
@@ -341,7 +342,7 @@ pub async fn run_sample_direct(
     for t in tasks {
         let produced = t
             .await
-            .owe(RunReason::from_conf())
+            .owe(RunReason::core_conf())
             .with_context("gen_direct")
             .doing("join sample pipeline task")??;
         total_produced += produced;

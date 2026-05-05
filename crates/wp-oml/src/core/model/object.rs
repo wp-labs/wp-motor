@@ -7,7 +7,8 @@ use crate::parser::error::OMLCodeErrorTait;
 use crate::parser::oml_parse_raw;
 use async_trait::async_trait;
 use orion_error::{
-    ErrorWith, compat_prelude::ErrorOweBase, runtime::ContextRecord, runtime::WithContext,
+    conversion::{ErrorWith, SourceRawErr},
+    runtime::WithContext,
 };
 use tokio::fs;
 use wp_error::parse_error::{OMLCodeError, OMLCodeReason, OMLCodeResult};
@@ -100,7 +101,10 @@ impl ConfADMExt for ObjModel {
         let content = fs::read_to_string(path)
             .await
             //.owe_rule::<OMLCodeError>()
-            .owe(OMLCodeReason::NotFound("oml load fail".into()))
+            .source_raw_err(
+                OMLCodeReason::NotFound("oml load fail".into()),
+                "read oml file",
+            )
             .with_context(&ctx)?;
         let mut raw_code = content.as_str();
         let code = CommentParser::ignore_comment(&mut raw_code)
@@ -108,7 +112,7 @@ impl ConfADMExt for ObjModel {
         let mut pure_code = code.as_str();
         match oml_parse_raw(&mut pure_code).await {
             Ok(res) => Ok(res),
-            Err(e) => Err(OMLCodeError::from_syntax(e, pure_code, path)).with_context(&ctx),
+            Err(e) => Err(OMLCodeError::from_syntax(e, pure_code, path).with_context(&ctx)),
         }
     }
 }

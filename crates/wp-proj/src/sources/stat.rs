@@ -1,5 +1,5 @@
+use crate::compat::{ErrorOweBase, UvsFrom};
 use orion_conf::ErrorWith;
-use orion_error::{UvsFrom, compat_prelude::ErrorOweBase};
 use orion_variate::EnvDict;
 use std::path::Path;
 use wp_cli_core::Ctx;

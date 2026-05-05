@@ -4,10 +4,7 @@ use crate::sinks::io::business_dir;
 use crate::sinks::{load_connectors_for, load_route_files_from, load_sink_defaults};
 use crate::structure::{SinkInstanceConf, SinkRouteConf, Validate as ConfValidate};
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{
-    UvsFrom,
-    conversion::{ToStructError, WrapStructErrorAs},
-};
+use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -131,7 +128,7 @@ fn merge_params_with_allowlist(
     for (k, v) in overrides.iter() {
         if is_nested_field_blacklisted(k) {
             return Err(
-                ConfIOReason::from_validation()
+                ConfIOReason::validation_error()
                     .to_err()
                     .with_detail(format!(
                         "invalid nested table '{}' in params; please flatten and set keys [{}] directly under 'params'. Example: params = {{ {} }} or [sink_group.sinks.params] ... (group: {}, sink: {}, connector: {}, file: {})",
@@ -153,7 +150,7 @@ fn merge_params_with_allowlist(
         }
         if !allow.iter().any(|x| x == k) {
             return Err(
-                ConfIOReason::from_validation()
+                ConfIOReason::validation_error()
                     .to_err()
                     .with_detail(format!(
                         "override '{}' not allowed; whitelist: [{}] (group: {}, sink: {}, connector: {}, file: {})",
@@ -289,7 +286,7 @@ pub fn build_route_conf_from_with(
 
     // 3) 组装 FlexiGroupConf（空列表兜底）
     if sinks.is_empty() {
-        return Err(ConfIOReason::from_validation()
+        return Err(ConfIOReason::validation_error()
             .to_err()
             .with_detail(format!("group '{}' has no sinks", rf.sink_group.name)));
     }
@@ -312,7 +309,7 @@ fn resolve_connector<'a>(
     s: &RouteSink,
 ) -> OrionConfResult<&'a ConnectorRec> {
     conn_map.get(s.use_id()).ok_or_else(|| {
-        ConfIOReason::from_validation()
+        ConfIOReason::validation_error()
             .to_err()
             .with_detail(format!(
                 "connector '{}' not found (group '{}')",
@@ -328,7 +325,7 @@ fn ensure_unique_name(
     group: &str,
 ) -> OrionConfResult<()> {
     if !guard.insert(name.to_string()) {
-        return Err(ConfIOReason::from_validation()
+        return Err(ConfIOReason::validation_error()
             .to_err()
             .with_detail(format!(
                 "duplicate sink name '{}' in group '{}'",
@@ -344,8 +341,10 @@ fn validate_sink_instance(
     conn: &ConnectorRec,
 ) -> OrionConfResult<()> {
     if let Err(e) = sink.validate() {
-        return Err(e
-            .wrap_as(ConfIOReason::from_validation(), "sink validate error")
+        return Err(ConfIOReason::validation_error()
+            .to_err()
+            .with_detail("sink validate error")
+            .with_source(e)
             .with_context(format!(
                 "group={}, sink={}, connector={}, file={}",
                 rf.sink_group.name,
@@ -375,8 +374,10 @@ fn plugin_validate_with(
             conn.id.clone(),
         );
         if let Err(e) = f.validate_spec(&resolved) {
-            return Err(e
-                .wrap_as(ConfIOReason::from_validation(), "plugin validate failed")
+            return Err(ConfIOReason::validation_error()
+                .to_err()
+                .with_detail("plugin validate failed")
+                .with_source(e)
                 .with_context(format!(
                     "group={}, sink={}, connector={}, file={}",
                     rf.sink_group.name,
@@ -431,7 +432,7 @@ pub fn load_infra_route_confs(
         // - 禁止 [sink_group].parallel（基础组只有单消费协程，并行无效，易误导）
         if rf.sink_group.parallel.is_some() {
             return Err(
-                ConfIOReason::from_validation()
+                ConfIOReason::validation_error()
                     .to_err()
                     .with_detail(format!(
                         "infra group '{}' does not support [sink_group].parallel; remove this field and use business.d parallel for throughput",

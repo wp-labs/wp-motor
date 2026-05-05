@@ -1,6 +1,5 @@
 use crate::sinks::prelude::*;
 use async_trait::async_trait;
-use orion_error::compat_prelude::ErrorOweBase;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -8,7 +7,7 @@ use std::sync::Arc;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio_async_drop::tokio_async_drop;
-use wp_connector_api::{SinkReason, SinkResult};
+use wp_connector_api::{SinkErrorOwe, SinkResult};
 use wp_model_core::model::DataRecord;
 
 const RESCUE_FLUSH_INTERVAL: usize = 100;
@@ -75,14 +74,14 @@ impl RescueFileSink {
         if let Some(parent) = Path::new(out_path).parent()
             && !parent.exists()
         {
-            fs::create_dir_all(parent).owe(SinkReason::sink("create rescue directory failed"))?;
+            fs::create_dir_all(parent).owe_sink("create rescue directory failed")?;
         }
         let file = OpenOptions::new()
             .append(true)
             .create(true)
             .open(out_path)
             .await
-            .owe(SinkReason::sink("open rescue file failed"))?;
+            .owe_sink("open rescue file failed")?;
         Ok(Self {
             path: out_path.to_string(),
             writer: BufWriter::with_capacity(102_400, file),
@@ -91,19 +90,18 @@ impl RescueFileSink {
     }
 
     async fn write_entry(&mut self, entry: &RescueEntry) -> SinkResult<()> {
-        let mut line =
-            serde_json::to_vec(entry).owe(SinkReason::sink("serialize rescue entry failed"))?;
+        let mut line = serde_json::to_vec(entry).owe_sink("serialize rescue entry failed")?;
         line.push(b'\n');
         self.writer
             .write_all(&line)
             .await
-            .owe(SinkReason::sink("write rescue entry failed"))?;
+            .owe_sink("write rescue entry failed")?;
         self.proc_cnt += 1;
         if self.proc_cnt.is_multiple_of(RESCUE_FLUSH_INTERVAL) {
             self.writer
                 .flush()
                 .await
-                .owe(SinkReason::sink("flush rescue file failed"))?;
+                .owe_sink("flush rescue file failed")?;
         }
         Ok(())
     }
@@ -128,7 +126,7 @@ impl AsyncCtrl for RescueFileSink {
         self.writer
             .flush()
             .await
-            .owe(SinkReason::sink("flush rescue file failed"))?;
+            .owe_sink("flush rescue file failed")?;
         if let Some(new_path) = self.path.strip_suffix(".lock")
             && let Err(e) = fs::rename(&self.path, new_path)
         {
@@ -187,7 +185,8 @@ impl AsyncRawdatSink for RescueFileSink {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
+    use crate::compat::LegacyOwe;
+    use orion_error::UnifiedReason;
     use tempfile::tempdir;
     use wp_connector_api::{AsyncCtrl, AsyncRecordSink, SinkReason};
     use wp_model_core::model::DataField;
@@ -211,12 +210,12 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn rescue_sink_writes_structured_lines() -> SinkResult<()> {
-        let temp = tempdir().owe(SinkReason::Uvs(UvsReason::system_error()))?;
+        let temp = tempdir().owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
         let path = temp
             .path()
             .join("rescue/groupA/test_sink-2024-01-01_00:00:00.dat.lock");
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).owe(SinkReason::Uvs(UvsReason::system_error()))?;
+            fs::create_dir_all(parent).owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
         }
         let mut sink = RescueFileSink::new(path.to_str().unwrap()).await?;
         let mut record = DataRecord::default();
@@ -228,8 +227,8 @@ mod tests {
             .path()
             .join("rescue/groupA/test_sink-2024-01-01_00:00:00.dat");
         assert!(dat_path.exists(), "rescue file should be unlocked");
-        let content =
-            std::fs::read_to_string(dat_path).owe(SinkReason::Uvs(UvsReason::system_error()))?;
+        let content = std::fs::read_to_string(dat_path)
+            .owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
         let first_line = content.lines().next().unwrap_or("");
         let parsed = RescueEntry::parse(first_line).expect("parse stored entry");
         match parsed.into_payload() {

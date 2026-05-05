@@ -2,7 +2,7 @@ use orion_conf::{
     EnvTomlLoad, ErrorWith, TomlIO,
     error::{ConfIOReason, OrionConfResult},
 };
-use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
+use orion_error::conversion::SourceRawErr;
 use orion_variate::{EnvDict, EnvEvaluable};
 use serde_derive::{Deserialize, Serialize};
 use std::{
@@ -543,7 +543,7 @@ impl EngineConfig {
         } else {
             if let Some(parent) = engine_conf_path.parent() {
                 create_dir_all(parent)
-                    .owe(ConfIOReason::Uvs(UvsReason::resource_error()))
+                    .source_raw_err(ConfIOReason::resource_error(), "create engine conf dir")
                     .doing("create path")
                     .with_context(parent)?;
             }

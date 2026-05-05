@@ -4,7 +4,7 @@
 //! over TCP protocol with connection management, automatic framing, and message distribution.
 
 use crate::sources::event_id::next_event_id;
-use orion_error::{compat_prelude::ErrorOweBase, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use std::sync::Arc;
 
 use bytes::BytesMut;

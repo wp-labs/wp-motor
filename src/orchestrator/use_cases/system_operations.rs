@@ -1,4 +1,4 @@
-use orion_error::{UvsFrom, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use std::env;
 use std::fs::File;
 use std::path::Path;
@@ -22,7 +22,7 @@ impl Usecase {
     pub fn run(&self, sh: &str) -> RunResult<(String, String)> {
         let sh_path = format!("{}/{}", self.path, sh);
         if !std::path::Path::new(sh_path.as_str()).exists() {
-            return Err(RunReason::from_sys()
+            return Err(RunReason::system_error()
                 .to_err()
                 .with_detail(format!("script not found: {}", sh_path)));
         }
@@ -31,7 +31,7 @@ impl Usecase {
 
             let mut path_vec = env::split_paths(&path).collect::<Vec<_>>();
             let project_root = std::env::current_dir().map_err(|e| {
-                RunReason::from_sys()
+                RunReason::system_error()
                     .to_err()
                     .with_detail("resolve current dir failed")
                     .with_source(e)
@@ -42,7 +42,7 @@ impl Usecase {
             path_vec.push(target_dir);
 
             let new_path = env::join_paths(path_vec).map_err(|e| {
-                RunReason::from_sys()
+                RunReason::system_error()
                     .to_err()
                     .with_detail("join PATH entries failed")
                     .with_source(e)
@@ -66,7 +66,7 @@ impl Usecase {
             .arg(sh)
             .output()
             .map_err(|e| {
-                RunReason::from_sys()
+                RunReason::system_error()
                     .to_err()
                     .with_detail(format!("run script failed: {}", sh_path))
                     .with_source(e)
@@ -80,7 +80,7 @@ impl Usecase {
     }
     pub fn get_count(path: &str) -> RunResult<usize> {
         if !std::path::Path::new(path).exists() {
-            return Err(RunReason::from_sys()
+            return Err(RunReason::system_error()
                 .to_err()
                 .with_detail(format!("file not found: {}", path)));
         }
@@ -89,20 +89,20 @@ impl Usecase {
             .arg(path)
             .output()
             .map_err(|e| {
-                RunReason::from_sys()
+                RunReason::system_error()
                     .to_err()
                     .with_detail(format!("run wc failed for {}", path))
                     .with_source(e)
             })?;
         let binding = String::from_utf8(cmd.stdout).map_err(|e| {
-            RunReason::from_sys()
+            RunReason::system_error()
                 .to_err()
                 .with_detail(format!("decode wc output failed for {}", path))
                 .with_source(e)
         })?;
         let stdout: Vec<&str> = binding.trim().split(' ').collect();
         let count: usize = stdout[0].parse().map_err(|e| {
-            RunReason::from_sys()
+            RunReason::system_error()
                 .to_err()
                 .with_detail(format!("parse wc output failed for {}", path))
                 .with_source(e)
@@ -112,12 +112,12 @@ impl Usecase {
     pub fn open(&self, file: &str) -> RunResult<File> {
         let path = format!("{}/{}", self.path, file);
         if !Path::new(path.as_str()).exists() {
-            return Err(RunReason::from_sys()
+            return Err(RunReason::system_error()
                 .to_err()
                 .with_detail(format!("file not found: {}", path)));
         }
         File::open(&path).map_err(|e| {
-            RunReason::from_sys()
+            RunReason::system_error()
                 .to_err()
                 .with_detail(format!("open file failed: {}", path))
                 .with_source(e)

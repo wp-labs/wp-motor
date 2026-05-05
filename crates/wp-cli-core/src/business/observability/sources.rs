@@ -5,9 +5,9 @@
 
 use crate::utils::fs::{count_lines_file, resolve_path};
 use glob::glob;
-use orion_conf::EnvTomlLoad;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorWith, UvsFrom, compat_prelude::ErrorOweSource, conversion::ToStructError};
+use orion_conf::{EnvTomlLoad, ErrorWith};
+use orion_error::conversion::{SourceErr, ToStructError};
 use orion_variate::{EnvDict, EnvEvaluable};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -34,7 +34,7 @@ fn wpsrc_path(work_root: &Path, engine_conf: &EngineConfig) -> PathBuf {
 fn read_wpsrc_toml(path: &Path) -> OrionConfResult<Option<String>> {
     if path.exists() {
         return std::fs::read_to_string(path)
-            .owe_conf_source()
+            .source_err(ConfIOReason::system_error(), "read wpsrc config")
             .with_context(path)
             .doing("read wpsrc config")
             .map(Some);
@@ -126,7 +126,7 @@ fn configured_file_source_path(merged: &ParamMap) -> Option<String> {
 
 fn validated_file_source_path(merged: &ParamMap) -> OrionConfResult<String> {
     if merged.contains_key("path") {
-        return Err(ConfIOReason::from_validation().to_err().with_detail(
+        return Err(ConfIOReason::validation_error().to_err().with_detail(
             "'path' is not supported for file source; use 'file' (with optional wildcard) and optional 'base'",
         ));
     }
@@ -136,13 +136,13 @@ fn validated_file_source_path(merged: &ParamMap) -> OrionConfResult<String> {
         .and_then(|v| v.as_str())
         .unwrap_or("./data/in_dat");
     if has_glob_pattern(base) {
-        return Err(ConfIOReason::from_validation()
+        return Err(ConfIOReason::validation_error()
             .to_err()
             .with_detail("'base' does not support wildcard patterns for file source"));
     }
 
     let file = merged.get("file").and_then(|v| v.as_str()).ok_or_else(|| {
-        ConfIOReason::from_validation()
+        ConfIOReason::validation_error()
             .to_err()
             .with_detail("missing required 'file' for file source")
     })?;
@@ -163,13 +163,13 @@ fn expand_source_paths(raw: &str, work_root: &Path) -> OrionConfResult<Vec<PathB
 
     let mut matches = Vec::new();
     for entry in glob(&pattern).map_err(|err| {
-        ConfIOReason::from_validation()
+        ConfIOReason::validation_error()
             .to_err()
             .with_detail(format!("invalid glob pattern: {}", pattern))
             .with_source(err)
     })? {
         let path = entry.map_err(|err| {
-            ConfIOReason::from_validation()
+            ConfIOReason::validation_error()
                 .to_err()
                 .with_detail(format!("iterate glob match: {}", pattern))
                 .with_source(err)
@@ -181,7 +181,7 @@ fn expand_source_paths(raw: &str, work_root: &Path) -> OrionConfResult<Vec<PathB
     matches.sort();
     matches.dedup();
     if matches.is_empty() {
-        return Err(ConfIOReason::from_validation()
+        return Err(ConfIOReason::validation_error()
             .to_err()
             .with_detail(format!("glob matched no files: {}", pattern)));
     }
@@ -219,7 +219,7 @@ pub fn total_input_from_wpsrc(
         })?;
         for pathbuf in paths {
             let n = count_lines_file(&pathbuf).map_err(|e| {
-                ConfIOReason::from_validation()
+                ConfIOReason::validation_error()
                     .to_err()
                     .with_detail(format!(
                         "count lines for source '{}' at {}: {}",

@@ -25,7 +25,8 @@ pub fn make_blackhole_sink() -> Box<dyn wp_connector_api::AsyncSink> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
+    use crate::compat::LegacyOwe;
+    use orion_error::UnifiedReason;
     use wp_connector_api::{
         AsyncRawDataSink, AsyncRecordSink, SinkFactory, SinkReason, SinkResult,
     };
@@ -60,7 +61,8 @@ mod tests {
         AsyncRawDataSink::sink_str(sink.as_mut(), "\n").await?;
         AsyncRawDataSink::sink_str(sink.as_mut(), "").await?;
         drop(sink);
-        let body = std::fs::read_to_string(tmp).owe(SinkReason::Uvs(UvsReason::system_error()))?;
+        let body =
+            std::fs::read_to_string(tmp).owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
         assert!(body.trim_start().starts_with("{"));
         Ok(())
     }

@@ -1,8 +1,9 @@
+use crate::compat::LegacyOwe;
 use super::source::{FileEncoding, FileSource, MultiFileSource, compute_file_ranges};
 use async_trait::async_trait;
 use glob::glob;
-use orion_conf::{ErrorWith, UvsFrom};
-use orion_error::{compat_prelude::ErrorOweBase, conversion::ToStructError};
+use orion_conf::{ErrorWith};
+use orion_error::conversion::ToStructError;
 use std::path::Path;
 use wp_conf::connectors::ConnectorDef;
 use wp_conf_base::ConfParser;
@@ -25,7 +26,7 @@ struct FileSourceSpec {
 impl FileSourceSpec {
     fn from_resolved(resolved: &ResolvedSourceSpec) -> SourceResult<Self> {
         if resolved.params.contains_key("path") {
-            return Err(SourceReason::from_conf().to_err().with_detail(
+            return Err(SourceReason::core_conf().to_err().with_detail(
                 "'path' is not supported for file source; use 'file' (with optional wildcard) and optional 'base'",
             ));
         }
@@ -36,7 +37,7 @@ impl FileSourceSpec {
             .unwrap_or("./data/in_dat")
             .to_string();
         if has_glob_pattern(&base) {
-            return Err(SourceReason::from_conf()
+            return Err(SourceReason::core_conf()
                 .to_err()
                 .with_detail("'base' does not support wildcard patterns for file source"));
         }
@@ -45,7 +46,7 @@ impl FileSourceSpec {
             .get("file")
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
-                SourceReason::from_conf()
+                SourceReason::core_conf()
                     .to_err()
                     .with_detail("Missing required 'file' for file source")
             })?
@@ -55,7 +56,7 @@ impl FileSourceSpec {
             Some("base64") => FileEncoding::Base64,
             Some("hex") => FileEncoding::Hex,
             Some(v) => {
-                return Err(SourceReason::from_conf().to_err().with_detail(format!(
+                return Err(SourceReason::core_conf().to_err().with_detail(format!(
                     "Invalid encode value for file source '{}': {}",
                     resolved.name, v
                 )));
@@ -87,12 +88,12 @@ impl FileSourceSpec {
         let pattern = Path::new(&self.base).join(&self.file).display().to_string();
         let mut matches = Vec::new();
         for entry in glob(&pattern).map_err(|e| {
-            SourceReason::from_conf()
+            SourceReason::core_conf()
                 .to_err()
                 .with_detail(format!("invalid glob pattern '{}': {}", pattern, e))
         })? {
             let path = entry.map_err(|e| {
-                SourceReason::from_conf()
+                SourceReason::core_conf()
                     .to_err()
                     .with_detail(format!("iterate glob match '{}': {}", pattern, e))
             })?;
@@ -103,7 +104,7 @@ impl FileSourceSpec {
         matches.sort_by(|left, right| compare_paths_by_file_name(left, right));
         matches.dedup();
         if matches.is_empty() {
-            return Err(SourceReason::from_conf()
+            return Err(SourceReason::core_conf()
                 .to_err()
                 .with_detail(format!("file source wildcard matched no files: {}", pattern)));
         }
@@ -124,7 +125,7 @@ impl SourceFactory for FileSourceFactory {
 
     fn validate_spec(&self, resolved: &ResolvedSourceSpec) -> SourceResult<()> {
         if let Err(e) = Tags::validate(&resolved.tags) {
-            return Err(SourceReason::from_conf()
+            return Err(SourceReason::core_conf()
                 .to_err()
                 .with_detail(format!("Invalid tags: {}", e))
                 .with_context(resolved.name.as_str()));
@@ -167,7 +168,7 @@ impl SourceFactory for FileSourceFactory {
                 .next()
                 .expect("single file path should exist");
             let ranges = compute_file_ranges(Path::new(&source_path), spec.instances)
-                .owe(SourceReason::from_data())
+                .owe(SourceReason::data_error())
                 .with_context(source_path.as_str())
                 .doing("open source file")?;
             let mut handles = Vec::with_capacity(ranges.len());

@@ -15,11 +15,11 @@ use wp_connector_api::{SinkError, SinkReason, SinkResult};
 use super::SinkDatYSender;
 
 fn sink_channel_closed_error() -> SinkError {
-    SinkReason::sink("sink channel closed").err()
+    SinkReason::sink("sink channel closed")
 }
 
 fn sink_channel_full_error() -> SinkError {
-    SinkReason::sink("sink channel full - cannot send batch package").err()
+    SinkReason::sink("sink channel full - cannot send batch package")
 }
 
 impl RecSyncSink for SinkDatYSender {

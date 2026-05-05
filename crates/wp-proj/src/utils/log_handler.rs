@@ -1,4 +1,5 @@
-use orion_error::{UvsFrom, conversion::ToStructError};
+use crate::compat::UvsFrom;
+use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
 use std::path::Path;
 use wp_engine::facade::config::load_warp_engine_confs;

@@ -9,8 +9,8 @@
 
 use super::traits::ConfigLoader;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::compat_prelude::ErrorOweSource;
-use orion_error::{ErrorWith, UvsFrom, conversion::ToStructError};
+use orion_error::conversion::SourceRawErr;
+use orion_error::{conversion::ErrorWith, conversion::ToStructError};
 use orion_variate::EnvDict;
 use std::path::{Path, PathBuf};
 
@@ -40,13 +40,13 @@ where
     T: ConfigLoader + serde::Serialize,
 {
     if !dir.exists() {
-        return Err(ConfIOReason::from_validation()
+        return Err(ConfIOReason::validation_error()
             .to_err()
             .with_detail(format!("目录不存在: {:?}", dir)));
     }
 
     if !dir.is_dir() {
-        return Err(ConfIOReason::from_validation()
+        return Err(ConfIOReason::validation_error()
             .to_err()
             .with_detail(format!("路径不是目录: {:?}", dir)));
     }
@@ -54,12 +54,14 @@ where
     let mut configs = Vec::new();
 
     let entries = std::fs::read_dir(dir)
-        .owe_conf_source()
+        .source_raw_err(ConfIOReason::core_conf(), "source error")
         .doing("无法读取目录")
         .with_context(dir)?;
 
     for entry in entries {
-        let entry: std::fs::DirEntry = entry.owe_conf_source().doing("读取目录项失败")?;
+        let entry: std::fs::DirEntry = entry
+            .source_raw_err(ConfIOReason::core_conf(), "source error")
+            .doing("读取目录项失败")?;
 
         let path = entry.path();
 

@@ -4,10 +4,11 @@
 //! including actor workflows, rule generation, and data processing pipelines.
 
 use async_broadcast::broadcast;
-use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
+use orion_error::UnifiedReason as UvsReason;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use wp_connector_api::Tags;
+use wp_engine::compat::LegacyOwe;
 use wp_engine::facade::generator::rule_gen_run;
 use wp_engine::facade::kit::engine_check;
 use wp_engine::facade::test_helpers::ActorCtrlCmd;

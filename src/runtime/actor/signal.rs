@@ -1,6 +1,7 @@
 #![allow(dead_code)]
+use crate::compat::LegacyOwe;
 use async_signal::{Signal, Signals};
-use orion_error::{ErrorWith, UvsFrom, compat_prelude::ErrorOweBase};
+use orion_error::conversion::ErrorWith;
 use std::{
     fmt::Display,
     sync::atomic::{AtomicBool, Ordering},
@@ -28,7 +29,7 @@ impl Display for ShutdownCmd {
 
 pub fn stop_signals() -> RunResult<Signals> {
     let signals = Signals::new([Signal::Term, Signal::Quit, Signal::Int])
-        .owe(RunReason::from_sys())
+        .owe(RunReason::system_error())
         .doing("set signal")?;
     Ok(signals)
 }

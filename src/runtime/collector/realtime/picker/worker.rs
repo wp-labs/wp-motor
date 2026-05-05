@@ -1,4 +1,5 @@
 use super::actor::JMActPicker;
+use crate::compat::LegacyOwe;
 use crate::runtime::actor::command::{CmdSubscriber, TaskController, spawn_ctrl_event_bridge};
 use crate::runtime::actor::constants::ACTOR_IDLE_TICK_MS;
 use crate::runtime::collector::realtime::constants::{
@@ -7,7 +8,6 @@ use crate::runtime::collector::realtime::constants::{
 };
 use crate::runtime::collector::realtime::picker::round::{RoundStat, SrcStatus};
 use crate::runtime::parser::workflow::ParseDispatchRouter;
-use orion_error::{UvsFrom, compat_prelude::ErrorOweBase};
 use wp_error::run_error::RunReason;
 // stop_routine_run/err4_dispatch_data 仅在 dispatch.rs 中使用
 use crate::runtime::prelude::*;
@@ -265,7 +265,7 @@ impl SourceWorker {
                 stat_ext
                     .send_stat(&self.mon_s)
                     .await
-                    .owe(RunReason::from_sys())
+                    .owe(RunReason::system_error())
                     .doing("mon-stat")?;
             }
             // 外层根据“限速/等待”计算应休眠的时间，避免在数据路径处直接 sleep
@@ -282,7 +282,7 @@ impl SourceWorker {
         stat_ext
             .send_stat(&self.mon_s)
             .await
-            .owe(RunReason::from_sys())
+            .owe(RunReason::system_error())
             .doing("mon-stat")?;
         Ok(())
     }

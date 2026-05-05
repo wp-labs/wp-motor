@@ -5,8 +5,9 @@
 
 use crate::utils::fs::{count_lines_file, is_match, resolve_path};
 use crate::utils::types::{Ctx, GroupAccum, Row, SinkAccum};
+use orion_conf::ErrorWith;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{ErrorWith, UvsFrom, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
 use std::path::Path;
 use wp_conf::sinks::{load_business_route_confs, load_infra_route_confs};
@@ -206,7 +207,7 @@ pub fn collect_sink_statistics(
 ) -> OrionConfResult<(Vec<Row>, u64)> {
     // Validate that sink directories exist
     if !(sink_root.join("business.d").exists() || sink_root.join("infra.d").exists()) {
-        return Err(ConfIOReason::from_validation()
+        return Err(ConfIOReason::validation_error()
             .to_err()
             .with_detail(format!(
                 "缺少 sinks 配置目录：在 '{}' 下未发现 business.d/ 或 infra.d/",

@@ -1,8 +1,9 @@
 //use wp_log::conf::{log_init, LogConf};
 use std::io::Cursor;
 
-use orion_error::{UvsReason, compat_prelude::ErrorOweBase};
+use orion_error::UnifiedReason as UvsReason;
 use wp_conf::RunArgs;
+use wp_engine::compat::LegacyOwe;
 use wp_engine::facade::test_helpers::SinkTerminal;
 use wp_engine::types::SafeH;
 use wp_error::run_error::{RunReason, RunResult};

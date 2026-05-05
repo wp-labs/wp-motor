@@ -29,7 +29,8 @@
 //! # fn some_anyhow_function() -> anyhow::Result<()> { Ok(()) }
 //! # fn some_config_function() -> Result<(), orion_error::StructError<orion_conf::error::ConfIOReason>> { Ok(()) }
 //! ```
-use orion_error::{UvsFrom, conversion::ToStructError};
+use crate::compat::UvsFrom;
+use orion_error::conversion::ToStructError;
 use std::error::Error as StdError;
 use wp_error::run_error::{RunReason, RunResult};
 

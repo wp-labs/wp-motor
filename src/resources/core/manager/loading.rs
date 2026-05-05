@@ -1,3 +1,4 @@
+use crate::compat::LegacyOwe;
 use std::path::Path;
 
 use crate::orchestrator::config::build_sinks::SinkRouteTable;
@@ -8,8 +9,7 @@ use oml::core::ConfADMExt;
 use oml::language::{DataModel, ObjModel};
 use orion_conf::ErrorWith;
 use orion_error::{
-    ErrorConv, ErrorWrapAs, OperationContext, UvsFrom, compat_prelude::ErrorOweBase,
-    conversion::ToStructError,
+    OperationContext, conversion::ConvErr, conversion::SourceErr, conversion::ToStructError,
 };
 use orion_variate::EnvDict;
 use wp_conf::engine::EngineConfig;
@@ -29,7 +29,7 @@ impl ResManager {
         info_ctrl!("load all wpl code beg...");
         let wpl_code = load_engine_code(main_conf).await?;
         let wpl_space = WplRepository::from_wpl_tolerant(wpl_code, error_sink.end_point())
-            .owe(RunReason::from_rule())?;
+            .owe(RunReason::rule_error())?;
         self.wpl_index = Some(SpaceIndex::from(&wpl_space));
         self.wpl_space = Some(wpl_space);
         info_ctrl!("load all wpl code end");
@@ -39,12 +39,15 @@ impl ResManager {
     pub async fn load_all_ldm(&mut self, oml_root: &str) -> RunResult<()> {
         info_ctrl!("load all oml model");
         let oml_spc = load_oml_code(oml_root).await?;
-        let wpl_index = self.wpl_index.clone().ok_or(RunReason::from_logic())?;
+        let wpl_index = self
+            .wpl_index
+            .clone()
+            .ok_or(RunReason::validation_error())?;
         for (path, _code) in oml_spc.items {
             if std::path::Path::new(path.as_str()).exists() && path.ends_with(".oml") {
                 let mdl = ObjModel::load(path.as_str())
                     .await
-                    .err_conv()
+                    .conv_err()
                     .doing("load oml")
                     .with_context(path.as_str())?;
                 // Skip disabled models
@@ -80,14 +83,17 @@ impl ResManager {
         dict: &EnvDict,
     ) -> RunResult<SinkRouteTable> {
         let mut op = OperationContext::doing("load all sink").with_auto_log();
-        let wpl_index = self.wpl_index.clone().ok_or(RunReason::from_logic())?;
+        let wpl_index = self
+            .wpl_index
+            .clone()
+            .ok_or(RunReason::validation_error())?;
 
         let mut sink_route = SinkRouteTable::default();
         let busin_d = Path::new(sink_root).join("business.d");
         let infra_d = Path::new(sink_root).join("infra.d");
         if busin_d.exists() || infra_d.exists() {
             let confs = wp_conf::sinks::load_business_route_confs_with(sink_root, &Lookup, dict)
-                .wrap_as(RunReason::from_conf(), "load sink route confs")
+                .source_err(RunReason::core_conf(), "load sink route confs")
                 .with_context(sink_root)?;
             for mut conf in confs {
                 // 现有的方法正确处理 FlexGroup rule 和 oml 字段
@@ -99,7 +105,7 @@ impl ResManager {
             op.mark_suc();
             Ok(sink_route)
         } else {
-            Err(RunReason::from_conf()
+            Err(RunReason::core_conf()
                 .to_err()
                 .with_detail(format!("sink route dirs not found under '{}'", sink_root)))
         }

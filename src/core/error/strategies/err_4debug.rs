@@ -1,4 +1,5 @@
-use orion_error::{UvsReason, types::ErrStrategy};
+use crate::compat::ErrStrategy;
+use orion_error::UnifiedReason;
 use wp_connector_api::{SinkError, SinkReason};
 use wp_connector_api::{SourceError, SourceReason};
 use wp_error::error_handling::ErrorHandlingStrategy;
@@ -15,14 +16,14 @@ impl Err4Debug {
     pub(crate) const fn init() -> Self {
         Self {}
     }
-    fn err_4universal(&self, reason: &UvsReason) -> ErrStrategy {
+    fn err_4universal(&self, reason: &UnifiedReason) -> ErrStrategy {
         match reason {
             //UniversalReason::SysError(_) => ErrorStg::Interrupt,
             //UniversalReason::LogicError(_) => ErrorStg::Interrupt,
             //_ => ErrorStg::Tolerant,
             //UniversalReason::LogicError(_) => {}
             //UniversalReason::BizError(_) => {}
-            UvsReason::DataError => ErrStrategy::Ignore,
+            UnifiedReason::DataError => ErrStrategy::Ignore,
             //UniversalReason::SysError(_) => {}
             //UniversalReason::ResError(_) => {}
             //UniversalReason::ConfError(_) => {}
@@ -34,8 +35,11 @@ impl Err4Debug {
 impl ErrorHandlingPolicy for Err4Debug {
     fn err4_send_to_sink(&self, err: &SinkError) -> ErrorHandlingStrategy {
         match err.reason() {
-            SinkReason::Sink(e) => {
-                warn_data!("sink error: {}", e);
+            SinkReason::Sink => {
+                warn_data!(
+                    "sink error: {}",
+                    err.detail().as_deref().unwrap_or("sink error")
+                );
                 ErrorHandlingStrategy::FixRetry
             }
 
@@ -80,18 +84,27 @@ impl ErrorHandlingPolicy for Err4Debug {
 
     fn err4_dispatch_data(&self, err: &SourceError) -> ErrorHandlingStrategy {
         match err.reason() {
-            SourceReason::SupplierError(e) => {
-                warn_data!("{}", e);
+            SourceReason::SupplierError => {
+                warn_data!(
+                    "{}",
+                    err.detail().as_deref().unwrap_or("source supplier error")
+                );
                 ErrorHandlingStrategy::FixRetry
             }
             SourceReason::NotData => ErrorHandlingStrategy::Tolerant,
             SourceReason::EOF => ErrorHandlingStrategy::Terminate,
-            SourceReason::Disconnect(e) => {
-                warn_data!("rule error: {}", e);
+            SourceReason::Disconnect => {
+                warn_data!(
+                    "rule error: {}",
+                    err.detail().as_deref().unwrap_or("source disconnect")
+                );
                 ErrorHandlingStrategy::FixRetry
             }
-            SourceReason::Other(e) => {
-                error_data!("other error: {}", e);
+            SourceReason::Other => {
+                error_data!(
+                    "other error: {}",
+                    err.detail().as_deref().unwrap_or("source error")
+                );
                 ErrorHandlingStrategy::Throw
             }
             SourceReason::Uvs(e) => ErrorHandlingStrategy::from(self.err_4universal(e)),

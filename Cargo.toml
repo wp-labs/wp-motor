@@ -54,7 +54,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.21.10" # @gxl:set(version)
+version = "1.21.11" # @gxl:set(version)
 edition = "2024"
 license = "Apache-2.0"
 
@@ -161,7 +161,7 @@ wp-knowledge = { workspace = true }
 
 # --- Internal: Language & Parsing ---
 wp_primitives = { workspace = true }
-wpl = { package = "wp-lang", version = "0.2" }
+wp-lang =  {workspace = true}
 oml = { package = "wp-oml", path = "crates/wp-oml", features = ["oml-diag"] }
 
 # --- Internal: Data & Stats ---
@@ -265,7 +265,7 @@ anyhow = "1.0"
 thiserror = "2.0"
 log = "0.4"
 env_logger = "0.11"
-orion-error = "0.7"
+orion-error = { version = "0.8", features = ["anyhow", "serde_json", "toml"] }
 
 # --- Parsing & Text ---
 winnow = "1.0"
@@ -334,9 +334,9 @@ md5 = "0.8"
 encoding_rs = "0.8"
 
 # --- Cryptography ---
-orion_conf = { version = "0.6", features = ["yaml", "toml"] }
-orion-sec = "0.5"
-orion-variate = "0.12"
+orion_conf = { version = "0.7", features = ["yaml", "toml"] }
+orion-sec = "0.6"
+orion-variate = "0.13"
 
 # --- Testing ---
 criterion = "0.8"
@@ -353,18 +353,18 @@ orion_exp = { path = "./crates/orion_exp" }
 wp_primitives = { package = "wp-primitives", version = "0.2" }
 wp_config = { package = "wp-config", path = "./crates/wp-config" }
 wp_data_model = { package = "wp-data-utils", path = "./crates/wp-data-utils" }
-wp-knowledge = "0.12"
+wp-knowledge = "0.13"
 #wp_lang = { package = "wp-lang", version = "0.1" }
 wp_oml = { package = "wp-oml", path = "./crates/wp-oml" }
 wp_proj = { package = "wp-proj", path = "./crates/wp-proj" }
-wp_core_connectors = { package = "wp-core-connectors", version = "0.2.0" }
+wp_core_connectors = { package = "wp-core-connectors", version = "0.3.1" }
 
 # --- External: Arrow ---
 wp-arrow = "0.1"
 
 # --- External: Open API (Public Interfaces) ---
-wp-connector-api = "0.9"
-wp-parse-api = "0.9"
+wp-connector-api = "0.10.1"
+wp-parse-api = "0.10"
 wp-model-core = "0.8"
 
 # --- External: Advanced API (Enterprise Features) ---
@@ -372,8 +372,9 @@ wp-model-core = "0.8"
 #wp_enrich_api = { package = "wp-enrich-api", git = "https://github.com/wp-labs/wp-advanced-api", tag = "v0.2.0" }
 
 # --- External: Infrastructure Libraries ---
-wp-log = "0.3"
-wp-error = "0.9"
-wp-specs = "0.9"
-wp-conf-base = "0.3"
+wp-log = "0.4"
+wp-lang = "0.3.1"
+wp-error = "0.10"
+wp-specs = "0.10"
+wp-conf-base = "0.4"
 wp-data-fmt = "0.2"

@@ -3,6 +3,7 @@ use super::common::{
     split_total_among_parallel,
 };
 use super::speed::{DynamicRateLimiter, SpeedProfile};
+use crate::compat::LegacyOwe;
 use crate::orchestrator::config::models::stat_reqs_from;
 use crate::runtime::actor::TaskGroup;
 use crate::runtime::actor::signal::ShutdownCmd;
@@ -10,7 +11,7 @@ use crate::runtime::generator::rule_source::RuleGenSource;
 use crate::runtime::generator::types::GenGRA;
 use crate::runtime::supervisor::monitor::{ActorMonitor, MonitorSinkHandle};
 use crate::sinks::SinkBackendType;
-use orion_error::{ErrorWith, UvsFrom, compat_prelude::ErrorOweBase};
+use orion_error::conversion::ErrorWith;
 use orion_variate::EnvDict;
 use tokio::task::JoinHandle;
 use wp_conf::stat::StatConf;
@@ -35,7 +36,7 @@ async fn send_unit_rules(
     for _ in 0..unit_cnt {
         let ffv = src
             .gen_one(*cur_idx)
-            .owe(RunReason::from_conf())
+            .owe(RunReason::core_conf())
             .with_context(format!("rule_idx={}", *cur_idx))
             .doing("generate rule record")?;
         *cur_idx = (*cur_idx + 1) % rules_len;
@@ -69,12 +70,12 @@ pub async fn run_rule_direct(
         gar.total_line
     );
     let units = crate::core::generator::rules::load_gen_confs(rule_root, dict)
-        .owe(RunReason::from_rule())
+        .owe(RunReason::rule_error())
         .with_context(rule_root)
         .doing("load rule")?;
     info_ctrl!("run_rule_direct: loaded {} rule units", units.len());
     let source = RuleGenSource::from_units(units)
-        .owe(RunReason::from_conf())
+        .owe(RunReason::core_conf())
         .with_context(rule_root)
         .doing("build rule source from units")?;
     let source = std::sync::Arc::new(source);
@@ -144,7 +145,7 @@ pub async fn run_rule_direct(
     for t in tasks {
         let n = t
             .await
-            .owe(RunReason::from_conf())
+            .owe(RunReason::core_conf())
             .with_context("gen_direct_rule")
             .doing("join rule pipeline task")??;
         total_produced += n;

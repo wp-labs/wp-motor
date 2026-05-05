@@ -327,7 +327,7 @@ pub fn oml_aga_match(data: &mut &str) -> WResult<PreciseEvaluator> {
 mod tests {
     use super::*;
     use crate::core::AsyncDataTransformer;
-    use orion_error::testcase::TestAssert;
+    use orion_error::dev::testing::TestAssert;
     use wp_model_core::model::{DataField, FieldStorage};
 
     use wp_primitives::WResult as ModalResult;
@@ -787,7 +787,7 @@ Result = match read(status) {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_match_with_quoted_strings() {
-        use orion_error::testcase::TestAssert;
+        use orion_error::dev::testing::TestAssert;
         use wp_knowledge::cache::FieldQueryCache;
         use wp_model_core::model::DataRecord;
 

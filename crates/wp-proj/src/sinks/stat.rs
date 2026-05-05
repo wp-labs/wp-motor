@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 
+use crate::compat::{ErrorOweBase, UvsFrom};
 use orion_conf::ErrorWith;
-use orion_error::{UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
 use wp_cli_core as wlib;
 use wp_engine::facade::config;

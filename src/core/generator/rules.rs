@@ -1,9 +1,8 @@
 use super::super::prelude::*;
+use crate::compat::LegacyOwe;
 use oml::parser::code::OMLCode;
 use orion_conf::EnvTomlLoad;
-use orion_error::{
-    UvsReason, compat_prelude::ErrorOweBase, runtime::ContextRecord, runtime::WithContext,
-};
+use orion_error::{UnifiedReason, runtime::WithContext};
 use orion_variate::EnvDict;
 use std::{
     collections::{HashMap, VecDeque},
@@ -123,12 +122,12 @@ pub fn load_gen_confs(path: &str, dict: &EnvDict) -> ConfResult<Vec<GenRuleUnit>
             f.read_to_end(&mut buffer).expect("read conf file error");
             let data = String::from_utf8(buffer).expect("conf file is not utf8");
             let code_build = WplCode::build(fst.clone(), data.as_str())
-                .owe(ConfReason::Uvs(UvsReason::core_conf()))
+                .owe(ConfReason::Uvs(UnifiedReason::core_conf()))
                 .with_context(&ctx)?;
             info_ctrl!("load conf file: {:?}", fst);
             let package = code_build
                 .parse_pkg()
-                .owe(ConfReason::Uvs(UvsReason::core_conf()))
+                .owe(ConfReason::Uvs(UnifiedReason::core_conf()))
                 .with_context(&ctx)?;
             if package.is_empty() {
                 return Err(ConfError::from(ConfReason::NotFound(
@@ -142,10 +141,10 @@ pub fn load_gen_confs(path: &str, dict: &EnvDict) -> ConfResult<Vec<GenRuleUnit>
             let mut ctx = WithContext::doing("loadd field gen rule");
             ctx.record("sec", sec.to_str().unwrap_or("unknow"));
             let toml = std::fs::read_to_string(sec)
-                .owe(ConfReason::Uvs(UvsReason::core_conf()))
+                .owe(ConfReason::Uvs(UnifiedReason::core_conf()))
                 .with_context(&ctx)?;
             let conf: FieldsGenRule = FieldsGenRule::env_parse_toml(toml.as_str(), dict)
-                .owe(ConfReason::Uvs(UvsReason::core_conf()))
+                .owe(ConfReason::Uvs(UnifiedReason::core_conf()))
                 .with_context(&ctx)?;
             fields = conf.items;
             info_ctrl!("load conf file: {:?}", sec);
@@ -161,21 +160,21 @@ pub fn fetch_oml_data(path: &str, target: &str) -> OMLCodeResult<OmlRepository> 
     let mut ctx = WithContext::doing("load oml");
     ctx.record("path", path);
     let files = find_conf_files(path, target)
-        .owe(OMLCodeReason::Uvs(UvsReason::core_conf()))
+        .owe(OMLCodeReason::Uvs(UnifiedReason::core_conf()))
         .with_context(&ctx)?;
 
     let mut spc = OmlRepository::default();
     for f_name in &files {
         info_ctrl!("load conf file: {:?}", f_name);
         let mut f = File::open(f_name)
-            .owe(OMLCodeReason::Uvs(UvsReason::core_conf()))
+            .owe(OMLCodeReason::Uvs(UnifiedReason::core_conf()))
             .with_context(&ctx)?;
         let mut buffer = Vec::with_capacity(10240);
         f.read_to_end(&mut buffer)
-            .owe(OMLCodeReason::Uvs(UvsReason::core_conf()))
+            .owe(OMLCodeReason::Uvs(UnifiedReason::core_conf()))
             .with_context(&ctx)?;
         let file_data = String::from_utf8(buffer)
-            .owe(OMLCodeReason::Uvs(UvsReason::core_conf()))
+            .owe(OMLCodeReason::Uvs(UnifiedReason::core_conf()))
             .with_context(&ctx)?;
         spc.push(OMLCode::from((
             f_name.to_str().unwrap_or("").to_string(),

@@ -1,3 +1,4 @@
+use crate::compat::LegacyOwe;
 use tokio::io::{self, AsyncBufReadExt};
 use wp_connector_api::{SourceError, SourceReason, SourceResult};
 

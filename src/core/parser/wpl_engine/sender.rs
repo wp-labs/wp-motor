@@ -8,7 +8,7 @@ use crate::facade::test_helpers::SinkTerminal;
 use crate::runtime::actor::constants::ACTOR_IDLE_TICK_MS;
 use crate::runtime::errors::err4_send_to_sink;
 use crate::sinks::{SinkDataEnum, SinkGroupAgent, SinkInfraAble, SinkPackage, SinkRecUnit};
-use orion_error::UvsReason;
+use orion_error::UnifiedReason;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::time::sleep;
@@ -139,14 +139,14 @@ impl WplEngine {
                 let msg = format!("sink send error (fix_retry): {}", e);
                 error_data!("{}", msg);
                 Err(WparseError::from(WparseReason::Uvs(
-                    UvsReason::system_error(),
+                    UnifiedReason::system_error(),
                 )))
             }
             ErrorHandlingStrategy::Throw => {
                 let msg = format!("sink send error: {}", e);
                 error_data!("{}", msg);
                 Err(WparseError::from(WparseReason::Uvs(
-                    UvsReason::system_error(),
+                    UnifiedReason::system_error(),
                 )))
             }
             ErrorHandlingStrategy::Terminate => Ok(()),

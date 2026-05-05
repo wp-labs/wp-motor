@@ -1,5 +1,5 @@
 use crate::facade::generator::GenRuleUnit;
-use orion_error::{UvsFrom, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use wp_error::run_error::{RunReason, RunResult};
 use wpl::generator::FmtFieldVec;
 use wpl::{WplCompiledRule, WplStatementType, wpl_compile_rule};
@@ -21,7 +21,7 @@ impl RuleGenSource {
                 match &wpl_rule.statement {
                     WplStatementType::Express(_) => {
                         let cr = wpl_compile_rule(wpl_rule, &fields_map).map_err(|e| {
-                            RunReason::from_conf()
+                            RunReason::core_conf()
                                 .to_err()
                                 .with_detail(format!("compile rule failed: {}", e))
                         })?;
@@ -31,7 +31,7 @@ impl RuleGenSource {
             }
         }
         if compiled.is_empty() {
-            return Err(RunReason::from_conf()
+            return Err(RunReason::core_conf()
                 .to_err()
                 .with_detail("no compiled rules (empty WPL or fields)"));
         }
@@ -48,7 +48,7 @@ impl RuleGenSource {
         let ridx = idx % self.rules.len();
         let comp = &self.rules[ridx];
         comp.gen_one().map_err(|e| {
-            RunReason::from_conf()
+            RunReason::core_conf()
                 .to_err()
                 .with_detail(format!("generate rule record failed: {}", e))
         })
@@ -59,7 +59,7 @@ impl RuleGenSource {
         let ridx = idx_begin % self.rules.len();
         let comp = &self.rules[ridx];
         comp.gen_batch(idx_begin, count).map_err(|e| {
-            RunReason::from_conf()
+            RunReason::core_conf()
                 .to_err()
                 .with_detail(format!("generate rule batch failed: {}", e))
         })

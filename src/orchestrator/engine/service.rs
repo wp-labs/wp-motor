@@ -1,3 +1,4 @@
+use crate::compat::LegacyOwe;
 use std::time::{Duration, Instant};
 
 use crate::runtime::actor::TaskRole;
@@ -13,7 +14,7 @@ use crate::runtime::tasks::{
     start_parser_tasks_frames, start_picker_tasks,
 };
 use crate::stat::MonSend;
-use orion_error::{UvsFrom, compat_prelude::ErrorOweBase, conversion::ToStructError};
+use orion_error::{conversion::SourceRawErr, conversion::ToStructError};
 use tokio::time::sleep;
 use wp_conf::{RunArgs, RunMode};
 use wp_error::{RunReason, run_error::RunResult};
@@ -154,11 +155,11 @@ impl EngineRuntime {
             let wait_timeout = remaining_timeout(deadline)?;
             let event = tokio::time::timeout(wait_timeout, self.active_processing.recv())
                 .await
-                .owe(RunReason::from_logic())?
-                .ok_or_else(|| RunReason::from_logic().to_err())?;
+                .owe(RunReason::validation_error())?
+                .ok_or_else(|| RunReason::validation_error().to_err())?;
             self.active_processing
                 .observe(&event)
-                .map_err(|detail| RunReason::from_logic().to_err().with_detail(detail))?;
+                .map_err(|detail| RunReason::validation_error().to_err().with_detail(detail))?;
         }
         self.task_manager
             .stop_role(TaskRole::Maintainer, ShutdownCmd::Immediate)
@@ -268,7 +269,7 @@ fn detached_force_stop_timeout(reload_timeout: Duration) -> Duration {
 fn remaining_timeout(deadline: Instant) -> RunResult<Duration> {
     deadline
         .checked_duration_since(Instant::now())
-        .ok_or_else(|| RunReason::from_logic().to_err())
+        .ok_or_else(|| RunReason::validation_error().to_err())
 }
 
 pub async fn start_processing_tasks(

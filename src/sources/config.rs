@@ -1,7 +1,7 @@
+use crate::compat::LegacyOwe;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
 use orion_conf::{EnvTomlLoad, ErrorWith};
-use orion_error::compat_prelude::ErrorOweBase;
-use orion_error::{UvsFrom, UvsReason, conversion::ToStructError};
+use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
 use serde_derive::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -22,7 +22,7 @@ impl UnifiedSourcesConfig {
     #[allow(clippy::ptr_arg)]
     pub fn from_file(path: &PathBuf, dict: &EnvDict) -> OrionConfResult<Self> {
         let content = std::fs::read_to_string(path)
-            .owe(ConfIOReason::Uvs(UvsReason::core_conf()))
+            .owe(ConfIOReason::core_conf())
             .doing("load config")
             .with_context(path)?;
         Self::from_str(&content, dict)
@@ -79,7 +79,7 @@ impl SourceConfigParser {
             let mut resolved = core_to_resolved_with(&core, connector_id);
             Self::ensure_source_type_tag(&mut resolved);
             let fac = registry::get_source_factory(&resolved.kind).ok_or_else(|| {
-                ConfIOReason::from_validation()
+                ConfIOReason::validation_error()
                     .to_err()
                     .with_detail(format!(
                         "source factory not found for kind '{}'",
@@ -89,7 +89,7 @@ impl SourceConfigParser {
             let svc = fac
                 .build(&resolved, &ctx)
                 .await
-                .owe(ConfIOReason::Uvs(UvsReason::validation_error()))
+                .owe(ConfIOReason::validation_error())
                 .with_context(resolved.name.as_str())
                 .doing("build source instance")?;
             sources.extend(svc.sources);

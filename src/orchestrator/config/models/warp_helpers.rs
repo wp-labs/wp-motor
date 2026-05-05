@@ -2,7 +2,7 @@ use crate::{
     core::parser::wpl_engine, facade::diagnostics::print_run_error,
     orchestrator::config::loader::WarpConf,
 };
-use orion_error::{ErrorConv, ErrorWrapAs, UvsFrom, conversion::ToStructError};
+use orion_error::{conversion::ConvErr, conversion::SourceErr, conversion::ToStructError};
 use orion_variate::{EnvDict, EnvEvaluable};
 use std::{env, path::PathBuf};
 use wp_conf::engine::EngineConfig;
@@ -25,13 +25,13 @@ pub fn load_warp_engine_confs(
             abs_root.display(),
             &err
         );
-        RunReason::from_conf()
+        RunReason::core_conf()
             .to_err()
             .with_detail(format!("set work root '{}' failed", abs_root.display()))
             .with_source(err)
     })?;
     let main_conf = EngineConfig::load(&abs_root, dict)
-        .wrap_as(RunReason::from_conf(), "load engine config failed")?
+        .source_err(RunReason::core_conf(), "load engine config failed")?
         .env_eval(dict)
         .conf_absolutize(&abs_root);
     Ok((conf_manager, main_conf))

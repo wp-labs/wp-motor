@@ -1,3 +1,4 @@
+use crate::compat::LegacyOwe;
 use crate::sinks::pdm_outer::TDMDataAble;
 use crate::sinks::prelude::*;
 use chrono::Utc;
@@ -27,7 +28,7 @@ use wp_connector_api::{SinkReason, SinkResult};
 use wp_error::error_handling::{ErrorHandlingStrategy, sys_robust_mode};
 use wp_model_core::raw::RawData;
 
-use orion_error::{ErrorWith, UvsReason, compat_prelude::ErrorOweBase};
+use orion_error::{UnifiedReason, conversion::ErrorWith};
 use wp_connector_api::SinkError;
 use wp_stat::StatRecorder;
 use wp_stat::StatReq;
@@ -160,7 +161,7 @@ impl SinkRuntime {
         let out_path = Path::new(&file_path);
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
-                SinkReason::sink("create rescue sink directory failed").err_source(e)
+                SinkReason::sink("create rescue sink directory failed").with_source(e)
             })?;
         }
         info_ctrl!("crate out file use async mode {}", file_path);
@@ -181,7 +182,7 @@ impl SinkRuntime {
         self.normal_stat
             .send_stat(mon_send)
             .await
-            .owe(SinkReason::Uvs(UvsReason::system_error()))
+            .owe(SinkReason::Uvs(UnifiedReason::system_error()))
             .doing("sink stat")?;
         if self.backup_used {
             let backup_name = format!("{}_bak", self.name);
@@ -196,7 +197,7 @@ impl SinkRuntime {
             self.backup_stat
                 .send_stat(mon_send)
                 .await
-                .owe(SinkReason::Uvs(UvsReason::system_error()))
+                .owe(SinkReason::Uvs(UnifiedReason::system_error()))
                 .doing("back sink stat")?;
         }
         Ok(())
@@ -863,9 +864,10 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn swap_back_routes_records_to_rescue_file() -> SinkResult<()> {
-        let temp = tempdir().owe(SinkReason::Uvs(UvsReason::system_error()))?;
+        let temp = tempdir().owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
         let rescue_root = temp.path().join("rescue_root");
-        std::fs::create_dir_all(&rescue_root).owe(SinkReason::Uvs(UvsReason::system_error()))?;
+        std::fs::create_dir_all(&rescue_root)
+            .owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
 
         let mut params = wp_connector_api::ParamMap::new();
         params.insert(
@@ -906,12 +908,12 @@ mod tests {
 
         let benchmark_rescue = rescue_root.join("sink").join("benchmark");
         let entries = std::fs::read_dir(&benchmark_rescue)
-            .owe(SinkReason::Uvs(UvsReason::system_error()))?
+            .owe(SinkReason::Uvs(UnifiedReason::system_error()))?
             .collect::<Result<Vec<_>, _>>()
-            .owe(SinkReason::Uvs(UvsReason::system_error()))?;
+            .owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
         assert!(!entries.is_empty(), "expect rescue file created");
-        let meta =
-            std::fs::metadata(entries[0].path()).owe(SinkReason::Uvs(UvsReason::system_error()))?;
+        let meta = std::fs::metadata(entries[0].path())
+            .owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
         assert!(meta.len() > 0, "rescue file should contain payload");
         Ok(())
     }

@@ -17,7 +17,6 @@ use std::sync::Arc;
 
 use bytes::{Bytes, BytesMut};
 use tokio::net::UdpSocket;
-use orion_error::compat_prelude::ErrorOweBase;
 use wp_connector_api::{DataSource, EventPreHook, SourceBatch, SourceEvent, Tags};
 use wp_connector_api::{SourceReason, SourceResult};
 use wp_model_core::raw::RawData;
@@ -412,7 +411,7 @@ impl UdpSyslogSource {
         // Parse address
         let target: SocketAddr = addr
             .parse()
-            .owe(SourceReason::from_conf())?;
+            .owe(SourceReason::core_conf())?;
 
         // Create socket with socket2 to set buffer size before binding
         let domain = if target.is_ipv4() {
@@ -584,7 +583,7 @@ impl UdpSyslogSource {
                 }
                 Err(e) => {
                     error_data!("UDP syslog '{}' recv_from error: {}", self.key, e);
-                    return Err(SourceReason::Disconnect("udp recv_from failed".to_string()).err_source(e));
+                    return Err(SourceReason::disconnect("udp recv_from failed").with_source(e));
                 }
             }
         }

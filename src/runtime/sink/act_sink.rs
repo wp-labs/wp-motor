@@ -1,7 +1,7 @@
+use crate::compat::LegacyOwe;
 use crate::facade::test_helpers::SinkTerminal;
 use crate::resources::ResManager;
 use crate::resources::SinkID;
-use crate::runtime::prelude::*;
 use tokio::time::MissedTickBehavior;
 use tokio::time::interval;
 use wp_connector_api::AsyncCtrl;
@@ -23,8 +23,6 @@ use crate::sinks::{
 use crate::sinks::{InfraSinkAgent, SinkGroupAgent};
 use crate::stat::{MonSend, STAT_INTERVAL_MS};
 use orion_error::OperationContext;
-use orion_error::UvsFrom;
-use orion_error::runtime::ContextRecord;
 use orion_overload::append::Appendable;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -545,7 +543,7 @@ impl SinkService {
 
         let mut filter = None;
         if let Some(code) = conf.read_filter_content() {
-            let parsed = TCondParser::exp(&mut code.as_str()).owe(RunReason::from_rule())?;
+            let parsed = TCondParser::exp(&mut code.as_str()).owe(RunReason::rule_error())?;
             filter = Some(parsed);
             info_data!("sink load filter: {}", conf.name())
         }

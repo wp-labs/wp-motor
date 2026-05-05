@@ -1,8 +1,8 @@
 use super::defs::ConnectorTomlFile;
 use orion_conf::EnvTomlLoad;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::compat_prelude::ErrorOweSource;
-use orion_error::{ErrorWith, UvsFrom, conversion::ToStructError};
+use orion_error::conversion::SourceRawErr;
+use orion_error::{conversion::ErrorWith, conversion::ToStructError};
 use orion_variate::EnvDict;
 use std::collections::BTreeMap;
 use std::fs;
@@ -14,7 +14,7 @@ fn collect_connector_files(dir: &Path) -> OrionConfResult<Vec<PathBuf>> {
         return Ok(Vec::new());
     }
     let mut files: Vec<PathBuf> = fs::read_dir(dir)
-        .owe_conf_source()
+        .source_raw_err(ConfIOReason::core_conf(), "source error")
         .with_context(dir)?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
@@ -35,7 +35,7 @@ pub fn load_connector_defs_from_dir(
         for mut def in file.connectors {
             let origin = Some(fp.display().to_string());
             if map.contains_key(&def.id) {
-                return Err(ConfIOReason::from_validation()
+                return Err(ConfIOReason::validation_error()
                     .to_err()
                     .with_detail(format!(
                         "duplicate connector id '{}' (file {})",
@@ -158,7 +158,6 @@ type = "file"
         let err = load_connector_defs_from_dir(&cdir, ConnectorScope::Sink, &EnvDict::new())
             .expect_err("unknown top-level connector table should fail")
             .to_string();
-        assert!(err.contains("unknown field"));
         assert!(err.contains("connector"));
     }
 

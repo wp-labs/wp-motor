@@ -1,9 +1,7 @@
+use crate::compat::{ErrorOweBase, UvsFrom, WrapStructErrorAs};
 use glob::glob;
 use orion_conf::ErrorWith;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::{
-    UvsFrom, UvsReason, compat_prelude::ErrorOweBase, conversion::WrapStructErrorAs,
-};
 use orion_variate::EnvDict;
 use std::path::{Path, PathBuf};
 use wp_conf::structure::SinkInstanceConf;
@@ -22,7 +20,7 @@ pub fn load_wpgen_resolved(
 ) -> OrionConfResult<WpGenResolved> {
     let rt = god
         .load_wpgen_config(conf_name, dict)
-        .owe(ConfIOReason::Uvs(UvsReason::core_conf()))?;
+        .owe(ConfIOReason::core_conf())?;
     Ok(rt)
 }
 

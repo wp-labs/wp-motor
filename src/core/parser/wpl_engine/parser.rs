@@ -4,7 +4,7 @@ use super::types::ProcessResult;
 use crate::core::parser::wpl_engine::pipeline::WplPipeline;
 use crate::{core::parser::ParseOption, stat::MonSend};
 use orion_conf::ToStructError;
-use orion_error::{UvsFrom, UvsReason};
+use orion_error::UnifiedReason;
 use std::sync::Arc;
 use wp_connector_api::SourceEvent;
 use wp_model_core::model::data::Field;
@@ -59,7 +59,7 @@ impl MultiParser {
                             if parsed_len > max_depth {
                                 max_depth = parsed_len;
                                 best_idx = Some(idx);
-                                best_error = Some(WparseReason::from_data().to_err());
+                                best_error = Some(WparseReason::data_error().to_err());
                             }
                         } else {
                             let record = Arc::new(tdo_crate);
@@ -73,7 +73,7 @@ impl MultiParser {
                 }
                 Err(e) => {
                     // 记录解析深度最高的错误
-                    if matches!(e.reason(), WparseReason::Uvs(UvsReason::DataError)) {
+                    if matches!(e.reason(), WparseReason::Uvs(UnifiedReason::DataError)) {
                         best_idx = Some(idx);
                         best_error = Some(e);
                         if max_depth == 0 {
@@ -98,7 +98,7 @@ impl MultiParser {
         // 所有规则都失败，返回深度最高的失败信息
         let best_wpl = best_idx.map_or(String::new(), |i| self.pipelines[i].wpl_key().to_string());
         let best_error = best_error
-            .unwrap_or_else(|| WparseError::from(WparseReason::Uvs(UvsReason::system_error())));
+            .unwrap_or_else(|| WparseError::from(WparseReason::Uvs(UnifiedReason::system_error())));
         ProcessResult::Miss(super::types::ParseFailInfo::new(
             best_wpl, best_error, max_depth,
         ))

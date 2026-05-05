@@ -1,11 +1,10 @@
+use crate::compat::LegacyOwe;
 use crate::core::generator::rules::fetch_oml_data;
 use crate::core::parser::WplPipeline;
 use crate::core::parser::indexing::ResourceIndexer;
 use crate::orchestrator::config::WPARSE_OML_FILE;
 use crate::orchestrator::config::WPARSE_RULE_FILE;
 use crate::orchestrator::engine::definition::WplCodePKG;
-use orion_error::UvsFrom;
-use orion_error::compat_prelude::ErrorOweBase;
 use std::thread;
 use wp_conf::engine::EngineConfig;
 use wp_error::run_error::{RunReason, RunResult};
@@ -85,7 +84,7 @@ pub fn build_multi_src_parser_set(rule: &WplRule) -> RunResult<WplEvaluator> {
 pub fn rule_to_parser_ex(rule: &WplRule, preorder: Option<&WplExpress>) -> RunResult<WplEvaluator> {
     let parser = match &rule.statement {
         WplStatementType::Express(code) => {
-            WplEvaluator::from(code, preorder).owe(RunReason::from_rule())?
+            WplEvaluator::from(code, preorder).owe(RunReason::rule_error())?
         }
     };
     Ok(parser)
@@ -94,14 +93,14 @@ pub fn rule_to_parser_ex(rule: &WplRule, preorder: Option<&WplExpress>) -> RunRe
 pub fn rule_to_parser(rule: &WplRule) -> RunResult<WplEvaluator> {
     let parser = match &rule.statement {
         WplStatementType::Express(code) => {
-            WplEvaluator::from(code, None).owe(RunReason::from_rule())?
+            WplEvaluator::from(code, None).owe(RunReason::rule_error())?
         }
     };
     Ok(parser)
 }
 
 pub async fn load_oml_code(oml_root: &str) -> RunResult<OmlRepository> {
-    fetch_oml_data(oml_root, WPARSE_OML_FILE).owe(RunReason::from_conf())
+    fetch_oml_data(oml_root, WPARSE_OML_FILE).owe(RunReason::core_conf())
 }
 
 pub async fn load_wpl_code(
@@ -109,7 +108,7 @@ pub async fn load_wpl_code(
     rule_file: Option<String>,
 ) -> RunResult<Vec<WplCode>> {
     let rule_path: String = rule_file.clone().unwrap_or(conf.rule_root().to_string());
-    fetch_wpl_data(rule_path.as_str(), WPARSE_RULE_FILE).owe(RunReason::from_conf())
+    fetch_wpl_data(rule_path.as_str(), WPARSE_RULE_FILE).owe(RunReason::core_conf())
 }
 
 pub async fn load_engine_code(main_conf: &EngineConfig) -> RunResult<WplCodePKG> {
