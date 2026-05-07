@@ -308,7 +308,7 @@ walkdir = "2.5"
 libc = "0.2"
 socket2 = "0.6"
 async-signal = "0.2"
-sysinfo = "0.38"
+sysinfo = "0.39"
 
 # --- Async Runtime & Concurrency ---
 tokio-async-drop = "0.1"
