@@ -4,7 +4,6 @@ use crate::runtime::actor::command::{CmdSubscriber, TaskController, spawn_ctrl_e
 use crate::runtime::actor::constants::ACTOR_IDLE_TICK_MS;
 use crate::runtime::collector::realtime::constants::{
     PICKER_CTRL_EVENT_BUFFER, PICKER_DEFAULT_ROUND_BATCH, PICKER_EVENT_CNT_OF_BATCH,
-    PICKER_FETCH_TIMEOUT_MS,
 };
 use crate::runtime::collector::realtime::picker::round::{RoundStat, SrcStatus};
 use crate::runtime::parser::workflow::ParseDispatchRouter;
@@ -24,6 +23,8 @@ pub struct SourceWorker {
     speed_limit: Option<usize>,
     // 任务级最大处理事件数（达到后退出）；None 表示不限制
     max_count: Option<usize>,
+    // 阻塞源单轮拉取的最长等待时间（毫秒）
+    fetch_timeout_ms: u64,
     mon_s: MonSend,
 }
 
@@ -31,6 +32,7 @@ impl SourceWorker {
     pub fn new(
         speed_limit: usize,
         max_count: Option<usize>,
+        fetch_timeout_ms: u64,
         mon_s: MonSend,
         parse_router: ParseDispatchRouter,
     ) -> Self {
@@ -45,6 +47,7 @@ impl SourceWorker {
             picker,
             speed_limit: limit,
             max_count,
+            fetch_timeout_ms,
             mon_s,
         }
     }
@@ -185,7 +188,7 @@ impl SourceWorker {
         );
         let stat_interval = Duration::from_millis(STAT_INTERVAL_MS as u64);
         let mut last_stat_tick = Instant::now();
-        let timeout = Duration::from_millis(PICKER_FETCH_TIMEOUT_MS);
+        let timeout = Duration::from_millis(self.fetch_timeout_ms);
         'main: loop {
             // 每进入一轮突发循环，重置“速率单元”计数器
             task_ctrl.rec_task_unit_reset();
@@ -363,6 +366,7 @@ mod tests {
         let worker = SourceWorker::new(
             0,
             None,
+            300,
             mon_tx,
             ParseDispatchRouter::new(vec![ParseWorkerSender::new(parse_tx)]),
         );
@@ -375,9 +379,24 @@ mod tests {
         SourceWorker::new(
             limit,
             None,
+            300,
             mon_tx,
             ParseDispatchRouter::new(vec![ParseWorkerSender::new(parse_tx)]),
         )
+    }
+
+    #[test]
+    fn worker_keeps_configured_fetch_timeout() {
+        let (mon_tx, _mon_rx) = mpsc::channel::<ReportVariant>(TEST_MONITOR_CHANNEL_CAP);
+        let (parse_tx, _parse_rx) = mpsc::channel::<SourceBatch>(TEST_MONITOR_CHANNEL_CAP);
+        let worker = SourceWorker::new(
+            0,
+            None,
+            1234,
+            mon_tx,
+            ParseDispatchRouter::new(vec![ParseWorkerSender::new(parse_tx)]),
+        );
+        assert_eq!(worker.fetch_timeout_ms, 1234);
     }
 
     #[test]

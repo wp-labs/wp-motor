@@ -14,6 +14,7 @@ sinks = "./topology/sinks"
 rate_limit_rps = 10000
 parse_workers = 2
 reload_timeout_ms = 10000
+picker_fetch_timeout_ms = 300
 
 [rescue]
 path = "./data/rescue"

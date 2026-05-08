@@ -20,9 +20,6 @@ pub(crate) const PICKER_PENDING_MAX_BYTES: usize = 8 * 1024 * 1024;
 /// Maximum burst size (pending batches processed per round) for `ActPicker`.
 pub(crate) const PICKER_BURST_MAX: usize = 16;
 
-/// Timeout (milliseconds) when fetching from blocking sources in a round.
-pub(crate) const PICKER_FETCH_TIMEOUT_MS: u64 = 300;
-
 /// Post-policy initial backoff rounds.
 pub(crate) const PICKER_POST_BACKOFF_INITIAL_ROUNDS: u32 = 1;
 
