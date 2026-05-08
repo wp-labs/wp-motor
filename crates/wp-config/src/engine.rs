@@ -210,8 +210,8 @@ pub struct PerformanceConf {
     pub parse_workers: usize,
     #[serde(default = "default_reload_timeout_ms")]
     pub reload_timeout_ms: u64,
-    #[serde(default = "default_picker_fetch_timeout_ms")]
-    pub picker_fetch_timeout_ms: u64,
+    #[serde(default = "default_fetch_timeout_ms")]
+    pub fetch_timeout_ms: u64,
 }
 impl Default for PerformanceConf {
     fn default() -> Self {
@@ -219,7 +219,7 @@ impl Default for PerformanceConf {
             rate_limit_rps: 10000,
             parse_workers: 2,
             reload_timeout_ms: default_reload_timeout_ms(),
-            picker_fetch_timeout_ms: default_picker_fetch_timeout_ms(),
+            fetch_timeout_ms: default_fetch_timeout_ms(),
         }
     }
 }
@@ -333,7 +333,7 @@ pub fn default_reload_timeout_ms() -> u64 {
     10_000
 }
 
-pub fn default_picker_fetch_timeout_ms() -> u64 {
+pub fn default_fetch_timeout_ms() -> u64 {
     300
 }
 
@@ -419,7 +419,7 @@ impl EngineConfig {
                 rate_limit_rps: 10000,
                 parse_workers: 2,
                 reload_timeout_ms: default_reload_timeout_ms(),
-                picker_fetch_timeout_ms: default_picker_fetch_timeout_ms(),
+                fetch_timeout_ms: default_fetch_timeout_ms(),
             },
             log_conf: LogConf::default(),
             stat_conf: StatConf::default(),
@@ -479,8 +479,8 @@ impl EngineConfig {
         self.performance.reload_timeout_ms
     }
 
-    pub fn picker_fetch_timeout_ms(&self) -> u64 {
-        self.performance.picker_fetch_timeout_ms
+    pub fn fetch_timeout_ms(&self) -> u64 {
+        self.performance.fetch_timeout_ms
     }
 
     pub fn stat_conf(&self) -> &StatConf {
@@ -790,24 +790,24 @@ mod tests {
     }
 
     #[test]
-    fn test_engine_config_uses_default_picker_fetch_timeout_ms() {
+    fn test_engine_config_uses_default_fetch_timeout_ms() {
         let conf = EngineConfig::default();
         assert_eq!(
-            conf.picker_fetch_timeout_ms(),
-            default_picker_fetch_timeout_ms()
+            conf.fetch_timeout_ms(),
+            default_fetch_timeout_ms()
         );
     }
 
     #[test]
-    fn test_engine_config_accepts_picker_fetch_timeout_ms() {
+    fn test_engine_config_accepts_fetch_timeout_ms() {
         let conf: EngineConfig = toml::from_str(
             r#"
             [performance]
-            picker_fetch_timeout_ms = 1200
+            fetch_timeout_ms = 1200
             "#,
         )
-        .expect("parse config with performance.picker_fetch_timeout_ms");
-        assert_eq!(conf.picker_fetch_timeout_ms(), 1200);
+        .expect("parse config with performance.fetch_timeout_ms");
+        assert_eq!(conf.fetch_timeout_ms(), 1200);
     }
 
     #[test]

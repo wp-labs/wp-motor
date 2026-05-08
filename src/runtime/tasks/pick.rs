@@ -23,7 +23,7 @@ pub fn start_picker_tasks(
         let worker = SourceWorker::new(
             run_args.speed_limit,
             run_args.line_max,
-            run_args.picker_fetch_timeout_ms,
+            run_args.fetch_timeout_ms,
             mon_send.clone(),
             parse_router.clone(),
         );

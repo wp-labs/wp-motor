@@ -15,7 +15,7 @@ pub struct RuntimeArgs {
     pub parallel: usize,
     pub speed_limit: usize,
     pub reload_timeout_ms: u64,
-    pub picker_fetch_timeout_ms: u64,
+    pub fetch_timeout_ms: u64,
     pub log: bool,
     pub check: usize,
     pub check_fail_stop: bool,
@@ -37,7 +37,7 @@ impl Default for RuntimeArgs {
             parallel: 2,
             speed_limit: 10000,
             reload_timeout_ms: 10_000,
-            picker_fetch_timeout_ms: 300,
+            fetch_timeout_ms: 300,
             log: true,
             check: 0,
             check_fail_stop: false,
@@ -83,7 +83,7 @@ impl RuntimeArgs {
         self.parallel = 2;
         self.speed_limit = 5;
         self.reload_timeout_ms = 300;
-        self.picker_fetch_timeout_ms = 300;
+        self.fetch_timeout_ms = 300;
         self.stat_sec = 1;
         self.stat_print = true;
     }
