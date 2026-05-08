@@ -18,6 +18,7 @@ sinks   = "./topology/sinks"
 rate_limit_rps = 10000        # Rate limit (records/second)
 parse_workers  = 2            # Number of concurrent parsing workers
 reload_timeout_ms = 10000     # Reload fallback timeout in milliseconds; shared by graceful drain and old-processing tail cleanup
+fetch_timeout_ms = 300 # Blocking source fetch timeout in milliseconds for each picker round
 
 [rescue]
 path = "./data/rescue"
@@ -49,3 +50,4 @@ Notes:
 - `semantic_dict.toml` is loaded from `${models.knowledge}/semantic_dict.toml` by default
 - `knowdb.toml` is loaded from `${models.knowledge}/knowdb.toml` by default
 - `reload_timeout_ms` defaults to `10000`; CLI `--reload-timeout-ms` overrides the config value
+- `fetch_timeout_ms` defaults to `300`; it controls how long a realtime picker waits for one blocking fetch round

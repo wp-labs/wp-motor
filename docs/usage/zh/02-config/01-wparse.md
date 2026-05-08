@@ -18,6 +18,7 @@ sinks   = "./topology/sinks"
 rate_limit_rps = 10000        # 限速（records/second）
 parse_workers  = 2            # 解析并发 worker 数
 reload_timeout_ms = 10000     # reload 兜底超时（毫秒）；覆盖 graceful drain 与旧 processing 尾部清理
+fetch_timeout_ms = 300 # realtime picker 每轮阻塞拉取的超时（毫秒）
 
 [rescue]
 path = "./data/rescue"        
@@ -49,6 +50,7 @@ target = "*"
 - `semantic_dict.toml` 默认读取 `${models.knowledge}/semantic_dict.toml`
 - `knowdb.toml` 默认读取 `${models.knowledge}/knowdb.toml`
 <<<<<<< HEAD
+- `fetch_timeout_ms` 默认 `300`；用于控制 realtime picker 单轮阻塞拉取的最长等待时间
 - `reload_timeout_ms` 默认 `10000`；CLI `--reload-timeout-ms` 优先于配置文件
 =======
 
