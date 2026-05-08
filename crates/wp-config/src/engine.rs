@@ -792,10 +792,7 @@ mod tests {
     #[test]
     fn test_engine_config_uses_default_fetch_timeout_ms() {
         let conf = EngineConfig::default();
-        assert_eq!(
-            conf.fetch_timeout_ms(),
-            default_fetch_timeout_ms()
-        );
+        assert_eq!(conf.fetch_timeout_ms(), default_fetch_timeout_ms());
     }
 
     #[test]
