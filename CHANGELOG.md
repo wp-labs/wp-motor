@@ -6,120 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
-## [1.21.11 Unreleased]
-
-### Changed
-- **Dependencies**: unified `wp-lang` on `0.3.1` and refreshed `orion-error` compatibility.
-
-## [1.21.10 Unreleased]
-
-### Changed
-- **Error/Reason**: Simplified `OMLRunReason::FmtConv(String)` to unit variant `FmtConv`; dynamic error messages are now carried via `StructError::detail()` instead of the variant payload.
-  中文：`OMLRunReason::FmtConv(String)` 简化为单位变体 `FmtConv`，动态错误信息改为通过 `StructError::detail()` 承载。
-- **Error/Strategies**: Updated `WplCodeReason` match patterns in `err_4stoic`, `err_4normal`, `err_4debug` to use unit variants, aligning with wp-lang's Reason enum simplification.
-  中文：更新 `err_4stoic`、`err_4normal`、`err_4debug` 中 `WplCodeReason` 的匹配模式，适配 wp-lang 的 Reason 枚举简化。
-
-## [1.21.9] - 2026-05-03
+## [1.22.0] - 2026-05-08
 
 ### Added
 - **Diagnostics/CLI**: Error hints are now driven by `stable_code` (from `#[derive(OrionError)]`) as primary key, with bilingual Chinese/English support; language is selected via `WP_LANG` environment variable (fallback to `LANG` then `LC_ALL`).
-  中文：错误提示改为以 `stable_code`（来自 `#[derive(OrionError)]`）为主键索引，支持中英双语；通过 `WP_LANG` 环境变量切换（fallback `LANG` → `LC_ALL`）。
-- **Diagnostics/CLI**: Error output now shows `doing:` context (operation being performed when error occurred).
-  中文：错误输出新增 `doing:` 上下文展示（发生错误时正在执行的操作）。
-- **CLI/Help**: Added `after_long_help` documenting `WP_LANG` and `NO_COLOR` environment variables in `wparse` and `wproj` CLI help output.
-  中文：在 `wparse` 和 `wproj` 的 CLI `--help` 输出中添加 `WP_LANG` 和 `NO_COLOR` 环境变量说明。
+  中文：错误提示改为以 `stable_code` 为主键索引，支持中英双语；通过 `WP_LANG` 环境变量切换。
+- **CLI/Help**: Added `after_long_help` documenting `WP_LANG` and `NO_COLOR` environment variables.
+  中文：在 CLI `--help` 中添加 `WP_LANG` 和 `NO_COLOR` 环境变量说明。
+- **Config/Engine**: Added `RepoGroupConf` for repository group configuration support.
+  中文：新增 `RepoGroupConf` 支持仓库组配置。
 
 ### Changed
-- **Diagnostics/CLI**: Refactored `collect_hints` to use `stable_code` match branches (13 categories), with `detail` string matching only for subcategorization in 4 scenarios.
-  中文：重构 `collect_hints`，使用 `stable_code` 匹配分支（13 个类别），仅在 4 种场景下通过 `detail` 字符串做二次细分。
+- **Dependencies**: Upgraded `orion-error` from 0.6 to 0.8, adapting to the new `#[derive(OrionError)]` derive macro and updated trait paths.
+  中文：升级 `orion-error` 0.6 → 0.8，适配新的 derive 宏和 trait 路径。
+- **Dependencies**: Unified `wp-lang` on `0.3.1` and refreshed `orion-error` compatibility.
+- **Error Diagnostics**: Refactored `collect_hints` to use `stable_code` match branches (13 categories); improved nested error reason/detail/root_cause extraction.
+  中文：重构 `collect_hints` 为 13 类 `stable_code` 匹配分支；改进嵌套错误详情提取。
+- **Config Schema**: 配置解析开启 `deny_unknown_fields`，拼写错误的配置键将明确报错。
+- **Error Handling**: 统一 observability、config loading、project management 等链路的错误转换风格，附带路径上下文。
+- **Dependencies**: 升级工作区依赖（`jieba-rs 0.9`、`lru 0.17`、`ctor 0.10` 等）。
 
-## [1.21.8] - 2026-05-02
-
-### Changed
-- **Dependencies**: Upgraded `orion-error` from 0.6 to 0.7, adapting to the new `#[derive(OrionError)]` derive macro and updated trait paths (`ErrorOweBase`, `ToStructError`, `ContextRecord`).
-  中文：升级 `orion-error` 从 0.6 到 0.7，适配新的 `#[derive(OrionError)]` 宏和更新的 trait 路径。
-- **Error Handling**: Replaced `.map_err()` with idiomatic `.owe()` across sources, sinks, and runtime modules; migrated integration and unit tests from `anyhow::Result<()>` to `StructError<T>`-based Result types.
-  中文：使用 `.owe()` 惯用模式替换 `.map_err()`，将测试从 `anyhow::Result` 迁移到基于 `StructError<T>` 的 Result 类型。
+### Fixed
+- **OML/SQL**: Fixed non-deterministic SQL parameter binding for multi-parameter `IN (...)` clauses — collect `:param` values in SQL placeholder order instead of `HashMap` iteration order.
+  中文：修复 SQL `IN (...)` 参数绑定顺序不稳定问题，按占位符出现顺序绑定。
+- **OML/SQL Cache**: Aligned SQL cache keys and query parameters to the same placeholder order for both sync and async evaluators.
+  中文：同步/异步 SQL evaluator 缓存键与参数使用同一占位符顺序。
+- **OML/SQL**: `take(field)` and `__temp_var` now correctly convert to `IN` bind parameters.
+  中文：修复 `take(field)` 与临时变量在 `IN` 子句中的参数绑定。
+- **OML/Take**: Fixed field move order when target and source records share field names — prioritize current target record's generated fields.
+  中文：修复 `take(...)` 字段移动顺序，避免前序 OML 字段被源记录同名值覆盖。
+- **OML/Take**: Fixed `take(...)` only consuming from source record; now supports consuming previously generated fields in the target record.
+  中文：修复 `take(...)` 只能从源记录取值的问题，支持消费目标记录中已生成的字段。
+- **OML/SQL Parser**: Extended strict SQL mode aggregation validation to support `string_agg(distinct field, ',')` and `group_concat(distinct ...)`.
+  中文：扩展严格 SQL 模式聚合函数校验，支持 `string_agg(distinct ...)`、`group_concat(distinct ...)`。
+- **OML/SQL Parser**: Support `IN (@sip, @dip)` and `in(@sip, @dip)` reference parameter syntax.
+  中文：支持 `IN (@sip, @dip)` 等引用参数写法。
+- **wp-proj/Load Semantics**: Restored `WarpProject::load()` to load existing projects only — missing `conf/wparse.toml` now fails instead of auto-creating.
+  中文：恢复 `WarpProject::load()` 只加载已有工程的语义。
+- **Runtime/Stats**: 修复统计切片过多导致的反压问题。
+- **Error Handling/Config Loading**: 修复 `owe_conf_source` 在加载损坏 TOML 时触发 panic 的回归问题。
+- **Config/Tests**: 修复 observability validate 测试与严格 config schema 的兼容性。
 
 ### Removed
 - **Sinks/Rescue**: Removed unused `sink_err` helper method.
   中文：移除不再使用的 `sink_err` 辅助方法。
-
-## [1.21.7] - 2026-04-27
-
-### Added
-- **Config/Engine**: Added `RepoGroupConf` for repository group configuration support in engine config.
-  中文：新增 `RepoGroupConf` 支持引擎配置中的仓库组配置。
-
-## [1.21.6] - 2026-04-27
-
-### Changed
-- **Release Merge**: Merged all changes from `1.20.7` into the `1.21.x` release line.
-  中文：将 `1.20.7` 的全部变更合并到 `1.21.x` 发布线。
-
-### Fixed
-- **OML/SQL**: Fixed non-deterministic SQL parameter binding for multi-parameter `IN (...)` clauses by collecting `:param` values in SQL placeholder order instead of `HashMap` iteration order.
-  中文：修复 SQL `IN (...)` 多参数绑定顺序不稳定的问题，现在按 SQL 中 `:param` 占位符出现顺序绑定，而不是依赖 `HashMap` 遍历顺序。
-- **OML/SQL Cache**: Aligned SQL cache keys and query parameters to the same placeholder order for both sync and async evaluators, preventing partial matches such as only returning `server` while missing `db`.
-  中文：同步和异步 SQL evaluator 的缓存键与查询参数现在使用同一占位符顺序，避免只命中 `server` 而漏掉 `db` 这类部分匹配结果。
-- **wp-proj/Load Semantics**: Restored `WarpProject::load()` to load existing projects only; missing `conf/wparse.toml` now fails instead of being auto-created through `load_or_init`.
-  中文：恢复 `WarpProject::load()` 只加载已有工程的语义；缺少 `conf/wparse.toml` 时返回错误，不再通过 `load_or_init` 自动创建配置。
-
-## [1.21.5 2026-04-24]
-
-### Added
-- **Audit**: 新增 `.cargo/audit.toml`，忽略 RUSTSEC-2023-0071（rsa crate Marvin Attack 时序侧信道 — 仅影响 loopback TLS 且默认关闭，实际风险低，计划 2026-07-25 再评估）。
-
-### Removed
-- **Patches**: 移除未使用的 `include-flate-codegen` patch 及相关目录。
-
-
-## [1.21.4] - 2026-04-22
-
-### Fixed
-- **Error Handling/Config Loading**: 修复 v1.21.3 引入的 `owe_conf_source` 在加载损坏 TOML 文件时触发 panic 的回归问题，恢复为 `err_conv` 链式错误转换。
-
-### Changed
-- **Version Control**: 从仓库中移除 `Cargo.lock`。
-
-
-## [1.21.3] - 2026-04-22
-
-### Added
-- **Error System Docs**: 新增结构化错误系统设计文档与 review 清单。
-
-### Changed
-- **Error Diagnostics**: 重构错误诊断输出，改进嵌套错误的 reason/detail/root_cause 提取逻辑，支持 `ConfigError`、`Core` 等多种错误格式的详情展示，CLI 报错信息更完整可读。
-- **Config Schema**: 配置解析开启 `deny_unknown_fields`，拼写错误的配置键将明确报错而非静默忽略。
-- **Error Handling**: 统一 observability、config loading、project management 等链路的错误转换风格，错误信息附带路径上下文。
-
-### Fixed
-- **Runtime/Stats**: 修复统计切片过多导致的反压问题。
-- **Config/Tests**: 修复 observability validate 测试与严格 config schema 的兼容性。
-
-
-## [1.21.2] - 2026-04-22
-
-### Fixed
-- **OML/SQL**: 修复 SQL `IN (...)` 子句的参数绑定，`take(field)` 与临时变量可正确转换为 `IN` 绑定参数；补充对应测试用例。
-
-
-## [1.21.1] - 2026-04-21
-
-### Fixed
-- **OML/Take**: 修复 `take(...)` 在目标记录与源记录同时存在同名字段时的移动顺序，优先消费当前目标记录中的已生成字段，避免前序 OML 字段被源记录同名值错误覆盖。
-- **OML/SQL Parser**: 修复 SQL 参数提取对 `take(field)` 与 `__temp_var` 的识别，支持它们在 `=` 与 `IN (...)` 条件中稳定转换为绑定参数。
-- **OML/SQL Parser**: 扩展严格 SQL 模式下的聚合函数校验，支持 `string_agg(distinct field, ',')` 这类合法表达式。
-
-## [1.21.0] - 2026-04-20
-
-### Changed
-- **Dependencies**: 升级工作区依赖，包含 `jieba-rs 0.9`、`lru 0.17`、`ctor 0.10` 等版本更新。
-- **Release Workflow**: 升级 GitHub Release Action 到 `softprops/action-gh-release@v3`。
-
-### Fixed
-- **OML/Take**: 修复 `take(...)` 只能从源记录取值的问题，现支持消费当前目标记录中已生成的字段，使前序 OML 字段可以被后续 `take(...)` 正确移动复用。
-- **OML/SQL Parser**: 修复严格 SQL 模式下对 `group_concat(distinct ...)` 这类聚合表达式的校验与解析，并支持 `IN (@sip, @dip)`、`in(@sip, @dip)` 这类引用参数写法。
 
 ## [1.20.7] - 2026-04-26
 
