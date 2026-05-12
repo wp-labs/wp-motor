@@ -6,7 +6,7 @@ use crate::language::GenericAccessor;
 use crate::language::{GenericBinding, NestedBinding, SingleEvalExp};
 use async_trait::async_trait;
 use wp_knowledge::cache::FieldQueryCache;
-use wp_model_core::model::{DataField, DataRecord, DataType, FieldStorage};
+use wp_model_core::model::{DataField, DataRecord, DataType, FieldStorage, Value};
 
 #[async_trait]
 impl AsyncExpEvaluator for SingleEvalExp {
@@ -20,6 +20,9 @@ impl AsyncExpEvaluator for SingleEvalExp {
             let obj: Vec<DataField> = self.eval_way().extract_more_async(src, dst, cache).await;
             for i in 0..self.target().len() {
                 if let (Some(target), Some(mut v)) = (self.target().get(i), obj.get(i).cloned()) {
+                    if matches!(v.get_value(), Value::Null) {
+                        continue;
+                    }
                     if let Some(name) = target.name() {
                         v.set_name(name.clone());
                     }
@@ -37,10 +40,16 @@ impl AsyncExpEvaluator for SingleEvalExp {
                 target.data_type() != storage.get_meta() && target.data_type() != &DataType::Auto;
 
             if storage.is_shared() && !needs_conversion {
+                if matches!(storage.as_field().get_value(), Value::Null) {
+                    return;
+                }
                 storage.set_name(target.safe_name());
                 dst.items.push(storage);
             } else {
                 let mut field = storage.into_owned();
+                if matches!(field.get_value(), Value::Null) {
+                    return;
+                }
                 field.set_name(target.safe_name());
 
                 if needs_conversion {

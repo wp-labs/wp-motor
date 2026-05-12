@@ -64,7 +64,7 @@ fn collect_sql_params(
     query: &SqlQuery,
     src: &mut DataRecordRef<'_>,
     dst: &mut DataRecord,
-) -> (String, DataField, Vec<DataField>) {
+) -> (String, DataField, Vec<DataField>, bool) {
     let mut params = Vec::with_capacity(5);
     let target = EvaluationTarget::auto_default();
     let sql = query.oml_sql().to_string();
@@ -92,7 +92,11 @@ fn collect_sql_params(
         debug_kdb!("[param] :{} = {}", v, preview);
     }
     let md5 = DataField::from_chars("sql".to_string(), query.sql_md5().clone());
-    (sql, md5, params)
+    let all_params_null = !params.is_empty()
+        && params
+            .iter()
+            .all(|param| matches!(param.get_value(), Value::Null));
+    (sql, md5, params, all_params_null)
 }
 
 #[allow(dead_code)]
@@ -124,7 +128,11 @@ impl SqlQuery {
         dst: &mut DataRecord,
         cache: &mut FieldQueryCache,
     ) -> Vec<DataField> {
-        let (sql, md5, params) = collect_sql_params(self, src, dst);
+        let (sql, md5, params, all_params_null) = collect_sql_params(self, src, dst);
+        if all_params_null {
+            debug_kdb!("[sql] skip query because all params are null");
+            return Vec::new();
+        }
 
         match params.len() {
             0 => {
@@ -277,7 +285,11 @@ impl AsyncFieldExtractor for SqlQuery {
         dst: &mut DataRecord,
         cache: &mut FieldQueryCache,
     ) -> Vec<DataField> {
-        let (sql, md5, params) = collect_sql_params(self, src, dst);
+        let (sql, md5, params, all_params_null) = collect_sql_params(self, src, dst);
+        if all_params_null {
+            debug_kdb!("[sql] skip async query because all params are null");
+            return Vec::new();
+        }
 
         match params.len() {
             0 => {
@@ -565,6 +577,34 @@ mod tests {
         let query = create_test_query(
             "SELECT * FROM test WHERE id IN (:p1, :p2, :p3, :p4, :p5, :p6)",
             params,
+        );
+
+        let result = query.extract_more(
+            &mut DataRecordRef::from(&DataRecord::default()),
+            &mut DataRecord::default(),
+            cache,
+        );
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_all_null_params_skip_query() {
+        ensure_provider();
+        let cache = &mut FieldQueryCache::default();
+
+        let query = create_test_query(
+            "SELECT * FROM table_that_should_not_be_queried WHERE id = :id AND name = :name",
+            vec![
+                (
+                    "id",
+                    DataField::new(DataType::default(), "id".to_string(), Value::Null),
+                ),
+                (
+                    "name",
+                    DataField::new(DataType::default(), "name".to_string(), Value::Null),
+                ),
+            ],
         );
 
         let result = query.extract_more(

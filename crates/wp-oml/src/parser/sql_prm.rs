@@ -789,6 +789,34 @@ zone : chars = select zone from zone where ip_start_int <= ip4_int(read(src_ip))
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn test_sql_aggregate_null_is_not_emitted() -> ModalResult<()> {
+        let db = MemDB::global();
+        db.table_create("CREATE TABLE IF NOT EXISTS asset_data (asset TEXT, ip TEXT)")
+            .assert();
+        db.execute("DELETE FROM asset_data").assert();
+        db.execute("INSERT INTO asset_data (asset, ip) VALUES ('host-a', '10.0.0.1')")
+            .assert();
+        let _ = kdb::init_mem_provider(db);
+
+        let mut conf = r#"
+name : test
+---
+test_list : chars = select group_concat(distinct asset) from asset_data where ip in(@sip, @dip) ;
+        "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+
+        let src = DataRecord::from(vec![
+            FieldStorage::from_owned(DataField::from_chars("sip", "192.0.2.10")),
+            FieldStorage::from_owned(DataField::from_chars("dip", "192.0.2.11")),
+        ]);
+        let cache = &mut FieldQueryCache::default();
+        let out = model.transform_async(src, cache).await;
+
+        assert!(out.get2("test_list").is_none(), "out={out:?}");
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn test_object_async_uses_nested_accessors() -> ModalResult<()> {
         let mut conf = r#"
 name : test
