@@ -124,6 +124,45 @@ impl RecSyncSink for SinkTerminal {
             }
         }
     }
+
+    fn send_to_sink_batch(&self, data: Vec<SinkRecUnit>) -> SinkResult<()> {
+        match self {
+            SinkTerminal::Channel(s) => s.send_to_sink_batch(data),
+            SinkTerminal::BlackHole(n) => n.send_to_sink_batch(data),
+            SinkTerminal::Debug(v) => {
+                for item in data {
+                    v.send_to_sink(item)?;
+                }
+                Ok(())
+            }
+            SinkTerminal::Storage(s) => match s {
+                SinkEndpoint::Buffer(adapter) => adapter.send_to_sink_batch(data),
+                SinkEndpoint::File(file_sink) => file_sink.send_to_sink_batch(data),
+                SinkEndpoint::WFile(wfile_sink) => wfile_sink.send_to_sink_batch(data),
+                SinkEndpoint::View(view) => view.send_to_sink_batch(data),
+                SinkEndpoint::Null => Ok(()),
+            },
+        }
+    }
+
+    fn try_send_to_sink_batch(&self, data: Vec<SinkRecUnit>) -> Vec<TrySendStatus> {
+        let len = data.len();
+        match self {
+            SinkTerminal::Channel(s) => s.try_send_to_sink_batch(data),
+            SinkTerminal::BlackHole(n) => n.try_send_to_sink_batch(data),
+            SinkTerminal::Debug(v) => data
+                .into_iter()
+                .map(|item| v.try_send_to_sink(item))
+                .collect(),
+            SinkTerminal::Storage(s) => match s {
+                SinkEndpoint::Buffer(adapter) => adapter.try_send_to_sink_batch(data),
+                SinkEndpoint::File(file_sink) => file_sink.try_send_to_sink_batch(data),
+                SinkEndpoint::WFile(wfile_sink) => wfile_sink.try_send_to_sink_batch(data),
+                SinkEndpoint::View(view) => view.try_send_to_sink_batch(data),
+                SinkEndpoint::Null => vec![TrySendStatus::Sended; len],
+            },
+        }
+    }
 }
 
 impl SyncCtrl for SinkTerminal {
