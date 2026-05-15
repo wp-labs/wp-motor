@@ -1,14 +1,17 @@
 //! wparse 引擎的 Facade 封装：装配/启动/重载/优雅退出 与 PID 管理。
 
 use crate::compat::LegacyOwe;
+use oml::core::evaluator::query::sql::set_local_sqlite_priority_route;
 use futures_lite::StreamExt;
 use orion_variate::EnvDict;
+use serde::Deserialize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc::Receiver;
 use tokio::time::timeout;
 use wp_knowledge::facade::init_thread_cloned_from_knowdb;
+use wp_knowledge::loader::build_authority_from_knowdb;
 
 use orion_error::{
     OperationContext,
@@ -63,6 +66,59 @@ fn semantic_dict_config_path(main_conf: &EngineConfig, work_root: &Path) -> Path
 
 fn knowdb_config_path(main_conf: &EngineConfig) -> PathBuf {
     PathBuf::from(main_conf.knowledge_root()).join("knowdb.toml")
+}
+
+#[derive(Deserialize)]
+struct KnowdbProviderProbe {
+    #[serde(default)]
+    kind: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct KnowdbProbe {
+    #[serde(default)]
+    provider: Option<KnowdbProviderProbe>,
+    #[serde(default)]
+    tables: Vec<KnowdbTableProbe>,
+}
+
+#[derive(Deserialize)]
+struct KnowdbTableProbe {
+    name: String,
+    #[serde(default = "default_true")]
+    enabled: bool,
+}
+
+const fn default_true() -> bool {
+    true
+}
+
+fn should_rebuild_local_authority(knowdb_path: &Path) -> bool {
+    let Ok(body) = std::fs::read_to_string(knowdb_path) else {
+        return true;
+    };
+    let Ok(probe) = toml::from_str::<KnowdbProbe>(&body) else {
+        return true;
+    };
+    let Some(provider) = probe.provider else {
+        return true;
+    };
+    !matches!(provider.kind.as_deref(), Some("postgres") | Some("mysql"))
+}
+
+fn load_local_table_names(knowdb_path: &Path) -> Vec<String> {
+    let Ok(body) = std::fs::read_to_string(knowdb_path) else {
+        return Vec::new();
+    };
+    let Ok(probe) = toml::from_str::<KnowdbProbe>(&body) else {
+        return Vec::new();
+    };
+    probe
+        .tables
+        .into_iter()
+        .filter(|table| table.enabled)
+        .map(|table| table.name)
+        .collect()
 }
 
 /// wparse 应用入口：对外隐藏内部装配细节
@@ -420,9 +476,21 @@ async fn load_engine_res(
     let knowdb_path = knowdb_config_path(main_conf);
     let mut knowdb_handler = None;
     if knowdb_path.exists() {
+        let local_tables = load_local_table_names(&knowdb_path);
         let auth_file = PathBuf::from(conf_manager.runtime_path("authority.sqlite"));
-        let _ = std::fs::remove_file(&auth_file);
+        if should_rebuild_local_authority(&knowdb_path) || !local_tables.is_empty() {
+            let _ = std::fs::remove_file(&auth_file);
+        }
         let authority_uri = format!("file:{}?mode=rwc&uri=true", auth_file.display());
+        if !local_tables.is_empty() {
+            let _ = build_authority_from_knowdb(
+                Path::new(conf_manager.work_root_path().as_str()),
+                &knowdb_path,
+                &authority_uri,
+                env_dict,
+            );
+            set_local_sqlite_priority_route(readonly_authority_uri(&authority_uri), local_tables);
+        }
         match init_thread_cloned_from_knowdb(
             Path::new(conf_manager.work_root_path().as_str()),
             &knowdb_path,
@@ -537,12 +605,23 @@ async fn load_processing_res(
     let knowdb_path = knowdb_config_path(main_conf);
     let mut knowdb_handler = None;
     if knowdb_path.exists() {
+        let local_tables = load_local_table_names(&knowdb_path);
         let authority_uri = processing_authority_uri(conf_manager, options.persist_runtime_state);
         if options.persist_runtime_state
+            && (should_rebuild_local_authority(&knowdb_path) || !local_tables.is_empty())
             && let Some(auth_file) = authority_path_from_uri(&authority_uri)
             && Path::new(auth_file).exists()
         {
             let _ = std::fs::remove_file(auth_file);
+        }
+        if !local_tables.is_empty() {
+            let _ = build_authority_from_knowdb(
+                Path::new(conf_manager.work_root_path().as_str()),
+                &knowdb_path,
+                &authority_uri,
+                env_dict,
+            );
+            set_local_sqlite_priority_route(readonly_authority_uri(&authority_uri), local_tables);
         }
         match init_thread_cloned_from_knowdb(
             Path::new(conf_manager.work_root_path().as_str()),
@@ -664,6 +743,14 @@ fn authority_path_from_uri(uri: &str) -> Option<&str> {
         return None;
     }
     Some(path)
+}
+
+fn readonly_authority_uri(authority_uri: &str) -> String {
+    if let Some(rest) = authority_uri.strip_prefix("file:") {
+        let path_part = rest.split('?').next().unwrap_or(rest);
+        return format!("file:{}?mode=ro&uri=true", path_part);
+    }
+    authority_uri.to_string()
 }
 
 #[cfg(test)]

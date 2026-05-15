@@ -1,2 +1,2 @@
 //mod shlib;
-mod sql;
+pub mod sql;

@@ -2,6 +2,7 @@ use orion_variate::EnvDict;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use serde::Deserialize;
 
 mod stats_bridge;
 
@@ -37,6 +38,39 @@ pub struct KnowdbHandler {
     authority_uri: Arc<String>,
     initialized: Arc<AtomicBool>,
     dict: Arc<EnvDict>,
+    local_tables: Arc<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+struct KnowdbTableProbe {
+    name: String,
+    #[serde(default = "default_true")]
+    enabled: bool,
+}
+
+#[derive(Deserialize)]
+struct KnowdbProbe {
+    #[serde(default)]
+    tables: Vec<KnowdbTableProbe>,
+}
+
+const fn default_true() -> bool {
+    true
+}
+
+fn load_local_table_names(conf: &Path) -> Vec<String> {
+    let Ok(body) = std::fs::read_to_string(conf) else {
+        return Vec::new();
+    };
+    let Ok(probe) = toml::from_str::<KnowdbProbe>(&body) else {
+        return Vec::new();
+    };
+    probe
+        .tables
+        .into_iter()
+        .filter(|table| table.enabled)
+        .map(|table| table.name)
+        .collect()
 }
 
 impl KnowdbHandler {
@@ -47,6 +81,7 @@ impl KnowdbHandler {
             authority_uri: Arc::new(authority_uri.to_string()),
             initialized: Arc::new(AtomicBool::new(false)),
             dict: Arc::new(dict.clone()),
+            local_tables: Arc::new(load_local_table_names(conf)),
         }
     }
 
@@ -76,5 +111,17 @@ impl KnowdbHandler {
                 );
             }
         }
+    }
+
+    pub fn authority_uri(&self) -> &str {
+        self.authority_uri.as_str()
+    }
+
+    pub fn local_tables(&self) -> &[String] {
+        self.local_tables.as_slice()
+    }
+
+    pub fn has_local_tables(&self) -> bool {
+        !self.local_tables.is_empty()
     }
 }

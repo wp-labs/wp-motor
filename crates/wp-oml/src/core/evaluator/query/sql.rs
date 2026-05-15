@@ -2,7 +2,10 @@ use crate::core::prelude::*;
 use crate::language::EvaluationTarget;
 use crate::language::SqlQuery;
 use async_trait::async_trait;
+use std::collections::HashSet;
+use std::sync::{OnceLock, RwLock};
 use wp_knowledge::facade as kdb;
+use wp_know::mem::thread_clone::ThreadClonedMDB;
 use wp_model_core::model::FieldStorage;
 use wp_model_core::model::{DataType, Value};
 
@@ -11,6 +14,57 @@ use crate::core::AsyncFieldExtractor;
 // SQL evaluator already places the SQL md5 into c_params[0], so a separate scope hash
 // would only duplicate the same partitioning work on the local-cache hot path.
 const INLINE_SQL_LOCAL_CACHE_SCOPE: u64 = 0;
+
+#[derive(Clone, Debug)]
+struct LocalSqliteRoute {
+    authority_uri: String,
+    tables: HashSet<String>,
+}
+
+fn local_sqlite_route() -> &'static RwLock<Option<LocalSqliteRoute>> {
+    static ROUTE: OnceLock<RwLock<Option<LocalSqliteRoute>>> = OnceLock::new();
+    ROUTE.get_or_init(|| RwLock::new(None))
+}
+
+pub fn set_local_sqlite_priority_route(authority_uri: String, tables: Vec<String>) {
+    let route = LocalSqliteRoute {
+        authority_uri,
+        tables: tables.into_iter().collect(),
+    };
+    *local_sqlite_route()
+        .write()
+        .expect("local sqlite route lock poisoned") = Some(route);
+}
+
+pub fn clear_local_sqlite_priority_route() {
+    *local_sqlite_route()
+        .write()
+        .expect("local sqlite route lock poisoned") = None;
+}
+
+fn first_table_name(sql: &str) -> Option<&str> {
+    let lower = sql.to_ascii_lowercase();
+    let from_pos = lower.find(" from ")?;
+    let after_from = &sql[from_pos + 6..];
+    let end = after_from
+        .find(|c: char| c.is_ascii_whitespace() || c == ';')
+        .unwrap_or(after_from.len());
+    let table = after_from[..end].trim();
+    if table.is_empty() { None } else { Some(table) }
+}
+
+fn local_sqlite_for_table(sql: &str) -> Option<ThreadClonedMDB> {
+    let table = first_table_name(sql)?;
+    let guard = local_sqlite_route()
+        .read()
+        .expect("local sqlite route lock poisoned");
+    let route = guard.as_ref()?;
+    if route.tables.contains(table) {
+        Some(ThreadClonedMDB::from_authority(route.authority_uri.as_str()))
+    } else {
+        None
+    }
+}
 
 fn norm_query_field(field: &DataField) -> DataField {
     DataField::new(
@@ -132,6 +186,21 @@ impl SqlQuery {
         if all_params_null {
             debug_kdb!("[sql] skip query because all params are null");
             return Vec::new();
+        }
+
+        if let Some(local_sqlite) = local_sqlite_for_table(&sql) {
+            let row = if params.is_empty() {
+                local_sqlite.query_row_with_scope(&sql)
+            } else {
+                local_sqlite.query_named_fields_with_scope(&sql, &params)
+            };
+            return match row {
+                Ok(row) => row,
+                Err(err) => {
+                    warn_kdb!("[kdb] local sqlite priority query error: {}", err);
+                    Vec::new()
+                }
+            };
         }
 
         match params.len() {
@@ -289,6 +358,21 @@ impl AsyncFieldExtractor for SqlQuery {
         if all_params_null {
             debug_kdb!("[sql] skip async query because all params are null");
             return Vec::new();
+        }
+
+        if let Some(local_sqlite) = local_sqlite_for_table(&sql) {
+            let row = if params.is_empty() {
+                local_sqlite.query_row_with_scope(&sql)
+            } else {
+                local_sqlite.query_named_fields_with_scope(&sql, &params)
+            };
+            return match row {
+                Ok(row) => row,
+                Err(err) => {
+                    warn_kdb!("[kdb] local sqlite priority async query error: {}", err);
+                    Vec::new()
+                }
+            };
         }
 
         match params.len() {
