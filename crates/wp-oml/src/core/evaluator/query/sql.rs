@@ -4,8 +4,8 @@ use crate::language::SqlQuery;
 use async_trait::async_trait;
 use std::collections::HashSet;
 use std::sync::{OnceLock, RwLock};
-use wp_knowledge::facade as kdb;
 use wp_know::mem::thread_clone::ThreadClonedMDB;
+use wp_knowledge::facade as kdb;
 use wp_model_core::model::FieldStorage;
 use wp_model_core::model::{DataType, Value};
 
@@ -60,7 +60,9 @@ fn local_sqlite_for_table(sql: &str) -> Option<ThreadClonedMDB> {
         .expect("local sqlite route lock poisoned");
     let route = guard.as_ref()?;
     if route.tables.contains(table) {
-        Some(ThreadClonedMDB::from_authority(route.authority_uri.as_str()))
+        Some(ThreadClonedMDB::from_authority(
+            route.authority_uri.as_str(),
+        ))
     } else {
         None
     }

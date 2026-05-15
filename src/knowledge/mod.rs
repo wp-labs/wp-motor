@@ -1,8 +1,8 @@
 use orion_variate::EnvDict;
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use serde::Deserialize;
 
 mod stats_bridge;
 
