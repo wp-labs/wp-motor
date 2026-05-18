@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
+## [1.22.3 Unreleased]
+
+### Added
+- **SQL/Route**: SQL 查询按表名路由到本地 SQLite 或外部 Provider——支持配置 `knowdb.toml` 的 `[[tables]]` 和 `[provider.tables]`，解析 SQL 时自动识别 `FROM` 子句中的表名并分发查询。
+- **SQL/Route**: 新增 `SqlKnowledgeRoute` 枚举（`Provider` / `Sqlite` / `Unknown`）和 `resolve_sql_route()` 路由解析函数，支持子查询、引号内关键字跳过。
+- **SQL/Parser**: `sanitize_sql_body` 支持子查询和别名语法（`FROM (子查询) AS alias`）。
+- **KnowDB/Config**: 新增 `uses_external_provider_only()` 判定，纯外部 provider 配置不再删除本地 authority 文件。
+
+### Changed
+- **Dependencies**: Bumped workspace version to 1.22.3.
+
+## [1.22.2] - 2026-05-13
+
+### Added
+- **Sinks/Sync**: 为 `SinkTerminal` 实现 `send_to_sink_batch` 和 `try_send_to_sink_batch` 批量写入方法，降低统计切片过多造成的反压。
+
+## [1.22.1] - 2026-05-12
+
+### Fixed
+- **OML/SQL**: 当 SQL 参数全部为 Null 时跳过实际查询，避免对空参数的不必要远程调用。
+- **OML/Extract**: `SingleEvalExp` 提取字段时跳过 `Value::Null`，不再为 Null 值创建目标字段。
+- **OML/SQL**: 修复 `#90` `#91` 知识库查询相关 bug。
+
+### Changed
+- **Knowledge Base**: 知识库查询优化。
+- **Dependencies**: Bumped workspace version to 1.22.1.
+
 ## [1.22.0] - 2026-05-08
 
 ### Added
