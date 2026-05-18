@@ -3,21 +3,38 @@ use std::collections::HashMap;
 use wp_data_fmt::SqlInsert;
 // 已移除对具体 DB 的依赖；通过门面在运行期解析
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SqlKnowledgeRoute {
+    Provider,
+    Sqlite,
+    Unknown,
+}
+
 #[derive(Builder, Debug, Clone, Getters)]
 pub struct SqlQuery {
     oml_sql: String,
     sql_md5: String,
     vars: HashMap<String, CondAccessor>,
+    route: SqlKnowledgeRoute,
 }
 
 impl SqlQuery {
     pub fn new(sql: String, vars: HashMap<String, CondAccessor>) -> Self {
+        Self::new_with_route(sql, vars, SqlKnowledgeRoute::Provider)
+    }
+
+    pub fn new_with_route(
+        sql: String,
+        vars: HashMap<String, CondAccessor>,
+        route: SqlKnowledgeRoute,
+    ) -> Self {
         let sql_md5 = format!("{:x}", md5::compute(sql.as_bytes()));
 
         Self {
             oml_sql: sql,
             vars,
             sql_md5,
+            route,
         }
     }
 }

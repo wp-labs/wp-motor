@@ -13,6 +13,7 @@ use wp_primitives::Parser;
 use wp_primitives::WResult;
 use wp_primitives::symbol::ctx_desc;
 
+use crate::core::evaluator::query::sql::resolve_sql_route;
 use crate::language::{
     ArgsTakeAble, CondAccessor, DirectAccessor, FieldTake, PreciseEvaluator, RecordOperation,
     SqlQuery,
@@ -184,18 +185,143 @@ fn is_supported_string_agg_inner(inner: &str) -> bool {
     is_sql_ident(expr) && is_sql_string_literal(delimiter)
 }
 
+fn find_matching_paren(input: &str, open_pos: usize) -> Option<usize> {
+    let bytes = input.as_bytes();
+    let mut depth = 0i32;
+    let mut in_single = false;
+    let mut in_double = false;
+
+    for (idx, ch) in input.char_indices().skip_while(|(idx, _)| *idx < open_pos) {
+        match ch {
+            '\'' if !in_double => in_single = !in_single,
+            '"' if !in_single => in_double = !in_double,
+            '(' if !in_single && !in_double => depth += 1,
+            ')' if !in_single && !in_double => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(idx);
+                }
+                if depth < 0 {
+                    return None;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let _ = bytes;
+    None
+}
+
+fn find_top_level_from(body: &str) -> Option<usize> {
+    let bytes = body.as_bytes();
+    let mut idx = 0usize;
+    let mut depth = 0i32;
+    let mut in_single = false;
+    let mut in_double = false;
+
+    while idx < bytes.len() {
+        let ch = bytes[idx] as char;
+        match ch {
+            '\'' if !in_double => {
+                in_single = !in_single;
+                idx += 1;
+            }
+            '"' if !in_single => {
+                in_double = !in_double;
+                idx += 1;
+            }
+            '(' if !in_single && !in_double => {
+                depth += 1;
+                idx += 1;
+            }
+            ')' if !in_single && !in_double => {
+                depth -= 1;
+                if depth < 0 {
+                    return None;
+                }
+                idx += 1;
+            }
+            _ => {
+                if !in_single
+                    && !in_double
+                    && depth == 0
+                    && idx + 4 <= bytes.len()
+                    && bytes[idx..idx + 4].eq_ignore_ascii_case(b"from")
+                    && idx
+                        .checked_sub(1)
+                        .is_some_and(|prev| bytes[prev].is_ascii_whitespace())
+                    && bytes
+                        .get(idx + 4)
+                        .is_some_and(|next| next.is_ascii_whitespace())
+                {
+                    return Some(idx);
+                }
+                idx += 1;
+            }
+        }
+    }
+
+    None
+}
+
+fn sanitize_select_stmt(stmt: &str) -> Option<String> {
+    let stmt = stmt.trim();
+    let lower = stmt.to_ascii_lowercase();
+    let select_kw = "select ";
+    if !lower.starts_with(select_kw) {
+        return None;
+    }
+    let body = &stmt[select_kw.len()..];
+    let sanitized = sanitize_sql_body(body)?;
+    Some(format!("select {}", sanitized))
+}
+
+fn sanitize_from_source(source: &str) -> Option<String> {
+    let source = source.trim();
+    if source.is_empty() {
+        return None;
+    }
+    if is_sql_ident(source) {
+        return Some(source.to_string());
+    }
+    if !source.starts_with('(') {
+        return None;
+    }
+
+    let close_pos = find_matching_paren(source, 0)?;
+    let inner = source[1..close_pos].trim();
+    let remainder = source[close_pos + 1..].trim();
+    let alias = if remainder.is_empty() {
+        None
+    } else if remainder.len() >= 3 && remainder[..3].eq_ignore_ascii_case("as ") {
+        let alias = remainder[3..].trim();
+        if !is_sql_ident(alias) {
+            return None;
+        }
+        Some(alias)
+    } else {
+        if !is_sql_ident(remainder) {
+            return None;
+        }
+        Some(remainder)
+    };
+
+    let sanitized_inner = sanitize_select_stmt(inner)?;
+    match alias {
+        Some(alias) => Some(format!("({}) {}", sanitized_inner, alias)),
+        None => Some(format!("({})", sanitized_inner)),
+    }
+}
+
 /// Sanitize SQL body to ensure safe identifiers.
 /// Only allows `<cols> from <table>` where cols are identifiers, `*`, or a single
 /// SQL function call like `group_concat(distinct asset_type)`.
 fn sanitize_sql_body(body: &str) -> Option<String> {
     let body_trim = body.trim();
-    let lower = body_trim.to_lowercase();
-    let from_pos = lower.rfind(" from ")?;
-    let (cols_part, table_part) = body_trim.split_at(from_pos);
-    let table_name = table_part[" from ".len()..].trim();
-    if table_name.is_empty() || !is_sql_ident(table_name) {
-        return None;
-    }
+    let from_pos = find_top_level_from(body_trim)?;
+    let cols_part = &body_trim[..from_pos];
+    let table_name = sanitize_from_source(body_trim[from_pos + 4..].trim())?;
     let cols = split_top_level_commas(cols_part)?;
     if cols.is_empty() {
         return None;
@@ -462,13 +588,15 @@ pub fn oml_sql(data: &mut &str) -> WResult<SqlQuery> {
     // 优先处理 ip4_between(...)=1 这类 SQL 专用条件，避免落回通用条件解析。
     if let Some((w_sql, vars)) = fast_path_ip4_between_eq_one(&sql_cond_buf) {
         let sql = format!("select {} where {}", sql_body, w_sql);
-        return Ok(SqlQuery::new(sql, vars));
+        let route = resolve_sql_route(&sql);
+        return Ok(SqlQuery::new_with_route(sql, vars, route));
     }
 
     // 优先处理 field in (...)，支持 @ref 形式的 OML 变量引用。
     if let Some((w_sql, vars)) = fast_path_in_list(&sql_cond_buf) {
         let sql = format!("select {} where {}", sql_body, w_sql);
-        return Ok(SqlQuery::new(sql, vars));
+        let route = resolve_sql_route(&sql);
+        return Ok(SqlQuery::new_with_route(sql, vars, route));
     }
 
     // Generic path
@@ -492,7 +620,8 @@ pub fn oml_sql(data: &mut &str) -> WResult<SqlQuery> {
     };
 
     let sql = format!("select {} where {}", safe_body, w_sql);
-    Ok(SqlQuery::new(sql, vars))
+    let route = resolve_sql_route(&sql);
+    Ok(SqlQuery::new_with_route(sql, vars, route))
 }
 
 pub fn oml_aga_sql(data: &mut &str) -> WResult<PreciseEvaluator> {
@@ -556,6 +685,12 @@ mod tests {
         );
         assert!(parsed.vars().contains_key("sip"));
         assert!(parsed.vars().contains_key("dip"));
+        assert!(matches!(
+            parsed.route(),
+            crate::language::SqlKnowledgeRoute::Provider
+                | crate::language::SqlKnowledgeRoute::Sqlite
+                | crate::language::SqlKnowledgeRoute::Unknown
+        ));
         Ok(())
     }
 
@@ -678,6 +813,41 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join(" "),
             "select string_agg(distinct asset_type, ',') from v_asset_ip_details where ip = :ip"
+        );
+        assert!(parsed.vars().contains_key("ip"));
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_oml_sql_subquery_body_ok() -> ModalResult<()> {
+        super::set_sql_strict_for_test(Some(true));
+        let mut code = r#" select asset from (select * from asset_data) where ip = @src_ip ;"#;
+        let parsed = oml_sql.parse_next(&mut code)?;
+        assert_eq!(
+            parsed
+                .oml_sql()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+            "select asset from (select * from asset_data) where ip = :ip"
+        );
+        assert!(parsed.vars().contains_key("ip"));
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_oml_sql_subquery_body_with_alias_ok() -> ModalResult<()> {
+        super::set_sql_strict_for_test(Some(true));
+        let mut code =
+            r#" select asset from (select * from asset_data) as hits where ip = @src_ip ;"#;
+        let parsed = oml_sql.parse_next(&mut code)?;
+        assert_eq!(
+            parsed
+                .oml_sql()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+            "select asset from (select * from asset_data) hits where ip = :ip"
         );
         assert!(parsed.vars().contains_key("ip"));
         Ok(())

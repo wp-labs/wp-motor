@@ -2,6 +2,7 @@
 
 use crate::compat::LegacyOwe;
 use futures_lite::StreamExt;
+use oml::core::evaluator::query::sql::set_sql_table_route;
 use orion_variate::EnvDict;
 use std::path::Path;
 use std::path::PathBuf;
@@ -9,6 +10,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc::Receiver;
 use tokio::time::timeout;
 use wp_knowledge::facade::init_thread_cloned_from_knowdb;
+use wp_knowledge::loader::build_authority_from_knowdb;
 
 use orion_error::{
     OperationContext,
@@ -26,6 +28,9 @@ use crate::facade::args::resolve_run_work_root;
 use crate::facade::runtime_ctrl::{
     CommandType, RuntimeCommandReq, RuntimeCommandResp, RuntimeCommandResult, RuntimeControlHandle,
     default_runtime_command_bus,
+};
+use crate::knowledge::{
+    load_local_table_names, load_provider_table_names, uses_external_provider_only,
 };
 use crate::orchestrator::config::loader::WarpConf;
 use crate::orchestrator::config::models::{load_warp_engine_confs, stat_reqs_from};
@@ -420,9 +425,26 @@ async fn load_engine_res(
     let knowdb_path = knowdb_config_path(main_conf);
     let mut knowdb_handler = None;
     if knowdb_path.exists() {
+        let local_tables = load_local_table_names(&knowdb_path);
+        let provider_tables = load_provider_table_names(&knowdb_path);
         let auth_file = PathBuf::from(conf_manager.runtime_path("authority.sqlite"));
-        let _ = std::fs::remove_file(&auth_file);
+        if !uses_external_provider_only(&knowdb_path) || !local_tables.is_empty() {
+            let _ = std::fs::remove_file(&auth_file);
+        }
         let authority_uri = format!("file:{}?mode=rwc&uri=true", auth_file.display());
+        if !local_tables.is_empty() {
+            let _ = build_authority_from_knowdb(
+                Path::new(conf_manager.work_root_path().as_str()),
+                &knowdb_path,
+                &authority_uri,
+                env_dict,
+            );
+            set_sql_table_route(
+                readonly_authority_uri(&authority_uri),
+                local_tables,
+                provider_tables,
+            );
+        }
         match init_thread_cloned_from_knowdb(
             Path::new(conf_manager.work_root_path().as_str()),
             &knowdb_path,
@@ -537,12 +559,28 @@ async fn load_processing_res(
     let knowdb_path = knowdb_config_path(main_conf);
     let mut knowdb_handler = None;
     if knowdb_path.exists() {
+        let local_tables = load_local_table_names(&knowdb_path);
+        let provider_tables = load_provider_table_names(&knowdb_path);
         let authority_uri = processing_authority_uri(conf_manager, options.persist_runtime_state);
         if options.persist_runtime_state
+            && (!uses_external_provider_only(&knowdb_path) || !local_tables.is_empty())
             && let Some(auth_file) = authority_path_from_uri(&authority_uri)
             && Path::new(auth_file).exists()
         {
             let _ = std::fs::remove_file(auth_file);
+        }
+        if !local_tables.is_empty() {
+            let _ = build_authority_from_knowdb(
+                Path::new(conf_manager.work_root_path().as_str()),
+                &knowdb_path,
+                &authority_uri,
+                env_dict,
+            );
+            set_sql_table_route(
+                readonly_authority_uri(&authority_uri),
+                local_tables,
+                provider_tables,
+            );
         }
         match init_thread_cloned_from_knowdb(
             Path::new(conf_manager.work_root_path().as_str()),
@@ -664,6 +702,14 @@ fn authority_path_from_uri(uri: &str) -> Option<&str> {
         return None;
     }
     Some(path)
+}
+
+fn readonly_authority_uri(authority_uri: &str) -> String {
+    if let Some(rest) = authority_uri.strip_prefix("file:") {
+        let path_part = rest.split('?').next().unwrap_or(rest);
+        return format!("file:{}?mode=ro&uri=true", path_part);
+    }
+    authority_uri.to_string()
 }
 
 #[cfg(test)]

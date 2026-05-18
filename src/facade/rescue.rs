@@ -7,10 +7,14 @@ use orion_error::conversion::ConvErr;
 use orion_variate::EnvDict;
 use wp_conf::RunArgs;
 use wp_error::run_error::RunResult;
+use wp_knowledge::loader::build_authority_from_knowdb;
 use wp_log::conf::log_init;
 use wp_stat::{StatRequires, StatStage};
 
 use crate::facade::args::{ParseArgs, resolve_run_work_root};
+use crate::knowledge::{
+    load_local_table_names, load_provider_table_names, uses_external_provider_only,
+};
 use crate::orchestrator::config::loader::WarpConf;
 use crate::orchestrator::config::models::{load_warp_engine_confs, stat_reqs_from};
 use crate::orchestrator::engine::recovery::recover_main;
@@ -18,7 +22,16 @@ use crate::resources::core::manager::ResManager;
 use crate::runtime::sink::act_sink::SinkService;
 use crate::runtime::sink::infrastructure::InfraSinkService;
 use crate::utils::process::PidRec;
+use oml::core::evaluator::query::sql::set_sql_table_route;
 use wp_conf::engine::EngineConfig;
+
+fn readonly_authority_uri(authority_uri: &str) -> String {
+    if let Some(rest) = authority_uri.strip_prefix("file:") {
+        let path_part = rest.split('?').next().unwrap_or(rest);
+        return format!("file:{}?mode=ro&uri=true", path_part);
+    }
+    authority_uri.to_string()
+}
 
 /// wprescue 应用入口（batch-only）
 pub struct WpRescueApp {
@@ -56,10 +69,27 @@ impl WpRescueApp {
         let knowdb_path =
             std::path::PathBuf::from(self.main_conf.knowledge_root()).join("knowdb.toml");
         if knowdb_path.exists() {
+            let local_tables = load_local_table_names(&knowdb_path);
+            let provider_tables = load_provider_table_names(&knowdb_path);
             let auth_file =
                 std::path::PathBuf::from(self.conf_manager.runtime_path("authority.sqlite"));
-            let _ = std::fs::remove_file(&auth_file);
+            if !uses_external_provider_only(&knowdb_path) || !local_tables.is_empty() {
+                let _ = std::fs::remove_file(&auth_file);
+            }
             let authority_uri = format!("file:{}?mode=rwc&uri=true", auth_file.display());
+            if !local_tables.is_empty() {
+                let _ = build_authority_from_knowdb(
+                    Path::new(self.conf_manager.work_root_path().as_str()),
+                    &knowdb_path,
+                    &authority_uri,
+                    &self.val_dict,
+                );
+                set_sql_table_route(
+                    readonly_authority_uri(&authority_uri),
+                    local_tables,
+                    provider_tables,
+                );
+            }
             match wp_knowledge::facade::init_thread_cloned_from_knowdb(
                 Path::new(self.conf_manager.work_root_path().as_str()),
                 &knowdb_path,

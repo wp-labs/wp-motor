@@ -1,7 +1,10 @@
 use crate::core::prelude::*;
 use crate::language::EvaluationTarget;
-use crate::language::SqlQuery;
+use crate::language::{SqlKnowledgeRoute, SqlQuery};
 use async_trait::async_trait;
+use std::collections::HashSet;
+use std::sync::{Arc, OnceLock};
+use wp_know::mem::thread_clone::ThreadClonedMDB;
 use wp_knowledge::facade as kdb;
 use wp_model_core::model::FieldStorage;
 use wp_model_core::model::{DataType, Value};
@@ -11,6 +14,191 @@ use crate::core::AsyncFieldExtractor;
 // SQL evaluator already places the SQL md5 into c_params[0], so a separate scope hash
 // would only duplicate the same partitioning work on the local-cache hot path.
 const INLINE_SQL_LOCAL_CACHE_SCOPE: u64 = 0;
+
+#[derive(Clone)]
+struct TableRouteConfig {
+    sqlite: ThreadClonedMDB,
+    sqlite_tables: HashSet<String>,
+    provider_tables: HashSet<String>,
+}
+
+fn table_route_config() -> &'static OnceLock<Option<Arc<TableRouteConfig>>> {
+    static ROUTE: OnceLock<Option<Arc<TableRouteConfig>>> = OnceLock::new();
+    &ROUTE
+}
+
+pub fn set_sql_table_route(
+    authority_uri: String,
+    sqlite_tables: Vec<String>,
+    provider_tables: Vec<String>,
+) {
+    let route = TableRouteConfig {
+        sqlite: ThreadClonedMDB::from_authority(authority_uri.as_str()),
+        sqlite_tables: sqlite_tables.into_iter().collect(),
+        provider_tables: provider_tables.into_iter().collect(),
+    };
+    let _ = table_route_config().set(Some(Arc::new(route)));
+}
+
+pub fn clear_sql_table_route() {
+    // OnceLock 不支持在运行时重置；当前路由在进程启动期初始化一次即可。
+}
+
+fn is_sql_ident_byte(byte: u8) -> bool {
+    byte == b'_' || byte.is_ascii_alphanumeric()
+}
+
+fn find_keyword(sql: &str, keyword: &[u8]) -> Option<usize> {
+    let bytes = sql.as_bytes();
+    let mut idx = 0usize;
+
+    while idx < bytes.len() {
+        match bytes[idx] {
+            b'\'' | b'"' => {
+                let quote = bytes[idx];
+                idx += 1;
+                while idx < bytes.len() {
+                    if bytes[idx] == quote {
+                        idx += 1;
+                        if idx < bytes.len() && bytes[idx] == quote {
+                            idx += 1;
+                            continue;
+                        }
+                        break;
+                    }
+                    idx += 1;
+                }
+            }
+            b'`' => {
+                idx += 1;
+                while idx < bytes.len() && bytes[idx] != b'`' {
+                    idx += 1;
+                }
+                idx += usize::from(idx < bytes.len());
+            }
+            b'[' => {
+                idx += 1;
+                while idx < bytes.len() && bytes[idx] != b']' {
+                    idx += 1;
+                }
+                idx += usize::from(idx < bytes.len());
+            }
+            _ => {
+                let end = idx + keyword.len();
+                if end <= bytes.len()
+                    && bytes[idx..end].eq_ignore_ascii_case(keyword)
+                    && idx
+                        .checked_sub(1)
+                        .is_none_or(|prev| !is_sql_ident_byte(bytes[prev]))
+                    && bytes.get(end).is_none_or(|next| !is_sql_ident_byte(*next))
+                {
+                    return Some(idx);
+                }
+                idx += 1;
+            }
+        }
+    }
+
+    None
+}
+
+fn matching_paren(sql: &str, open_pos: usize) -> Option<usize> {
+    let bytes = sql.as_bytes();
+    let mut depth = 0usize;
+    let mut idx = open_pos;
+
+    while idx < bytes.len() {
+        match bytes[idx] {
+            b'\'' | b'"' => {
+                let quote = bytes[idx];
+                idx += 1;
+                while idx < bytes.len() {
+                    if bytes[idx] == quote {
+                        idx += 1;
+                        if idx < bytes.len() && bytes[idx] == quote {
+                            idx += 1;
+                            continue;
+                        }
+                        break;
+                    }
+                    idx += 1;
+                }
+            }
+            b'`' => {
+                idx += 1;
+                while idx < bytes.len() && bytes[idx] != b'`' {
+                    idx += 1;
+                }
+                idx += usize::from(idx < bytes.len());
+            }
+            b'[' => {
+                idx += 1;
+                while idx < bytes.len() && bytes[idx] != b']' {
+                    idx += 1;
+                }
+                idx += usize::from(idx < bytes.len());
+            }
+            b'(' => {
+                depth += 1;
+                idx += 1;
+            }
+            b')' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(idx);
+                }
+                idx += 1;
+            }
+            _ => idx += 1,
+        }
+    }
+
+    None
+}
+
+fn first_table_name(sql: &str) -> Option<&str> {
+    let from_pos = find_keyword(sql, b"from")?;
+    let mut table_start = from_pos + b"from".len();
+    let bytes = sql.as_bytes();
+    while table_start < bytes.len() && bytes[table_start].is_ascii_whitespace() {
+        table_start += 1;
+    }
+
+    if bytes.get(table_start) == Some(&b'(') {
+        let close_pos = matching_paren(sql, table_start)?;
+        return first_table_name(&sql[table_start + 1..close_pos]);
+    }
+
+    let table_end = sql[table_start..]
+        .find(|c: char| c.is_ascii_whitespace() || matches!(c, ';' | ',' | ')'))
+        .map_or(sql.len(), |end| table_start + end);
+    let table = sql[table_start..table_end].trim();
+    if table.is_empty() { None } else { Some(table) }
+}
+
+pub fn resolve_sql_route(sql: &str) -> SqlKnowledgeRoute {
+    let Some(table) = first_table_name(sql) else {
+        return SqlKnowledgeRoute::Unknown;
+    };
+    let Some(route) = table_route_config().get().and_then(|route| route.as_ref()) else {
+        return SqlKnowledgeRoute::Provider;
+    };
+    if route.sqlite_tables.contains(table) {
+        return SqlKnowledgeRoute::Sqlite;
+    }
+    if route.provider_tables.contains(table) {
+        return SqlKnowledgeRoute::Provider;
+    }
+    SqlKnowledgeRoute::Provider
+}
+
+fn local_sqlite_for_route(route: SqlKnowledgeRoute) -> Option<ThreadClonedMDB> {
+    if route != SqlKnowledgeRoute::Sqlite {
+        return None;
+    }
+    let route = table_route_config().get()?.as_ref()?;
+    Some(route.sqlite.clone())
+}
 
 fn norm_query_field(field: &DataField) -> DataField {
     DataField::new(
@@ -132,6 +320,21 @@ impl SqlQuery {
         if all_params_null {
             debug_kdb!("[sql] skip query because all params are null");
             return Vec::new();
+        }
+
+        if let Some(local_sqlite) = local_sqlite_for_route(*self.route()) {
+            let row = if params.is_empty() {
+                local_sqlite.query_row_with_scope(&sql)
+            } else {
+                local_sqlite.query_named_fields_with_scope(&sql, &params)
+            };
+            return match row {
+                Ok(row) => row,
+                Err(err) => {
+                    warn_kdb!("[kdb] local sqlite routed query error: {}", err);
+                    Vec::new()
+                }
+            };
         }
 
         match params.len() {
@@ -289,6 +492,21 @@ impl AsyncFieldExtractor for SqlQuery {
         if all_params_null {
             debug_kdb!("[sql] skip async query because all params are null");
             return Vec::new();
+        }
+
+        if let Some(local_sqlite) = local_sqlite_for_route(*self.route()) {
+            let row = if params.is_empty() {
+                local_sqlite.query_row_with_scope(&sql)
+            } else {
+                local_sqlite.query_named_fields_with_scope(&sql, &params)
+            };
+            return match row {
+                Ok(row) => row,
+                Err(err) => {
+                    warn_kdb!("[kdb] local sqlite routed async query error: {}", err);
+                    Vec::new()
+                }
+            };
         }
 
         match params.len() {
@@ -471,6 +689,60 @@ mod tests {
                 .map(|(name, field)| (name.to_string(), CondAccessor::Val(field.value)))
                 .collect(),
         )
+    }
+
+    #[test]
+    fn test_resolve_sql_route_prefers_sqlite_for_sqlite_tables() {
+        set_sql_table_route(
+            "file:/tmp/test-authority.sqlite?mode=ro&uri=true".to_string(),
+            vec!["local_asset_data".to_string()],
+            vec!["asset_data".to_string()],
+        );
+
+        assert!(matches!(
+            resolve_sql_route("SELECT asset FROM local_asset_data WHERE ip = :ip"),
+            SqlKnowledgeRoute::Sqlite
+        ));
+        assert!(matches!(
+            resolve_sql_route("SELECT asset FROM asset_data WHERE ip = :ip"),
+            SqlKnowledgeRoute::Provider
+        ));
+    }
+
+    #[test]
+    fn test_resolve_sql_route_reads_table_from_subquery() {
+        set_sql_table_route(
+            "file:/tmp/test-authority.sqlite?mode=ro&uri=true".to_string(),
+            vec!["local_asset_data".to_string()],
+            vec!["asset_data".to_string()],
+        );
+
+        assert!(matches!(
+            resolve_sql_route(
+                "SELECT asset FROM (SELECT asset FROM local_asset_data WHERE ip = :ip) AS local_hits"
+            ),
+            SqlKnowledgeRoute::Sqlite
+        ));
+        assert!(matches!(
+            resolve_sql_route(
+                "SELECT asset FROM (SELECT asset FROM (SELECT asset FROM asset_data) nested) hits"
+            ),
+            SqlKnowledgeRoute::Provider
+        ));
+    }
+
+    #[test]
+    fn test_resolve_sql_route_ignores_from_inside_string_literal() {
+        set_sql_table_route(
+            "file:/tmp/test-authority.sqlite?mode=ro&uri=true".to_string(),
+            vec!["local_asset_data".to_string()],
+            vec!["asset_data".to_string()],
+        );
+
+        assert!(matches!(
+            resolve_sql_route("SELECT ' from asset_data ' AS marker FROM local_asset_data"),
+            SqlKnowledgeRoute::Sqlite
+        ));
     }
 
     #[test]
