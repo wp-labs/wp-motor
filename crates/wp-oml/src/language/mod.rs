@@ -33,7 +33,7 @@ pub use syntax::{
         CalcExpr, CalcFun, CalcNumber, CalcOp, CalcOperation, FmtOperation, LookupDict,
         LookupOperation, MapOperation, MatchAble, MatchCase, MatchCond, MatchCondition, MatchFun,
         MatchOperation, MatchSource, PiPeOperation, RecordOperation, RecordOperationBuilder,
-        SqlQuery,
+        SqlKnowledgeRoute, SqlQuery,
     },
 };
 pub use types::model::DataModel;

@@ -31,38 +31,42 @@ pub fn log_knowdb_init_error(prefix: &str, conf: &Path, err: &impl std::fmt::Deb
     );
 }
 
-#[derive(Clone, Debug)]
-pub struct KnowdbHandler {
-    root: Arc<PathBuf>,
-    conf: Arc<PathBuf>,
-    authority_uri: Arc<String>,
-    initialized: Arc<AtomicBool>,
-    dict: Arc<EnvDict>,
-    local_tables: Arc<Vec<String>>,
-}
-
 #[derive(Deserialize)]
-struct KnowdbTableProbe {
-    name: String,
-    #[serde(default = "default_true")]
-    enabled: bool,
-}
-
-#[derive(Deserialize)]
-struct KnowdbProbe {
+pub(crate) struct KnowdbProviderProbe {
     #[serde(default)]
-    tables: Vec<KnowdbTableProbe>,
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub tables: Vec<String>,
 }
 
-const fn default_true() -> bool {
+#[derive(Deserialize)]
+pub(crate) struct KnowdbTableProbe {
+    pub name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct KnowdbProbe {
+    #[serde(default)]
+    pub provider: Option<KnowdbProviderProbe>,
+    #[serde(default)]
+    pub tables: Vec<KnowdbTableProbe>,
+}
+
+pub(crate) const fn default_true() -> bool {
     true
 }
 
-fn load_local_table_names(conf: &Path) -> Vec<String> {
+pub(crate) fn load_knowdb_probe(conf: &Path) -> Option<KnowdbProbe> {
     let Ok(body) = std::fs::read_to_string(conf) else {
-        return Vec::new();
+        return None;
     };
-    let Ok(probe) = toml::from_str::<KnowdbProbe>(&body) else {
+    toml::from_str::<KnowdbProbe>(&body).ok()
+}
+
+pub(crate) fn load_local_table_names(conf: &Path) -> Vec<String> {
+    let Some(probe) = load_knowdb_probe(conf) else {
         return Vec::new();
     };
     probe
@@ -73,6 +77,36 @@ fn load_local_table_names(conf: &Path) -> Vec<String> {
         .collect()
 }
 
+pub(crate) fn load_provider_table_names(conf: &Path) -> Vec<String> {
+    let Some(probe) = load_knowdb_probe(conf) else {
+        return Vec::new();
+    };
+    probe
+        .provider
+        .map(|provider| provider.tables)
+        .unwrap_or_default()
+}
+
+pub(crate) fn uses_external_provider_only(conf: &Path) -> bool {
+    let Some(probe) = load_knowdb_probe(conf) else {
+        return false;
+    };
+    let provider_only = matches!(
+        probe.provider.and_then(|provider| provider.kind),
+        Some(kind) if kind == "postgres" || kind == "mysql"
+    );
+    provider_only && probe.tables.into_iter().all(|table| !table.enabled)
+}
+
+#[derive(Clone, Debug)]
+pub struct KnowdbHandler {
+    root: Arc<PathBuf>,
+    conf: Arc<PathBuf>,
+    authority_uri: Arc<String>,
+    initialized: Arc<AtomicBool>,
+    dict: Arc<EnvDict>,
+}
+
 impl KnowdbHandler {
     pub fn new(root: &Path, conf: &Path, authority_uri: &str, dict: &EnvDict) -> Self {
         Self {
@@ -81,7 +115,6 @@ impl KnowdbHandler {
             authority_uri: Arc::new(authority_uri.to_string()),
             initialized: Arc::new(AtomicBool::new(false)),
             dict: Arc::new(dict.clone()),
-            local_tables: Arc::new(load_local_table_names(conf)),
         }
     }
 
@@ -112,16 +145,74 @@ impl KnowdbHandler {
             }
         }
     }
+}
 
-    pub fn authority_uri(&self) -> &str {
-        self.authority_uri.as_str()
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_uses_external_provider_only_with_provider_only_config() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let conf = dir.path().join("knowdb.toml");
+        std::fs::write(
+            &conf,
+            r#"
+version = 2
+[provider]
+kind = "postgres"
+connection_uri = "postgres://demo"
+            "#,
+        )
+        .expect("write knowdb");
+
+        assert!(uses_external_provider_only(&conf));
     }
 
-    pub fn local_tables(&self) -> &[String] {
-        self.local_tables.as_slice()
+    #[test]
+    fn test_uses_external_provider_only_false_when_local_tables_exist() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let conf = dir.path().join("knowdb.toml");
+        std::fs::write(
+            &conf,
+            r#"
+version = 2
+[provider]
+kind = "postgres"
+connection_uri = "postgres://demo"
+
+[[tables]]
+name = "local_asset_data"
+            "#,
+        )
+        .expect("write knowdb");
+
+        assert!(!uses_external_provider_only(&conf));
+        assert_eq!(
+            load_local_table_names(&conf),
+            vec!["local_asset_data".to_string()]
+        );
     }
 
-    pub fn has_local_tables(&self) -> bool {
-        !self.local_tables.is_empty()
+    #[test]
+    fn test_load_provider_table_names() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let conf = dir.path().join("knowdb.toml");
+        std::fs::write(
+            &conf,
+            r#"
+version = 2
+[provider]
+kind = "postgres"
+connection_uri = "postgres://demo"
+tables = ["asset_data", "zone"]
+            "#,
+        )
+        .expect("write knowdb");
+
+        assert_eq!(
+            load_provider_table_names(&conf),
+            vec!["asset_data".to_string(), "zone".to_string()]
+        );
     }
 }
