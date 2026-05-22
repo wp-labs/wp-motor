@@ -6,7 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
-## [1.22.3 Unreleased]
+## [1.22.4 Unreleased]
+
+### Fixed
+- **OML/Pipe/ip4_to_int**: 修复 `ip4_to_int` 对 IPv6 地址静默透传的问题，现改为返回 Null；新增对字符串 IPv4 地址（`Value::Chars`）的解析支持，可将 `"10.18.190.27"` 等字符串转换为整数字段。
+  中文：`ip4_to_int` 增加字符串 IPv4 解析，IPv6 改返回 Null。
+
+## [1.22.3] - 2026-05-19
 
 ### Added
 - **SQL/Route**: SQL 查询按表名路由到本地 SQLite 或外部 Provider——支持配置 `knowdb.toml` 的 `[[tables]]` 和 `[provider.tables]`，解析 SQL 时自动识别 `FROM` 子句中的表名并分发查询。
