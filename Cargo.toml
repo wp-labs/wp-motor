@@ -365,7 +365,7 @@ wp-arrow = "0.1"
 # --- External: Open API (Public Interfaces) ---
 wp-connector-api = "0.10.1"
 wp-parse-api = "0.10"
-wp-model-core = "0.8"
+wp-model-core = "0.8.9"
 
 # --- External: Advanced API (Enterprise Features) ---
 #wp_ctrl_api = { package = "wp-ctrl-api", git = "https://github.cjm/wp-labs/wp-advanced-api", tag = "v0.2.0" }
