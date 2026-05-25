@@ -56,7 +56,7 @@ parse-display-derive = { workspace = true }
 encoding_rs = { workspace = true }
 imap-types = { workspace = true }
 url = { workspace = true }
-jieba-rs = "0.9"
+jieba-rs = "0.10"
 regex = { workspace = true }
 smallvec = { workspace = true }
 
