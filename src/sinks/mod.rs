@@ -45,7 +45,6 @@ pub use builtin_factories::register_builtin_factories;
 // Backward-compat alias for older tests/tools
 pub use builtin_factories::register_builtin_factories as register_builtin_sinks;
 // Expose a simple null sink for benches and external tests
-pub use backends::arrow_file::ArrowFileFactory;
 pub use backends::blackhole::BlackHoleSink;
 pub use backends::blackhole_factory::BlackHoleFactory;
 pub use backends::file_factory::FileFactory;

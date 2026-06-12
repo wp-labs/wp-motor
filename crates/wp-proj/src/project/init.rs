@@ -634,13 +634,11 @@ mod tests {
             connector_template_exists(work_root.join(CONNECTORS_SINK_DIR), "file_raw_sink"),
             "file raw sink connector should exist"
         );
+        // Arrow functionality is now provided via protocol="arrow" param on file/tcp sinks
+        // (file_arrow_sink / tcp_arrow_sink builtin defs in wp_core_connectors 0.3.3)
         assert!(
-            connector_template_exists(work_root.join(CONNECTORS_SINK_DIR), "arrow_file_sink"),
-            "arrow file sink connector should exist"
-        );
-        assert!(
-            connector_template_exists(work_root.join(CONNECTORS_SINK_DIR), "arrow_tcp_sink"),
-            "arrow tcp sink connector should exist"
+            connector_template_exists(work_root.join(CONNECTORS_SINK_DIR), "file_arrow_sink"),
+            "file arrow sink connector should exist"
         );
     }
 

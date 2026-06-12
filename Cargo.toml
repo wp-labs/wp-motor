@@ -357,7 +357,7 @@ wp-knowledge = "0.13"
 #wp_lang = { package = "wp-lang", version = "0.1" }
 wp_oml = { package = "wp-oml", path = "./crates/wp-oml" }
 wp_proj = { package = "wp-proj", path = "./crates/wp-proj" }
-wp_core_connectors = { package = "wp-core-connectors", version = "0.3.1" }
+wp_core_connectors = { package = "wp-core-connectors", version = "0.3.3" }
 
 # --- External: Arrow ---
 wp-arrow = "0.1"

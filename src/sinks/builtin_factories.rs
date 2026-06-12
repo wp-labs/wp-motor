@@ -1,5 +1,3 @@
-use crate::sinks::backends::arrow_file::ArrowFileFactory;
-use crate::sinks::backends::arrow_ipc::ArrowIpcFactory;
 use crate::sinks::backends::blackhole::BlackHoleSink;
 use crate::sinks::backends::blackhole_factory::BlackHoleFactory;
 use crate::sinks::backends::file_factory::FileFactory;
@@ -8,8 +6,6 @@ use crate::sinks::backends::tcp::TcpFactory;
 use crate::sinks::backends::test_rescue::TestRescueFactory;
 
 pub fn register_builtin_factories() {
-    wp_core_connectors::registry::register_sink_factory(ArrowFileFactory);
-    wp_core_connectors::registry::register_sink_factory(ArrowIpcFactory);
     wp_core_connectors::registry::register_sink_factory(BlackHoleFactory);
     wp_core_connectors::registry::register_sink_factory(FileFactory);
     wp_core_connectors::registry::register_sink_factory(SyslogFactory);

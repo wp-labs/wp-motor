@@ -6,7 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
-## [1.22.4 Unreleased]
+## [1.23.0 Unreleased]
+
+### Removed
+- **Sinks/Arrow**: 移除独立的 `arrow-file` 和 `arrow-ipc` sink 后端（`ArrowFileFactory` / `ArrowIpcFactory`）。Arrow 输出功能已统一到 file/tcp sink 中，通过 `protocol = "arrow"` 参数使用（对应 builtin def: `file_arrow_sink` / `tcp_arrow_sink`）。上游 `wp-core-connectors` 0.3.3 已删除对应的 `arrow_file` / `arrow_ipc` 模块。
 
 ### Fixed
 - **OML/Pipe/ip4_to_int**: 修复 `ip4_to_int` 对 IPv6 地址静默透传的问题，现改为返回 Null；新增对字符串 IPv4 地址（`Value::Chars`）的解析支持，可将 `"10.18.190.27"` 等字符串转换为整数字段。
