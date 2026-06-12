@@ -8,12 +8,17 @@ Entries may be written in both English and Chinese.
 
 ## [1.23.0 Unreleased]
 
+### Added
+- **Knowledge/Redis**: 升级 `wp-knowledge` 至 0.14.0，新增 Redis 外部数据源支持。knowdb.toml 新增 `[provider.redis]` 配置段，支持 `GET`、`HGET`、`BF.EXISTS`、`SISMEMBER` 等命令，适用于弱口令 Bloom filter、威胁情报 IP 查表等高速查表场景。
+
+### Changed
+- **Knowledge/Provider**: knowdb.toml 的 `[provider]` 拆分为 `[provider.sqldb]` 和 `[provider.redis]`，旧格式自动兼容并提示迁移。
+
 ### Removed
-- **Sinks/Arrow**: 移除独立的 `arrow-file` 和 `arrow-ipc` sink 后端（`ArrowFileFactory` / `ArrowIpcFactory`）。Arrow 输出功能已统一到 file/tcp sink 中，通过 `protocol = "arrow"` 参数使用（对应 builtin def: `file_arrow_sink` / `tcp_arrow_sink`）。上游 `wp-core-connectors` 0.3.3 已删除对应的 `arrow_file` / `arrow_ipc` 模块。
+- **Sinks/Arrow**: 移除独立的 `arrow-file` 和 `arrow-ipc` sink 后端（`ArrowFileFactory` / `ArrowIpcFactory`）。Arrow 输出功能已统一到 file/tcp sink 中，通过 `protocol = "arrow"` 参数使用。
 
 ### Fixed
-- **OML/Pipe/ip4_to_int**: 修复 `ip4_to_int` 对 IPv6 地址静默透传的问题，现改为返回 Null；新增对字符串 IPv4 地址（`Value::Chars`）的解析支持，可将 `"10.18.190.27"` 等字符串转换为整数字段。
-  中文：`ip4_to_int` 增加字符串 IPv4 解析，IPv6 改返回 Null。
+- **OML/Pipe/ip4_to_int**: 修复 `ip4_to_int` 对 IPv6 地址静默透传的问题，现改为返回 Null；新增对字符串 IPv4 地址的解析支持。
 
 ## [1.22.3] - 2026-05-19
 

@@ -158,6 +158,7 @@ fn provider_name(kind: &wp_knowledge::loader::ProviderKind) -> &str {
         wp_knowledge::loader::ProviderKind::SqliteAuthority => "sqlite",
         wp_knowledge::loader::ProviderKind::Postgres => "postgres",
         wp_knowledge::loader::ProviderKind::Mysql => "mysql",
+        wp_knowledge::loader::ProviderKind::Redis => "redis",
     }
 }
 

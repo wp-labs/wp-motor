@@ -353,7 +353,7 @@ orion_exp = { path = "./crates/orion_exp" }
 wp_primitives = { package = "wp-primitives", version = "0.2" }
 wp_config = { package = "wp-config", path = "./crates/wp-config" }
 wp_data_model = { package = "wp-data-utils", path = "./crates/wp-data-utils" }
-wp-knowledge = "0.13"
+wp-knowledge = "0.14"
 #wp_lang = { package = "wp-lang", version = "0.1" }
 wp_oml = { package = "wp-oml", path = "./crates/wp-oml" }
 wp_proj = { package = "wp-proj", path = "./crates/wp-proj" }

@@ -93,7 +93,7 @@ pub(crate) fn uses_external_provider_only(conf: &Path) -> bool {
     };
     let provider_only = matches!(
         probe.provider.and_then(|provider| provider.kind),
-        Some(kind) if kind == "postgres" || kind == "mysql"
+        Some(kind) if kind == "postgres" || kind == "mysql" || kind == "redis"
     );
     provider_only && probe.tables.into_iter().all(|table| !table.enabled)
 }
