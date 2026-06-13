@@ -6,7 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
-## [1.23.0 Unreleased]
+## [1.23.1 Unreleased]
+
+### Changed
+- **Dependencies**: 升级 `shadow-rs` 1.5 → 2.0，升级 `wp-core-connectors` 0.3.3 → 0.5。
+
+### Fixed
+- **Project Init**: 修复 `wproj init` 生成的 infra route 模板包含无效的 `version = "2.0"` header 和已废弃的 `file_proto_sink` connector 引用（改为 `file_proto_text_sink`）。`init` 阶段新增自动检测旧格式文件并覆写的逻辑。
+
+## [1.23.0]
 
 ### Added
 - **Knowledge/Redis**: 升级 `wp-knowledge` 至 0.14.0，新增 Redis 外部数据源支持。knowdb.toml 新增 `[provider.redis]` 配置段，支持 `GET`、`HGET`、`BF.EXISTS`、`SISMEMBER` 等命令，适用于弱口令 Bloom filter、威胁情报 IP 查表等高速查表场景。

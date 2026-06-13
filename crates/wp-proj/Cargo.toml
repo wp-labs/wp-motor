@@ -22,7 +22,7 @@ wp-knowledge = { workspace = true }
 wp-conf = { path = "../wp-config", package = "wp-config" }
 wp-model-core = { path = "../wp-data-utils", package = "wp-data-utils" }
 wp-engine = { path = "../..", package = "wp-engine" }
-wp_core_connectors = { workspace = true }
+wp-core-connectors = { workspace = true }
 wp-error = { workspace = true }
 wp-log = { workspace = true }
 wp-lang = { workspace = true }

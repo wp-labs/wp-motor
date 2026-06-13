@@ -1,4 +1,3 @@
-version = "2.0"
 
 [sink_group]
 name = "default"
@@ -6,7 +5,7 @@ batch_size = 128
 batch_timeout_ms = 300
 
 [[sink_group.sinks]]
-connect = "file_proto_sink"
+connect = "file_proto_text_sink"
 [sink_group.sinks.params]
 file = "default.dat"
 

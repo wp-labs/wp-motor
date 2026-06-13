@@ -54,7 +54,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.23.0" # @gxl:set(version)
+version = "1.23.1" # @gxl:set(version)
 edition = "2024"
 license = "Apache-2.0"
 
@@ -170,7 +170,7 @@ wp_stat = { package = "wp-stats", path = "crates/wp-stats" }
 
 # --- Internal: CLI Core ---
 #wp_cli_core = { package = "wp-cli-core", path = "crates/wp-cli-core" }
-wp_core_connectors = { workspace = true }
+wp-core-connectors = { workspace = true }
 
 # --- External: API Layer ---
 wp-connector-api = { workspace = true }
@@ -190,7 +190,7 @@ wp-arrow = { workspace = true }
 # ============================================================================
 
 [build-dependencies]
-shadow-rs = "1.5"
+shadow-rs = "2.0"
 
 # ============================================================================
 # Development Dependencies
@@ -321,7 +321,7 @@ time = "0.3"
 # --- CLI ---
 clap = { version = "4.5", features = ["derive"] }
 comfy-table = "7.2"
-shadow-rs = { version = "1.5.0", default-features = false }
+shadow-rs = { version = "2.0", default-features = false }
 
 # --- Database ---
 url = "2.5"
@@ -357,7 +357,7 @@ wp-knowledge = "0.14"
 #wp_lang = { package = "wp-lang", version = "0.1" }
 wp_oml = { package = "wp-oml", path = "./crates/wp-oml" }
 wp_proj = { package = "wp-proj", path = "./crates/wp-proj" }
-wp_core_connectors = { package = "wp-core-connectors", version = "0.3.3" }
+wp-core-connectors = "0.5"
 
 # --- External: Arrow ---
 wp-arrow = "0.1"
