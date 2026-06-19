@@ -644,4 +644,82 @@ mod tests {
             "order and content must be preserved"
         );
     }
+
+    /// 复刻 run_pipeline 里的 unit_size 计算逻辑，用于验证限速场景下的 unit 粒度。
+    /// 语义：base_rate=0（不限速）→ 50000；否则 (base_rate/10).clamp(1,1000)。
+    fn unit_size_for(base_rate: usize) -> usize {
+        if base_rate > 0 {
+            (base_rate / 10).clamp(1, 1000)
+        } else {
+            DEFAULT_UNIT_SIZE.max(1)
+        }
+    }
+
+    #[test]
+    fn unit_size_reflects_speed_profile() {
+        // 不限速：满 unit，吞吐优先
+        assert_eq!(unit_size_for(0), DEFAULT_UNIT_SIZE);
+        // 高速：撞到行数兼底 1000
+        assert_eq!(unit_size_for(100_000), 1000);
+        // 中速
+        assert_eq!(unit_size_for(5_000), 500);
+        // 低速：unit 很小，发送会按 unit 粒度及时出，不死等字节预算
+        assert_eq!(unit_size_for(1_000), 100);
+        // 极低速：clamp 到 1
+        assert_eq!(unit_size_for(5), 1);
+    }
+
+    #[tokio::test]
+    async fn low_speed_small_unit_flushes_without_waiting_budget() {
+        // 低速场景：unit_size 被 base_rate 压到很小（这里用 100 行 × 100B = 10KB）。
+        // 10KB 远低于 256KiB 字节预算，不应被拆批，也不应死等——整个 unit 作为单个子批
+        // （尾批）及时发出。这验证低速下数据不会被攒批逻辑拖出延迟。
+        let unit = 100; // 模拟 unit_size_for(1_000)
+        let line = "x".repeat(100); // 100B/行 → 整 unit 仅 ~10KB << 256KiB
+        let samples = make_samples(unit, &line);
+        let (rec, state) = RecordingSink::new();
+        let mut sink = SinkBackendType::Proxy(Box::new(rec));
+        let mut idx = 0usize;
+        let mut collectors = empty_collectors();
+        let sent = send_unit_samples(&mut sink, &samples, &mut idx, unit, &mut collectors)
+            .await
+            .unwrap();
+
+        assert_eq!(sent, unit, "all lines in the small unit must be sent");
+        let s = state.lock().unwrap();
+        assert_eq!(s.single_calls, 0, "still uses batch path");
+        // 关键断言：小 unit 不足以触发字节预算切批 → 只应有 1 个子批（尾批）
+        assert_eq!(
+            s.batches.len(),
+            1,
+            "small unit (< byte budget) must flush as a single batch, no splitting"
+        );
+        assert_eq!(s.batches[0].len(), unit);
+    }
+
+    #[tokio::test]
+    async fn high_speed_unit_splits_when_exceeding_budget() {
+        // 高速场景：unit_size 被 clamp 到 1000，但每行很大（~300B）→ 1000 行 ≈ 300KB > 256KiB，
+        // 应被字节预算切成多个子批。与低速用例形成对照：同样 unit_size=1000 量级，
+        // 但因行长不同，切批行为不同。
+        let unit = 1000;
+        let line = "y".repeat(300); // 300B/行 → 整 unit ~300KB > 256KiB
+        let samples = make_samples(unit, &line);
+        let (rec, state) = RecordingSink::new();
+        let mut sink = SinkBackendType::Proxy(Box::new(rec));
+        let mut idx = 0usize;
+        let mut collectors = empty_collectors();
+        let sent = send_unit_samples(&mut sink, &samples, &mut idx, unit, &mut collectors)
+            .await
+            .unwrap();
+        assert_eq!(sent, unit);
+        let s = state.lock().unwrap();
+        let total: usize = s.batches.iter().map(|b| b.len()).sum();
+        assert_eq!(total, unit);
+        // 300KB > 256KiB，应切成多于 1 个子批
+        assert!(
+            s.batches.len() > 1,
+            "unit exceeding byte budget must be split"
+        );
+    }
 }
