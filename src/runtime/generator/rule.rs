@@ -22,21 +22,22 @@ use wp_log::info_ctrl;
 use wp_stat::StatRecorder;
 use wp_stat::StatStage; // for record_task
 
-/// 批量发送一个“单元”的规则生成结果：逐条生成，按字节预算(64KiB)切分成多个子批，逐批 sink_str_batch。
+/// 批量发送一个“单元”的规则生成结果：逐条生成，按动态字节预算(`policy`)切分成多个子批，逐批 sink_str_batch。
 async fn send_unit_rules(
     sink: &mut SinkBackendType,
     src: &std::sync::Arc<RuleGenSource>,
     cur_idx: &mut usize,
     unit_cnt: usize,
     collectors: &mut crate::stat::metric_collect::MetricCollectors,
+    policy: &mut super::common::BatchSizePolicy,
 ) -> RunResult<usize> {
-    use super::common::{BATCH_FLUSH_BYTES, BATCH_FLUSH_LINES};
+    use super::common::BATCH_FLUSH_LINES;
     use wp_stat::StatRecorder; // bring trait for record_task
     let rules_len = src.rule_len().max(1);
     if unit_cnt == 0 {
         return Ok(0);
     }
-    // 逐条生成，按字节预算(64KiB)切分成多个子批，逐批 sink_str_batch。
+    // 逐条生成，按动态字节预算切分成多个子批，逐批 sink_str_batch。
     let mut held: Vec<String> = Vec::with_capacity(BATCH_FLUSH_LINES.min(unit_cnt));
     let mut batch_bytes: usize = 0;
     let mut sent = 0usize;
@@ -71,8 +72,9 @@ async fn send_unit_rules(
         *cur_idx = (*cur_idx + 1) % rules_len;
         let raw_line = wpl::generator::RAWGenFmt(&ffv).to_string();
         let len = raw_line.len();
-        // 达到字节预算或行数兼底，先下发当前子批
-        if (batch_bytes + len > BATCH_FLUSH_BYTES && !held.is_empty())
+        policy.observe_line(len);
+        // 达到动态预算或行数兼底，先下发当前子批
+        if (batch_bytes + len > policy.budget_bytes() && !held.is_empty())
             || held.len() >= BATCH_FLUSH_LINES
         {
             flush_held!();
@@ -230,6 +232,8 @@ async fn run_rule_pipeline(
     };
     let mut limiter =
         DynamicRateLimiter::new(adjusted_profile, &format!("gen_rule_pipe_{}", pipe_idx));
+    // 动态批量大小策略：基于 base_rate × EMA 行长 × 时间窗
+    let mut batch_policy = super::common::BatchSizePolicy::new(base_rate);
 
     // 迭代状态
     let mut produced = 0usize;
@@ -252,7 +256,15 @@ async fn run_rule_pipeline(
             break;
         }
         let take = unit_size.min(left_global);
-        let sent = send_unit_rules(&mut sink, &src, &mut cur_idx, take, &mut collectors).await?;
+        let sent = send_unit_rules(
+            &mut sink,
+            &src,
+            &mut cur_idx,
+            take,
+            &mut collectors,
+            &mut batch_policy,
+        )
+        .await?;
         produced += sent;
         acc_lines += sent;
         let mut reported = 0usize;
@@ -341,7 +353,7 @@ fn adjust_profile_for_pipeline(profile: &SpeedProfile, pipe_cnt: usize) -> Speed
 mod tests {
     use super::*;
     use crate::core::generator::rules::GenRuleUnit;
-    use crate::runtime::generator::common::BATCH_FLUSH_LINES;
+    use crate::runtime::generator::common::{BATCH_FLUSH_LINES, BatchSizePolicy};
     use async_trait::async_trait;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
@@ -446,7 +458,8 @@ mod tests {
         let mut sink = SinkBackendType::Proxy(Box::new(rec));
         let mut idx = 0usize;
         let mut collectors = empty_collectors();
-        let sent = send_unit_rules(&mut sink, &src, &mut idx, 0, &mut collectors)
+        let mut policy = BatchSizePolicy::new(0);
+        let sent = send_unit_rules(&mut sink, &src, &mut idx, 0, &mut collectors, &mut policy)
             .await
             .unwrap();
         assert_eq!(sent, 0);
@@ -462,9 +475,17 @@ mod tests {
         let mut sink = SinkBackendType::Proxy(Box::new(rec));
         let mut idx = 0usize;
         let mut collectors = empty_collectors();
-        let sent = send_unit_rules(&mut sink, &src, &mut idx, 1000, &mut collectors)
-            .await
-            .unwrap();
+        let mut policy = BatchSizePolicy::new(0);
+        let sent = send_unit_rules(
+            &mut sink,
+            &src,
+            &mut idx,
+            1000,
+            &mut collectors,
+            &mut policy,
+        )
+        .await
+        .unwrap();
         assert_eq!(sent, 1000, "sent must equal unit_cnt");
         let s = state.lock().unwrap();
         assert_eq!(s.single_calls, 0, "must use sink_str_batch, not sink_str");
@@ -481,9 +502,17 @@ mod tests {
         let mut sink = SinkBackendType::Proxy(Box::new(rec));
         let mut idx = 0usize;
         let mut collectors = empty_collectors();
-        let sent = send_unit_rules(&mut sink, &src, &mut idx, unit, &mut collectors)
-            .await
-            .unwrap();
+        let mut policy = BatchSizePolicy::new(0);
+        let sent = send_unit_rules(
+            &mut sink,
+            &src,
+            &mut idx,
+            unit,
+            &mut collectors,
+            &mut policy,
+        )
+        .await
+        .unwrap();
         assert_eq!(sent, unit);
         let s = state.lock().unwrap();
         let total: usize = s.batches.iter().map(|b| b.len()).sum();

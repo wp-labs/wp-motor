@@ -48,16 +48,17 @@ fn load_samples(rule_root: &str, find_name: &str) -> RunResult<Vec<String>> {
     Ok(out)
 }
 
-/// 批量发送一个"单元"的样本：按字节预算(64KiB)切分成多个子批，逐批 sink_str_batch，
-/// 使每次 write 大小稳定可控，不依赖行长。
+/// 批量发送一个“单元”的样本：按动态字节预算(`policy`)切分成多个子批，逐批 sink_str_batch。
+/// 预算由 BatchSizePolicy 根据 rate × EMA 行长 × 时间窗自适应，混合行长下也能稳定。
 async fn send_unit_samples(
     sink: &mut SinkBackendType,
     samples: &Arc<Vec<String>>,
     cur_idx: &mut usize,
     unit_cnt: usize,
     collectors: &mut MetricCollectors,
+    policy: &mut super::common::BatchSizePolicy,
 ) -> RunResult<usize> {
-    use super::common::{BATCH_FLUSH_BYTES, BATCH_FLUSH_LINES};
+    use super::common::BATCH_FLUSH_LINES;
     let n = samples.len().max(1);
     if unit_cnt == 0 {
         return Ok(0);
@@ -68,8 +69,9 @@ async fn send_unit_samples(
     for _ in 0..unit_cnt {
         let line: &str = samples[*cur_idx].as_str();
         let len = line.len();
-        // 达到字节预算或行数兼底，先下发当前子批
-        if (batch_bytes + len > BATCH_FLUSH_BYTES && !batch.is_empty())
+        policy.observe_line(len);
+        // 达到动态预算或行数兼底，先下发当前子批
+        if (batch_bytes + len > policy.budget_bytes() && !batch.is_empty())
             || batch.len() >= BATCH_FLUSH_LINES
         {
             let cnt = batch.len();
@@ -200,6 +202,8 @@ async fn run_pipeline(
     };
     let mut limiter =
         DynamicRateLimiter::new(speed_profile, &format!("gen_sample_pipe_{}", pipe_idx));
+    // 动态批量大小策略：基于 base_rate × EMA 行长 × 时间窗
+    let mut batch_policy = super::common::BatchSizePolicy::new(base_rate);
 
     // 迭代状态
     let mut cur_idx = 0usize;
@@ -212,21 +216,27 @@ async fn run_pipeline(
         if reserved == 0 {
             break;
         }
-        let sent =
-            match send_unit_samples(&mut sink, &samples, &mut cur_idx, reserved, &mut collectors)
-                .await
-            {
-                Ok(sent) => {
-                    if sent < reserved {
-                        quota.release(reserved - sent);
-                    }
-                    sent
+        let sent = match send_unit_samples(
+            &mut sink,
+            &samples,
+            &mut cur_idx,
+            reserved,
+            &mut collectors,
+            &mut batch_policy,
+        )
+        .await
+        {
+            Ok(sent) => {
+                if sent < reserved {
+                    quota.release(reserved - sent);
                 }
-                Err(e) => {
-                    quota.release(reserved);
-                    return Err(e);
-                }
-            };
+                sent
+            }
+            Err(e) => {
+                quota.release(reserved);
+                return Err(e);
+            }
+        };
         produced += sent;
         // 单元完成后发一次快照
         let _ = collectors.send_stat(&mon_s).await;
@@ -397,7 +407,10 @@ pub async fn run_sample_direct(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::generator::common::{BATCH_FLUSH_BYTES, BATCH_FLUSH_LINES};
+    use crate::runtime::generator::common::{
+        BATCH_BUDGET_MAX, BATCH_BUDGET_MIN, BATCH_EMA_ALPHA, BATCH_FLUSH_LINES, BATCH_SEED_BUDGET,
+        BatchSizePolicy,
+    };
     use async_trait::async_trait;
     use std::sync::{Arc, Mutex};
     use wp_connector_api::{AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkResult};
@@ -487,10 +500,87 @@ mod tests {
         Arc::new((0..n).map(|_| line.to_string()).collect())
     }
 
-    /// 子批中一个子批的字节数（每行 + 1 字节换行，对齐 Line framing）
+    /// 子批中一个子批的字节数（对齐发送循环的实际累加逻辑）
     fn batch_bytes(b: &[String]) -> usize {
-        b.iter().map(|s| s.len() + 1).sum()
+        b.iter().map(|s| s.len()).sum()
     }
+
+    // ===== BatchSizePolicy 单元测试：预算计算与 EMA 行为 =====
+
+    #[test]
+    fn policy_unlimited_rate_caps_at_max() {
+        let mut p = BatchSizePolicy::new(0); // 不限速
+        assert_eq!(
+            p.budget_bytes(),
+            BATCH_BUDGET_MAX,
+            "unlimited -> MAX even before obs"
+        );
+        p.observe_line(100);
+        assert_eq!(
+            p.budget_bytes(),
+            BATCH_BUDGET_MAX,
+            "unlimited -> MAX after obs"
+        );
+    }
+
+    #[test]
+    fn policy_uses_seed_before_first_observation() {
+        let p = BatchSizePolicy::new(10_000);
+        assert_eq!(
+            p.budget_bytes(),
+            BATCH_SEED_BUDGET,
+            "seed budget before first line"
+        );
+    }
+
+    #[test]
+    fn policy_first_observation_initializes_avg() {
+        let mut p = BatchSizePolicy::new(10_000);
+        p.observe_line(200);
+        assert_eq!(p.avg_line_bytes(), 200.0);
+        // byte_rate = 10000 * 200 = 2_000_000 B/s; ×0.1s = 200_000 -> clamp(MAX=1MiB)
+        assert_eq!(p.budget_bytes(), 200_000);
+    }
+
+    #[test]
+    fn policy_ema_converges_toward_recent_lines() {
+        // α=0.02：喂入大量长行后，avg 应逐步趋近长行值
+        let mut p = BatchSizePolicy::new(1);
+        for _ in 0..5000 {
+            p.observe_line(1000);
+        }
+        assert!(
+            p.avg_line_bytes() > 990.0,
+            "ema should converge near 1000, got {}",
+            p.avg_line_bytes()
+        );
+    }
+
+    #[test]
+    fn policy_budget_scales_with_rate_and_line_size() {
+        // 同样行长 100B，速率越高预算越大
+        let mk = |rate| {
+            let mut p = BatchSizePolicy::new(rate);
+            p.observe_line(100);
+            p.budget_bytes()
+        };
+        let low = mk(500); // 500*100*0.1 = 5_000 -> clamp MIN = 8KiB
+        let high = mk(1_000_000); // 1e6*100*0.1 = 1e7 -> clamp MAX
+        assert_eq!(low, BATCH_BUDGET_MIN, "low byte-rate floors at MIN");
+        assert_eq!(high, BATCH_BUDGET_MAX, "high byte-rate caps at MAX");
+        // 中间档：100_000 EPS × 100B × 0.1 = 1_000_000，在 [MIN,MAX] 内
+        assert_eq!(mk(100_000), 1_000_000);
+    }
+
+    #[test]
+    fn policy_budget_respects_time_window_formula() {
+        // 50_000 EPS × 40B = 2_000_000 B/s × 0.1s = 200_000B，落在 [MIN,MAX] 内
+        let mut p = BatchSizePolicy::new(50_000);
+        p.observe_line(40);
+        assert_eq!(p.budget_bytes(), 200_000);
+    }
+
+    // ===== send_unit_samples：批量路径与数据完整性 =====
 
     #[tokio::test]
     async fn empty_unit_sends_nothing() {
@@ -499,9 +589,17 @@ mod tests {
         let samples = make_samples(10, "x");
         let mut idx = 0usize;
         let mut collectors = empty_collectors();
-        let sent = send_unit_samples(&mut sink, &samples, &mut idx, 0, &mut collectors)
-            .await
-            .unwrap();
+        let mut policy = BatchSizePolicy::new(0);
+        let sent = send_unit_samples(
+            &mut sink,
+            &samples,
+            &mut idx,
+            0,
+            &mut collectors,
+            &mut policy,
+        )
+        .await
+        .unwrap();
         assert_eq!(sent, 0);
         let s = state.lock().unwrap();
         assert!(s.batches.is_empty(), "no batch for unit_cnt=0");
@@ -517,17 +615,25 @@ mod tests {
         let mut sink = SinkBackendType::Proxy(Box::new(rec));
         let mut idx = 0usize;
         let mut collectors = empty_collectors();
-        let sent = send_unit_samples(&mut sink, &samples, &mut idx, 1000, &mut collectors)
-            .await
-            .unwrap();
+        let mut policy = BatchSizePolicy::new(0);
+        let sent = send_unit_samples(
+            &mut sink,
+            &samples,
+            &mut idx,
+            1000,
+            &mut collectors,
+            &mut policy,
+        )
+        .await
+        .unwrap();
         assert_eq!(sent, 1000);
         let s = state.lock().unwrap();
         assert_eq!(s.single_calls, 0, "must use sink_str_batch, not sink_str");
     }
 
     #[tokio::test]
-    async fn short_lines_split_by_byte_budget() {
-        // 10000 行 × 100 字节 = 1MB，远超 64KiB，应切成多个子批
+    async fn unlimited_rate_splits_large_unit_into_subbatches() {
+        // 不限速：预算=MAX(1MiB)。10000 行 × 100B ≈ 1MB，接近上限，应切成多个子批。
         let line = "x".repeat(100);
         let unit = 10_000;
         let samples = make_samples(unit, &line);
@@ -535,59 +641,58 @@ mod tests {
         let mut sink = SinkBackendType::Proxy(Box::new(rec));
         let mut idx = 0usize;
         let mut collectors = empty_collectors();
-        let sent = send_unit_samples(&mut sink, &samples, &mut idx, unit, &mut collectors)
-            .await
-            .unwrap();
+        let mut policy = BatchSizePolicy::new(0);
+        let sent = send_unit_samples(
+            &mut sink,
+            &samples,
+            &mut idx,
+            unit,
+            &mut collectors,
+            &mut policy,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(sent, unit, "total sent must equal unit_cnt");
         let s = state.lock().unwrap();
         assert_eq!(s.single_calls, 0);
-
-        // 总行数守恒
         let total: usize = s.batches.iter().map(|b| b.len()).sum();
         assert_eq!(total, unit, "all lines must be flushed");
-
-        // 应被切成多于 1 个子批（1MB > 64KiB）
-        assert!(s.batches.len() > 1, "expected multiple sub-batches");
-
-        // 除尾批外，每个子批要么达到字节预算、要么达到行数兼底
-        // 字节预算约束：单子批字节数 <= 64KiB + 单行（含换行），因为单行可能填过预算
+        // 每个子批行数不超过行数兼底
         for b in s.batches.iter() {
             assert!(b.len() <= BATCH_FLUSH_LINES, "sub-batch line cap breached");
         }
-        // 非尾批应贴近字节预算（这里宽松校验：非尾批字节数应 >= 预算一半）
-        for b in s.batches.iter().take(s.batches.len().saturating_sub(1)) {
-            assert!(
-                batch_bytes(b) > BATCH_FLUSH_BYTES / 2,
-                "non-tail sub-batch too small: {} bytes",
-                batch_bytes(b)
-            );
-        }
-
-        // 内容顺序守恒：展平后应与输入序列一致
+        // 内容顺序守恒
         let flat: Vec<String> = s.batches.iter().flatten().cloned().collect();
         for v in &flat {
             assert_eq!(v, &line);
         }
-        // cur_idx 应正好绕回起点（unit 是 samples.len() 的整数倍）
         assert_eq!(idx, 0);
     }
 
     #[tokio::test]
     async fn huge_single_line_flushes_alone() {
-        // 单行 > 64KiB：该行应独占一个子批（不会被合并进其他子批）
-        let huge = "y".repeat(BATCH_FLUSH_BYTES + 1000);
+        // 单行 > 预算：该行应独占一个子批（首行进批后，下一行触发切）
+        let huge = "y".repeat(BATCH_BUDGET_MAX + 1000);
         let samples = Arc::new(vec![huge.clone(), huge.clone(), huge.clone()]);
         let (rec, state) = RecordingSink::new();
         let mut sink = SinkBackendType::Proxy(Box::new(rec));
         let mut idx = 0usize;
         let mut collectors = empty_collectors();
-        let sent = send_unit_samples(&mut sink, &samples, &mut idx, 3, &mut collectors)
-            .await
-            .unwrap();
+        let mut policy = BatchSizePolicy::new(0);
+        let sent = send_unit_samples(
+            &mut sink,
+            &samples,
+            &mut idx,
+            3,
+            &mut collectors,
+            &mut policy,
+        )
+        .await
+        .unwrap();
         assert_eq!(sent, 3);
         let s = state.lock().unwrap();
-        // 每行都超过预算，每行应独占一个子批 → 3 个子批各 1 行
+        // 每行都远超预算，每行独占一个子批 → 3 个子批各 1 行
         assert_eq!(s.batches.len(), 3, "each huge line should be its own batch");
         for b in &s.batches {
             assert_eq!(b.len(), 1);
@@ -597,21 +702,28 @@ mod tests {
 
     #[tokio::test]
     async fn tiny_lines_respect_line_cap() {
-        // 极短行（1 字节）+ 超多行：不触发字节预算，但触发行数兼底 4096
-        let unit = BATCH_FLUSH_LINES * 3 + 7; // 跨多个行数兼底点
+        // 极短行（1 字节）+ 超多行：不限速下预算=MAX，靠行数兼底 4096 切批
+        let unit = BATCH_FLUSH_LINES * 3 + 7;
         let samples = make_samples(unit, "a");
         let (rec, state) = RecordingSink::new();
         let mut sink = SinkBackendType::Proxy(Box::new(rec));
         let mut idx = 0usize;
         let mut collectors = empty_collectors();
-        let sent = send_unit_samples(&mut sink, &samples, &mut idx, unit, &mut collectors)
-            .await
-            .unwrap();
+        let mut policy = BatchSizePolicy::new(0);
+        let sent = send_unit_samples(
+            &mut sink,
+            &samples,
+            &mut idx,
+            unit,
+            &mut collectors,
+            &mut policy,
+        )
+        .await
+        .unwrap();
         assert_eq!(sent, unit);
         let s = state.lock().unwrap();
         let total: usize = s.batches.iter().map(|b| b.len()).sum();
         assert_eq!(total, unit);
-        // 每个子批行数不得超过行数兼底
         for b in &s.batches {
             assert!(b.len() <= BATCH_FLUSH_LINES, "line cap breached");
         }
@@ -622,18 +734,26 @@ mod tests {
         // 不同长度的行混合：验证顺序与内容都不乱
         let samples = Arc::new(vec![
             "short".to_string(),
-            "x".repeat(70_000), // 超预算
-            "mid".repeat(100),  // ~300 字节
-            "z".repeat(70_000), // 超预算
+            "x".repeat(70_000),
+            "mid".repeat(100),
+            "z".repeat(70_000),
             "tail".to_string(),
         ]);
         let (rec, state) = RecordingSink::new();
         let mut sink = SinkBackendType::Proxy(Box::new(rec));
         let mut idx = 0usize;
         let mut collectors = empty_collectors();
-        let sent = send_unit_samples(&mut sink, &samples, &mut idx, 5, &mut collectors)
-            .await
-            .unwrap();
+        let mut policy = BatchSizePolicy::new(0);
+        let sent = send_unit_samples(
+            &mut sink,
+            &samples,
+            &mut idx,
+            5,
+            &mut collectors,
+            &mut policy,
+        )
+        .await
+        .unwrap();
         assert_eq!(sent, 5);
         let s = state.lock().unwrap();
         let flat: Vec<String> = s.batches.iter().flatten().cloned().collect();
@@ -645,8 +765,121 @@ mod tests {
         );
     }
 
-    /// 复刻 run_pipeline 里的 unit_size 计算逻辑，用于验证限速场景下的 unit 粒度。
-    /// 语义：base_rate=0（不限速）→ 50000；否则 (base_rate/10).clamp(1,1000)。
+    // ===== 速度与行长的耦合（动态预算）=====
+
+    #[tokio::test]
+    async fn low_rate_keeps_batches_small_for_low_latency() {
+        // 低速率 + 短行：预算被压到 MIN(8KiB)。一个 unit(1000 行 × 50B = 50KB)
+        // 应被切成多个小批，每批不超过 MIN + 单行。这保证低延迟（不攒大包）。
+        let line = "s".repeat(50);
+        let unit = 1000;
+        let samples = make_samples(unit, &line);
+        let (rec, state) = RecordingSink::new();
+        let mut sink = SinkBackendType::Proxy(Box::new(rec));
+        let mut idx = 0usize;
+        let mut collectors = empty_collectors();
+        // 低速率：50_000 EPS × 50B × 0.1 = 250_000 -> 实际会 clamp MAX？
+        // 为真正触发 MIN，用极低速率：1_000 EPS × 50B × 0.1 = 5_000 -> clamp MIN
+        let mut policy = BatchSizePolicy::new(1_000);
+        let sent = send_unit_samples(
+            &mut sink,
+            &samples,
+            &mut idx,
+            unit,
+            &mut collectors,
+            &mut policy,
+        )
+        .await
+        .unwrap();
+        assert_eq!(sent, unit);
+        let s = state.lock().unwrap();
+        assert!(
+            s.batches.len() > 1,
+            "low rate -> small budget -> multiple batches"
+        );
+        // 每个子批字节数不应超过 MIN + 单行（50B+1）太多，证明批确实小
+        for b in s.batches.iter() {
+            assert!(
+                batch_bytes(b) <= BATCH_BUDGET_MIN + 51,
+                "low-rate batch too large: {} bytes",
+                batch_bytes(b)
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn high_rate_makes_fewer_larger_batches() {
+        // 高速率：预算=MAX(1MiB)。同样 10000 行 × 100B ≈ 1MB，应切成很少几个大批。
+        // 对比低速率用例：同样数据，高速率批数明显更少。
+        let line = "x".repeat(100);
+        let unit = 10_000;
+        let samples = make_samples(unit, &line);
+        let (rec, state) = RecordingSink::new();
+        let mut sink = SinkBackendType::Proxy(Box::new(rec));
+        let mut idx = 0usize;
+        let mut collectors = empty_collectors();
+        let mut policy = BatchSizePolicy::new(0); // 不限速 -> MAX
+        let sent = send_unit_samples(
+            &mut sink,
+            &samples,
+            &mut idx,
+            unit,
+            &mut collectors,
+            &mut policy,
+        )
+        .await
+        .unwrap();
+        assert_eq!(sent, unit);
+        let s = state.lock().unwrap();
+        // 不限速 budget=1MiB，但行数兼底 4096 触发：10000/4096=3 批
+        // 对比低速(8KiB)：同样数据需 ~122 批
+        assert_eq!(
+            s.batches.len(),
+            3,
+            "10K lines x 100B → 3 sub-batches (line cap 4096), got {}",
+            s.batches.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn mixed_logs_ema_adapts_batch_size() {
+        // 混合日志：先短行（建立小 avg → 小预算 → 多小批），
+        // 再长行（avg 逐步升高 → 预算变大 → 批变大/批数变少）。
+        // 构造样本：500 短行(20B) + 500 长行(10_000B)
+        let mut lines: Vec<String> = (0..500).map(|_| "a".repeat(20)).collect();
+        lines.extend((0..500).map(|_| "b".repeat(10_000)));
+        let samples = Arc::new(lines);
+        let (rec, state) = RecordingSink::new();
+        let mut sink = SinkBackendType::Proxy(Box::new(rec));
+        let mut idx = 0usize;
+        let mut collectors = empty_collectors();
+        // 限速：5_000 EPS。短行段：5000*20*0.1=10_000->MIN(8K)；
+        // 长行段 avg 升到 ~10000：5000*10000*0.1=5_000_000->MAX。预算随段变化。
+        let mut policy = BatchSizePolicy::new(5_000);
+        let sent = send_unit_samples(
+            &mut sink,
+            &samples,
+            &mut idx,
+            1000,
+            &mut collectors,
+            &mut policy,
+        )
+        .await
+        .unwrap();
+        assert_eq!(sent, 1000);
+        let s = state.lock().unwrap();
+        // 数据完整守恒
+        let total: usize = s.batches.iter().map(|b| b.len()).sum();
+        assert_eq!(total, 1000);
+        // EMA 最终应明显高于纯短行水平（被长行拉上去）
+        assert!(
+            policy.avg_line_bytes() > 1000.0,
+            "ema should be pulled up by long lines, got {}",
+            policy.avg_line_bytes()
+        );
+    }
+
+    /// 复刻 run_pipeline 里的 unit_size 计算逻辑。
     fn unit_size_for(base_rate: usize) -> usize {
         if base_rate > 0 {
             (base_rate / 10).clamp(1, 1000)
@@ -657,69 +890,16 @@ mod tests {
 
     #[test]
     fn unit_size_reflects_speed_profile() {
-        // 不限速：满 unit，吞吐优先
         assert_eq!(unit_size_for(0), DEFAULT_UNIT_SIZE);
-        // 高速：撞到行数兼底 1000
         assert_eq!(unit_size_for(100_000), 1000);
-        // 中速
         assert_eq!(unit_size_for(5_000), 500);
-        // 低速：unit 很小，发送会按 unit 粒度及时出，不死等字节预算
         assert_eq!(unit_size_for(1_000), 100);
-        // 极低速：clamp 到 1
         assert_eq!(unit_size_for(5), 1);
     }
 
-    #[tokio::test]
-    async fn low_speed_small_unit_flushes_without_waiting_budget() {
-        // 低速场景：unit_size 被 base_rate 压到很小（这里用 100 行 × 100B = 10KB）。
-        // 10KB 远低于 256KiB 字节预算，不应被拆批，也不应死等——整个 unit 作为单个子批
-        // （尾批）及时发出。这验证低速下数据不会被攒批逻辑拖出延迟。
-        let unit = 100; // 模拟 unit_size_for(1_000)
-        let line = "x".repeat(100); // 100B/行 → 整 unit 仅 ~10KB << 256KiB
-        let samples = make_samples(unit, &line);
-        let (rec, state) = RecordingSink::new();
-        let mut sink = SinkBackendType::Proxy(Box::new(rec));
-        let mut idx = 0usize;
-        let mut collectors = empty_collectors();
-        let sent = send_unit_samples(&mut sink, &samples, &mut idx, unit, &mut collectors)
-            .await
-            .unwrap();
-
-        assert_eq!(sent, unit, "all lines in the small unit must be sent");
-        let s = state.lock().unwrap();
-        assert_eq!(s.single_calls, 0, "still uses batch path");
-        // 关键断言：小 unit 不足以触发字节预算切批 → 只应有 1 个子批（尾批）
-        assert_eq!(
-            s.batches.len(),
-            1,
-            "small unit (< byte budget) must flush as a single batch, no splitting"
-        );
-        assert_eq!(s.batches[0].len(), unit);
-    }
-
-    #[tokio::test]
-    async fn high_speed_unit_splits_when_exceeding_budget() {
-        // 高速场景：unit_size 被 clamp 到 1000，但每行很大（~300B）→ 1000 行 ≈ 300KB > 256KiB，
-        // 应被字节预算切成多个子批。与低速用例形成对照：同样 unit_size=1000 量级，
-        // 但因行长不同，切批行为不同。
-        let unit = 1000;
-        let line = "y".repeat(300); // 300B/行 → 整 unit ~300KB > 256KiB
-        let samples = make_samples(unit, &line);
-        let (rec, state) = RecordingSink::new();
-        let mut sink = SinkBackendType::Proxy(Box::new(rec));
-        let mut idx = 0usize;
-        let mut collectors = empty_collectors();
-        let sent = send_unit_samples(&mut sink, &samples, &mut idx, unit, &mut collectors)
-            .await
-            .unwrap();
-        assert_eq!(sent, unit);
-        let s = state.lock().unwrap();
-        let total: usize = s.batches.iter().map(|b| b.len()).sum();
-        assert_eq!(total, unit);
-        // 300KB > 256KiB，应切成多于 1 个子批
-        assert!(
-            s.batches.len() > 1,
-            "unit exceeding byte budget must be split"
-        );
+    // 防 EMA_ALPHA 被误改后静默失效的卫兵
+    #[test]
+    fn ema_alpha_is_small_positive() {
+        assert!(BATCH_EMA_ALPHA > 0.0 && BATCH_EMA_ALPHA < 1.0);
     }
 }
