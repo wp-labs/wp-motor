@@ -170,7 +170,7 @@ wp_stat = { package = "wp-stats", path = "crates/wp-stats" }
 
 # --- Internal: CLI Core ---
 #wp_cli_core = { package = "wp-cli-core", path = "crates/wp-cli-core" }
-wp_core_connectors = { workspace = true }
+wp-core-connectors = { workspace = true }
 
 # --- External: API Layer ---
 wp-connector-api = { workspace = true }
@@ -357,7 +357,7 @@ wp-knowledge = "0.13"
 #wp_lang = { package = "wp-lang", version = "0.1" }
 wp_oml = { package = "wp-oml", path = "./crates/wp-oml" }
 wp_proj = { package = "wp-proj", path = "./crates/wp-proj" }
-wp_core_connectors = { package = "wp-core-connectors", version = "0.3.1" }
+wp-core-connectors =  "0.4"
 
 # --- External: Arrow ---
 wp-arrow = "0.1"
