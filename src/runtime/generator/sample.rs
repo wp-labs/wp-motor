@@ -898,8 +898,5 @@ mod tests {
     }
 
     // 防 EMA_ALPHA 被误改后静默失效的卫兵
-    #[test]
-    fn ema_alpha_is_small_positive() {
-        assert!(BATCH_EMA_ALPHA > 0.0 && BATCH_EMA_ALPHA < 1.0);
-    }
+    const _: () = assert!(BATCH_EMA_ALPHA > 0.0 && BATCH_EMA_ALPHA < 1.0);
 }
