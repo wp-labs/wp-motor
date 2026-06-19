@@ -9,12 +9,12 @@ Entries may be written in both English and Chinese.
 ## [1.22.5 Unreleased]
 
 ### Changed
-- **Generator/Sink**: `send_unit_samples` / `send_unit_rules` 改为按字节预算(256KiB)批量下发，替代逐行 `sink_str`。新增 `BATCH_FLUSH_BYTES` / `BATCH_FLUSH_LINES` 双约束，单次 write 大小稳定且不依赖行长。
-  中文：生成器发送改为按字节预算批量写，逐行 `sink_str` 合并为 `sink_str_batch`。
+- **Generator/Sink**: `send_unit_samples` / `send_unit_rules` 改为动态字节预算批量下发。新增 `BatchSizePolicy`：预算 = `base_rate(EPS) × avg_line_bytes(EMA) × time_window(100ms)`，clamp 到 [8KiB, 1MiB]。不限速封顶 1MiB，高速率 → 大批（吞吐），低速率 → 小批（低延迟），混合日志下 EMA 跟踪行长分布变化。
+  中文：生成器发送改为动态批量：预算根据速率 × 动态行长 × 时间窗自适应。
   - TCP sink 场景下 `wpgen` CPU 从 ~300% 降至 ~15%（实测），不再把 CPU 烧在逐行 `write()` syscall 上；blackhole/file sink 行为不变。
 
 ### Tests
-- **Generator**: 新增 `send_unit_samples` / `send_unit_rules` 的字节预算批量下发单元测试（sample 6 例 + rule 3 例），覆盖空输入、批量路径不走逐行、短行按字节切分、超大单行独占子批、行数兼底、内容顺序守恒等场景。生成器测试 72 → 81。
+- **Generator**: 新增 `BatchSizePolicy` 单元测试 6 例（不限速封顶、种子预算、EMA 收敛、预算缩放、时间窗公式、防退化卫兵）及速率×行长耦合集成测试 2 例（低速率小批低延迟、混合日志 EMA 自适应）。`send_unit_samples` / `send_unit_rules` 批量下发测试适配新策略签名。生成器测试 84 → 92。
 
 ## [1.22.4] - 2026-05-19
 
