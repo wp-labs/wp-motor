@@ -6,7 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
-## [1.22.4 Unreleased]
+## [1.22.5 Unreleased]
+
+### Changed
+- **Generator/Sink**: `send_unit_samples` / `send_unit_rules` 改为按字节预算(64KiB)批量下发，替代逐行 `sink_str`。新增 `BATCH_FLUSH_BYTES` / `BATCH_FLUSH_LINES` 双约束，单次 write 大小稳定且不依赖行长。
+  中文：生成器发送改为按字节预算批量写，逐行 `sink_str` 合并为 `sink_str_batch`。
+  - TCP sink 场景下 `wpgen` CPU 从 ~300% 降至 ~15%（实测），不再把 CPU 烧在逐行 `write()` syscall 上；blackhole/file sink 行为不变。
+
+### Tests
+- **Generator**: 新增 `send_unit_samples` / `send_unit_rules` 的字节预算批量下发单元测试（sample 6 例 + rule 3 例），覆盖空输入、批量路径不走逐行、短行按字节切分、超大单行独占子批、行数兼底、内容顺序守恒等场景。生成器测试 72 → 81。
+
+## [1.22.4] - 2026-05-19
 
 ### Fixed
 - **OML/Pipe/ip4_to_int**: 修复 `ip4_to_int` 对 IPv6 地址静默透传的问题，现改为返回 Null；新增对字符串 IPv4 地址（`Value::Chars`）的解析支持，可将 `"10.18.190.27"` 等字符串转换为整数字段。
