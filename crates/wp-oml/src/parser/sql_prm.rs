@@ -449,6 +449,98 @@ fn is_sql_literal_piece(s: &str) -> bool {
     st.parse::<i64>().is_ok() || st.parse::<f64>().is_ok()
 }
 
+fn sql_string_literal(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
+fn take_ident(input: &str) -> Option<(&str, &str)> {
+    let end = input
+        .char_indices()
+        .take_while(|(_, ch)| ch.is_ascii_alphanumeric() || *ch == '_')
+        .map(|(idx, ch)| idx + ch.len_utf8())
+        .last()
+        .unwrap_or(0);
+    if end == 0 {
+        None
+    } else {
+        Some((&input[..end], &input[end..]))
+    }
+}
+
+fn render_like_interpolated_literal(
+    rhs: &str,
+    params: &mut HashMap<String, CondAccessor>,
+) -> Option<String> {
+    let rhs = rhs.trim();
+    let quote = rhs.as_bytes().first().copied()?;
+    if !matches!(quote, b'\'' | b'"') || rhs.as_bytes().last().copied()? != quote {
+        return None;
+    }
+    let content = &rhs[1..rhs.len() - 1];
+    let mut rest = content;
+    let mut literal = String::new();
+    let mut parts = Vec::new();
+    let mut has_dynamic = false;
+
+    while !rest.is_empty() {
+        if let Some(after_at) = rest.strip_prefix('@')
+            && let Some((name, tail)) = take_ident(after_at)
+            && is_sql_ident(name)
+        {
+            if !literal.is_empty() {
+                parts.push(sql_string_literal(&literal));
+                literal.clear();
+            }
+            params.insert(name.to_string(), CondAccessor::from_read(name.to_string()));
+            parts.push(format!(":{}", name));
+            rest = tail;
+            has_dynamic = true;
+            continue;
+        }
+
+        let mut consumed_dynamic = false;
+        for prefix in ["read(", "take("] {
+            if let Some(after_prefix) = rest.strip_prefix(prefix)
+                && let Some(close_pos) = after_prefix.find(')')
+            {
+                let name = after_prefix[..close_pos].trim();
+                if is_sql_ident(name) {
+                    if !literal.is_empty() {
+                        parts.push(sql_string_literal(&literal));
+                        literal.clear();
+                    }
+                    let token = format!("{}{})", prefix, name);
+                    let sql_piece = to_sql_piece(&token, params);
+                    parts.push(sql_piece);
+                    rest = &after_prefix[close_pos + 1..];
+                    has_dynamic = true;
+                    consumed_dynamic = true;
+                    break;
+                }
+            }
+        }
+        if consumed_dynamic {
+            continue;
+        }
+
+        let ch = rest.chars().next()?;
+        literal.push(ch);
+        rest = &rest[ch.len_utf8()..];
+    }
+
+    if !has_dynamic {
+        return None;
+    }
+    if !literal.is_empty() {
+        parts.push(sql_string_literal(&literal));
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" || "))
+    }
+}
+
 // 在最外层扫描 SQL 关键字 `in`，允许后面直接跟 `(`，也允许写成 `in (`。
 // 这里故意只识别顶层位置，避免误命中引号或括号内部的内容。
 fn find_top_level_in_keyword(input: &str) -> Option<usize> {
@@ -545,6 +637,86 @@ fn fast_path_in_list(s: &str) -> Option<(String, HashMap<String, CondAccessor>)>
     Some((format!("{} IN ({})", lhs, items.join(", ")), params))
 }
 
+fn find_top_level_like_keyword(input: &str) -> Option<usize> {
+    let bytes = input.as_bytes();
+    let mut depth = 0i32;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut idx = 0usize;
+
+    while idx < bytes.len() {
+        let ch = bytes[idx] as char;
+        match ch {
+            '\'' if !in_double => {
+                in_single = !in_single;
+                idx += 1;
+                continue;
+            }
+            '"' if !in_single => {
+                in_double = !in_double;
+                idx += 1;
+                continue;
+            }
+            '(' if !in_single && !in_double => {
+                depth += 1;
+                idx += 1;
+                continue;
+            }
+            ')' if !in_single && !in_double => {
+                depth -= 1;
+                if depth < 0 {
+                    return None;
+                }
+                idx += 1;
+                continue;
+            }
+            _ => {}
+        }
+
+        if depth == 0 && !in_single && !in_double && idx + 4 <= bytes.len() {
+            let is_like = bytes[idx..idx + 4].eq_ignore_ascii_case(b"like");
+            let prev_ok = idx
+                .checked_sub(1)
+                .is_some_and(|prev| (bytes[prev] as char).is_ascii_whitespace());
+            let next_ok = bytes
+                .get(idx + 4)
+                .is_some_and(|next| (*next as char).is_ascii_whitespace());
+            if is_like && prev_ok && next_ok {
+                return Some(idx);
+            }
+        }
+
+        idx += 1;
+    }
+
+    None
+}
+
+fn fast_path_like(s: &str) -> Option<(String, HashMap<String, CondAccessor>)> {
+    let t = s.trim();
+    let like_pos = find_top_level_like_keyword(t)?;
+    let lhs = t[..like_pos].trim();
+    if !is_sql_ident(lhs) {
+        return None;
+    }
+    let rhs = t[like_pos + 4..].trim();
+    if rhs.is_empty() {
+        return None;
+    }
+
+    let mut params = HashMap::new();
+    if let Some(rhs_sql) = render_like_interpolated_literal(rhs, &mut params) {
+        return Some((format!("{} LIKE {}", lhs, rhs_sql), params));
+    }
+
+    let rhs_sql = to_sql_piece(rhs, &mut params);
+    let rhs_trim = rhs_sql.trim();
+    if rhs_trim.starts_with(':') || is_sql_literal_piece(rhs_trim) {
+        return Some((format!("{} LIKE {}", lhs, rhs_trim), params));
+    }
+    None
+}
+
 /// Fast path for `1 = ip4_between(read(x), a, b)` pattern.
 /// Converts to range comparison without going through the generic cond parser.
 fn fast_path_ip4_between_eq_one(s: &str) -> Option<(String, HashMap<String, CondAccessor>)> {
@@ -594,6 +766,13 @@ pub fn oml_sql(data: &mut &str) -> WResult<SqlQuery> {
 
     // 优先处理 field in (...)，支持 @ref 形式的 OML 变量引用。
     if let Some((w_sql, vars)) = fast_path_in_list(&sql_cond_buf) {
+        let sql = format!("select {} where {}", sql_body, w_sql);
+        let route = resolve_sql_route(&sql);
+        return Ok(SqlQuery::new_with_route(sql, vars, route));
+    }
+
+    // 处理 field LIKE <literal|@ref|read(...)|take(...)>，避免 LIKE 落回通用条件解析。
+    if let Some((w_sql, vars)) = fast_path_like(&sql_cond_buf) {
         let sql = format!("select {} where {}", sql_body, w_sql);
         let route = resolve_sql_route(&sql);
         return Ok(SqlQuery::new_with_route(sql, vars, route));
@@ -709,6 +888,66 @@ mod tests {
         );
         assert!(parsed.vars().contains_key("sip"));
         assert!(parsed.vars().contains_key("dip"));
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_oml_sql_like_params() -> ModalResult<()> {
+        super::set_sql_strict_for_test(Some(true));
+        let cases = [
+            (
+                r#" select group_concat(distinct asset) from asset_tags where owner like '%raed(team)' ;"#,
+                "select group_concat(distinct asset) from asset_tags where owner LIKE '%raed(team)'",
+                None,
+            ),
+            (
+                r#" select group_concat(distinct asset) from asset_tags where owner like @team ;"#,
+                "select group_concat(distinct asset) from asset_tags where owner LIKE :team",
+                Some("team"),
+            ),
+            (
+                r#" select group_concat(distinct asset) from asset_tags where owner like read(team) ;"#,
+                "select group_concat(distinct asset) from asset_tags where owner LIKE :team",
+                Some("team"),
+            ),
+            (
+                r#" select group_concat(distinct asset) from asset_tags where owner like take(team) ;"#,
+                "select group_concat(distinct asset) from asset_tags where owner LIKE :team",
+                Some("team"),
+            ),
+            (
+                r#" select group_concat(distinct asset) from asset_tags where owner like '%read(team)' ;"#,
+                "select group_concat(distinct asset) from asset_tags where owner LIKE '%' || :team",
+                Some("team"),
+            ),
+            (
+                r#" select group_concat(distinct asset) from asset_tags where owner like '%@team%' ;"#,
+                "select group_concat(distinct asset) from asset_tags where owner LIKE '%' || :team || '%'",
+                Some("team"),
+            ),
+            (
+                r#" select group_concat(distinct asset) from asset_tags where owner like 'take(team)%' ;"#,
+                "select group_concat(distinct asset) from asset_tags where owner LIKE :team || '%'",
+                Some("team"),
+            ),
+        ];
+
+        for (mut code, expected, param) in cases {
+            let parsed = oml_sql.parse_next(&mut code)?;
+            assert_eq!(
+                parsed
+                    .oml_sql()
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                expected
+            );
+            if let Some(param) = param {
+                assert!(parsed.vars().contains_key(param));
+            } else {
+                assert!(parsed.vars().is_empty());
+            }
+        }
         Ok(())
     }
 
