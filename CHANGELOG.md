@@ -9,7 +9,7 @@ Entries may be written in both English and Chinese.
 ## [1.22.5 Unreleased]
 
 ### Changed
-- **Generator/Sink**: `send_unit_samples` / `send_unit_rules` 改为按字节预算(64KiB)批量下发，替代逐行 `sink_str`。新增 `BATCH_FLUSH_BYTES` / `BATCH_FLUSH_LINES` 双约束，单次 write 大小稳定且不依赖行长。
+- **Generator/Sink**: `send_unit_samples` / `send_unit_rules` 改为按字节预算(256KiB)批量下发，替代逐行 `sink_str`。新增 `BATCH_FLUSH_BYTES` / `BATCH_FLUSH_LINES` 双约束，单次 write 大小稳定且不依赖行长。
   中文：生成器发送改为按字节预算批量写，逐行 `sink_str` 合并为 `sink_str_batch`。
   - TCP sink 场景下 `wpgen` CPU 从 ~300% 降至 ~15%（实测），不再把 CPU 烧在逐行 `write()` syscall 上；blackhole/file sink 行为不变。
 
