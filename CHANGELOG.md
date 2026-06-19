@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
-## [1.23.1 Unreleased]
+## [1.23.2 Unreleased]
 
 ### Changed
 - **Dependencies**: 升级 `shadow-rs` 1.5 → 2.0，升级 `wp-core-connectors` 0.3.3 → 0.5。
