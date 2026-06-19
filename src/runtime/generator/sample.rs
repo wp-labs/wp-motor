@@ -48,7 +48,8 @@ fn load_samples(rule_root: &str, find_name: &str) -> RunResult<Vec<String>> {
     Ok(out)
 }
 
-/// 批量发送一个"单元"的样本（逐条发送，但把本单元作为一个批次）。
+/// 批量发送一个"单元"的样本：按字节预算(64KiB)切分成多个子批，逐批 sink_str_batch，
+/// 使每次 write 大小稳定可控，不依赖行长。
 async fn send_unit_samples(
     sink: &mut SinkBackendType,
     samples: &Arc<Vec<String>>,
@@ -56,19 +57,49 @@ async fn send_unit_samples(
     unit_cnt: usize,
     collectors: &mut MetricCollectors,
 ) -> RunResult<usize> {
+    use super::common::{BATCH_FLUSH_BYTES, BATCH_FLUSH_LINES};
     let n = samples.len().max(1);
+    if unit_cnt == 0 {
+        return Ok(0);
+    }
     let mut sent = 0usize;
+    let mut batch: Vec<&str> = Vec::with_capacity(BATCH_FLUSH_LINES.min(unit_cnt));
+    let mut batch_bytes: usize = 0;
     for _ in 0..unit_cnt {
-        let line = &samples[*cur_idx];
-        wp_connector_api::AsyncRawDataSink::sink_str(sink, line.as_str())
+        let line: &str = samples[*cur_idx].as_str();
+        let len = line.len();
+        // 达到字节预算或行数兼底，先下发当前子批
+        if (batch_bytes + len > BATCH_FLUSH_BYTES && !batch.is_empty())
+            || batch.len() >= BATCH_FLUSH_LINES
+        {
+            let cnt = batch.len();
+            wp_connector_api::AsyncRawDataSink::sink_str_batch(sink, std::mem::take(&mut batch))
+                .await
+                .owe_sink()
+                .with_context("gen_direct")
+                .doing("write sample batch to sink")?;
+            for _ in 0..cnt {
+                collectors.record_task("gen_direct", ());
+            }
+            sent += cnt;
+            batch_bytes = 0;
+        }
+        batch_bytes += len;
+        batch.push(line);
+        *cur_idx = (*cur_idx + 1) % n;
+    }
+    // 尾批
+    if !batch.is_empty() {
+        let cnt = batch.len();
+        wp_connector_api::AsyncRawDataSink::sink_str_batch(sink, std::mem::take(&mut batch))
             .await
             .owe_sink()
             .with_context("gen_direct")
-            .doing("write sample line to sink")?;
-        // 按条统计
-        collectors.record_task("gen_direct", ());
-        *cur_idx = (*cur_idx + 1) % n;
-        sent += 1;
+            .doing("write sample batch to sink")?;
+        for _ in 0..cnt {
+            collectors.record_task("gen_direct", ());
+        }
+        sent += cnt;
     }
     Ok(sent)
 }
