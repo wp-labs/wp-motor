@@ -336,3 +336,161 @@ fn adjust_profile_for_pipeline(profile: &SpeedProfile, pipe_cnt: usize) -> Speed
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::generator::rules::GenRuleUnit;
+    use crate::runtime::generator::common::BATCH_FLUSH_LINES;
+    use async_trait::async_trait;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+    use wp_connector_api::{AsyncCtrl, AsyncRawDataSink, AsyncRecordSink, SinkResult};
+    use wp_model_core::model::FNameStr;
+    use wpl::WplCode;
+    use wpl::generator::FieldGenBuilder;
+
+    /// 构造一个稳定的 RuleGenSource：一条规则，一个 digit 字段 x ∈ [100,200)。
+    fn make_rule_source() -> Arc<RuleGenSource> {
+        let code = r#"package t { rule gen1 { ( digit : x ) } }"#;
+        let pkg = WplCode::build(std::path::PathBuf::from("inline.wpl"), code)
+            .expect("build wpl")
+            .parse_pkg()
+            .expect("parse pkg");
+        let fields: HashMap<FNameStr, _> = FieldGenBuilder::new().digit("x", 100, 200).build();
+        let unit = GenRuleUnit::new(pkg, fields);
+        Arc::new(RuleGenSource::from_units(vec![unit]).expect("compile rule"))
+    }
+
+    #[derive(Default)]
+    struct RecState {
+        batches: Vec<Vec<String>>,
+        single_calls: usize,
+    }
+
+    struct RecordingSink {
+        state: Arc<Mutex<RecState>>,
+    }
+
+    impl RecordingSink {
+        fn new() -> (Self, Arc<Mutex<RecState>>) {
+            let state = Arc::new(Mutex::new(RecState::default()));
+            (
+                Self {
+                    state: state.clone(),
+                },
+                state,
+            )
+        }
+    }
+
+    #[async_trait]
+    impl AsyncCtrl for RecordingSink {
+        async fn stop(&mut self) -> SinkResult<()> {
+            Ok(())
+        }
+        async fn reconnect(&mut self) -> SinkResult<()> {
+            Ok(())
+        }
+    }
+    #[async_trait]
+    impl AsyncRecordSink for RecordingSink {
+        async fn sink_record(
+            &mut self,
+            _data: &wp_model_core::model::DataRecord,
+        ) -> SinkResult<()> {
+            Ok(())
+        }
+        async fn sink_records(
+            &mut self,
+            _data: Vec<std::sync::Arc<wp_model_core::model::DataRecord>>,
+        ) -> SinkResult<()> {
+            Ok(())
+        }
+    }
+    #[async_trait]
+    impl AsyncRawDataSink for RecordingSink {
+        async fn sink_str(&mut self, data: &str) -> SinkResult<()> {
+            let mut s = self.state.lock().unwrap();
+            s.single_calls += 1;
+            s.batches.push(vec![data.to_string()]);
+            Ok(())
+        }
+        async fn sink_bytes(&mut self, _data: &[u8]) -> SinkResult<()> {
+            Ok(())
+        }
+        async fn sink_str_batch(&mut self, data: Vec<&str>) -> SinkResult<()> {
+            self.state
+                .lock()
+                .unwrap()
+                .batches
+                .push(data.into_iter().map(|s| s.to_string()).collect());
+            Ok(())
+        }
+        async fn sink_bytes_batch(&mut self, _data: Vec<&[u8]>) -> SinkResult<()> {
+            Ok(())
+        }
+    }
+
+    fn empty_collectors() -> crate::stat::metric_collect::MetricCollectors {
+        crate::stat::metric_collect::MetricCollectors::new(
+            "gen_direct_rule".to_string(),
+            Vec::new(),
+        )
+    }
+
+    #[tokio::test]
+    async fn rule_empty_unit_sends_nothing() {
+        let src = make_rule_source();
+        let (rec, state) = RecordingSink::new();
+        let mut sink = SinkBackendType::Proxy(Box::new(rec));
+        let mut idx = 0usize;
+        let mut collectors = empty_collectors();
+        let sent = send_unit_rules(&mut sink, &src, &mut idx, 0, &mut collectors)
+            .await
+            .unwrap();
+        assert_eq!(sent, 0);
+        let s = state.lock().unwrap();
+        assert!(s.batches.is_empty());
+        assert_eq!(s.single_calls, 0);
+    }
+
+    #[tokio::test]
+    async fn rule_batch_path_no_single_calls() {
+        let src = make_rule_source();
+        let (rec, state) = RecordingSink::new();
+        let mut sink = SinkBackendType::Proxy(Box::new(rec));
+        let mut idx = 0usize;
+        let mut collectors = empty_collectors();
+        let sent = send_unit_rules(&mut sink, &src, &mut idx, 1000, &mut collectors)
+            .await
+            .unwrap();
+        assert_eq!(sent, 1000, "sent must equal unit_cnt");
+        let s = state.lock().unwrap();
+        assert_eq!(s.single_calls, 0, "must use sink_str_batch, not sink_str");
+        let total: usize = s.batches.iter().map(|b| b.len()).sum();
+        assert_eq!(total, 1000, "all generated lines must be flushed");
+    }
+
+    #[tokio::test]
+    async fn rule_large_unit_splits_into_subbatches() {
+        // 生成 10000 行，每行 digit 字段（短），应被字节预算切成多个子批。
+        let src = make_rule_source();
+        let unit = 10_000;
+        let (rec, state) = RecordingSink::new();
+        let mut sink = SinkBackendType::Proxy(Box::new(rec));
+        let mut idx = 0usize;
+        let mut collectors = empty_collectors();
+        let sent = send_unit_rules(&mut sink, &src, &mut idx, unit, &mut collectors)
+            .await
+            .unwrap();
+        assert_eq!(sent, unit);
+        let s = state.lock().unwrap();
+        let total: usize = s.batches.iter().map(|b| b.len()).sum();
+        assert_eq!(total, unit);
+        // 每个子批行数不超过行数兼底
+        for b in &s.batches {
+            assert!(b.len() <= BATCH_FLUSH_LINES, "line cap breached");
+        }
+    }
+}
