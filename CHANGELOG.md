@@ -10,7 +10,6 @@ Entries may be written in both English and Chinese.
 
 ### Changed
 - **Dependencies**: 升级 `shadow-rs` 1.5 → 2.0，升级 `wp-core-connectors` 0.3.3 → 0.5。
-
 ### Fixed
 - **Project Init**: 修复 `wproj init` 生成的 infra route 模板包含无效的 `version = "2.0"` header 和已废弃的 `file_proto_sink` connector 引用（改为 `file_proto_text_sink`）。`init` 阶段新增自动检测旧格式文件并覆写的逻辑。
 
@@ -27,6 +26,17 @@ Entries may be written in both English and Chinese.
 
 ### Fixed
 - **OML/Pipe/ip4_to_int**: 修复 `ip4_to_int` 对 IPv6 地址静默透传的问题，现改为返回 Null；新增对字符串 IPv4 地址的解析支持。
+
+
+## [1.22.5 ]
+
+### Changed
+- **Generator/Sink**: `send_unit_samples` / `send_unit_rules` 改为动态字节预算批量下发。新增 `BatchSizePolicy`：预算 = `base_rate(EPS) × avg_line_bytes(EMA) × time_window(100ms)`，clamp 到 [8KiB, 1MiB]。不限速封顶 1MiB，高速率 → 大批（吞吐），低速率 → 小批（低延迟），混合日志下 EMA 跟踪行长分布变化。
+  中文：生成器发送改为动态批量：预算根据速率 × 动态行长 × 时间窗自适应。
+  - TCP sink 场景下 `wpgen` CPU 从 ~300% 降至 ~15%（实测），不再把 CPU 烧在逐行 `write()` syscall 上；blackhole/file sink 行为不变。
+
+### Tests
+- **Generator**: 新增 `BatchSizePolicy` 单元测试 6 例（不限速封顶、种子预算、EMA 收敛、预算缩放、时间窗公式、防退化卫兵）及速率×行长耦合集成测试 2 例（低速率小批低延迟、混合日志 EMA 自适应）。`send_unit_samples` / `send_unit_rules` 批量下发测试适配新策略签名。生成器测试 84 → 92。
 
 ## [1.22.3] - 2026-05-19
 

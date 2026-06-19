@@ -1,8 +1,8 @@
-use crate::compat::LegacyOwe;
 use super::source::{FileEncoding, FileSource, MultiFileSource, compute_file_ranges};
+use crate::compat::LegacyOwe;
 use async_trait::async_trait;
 use glob::glob;
-use orion_conf::{ErrorWith};
+use orion_conf::ErrorWith;
 use orion_error::conversion::ToStructError;
 use std::path::Path;
 use wp_conf::connectors::ConnectorDef;
@@ -104,9 +104,10 @@ impl FileSourceSpec {
         matches.sort_by(|left, right| compare_paths_by_file_name(left, right));
         matches.dedup();
         if matches.is_empty() {
-            return Err(SourceReason::core_conf()
-                .to_err()
-                .with_detail(format!("file source wildcard matched no files: {}", pattern)));
+            return Err(SourceReason::core_conf().to_err().with_detail(format!(
+                "file source wildcard matched no files: {}",
+                pattern
+            )));
         }
         Ok(matches
             .into_iter()
@@ -204,8 +205,7 @@ impl SourceFactory for FileSourceFactory {
         };
 
         let fut: SourceResult<SourceSvcIns> = fut.await;
-        fut
-            .with_context(resolved.name.as_str())
+        fut.with_context(resolved.name.as_str())
             .doing("build file source service")
     }
 }
