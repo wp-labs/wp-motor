@@ -17,6 +17,15 @@ pub async fn build_sink_instance(
 pub const DEFAULT_BATCH: usize = 128;
 pub const DEFAULT_UNIT_SIZE: usize = 50_000;
 
+/// 单次批量发送的字节预算上限：攒到该字节量就发一次，
+/// 使每次 write 的大小稳定可控，不依赖行长。
+/// 默认 64KiB（保守值，平衡 syscall 频次与 TCP send buffer 压力）。
+pub const BATCH_FLUSH_BYTES: usize = 64 * 1024;
+
+/// 单个子批的行数兼底上限：防止单行特别大时一个子批只有 1 行、
+/// 也防止极端情况下子批过大。每个子批达到行数或字节预算任一即下发。
+pub const BATCH_FLUSH_LINES: usize = 4_096;
+
 #[inline]
 pub fn default_batch() -> usize {
     DEFAULT_BATCH

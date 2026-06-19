@@ -30,9 +30,38 @@ async fn send_unit_rules(
     unit_cnt: usize,
     collectors: &mut crate::stat::metric_collect::MetricCollectors,
 ) -> RunResult<usize> {
+    use super::common::{BATCH_FLUSH_BYTES, BATCH_FLUSH_LINES};
     use wp_stat::StatRecorder; // bring trait for record_task
     let rules_len = src.rule_len().max(1);
+    if unit_cnt == 0 {
+        return Ok(0);
+    }
+    // 逐条生成，按字节预算(64KiB)切分成多个子批，逐批 sink_str_batch。
+    let mut held: Vec<String> = Vec::with_capacity(BATCH_FLUSH_LINES.min(unit_cnt));
+    let mut batch_bytes: usize = 0;
     let mut sent = 0usize;
+    // 局部宏：把当前 held 借出为 &str 子批发送、统计、清空（不重置 batch_bytes，由调用点负责）
+    macro_rules! flush_held {
+        () => {{
+            if held.is_empty() {
+                0usize
+            } else {
+                let cnt = held.len();
+                let refs: Vec<&str> = held.iter().map(|s| s.as_str()).collect();
+                wp_connector_api::AsyncRawDataSink::sink_str_batch(sink, refs)
+                    .await
+                    .owe_sink()
+                    .with_context("gen_direct_rule")
+                    .doing("write rule batch to sink")?;
+                for _ in 0..cnt {
+                    collectors.record_task("gen_direct_rule", ());
+                }
+                sent += cnt;
+                held.clear();
+                cnt
+            }
+        }};
+    }
     for _ in 0..unit_cnt {
         let ffv = src
             .gen_one(*cur_idx)
@@ -40,15 +69,21 @@ async fn send_unit_rules(
             .with_context(format!("rule_idx={}", *cur_idx))
             .doing("generate rule record")?;
         *cur_idx = (*cur_idx + 1) % rules_len;
-        // 将 FmtFieldVec 转换为字符串并调用 sink_str
         let raw_line = wpl::generator::RAWGenFmt(&ffv).to_string();
-        wp_connector_api::AsyncRawDataSink::sink_str(sink, &raw_line)
-            .await
-            .owe_sink()
-            .with_context("gen_direct_rule")
-            .doing("write rule record to sink")?;
-        collectors.record_task("gen_direct_rule", ());
-        sent += 1;
+        let len = raw_line.len();
+        // 达到字节预算或行数兼底，先下发当前子批
+        if (batch_bytes + len > BATCH_FLUSH_BYTES && !held.is_empty())
+            || held.len() >= BATCH_FLUSH_LINES
+        {
+            flush_held!();
+            batch_bytes = 0;
+        }
+        batch_bytes += len;
+        held.push(raw_line);
+    }
+    // 尾批
+    if !held.is_empty() {
+        flush_held!();
     }
     Ok(sent)
 }
