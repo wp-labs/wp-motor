@@ -69,8 +69,7 @@ async fn send_unit_samples(
     for _ in 0..unit_cnt {
         let line: &str = samples[*cur_idx].as_str();
         let len = line.len();
-        policy.observe_line(len);
-        // 达到动态预算或行数兼底，先下发当前子批
+        // 达到动态预算或行数兼底，先下发当前子批（先判后观，预算不含本行）
         if (batch_bytes + len > policy.budget_bytes() && !batch.is_empty())
             || batch.len() >= BATCH_FLUSH_LINES
         {
@@ -86,6 +85,7 @@ async fn send_unit_samples(
             sent += cnt;
             batch_bytes = 0;
         }
+        policy.observe_line(len);
         batch_bytes += len;
         batch.push(line);
         *cur_idx = (*cur_idx + 1) % n;

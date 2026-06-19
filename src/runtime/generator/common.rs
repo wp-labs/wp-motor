@@ -87,6 +87,7 @@ impl BatchSizePolicy {
     }
 
     /// 当前 EMA 平均行长（测试/观测用）
+    #[allow(dead_code)]
     pub fn avg_line_bytes(&self) -> f64 {
         self.avg_line_bytes
     }

@@ -72,14 +72,14 @@ async fn send_unit_rules(
         *cur_idx = (*cur_idx + 1) % rules_len;
         let raw_line = wpl::generator::RAWGenFmt(&ffv).to_string();
         let len = raw_line.len();
-        policy.observe_line(len);
-        // 达到动态预算或行数兼底，先下发当前子批
+        // 达到动态预算或行数兼底，先下发当前子批（先判后观，预算不含本行）
         if (batch_bytes + len > policy.budget_bytes() && !held.is_empty())
             || held.len() >= BATCH_FLUSH_LINES
         {
             flush_held!();
             batch_bytes = 0;
         }
+        policy.observe_line(len);
         batch_bytes += len;
         held.push(raw_line);
     }
