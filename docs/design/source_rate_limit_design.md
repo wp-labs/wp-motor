@@ -16,10 +16,10 @@ rate_limit_rps = 0
 ```
 
 ```bash
-WP_MEMORY_PROFILE=standard
+WP_MEMORY_PROFILE=low
 ```
 
-不设置 `WP_MEMORY_PROFILE` 时等价于 `standard`。
+不设置 `WP_MEMORY_PROFILE` 时等价于 `low`。
 
 ## 用户配置
 
@@ -54,8 +54,8 @@ rate_limit_rps = 1650000
 
 | profile | 用途 | 核心参数 |
 |---|---|---|
-| `standard` | 默认推荐，兼顾吞吐和 RSS | `parser/sink channel = 48/24`，`sink_batch_size = 512`，`picker_burst_max = 6`，`pending = 2MB` |
-| `low` | 内存紧张或慢 sink | 更小队列，更早背压 |
+| `low` | 默认推荐，优先控制 RSS | `parser/sink channel = 32/16`，`sink_batch_size = 256`，`picker_burst_max = 4`，`pending = 1MB` |
+| `standard` | 兼顾吞吐和 RSS | `parser/sink channel = 48/24`，`sink_batch_size = 512`，`picker_burst_max = 6`，`pending = 2MB` |
 | `throughput` | 复杂样本或快 sink | `parser/sink channel = 96/48`，仍保留 `burst6/pending2M` |
 
 兼容别名仍可解析，但不作为主文档推荐：
@@ -221,7 +221,7 @@ RSS 只作为保护信号，不作为默认目标水位。内存目标应通过�
 
 ## 当前调优结论
 
-当前默认 `standard` profile 来自 nginx 165W/8 worker 低内存调优：
+`standard` profile 来自 nginx 165W/8 worker 低内存调优：
 
 ```text
 parser/sink channel = 48/24
@@ -236,6 +236,7 @@ tcp_batch_bytes = 64KB
 多样本测试结论：
 
 - nginx：`standard` 是默认推荐。
+- 默认部署：`low` 是默认 profile，优先避免背压时 RSS 被放大。
 - APT/mix：在更复杂样本或更高目标速率下，可切换到 `throughput`。
 - AWS ELB：单条日志和规则成本更高，吞吐上限明显低于 nginx；优先通过 `rate_limit_rps` 控制输入速率，不建议单纯放大 channel 追速。
 

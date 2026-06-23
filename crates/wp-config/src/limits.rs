@@ -1,8 +1,8 @@
 //! Centralized memory-related limits and queue capacities for runtime components.
 //!
 //! Defaults are selected by `WP_MEMORY_PROFILE`:
-//! - `standard`/unset: recommended production profile
-//! - `low`: smaller buffers for constrained memory or slow sinks
+//! - `low`/unset: smaller buffers for bounded default memory use
+//! - `standard`: balanced production profile
 //! - `throughput`: larger parser/sink channels for complex samples or fast sinks
 //!
 //! Individual values can be overridden with the `WP_*` environment variables below.
@@ -184,7 +184,7 @@ impl MemoryLimits {
         let kind = std::env::var(ENV_MEMORY_PROFILE)
             .ok()
             .and_then(|value| value.parse::<MemoryProfileKind>().ok())
-            .unwrap_or(MemoryProfileKind::Standard);
+            .unwrap_or(MemoryProfileKind::Low);
         let mut limits = Self::for_profile(kind);
         limits.parser_channel_cap =
             env_usize(ENV_PARSER_CHANNEL_CAP).unwrap_or(limits.parser_channel_cap);
@@ -418,6 +418,22 @@ mod tests {
         assert_eq!(standard.sink_batch_size, 512);
         assert_eq!(standard.picker_burst_max, 6);
         assert_eq!(standard.picker_pending_max_bytes, 2 * MIB);
+    }
+
+    #[test]
+    fn memory_profile_unset_defaults_to_low() {
+        let low = MemoryLimits::for_profile(MemoryProfileKind::Low);
+        let parsed = std::env::var(ENV_MEMORY_PROFILE)
+            .ok()
+            .and_then(|value| value.parse::<MemoryProfileKind>().ok())
+            .unwrap_or(MemoryProfileKind::Low);
+
+        if std::env::var(ENV_MEMORY_PROFILE).is_ok() {
+            return;
+        }
+
+        assert_eq!(parsed, MemoryProfileKind::Low);
+        assert_eq!(MemoryLimits::for_profile(parsed), low);
     }
 
     #[test]

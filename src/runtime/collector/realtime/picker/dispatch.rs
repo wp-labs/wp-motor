@@ -30,7 +30,14 @@ impl JMActPicker {
         // 以当前 pending 水位制定“是否拉取、拉取配额”的计划
         let pending_before_pull = self.pending_count();
         let pending_bytes_before_pull = self.pending_bytes();
-        let pull_plan = self.pull_policy().plan_pull(pending_before_pull);
+        let fixed_rate = source_rate_lease
+            .as_ref()
+            .is_some_and(|lease| lease.is_fixed());
+        let pull_plan = if fixed_rate {
+            self.pull_policy().plan_pull_fixed_rate()
+        } else {
+            self.pull_policy().plan_pull(pending_before_pull)
+        };
         if pull_plan.allow() && !self.pending_bytes_at_capacity() {
             if task_ctrl.not_alone() {
                 let status = self

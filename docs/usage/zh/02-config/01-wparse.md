@@ -58,15 +58,15 @@ target = "*"
 内存相关队列、水位和批大小默认由 `WP_MEMORY_PROFILE` 统一控制。普通部署只需要选择一个 profile：
 
 ```bash
-WP_MEMORY_PROFILE=standard   # 默认推荐；不设置时等价
-WP_MEMORY_PROFILE=low        # 更低内存；适合内存紧张或慢 sink
+WP_MEMORY_PROFILE=low        # 默认推荐；不设置时等价，更低内存
+WP_MEMORY_PROFILE=standard   # 平衡吞吐和 RSS
 WP_MEMORY_PROFILE=throughput # 更宽 parser/sink channel；适合复杂样本或快 sink
 ```
 
 推荐含义：
 
-- `standard`：默认生产档，采用当前压测沉淀的低内存组合：`parser/sink channel = 48/24`、`sink_batch_size = 512`、`picker_burst_max = 6`、`pending = 2MB`。
-- `low`：更早施加背压，优先控制 RSS。
+- `low`：默认生产档，更早施加背压，优先控制 RSS：`parser/sink channel = 32/16`、`sink_batch_size = 256`、`picker_burst_max = 4`、`pending = 1MB`。
+- `standard`：平衡吞吐和 RSS：`parser/sink channel = 48/24`、`sink_batch_size = 512`、`picker_burst_max = 6`、`pending = 2MB`。
 - `throughput`：给解析和发送链路更大的通道余量，优先跑满复杂样本；仍保留较小 pending，避免无界堆积。
 
 历史别名仍可用：`small/tiny/xs` 等价于 `low`，`large/high` 等价于 `throughput`，`default/normal/balanced` 等价于 `standard`。

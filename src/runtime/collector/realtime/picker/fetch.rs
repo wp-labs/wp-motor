@@ -257,6 +257,7 @@ mod tests {
     use super::*;
     use crate::runtime::{
         actor::command::TaskController,
+        actor::limit::SourceRateLimiter,
         parser::workflow::{ParseDispatchRouter, ParseWorkerSender},
     };
     use crate::sources::event_id::next_event_id;
@@ -563,6 +564,47 @@ mod tests {
 
         assert_eq!(status, SrcStatus::Ready);
         assert_eq!(src.idx, 3, "达到 pending byte cap 后应停止继续拉取");
+        assert_eq!(picker.pending_count(), 3);
+        assert!(*picker.pending_bytes() >= pending_max_bytes);
+    }
+
+    #[tokio::test]
+    async fn fixed_rate_fetch_respects_profile_pending_byte_cap() {
+        let (tx, _rx) = mpsc::channel::<SourceBatch>(TEST_SOURCE_CHANNEL_CAP);
+        let mut picker =
+            JMActPicker::new(ParseDispatchRouter::new(vec![ParseWorkerSender::new(tx)]));
+        let mut ctrl = make_task_ctrl();
+        let pending_max_bytes =
+            crate::runtime::collector::realtime::constants::picker_pending_max_bytes();
+        let large_batch = vec![make_bytes_event("large", pending_max_bytes / 3 + 1)];
+        let mut src = TryBatchSource::new(
+            "try",
+            vec![
+                large_batch.clone(),
+                large_batch.clone(),
+                large_batch.clone(),
+                large_batch,
+            ],
+        );
+        let limiter = SourceRateLimiter::new(100_000_000).expect("fixed limiter");
+        let mut lease = limiter.new_lease();
+
+        let status = picker
+            .fetch_into_pending(
+                &mut src,
+                &mut ctrl,
+                TEST_TASK_UNIT,
+                Duration::from_millis(TEST_FETCH_TIMEOUT_MS),
+                Some(&mut lease),
+            )
+            .await
+            .expect("fixed-rate fetch should respect picker byte cap");
+
+        assert_eq!(status, SrcStatus::Ready);
+        assert_eq!(
+            src.idx, 3,
+            "固定限速应绕开 pending 水位调速，但仍受 profile pending byte cap 约束"
+        );
         assert_eq!(picker.pending_count(), 3);
         assert!(*picker.pending_bytes() >= pending_max_bytes);
     }

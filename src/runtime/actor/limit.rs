@@ -240,6 +240,10 @@ impl SourceRateLimiter {
 }
 
 impl SourceRateLease {
+    pub fn is_fixed(&self) -> bool {
+        self.limiter.mode == SourceRateMode::Fixed
+    }
+
     pub async fn consume(&mut self, events: usize) {
         if events == 0 {
             return;

@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
+## [1.22.8] - 2026-06-23
+
+### Changed
+- **Memory Profile**: Changed the default `WP_MEMORY_PROFILE` from `standard` to `low`, so unset deployments now use smaller parser/sink channels, smaller picker pending byte caps, and earlier memory backpressure by default.
+  中文：默认内存 profile 从 `standard` 改为 `low`；未显式设置时默认使用更小队列和更早背压，优先控制 RSS。
+- **Source Rate Limit**: Fixed-rate source limiting now bypasses picker pending-count pull watermarks while still respecting the profile-defined `WP_PICKER_PENDING_MAX_BYTES` hard cap.
+  中文：固定限速不再被 picker pending 批数水位额外压低，但仍受 profile 定义的 `WP_PICKER_PENDING_MAX_BYTES` 内存上限保护。
+
+### Tests
+- **Runtime/Pickers**: Added coverage for fixed-rate pull planning and profile pending-byte cap behavior.
+  中文：补充固定限速拉取计划与 profile pending byte cap 行为测试。
+
 ## [1.22.7] - 2026-06-23
 
 ### Added
