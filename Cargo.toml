@@ -299,7 +299,7 @@ derive-getters = "0.5"
 strum = "0.28"
 strum_macros = "0.27"
 parse-display = "0.10"
-parse-display-derive = "0.10"
+parse-display-derive = "0.11"
 ctor = "0.10"
 
 # --- System & Platform ---
