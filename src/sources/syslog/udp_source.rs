@@ -37,6 +37,10 @@ fn allocate_packet_buffer() -> BytesMut {
     buf
 }
 
+fn udp_batch_size() -> usize {
+    wp_conf::limits::udp_batch_size()
+}
+
 /// Reset an existing packet buffer, ensuring it is ready for the next recv call.
 #[cfg(target_os = "linux")]
 fn reset_packet_buffer(buf: &mut BytesMut) {
@@ -491,7 +495,7 @@ impl UdpSyslogSource {
 
         // Linux: pre-allocate batch buffers for recvmmsg()
         #[cfg(target_os = "linux")]
-        let batch_buffers = (0..UDP_BATCH_SIZE)
+        let batch_buffers = (0..udp_batch_size())
             .map(|_| allocate_packet_buffer())
             .collect::<Vec<_>>();
 
@@ -649,9 +653,12 @@ impl UdpSyslogSource {
         use std::mem::MaybeUninit;
         use std::os::unix::io::AsRawFd;
 
-        const MAX_MSGS: usize = 64; // recvmmsg batch size (smaller than UDP_BATCH_SIZE for memory efficiency)
-
+        const MAX_MSGS: usize = 64; // static syscall array cap; runtime profile may use less
         let fd = self.socket.as_raw_fd();
+        let max_msgs = udp_batch_size().min(64);
+        if max_msgs == 0 {
+            return Vec::new();
+        }
         let mut results = Vec::with_capacity(MAX_MSGS);
 
         // Prepare mmsghdr array
@@ -662,7 +669,7 @@ impl UdpSyslogSource {
         let mut addrs: [MaybeUninit<libc::sockaddr_storage>; MAX_MSGS] =
             unsafe { MaybeUninit::uninit().assume_init() };
 
-        let batch_count = MAX_MSGS.min(self.batch_buffers.len());
+        let batch_count = max_msgs.min(self.batch_buffers.len());
 
         for i in 0..batch_count {
             let buf = &mut self.batch_buffers[i];
@@ -813,7 +820,8 @@ impl DataSource for UdpSyslogSource {
             batch.append(&mut events);
 
             // If recvmmsg didn't get much, try individual receives
-            while batch.len() < UDP_BATCH_SIZE {
+            let batch_limit = udp_batch_size();
+            while batch.len() < batch_limit {
                 match self.try_recv_event() {
                     Some(event) => batch.push(event),
                     None => break,
@@ -826,14 +834,15 @@ impl DataSource for UdpSyslogSource {
         // Non-Linux: fallback to try_recv_from loop
         #[cfg(not(target_os = "linux"))]
         {
-            let mut batch = Vec::with_capacity(UDP_BATCH_SIZE);
+            let batch_limit = udp_batch_size();
+            let mut batch = Vec::with_capacity(batch_limit);
 
             // First packet (blocking)
             let event = self.recv_event().await?;
             batch.push(event);
 
             // Try to collect more packets without blocking
-            while batch.len() < UDP_BATCH_SIZE {
+            while batch.len() < batch_limit {
                 match self.try_recv_event() {
                     Some(event) => batch.push(event),
                     None => break,

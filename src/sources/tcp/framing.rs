@@ -6,8 +6,12 @@ use tokio::sync::mpsc::Sender;
 use wp_connector_api::{SourceError, SourceReason, SourceResult};
 
 // 默认配置：与 syslog 源保持一致的接收缓存与通道容量
-pub const DEFAULT_TCP_RECV_BYTES: usize = 10_485_760; // 10 MiB
+pub const DEFAULT_TCP_RECV_BYTES: usize = 10_485_760; // 10 MiB, historical standard profile
 pub const STOP_CHANNEL_CAPACITY: usize = 2;
+
+pub fn default_tcp_recv_bytes() -> usize {
+    wp_conf::limits::tcp_recv_bytes()
+}
 
 // Octet-counting 相关限制
 const MAX_LEN_DIGITS: usize = 10; // 长度前缀最多 10 位十进制

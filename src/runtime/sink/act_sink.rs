@@ -165,7 +165,7 @@ impl SinkWork {
         let mut ctx = OperationContext::doing("sink start proc");
         let name = format!("work-sink:{:20}", sink.conf().name());
         let mut run_ctrl = TaskController::new(name.as_str(), ctx_args.cmd_r.clone(), None);
-        let mut cache = FieldQueryCache::with_capacity(1000);
+        let mut cache = FieldQueryCache::with_capacity(wp_conf::limits::field_query_cache_cap());
         let sink_name = sink.get_name().to_string();
         ctx.record("name", name);
         let mut drain_state = DrainState::new(1);

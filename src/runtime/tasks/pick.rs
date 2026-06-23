@@ -1,6 +1,9 @@
 use crate::runtime::actor::TaskGroup;
+use crate::runtime::actor::limit::SourceRateLimiter;
+use crate::runtime::actor::limit::source_auto_initial_rate_is_overridden;
 use crate::runtime::actor::signal::ShutdownCmd;
 use crate::runtime::collector::realtime::SourceWorker;
+use crate::runtime::collector::realtime::picker::auto_limit::AutoRateController;
 use crate::runtime::parser::workflow::ParseDispatchRouter;
 use crate::stat::MonSend;
 use wp_conf::RunArgs;
@@ -19,6 +22,17 @@ pub fn start_picker_tasks(
 ) -> TaskGroup {
     let mut picker_group = TaskGroup::new("picker", ShutdownCmd::Immediate);
     info_ctrl!("启动数据收集(Frame)： {}个数据源", all_sources.len());
+    let source_rate_limiter = SourceRateLimiter::new(run_args.speed_limit);
+    let auto_rate_controller = source_rate_limiter
+        .as_ref()
+        .filter(|limiter| limiter.is_auto())
+        .map(|limiter| {
+            let workers = run_args.parallel.max(1);
+            if !source_auto_initial_rate_is_overridden() {
+                limiter.set_rate_per_sec(default_auto_initial_rate(workers));
+            }
+            AutoRateController::shared_for_workers(workers)
+        });
     for source_h in all_sources {
         let worker = SourceWorker::new(
             run_args.speed_limit,
@@ -26,6 +40,8 @@ pub fn start_picker_tasks(
             run_args.fetch_timeout_ms,
             mon_send.clone(),
             parse_router.clone(),
+            source_rate_limiter.clone(),
+            auto_rate_controller.clone(),
         );
         let cmd_sub = picker_group.subscribe();
         let c_args = run_args.clone();
@@ -48,4 +64,21 @@ pub fn start_picker_tasks(
         }));
     }
     picker_group
+}
+
+fn default_auto_initial_rate(workers: usize) -> usize {
+    let _ = workers;
+    10_000
+}
+
+#[cfg(test)]
+mod tests {
+    use super::default_auto_initial_rate;
+
+    #[test]
+    fn auto_initial_rate_is_conservative_and_worker_independent() {
+        assert_eq!(default_auto_initial_rate(0), 10_000);
+        assert_eq!(default_auto_initial_rate(4), 10_000);
+        assert_eq!(default_auto_initial_rate(10), 10_000);
+    }
 }

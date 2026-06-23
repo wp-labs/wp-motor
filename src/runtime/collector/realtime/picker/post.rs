@@ -1,6 +1,6 @@
 use crate::runtime::collector::realtime::JMActPicker;
 use crate::runtime::collector::realtime::constants::{
-    PICKER_COALESCE_MAX_EVENTS, PICKER_COALESCE_TRIGGER,
+    picker_coalesce_max_events, picker_coalesce_trigger,
 };
 use crate::runtime::collector::realtime::picker::round::RoundStat;
 
@@ -56,8 +56,8 @@ impl JMActPicker {
     /// - 若队列为空，返回 None。
     #[inline]
     fn pop_next_payload_for_post(&mut self) -> Option<SourceBatch> {
-        if self.pending_count() >= PICKER_COALESCE_TRIGGER
-            && let Some(b) = self.coalesce_pending_front(PICKER_COALESCE_MAX_EVENTS)
+        if self.pending_count() >= picker_coalesce_trigger()
+            && let Some(b) = self.coalesce_pending_front(picker_coalesce_max_events())
         {
             return Some(b);
         }

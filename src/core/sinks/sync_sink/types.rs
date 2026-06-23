@@ -3,6 +3,8 @@
 use crate::runtime::actor::signal::ShutdownCmd;
 use crate::sinks::{SinkDatYSender, SinkEndpoint};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use tokio::sync::mpsc::error::TrySendError;
 
 /// 同步数据接收点
 #[derive(Clone)]
@@ -31,9 +33,9 @@ pub struct DebugView {
     inner: std::sync::Arc<DebugViewInner>,
 }
 
-#[derive(Clone)]
 pub struct DebugViewInner {
-    pub sender: tokio::sync::mpsc::UnboundedSender<String>,
+    pub sender: tokio::sync::mpsc::Sender<String>,
+    dropped: AtomicUsize,
     pub _shutdown: ShutdownCmd,
 }
 
@@ -41,17 +43,19 @@ impl DebugView {
     pub fn new() -> (Self, ShutdownCmd) {
         let (_shutdown_tx, shutdown_rx): (tokio::sync::oneshot::Sender<ShutdownCmd>, _) =
             tokio::sync::oneshot::channel();
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (tx, mut rx) =
+            tokio::sync::mpsc::channel::<String>(wp_conf::limits::debug_view_channel_cap());
+        let debug_view_batch_lines = wp_conf::limits::debug_view_batch_lines();
 
         // 在后台处理日志输出
         tokio::spawn(async move {
-            let mut lines = Vec::with_capacity(100);
+            let mut lines = Vec::with_capacity(debug_view_batch_lines);
             let mut shutdown_rx = shutdown_rx;
             loop {
                 tokio::select! {
                     Some(line) = rx.recv() => {
                         lines.push(line);
-                        if lines.len() >= 100 {
+                        if lines.len() >= debug_view_batch_lines {
                             // 批量输出
                             for line in lines.drain(..) {
                                 println!("{}", line);
@@ -72,6 +76,7 @@ impl DebugView {
         let shutdown = ShutdownCmd::NoOp;
         let inner = DebugViewInner {
             sender: tx,
+            dropped: AtomicUsize::new(0),
             _shutdown: ShutdownCmd::NoOp,
         };
         (
@@ -83,7 +88,27 @@ impl DebugView {
     }
 
     pub fn send(&self, msg: String) {
-        let _ = self.inner.sender.send(msg);
+        match self.inner.sender.try_send(msg) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) => {
+                let dropped = self.inner.dropped.fetch_add(1, Ordering::Relaxed) + 1;
+                if dropped == 1 || dropped.is_multiple_of(1024) {
+                    warn_data!(
+                        "debug view output channel full; dropped {} debug lines",
+                        dropped
+                    );
+                }
+            }
+            Err(TrySendError::Closed(_)) => {
+                let dropped = self.inner.dropped.fetch_add(1, Ordering::Relaxed) + 1;
+                if dropped == 1 || dropped.is_multiple_of(1024) {
+                    warn_data!(
+                        "debug view output channel closed; dropped {} debug lines",
+                        dropped
+                    );
+                }
+            }
+        }
     }
 }
 

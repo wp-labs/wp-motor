@@ -42,7 +42,7 @@ pub fn default_batch_timeout_ms() -> u64 {
 }
 
 pub fn default_batch_size() -> usize {
-    1024
+    crate::limits::sink_batch_size()
 }
 
 impl EnvEvaluable<FlexGroup> for FlexGroup {

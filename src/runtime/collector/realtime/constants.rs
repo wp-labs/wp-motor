@@ -15,10 +15,13 @@ pub(crate) const PICKER_PENDING_CAPACITY: usize = 64;
 /// Soft byte budget for picker pending backlog.
 /// Once pending bytes reach this watermark, picker stops pulling more source batches
 /// and waits for parser-side draining to catch up.
-pub(crate) const PICKER_PENDING_MAX_BYTES: usize = 8 * 1024 * 1024;
+pub(crate) fn picker_pending_max_bytes() -> usize {
+    wp_conf::limits::picker_pending_max_bytes()
+}
 
-/// Maximum burst size (pending batches processed per round) for `ActPicker`.
-pub(crate) const PICKER_BURST_MAX: usize = 16;
+pub(crate) fn picker_burst_max() -> usize {
+    wp_conf::limits::picker_burst_max()
+}
 
 /// Post-policy initial backoff rounds.
 pub(crate) const PICKER_POST_BACKOFF_INITIAL_ROUNDS: u32 = 1;
@@ -35,10 +38,13 @@ pub(crate) const PICKER_PULL_LO_MULTIPLIER: usize = 2;
 /// Pull-policy high watermark multiplier relative to burst size.
 /// Balanced: 3（原 4）— 更早停止拉取，降低 pending 高水位时长
 pub(crate) const PICKER_PULL_HI_MULTIPLIER: usize = 3;
-/// 当 pending 队列长度达到该阈值时，启用小批合并，减少“批数”占用解析通道容量
-pub(crate) const PICKER_COALESCE_TRIGGER: usize = 32;
-/// 合并后的最大事件数（仅按事件数限制，避免 O(n) 估算字节数开销）
-pub(crate) const PICKER_COALESCE_MAX_EVENTS: usize = 128;
+pub(crate) fn picker_coalesce_trigger() -> usize {
+    wp_conf::limits::picker_coalesce_trigger()
+}
+
+pub(crate) fn picker_coalesce_max_events() -> usize {
+    wp_conf::limits::picker_coalesce_max_events()
+}
 
 // ---- Logging sample strides (to avoid log storms on hot paths) ----
 // 抽样打印步长：解析通道满（parse channel full）

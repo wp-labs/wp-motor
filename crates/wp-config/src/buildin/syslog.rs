@@ -56,8 +56,8 @@ impl Default for SyslogSourceConf {
             addr: "0.0.0.0".to_string(),
             port: 514,
             protocol: Protocol::UDP,
-            tcp_recv_bytes: 10_485_760, // 10 MiB default read bytes per cycle
-            udp_recv_buffer: 8_388_608, // 8 MiB default UDP socket buffer
+            tcp_recv_bytes: Self::tcp_read_bytes_default(),
+            udp_recv_buffer: Self::udp_recv_buffer_default(),
             enable: false,
             tags: Vec::new(),
         }
@@ -69,11 +69,11 @@ impl SyslogSourceConf {
         format!("{}:{}", self.addr, self.port)
     }
     fn tcp_read_bytes_default() -> usize {
-        10_485_760
+        crate::limits::tcp_recv_bytes()
     }
 
     fn udp_recv_buffer_default() -> usize {
-        8_388_608
+        crate::limits::udp_recv_buffer_bytes()
     }
 }
 

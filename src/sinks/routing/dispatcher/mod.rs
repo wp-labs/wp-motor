@@ -28,23 +28,23 @@ struct SinkRecUnitPool {
 }
 
 impl SinkRecUnitPool {
-    const POOL_MAX: usize = 128;
-    const UNIT_MAX_CAP: usize = 4096;
-
     fn new() -> Self {
         Self { inner: Vec::new() }
     }
 
     fn take(&mut self) -> Vec<SinkRecUnit> {
-        self.inner.pop().unwrap_or_else(|| Vec::with_capacity(64))
+        self.inner
+            .pop()
+            .unwrap_or_else(|| Vec::with_capacity(wp_conf::limits::sink_pool_unit_init_cap()))
     }
 
     fn recycle(&mut self, mut vec: Vec<SinkRecUnit>) {
-        if vec.capacity() > Self::UNIT_MAX_CAP {
-            vec.shrink_to(Self::UNIT_MAX_CAP);
+        let unit_max_cap = wp_conf::limits::sink_pool_unit_max_cap();
+        if vec.capacity() > unit_max_cap {
+            vec.shrink_to(unit_max_cap);
         }
         vec.clear();
-        if self.inner.len() < Self::POOL_MAX {
+        if self.inner.len() < wp_conf::limits::sink_pool_max() {
             self.inner.push(vec);
         }
     }

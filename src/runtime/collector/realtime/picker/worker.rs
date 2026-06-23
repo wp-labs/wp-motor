@@ -1,7 +1,9 @@
 use super::actor::JMActPicker;
+use super::auto_limit::{AutoRateSample, SharedAutoRateController};
 use crate::compat::LegacyOwe;
 use crate::runtime::actor::command::{CmdSubscriber, TaskController, spawn_ctrl_event_bridge};
 use crate::runtime::actor::constants::ACTOR_IDLE_TICK_MS;
+use crate::runtime::actor::limit::SourceRateLimiter;
 use crate::runtime::collector::realtime::constants::{
     PICKER_CTRL_EVENT_BUFFER, PICKER_DEFAULT_ROUND_BATCH, PICKER_EVENT_CNT_OF_BATCH,
 };
@@ -19,8 +21,10 @@ use wp_connector_api::DataSource;
 /// 独立的 Source worker：负责源生命周期与数据调度，内部复用 ActPicker 的 pending/分发逻辑。
 pub struct SourceWorker {
     picker: JMActPicker,
-    // 速率限制（事件/秒）换算为“单元大小”的上限；None 表示不限速
+    // 固定速率限制（事件/秒）换算为“单元大小”的上限；None 表示 source limiter 接管
     speed_limit: Option<usize>,
+    source_rate_limiter: Option<SourceRateLimiter>,
+    auto_rate_controller: Option<SharedAutoRateController>,
     // 任务级最大处理事件数（达到后退出）；None 表示不限制
     max_count: Option<usize>,
     // 阻塞源单轮拉取的最长等待时间（毫秒）
@@ -35,9 +39,11 @@ impl SourceWorker {
         fetch_timeout_ms: u64,
         mon_s: MonSend,
         parse_router: ParseDispatchRouter,
+        source_rate_limiter: Option<SourceRateLimiter>,
+        auto_rate_controller: Option<SharedAutoRateController>,
     ) -> Self {
-        // 0 表示不限速；其余情况下由 TaskController 进行节流
-        let limit = if speed_limit == 0 {
+        // 固定限速时由 source limiter 接管；TaskController 只保留无 source limiter 的兼容路径。
+        let limit = if source_rate_limiter.is_some() {
             None
         } else {
             Some(speed_limit)
@@ -46,6 +52,8 @@ impl SourceWorker {
         Self {
             picker,
             speed_limit: limit,
+            source_rate_limiter,
+            auto_rate_controller,
             max_count,
             fetch_timeout_ms,
             mon_s,
@@ -180,15 +188,24 @@ impl SourceWorker {
         let round_batch = PICKER_DEFAULT_ROUND_BATCH;
         let event_cnt_of_batch = PICKER_EVENT_CNT_OF_BATCH;
         let unit_size = self.throttle_unit_size(round_batch, event_cnt_of_batch);
+        let post_speed_limit = if self.source_rate_limiter.is_some() {
+            None
+        } else {
+            self.speed_limit
+        };
         let mut task_ctrl = TaskController::from_speed_limit(
             rt_name.as_str(),
             cmd_recv,
-            self.speed_limit,
+            post_speed_limit,
             unit_size,
         );
         let stat_interval = Duration::from_millis(STAT_INTERVAL_MS as u64);
         let mut last_stat_tick = Instant::now();
         let timeout = Duration::from_millis(self.fetch_timeout_ms);
+        let mut source_rate_lease = self
+            .source_rate_limiter
+            .as_ref()
+            .map(SourceRateLimiter::new_lease);
         'main: loop {
             // 每进入一轮突发循环，重置“速率单元”计数器
             task_ctrl.rec_task_unit_reset();
@@ -210,7 +227,13 @@ impl SourceWorker {
                 // 单轮流程：拉取→（可选）发送→记录统计
                 let one_round = self
                     .picker
-                    .round_pick(source, &mut task_ctrl, &mut stat_ext, timeout)
+                    .round_pick(
+                        source,
+                        &mut task_ctrl,
+                        &mut stat_ext,
+                        timeout,
+                        source_rate_lease.as_mut(),
+                    )
                     .await?;
                 match one_round.src_status() {
                     SrcStatus::Ready => {
@@ -238,6 +261,20 @@ impl SourceWorker {
                     }
                 }
                 self.picker.finish_burst_round();
+                if let (Some(controller), Some(limiter)) = (
+                    self.auto_rate_controller.as_ref(),
+                    self.source_rate_limiter.as_ref(),
+                ) && let Ok(mut controller) = controller.lock()
+                {
+                    controller.observe(
+                        limiter,
+                        AutoRateSample {
+                            pending_count: self.picker.pending_count(),
+                            pending_bytes: *self.picker.pending_bytes(),
+                            round: one_round,
+                        },
+                    );
+                }
                 total_round = total_round.merge(one_round);
                 if total_round.is_stop() {
                     break 'main;
@@ -369,6 +406,8 @@ mod tests {
             300,
             mon_tx,
             ParseDispatchRouter::new(vec![ParseWorkerSender::new(parse_tx)]),
+            None,
+            None,
         );
         (worker, mon_rx, parse_rx)
     }
@@ -382,6 +421,8 @@ mod tests {
             300,
             mon_tx,
             ParseDispatchRouter::new(vec![ParseWorkerSender::new(parse_tx)]),
+            None,
+            None,
         )
     }
 
@@ -395,6 +436,8 @@ mod tests {
             1234,
             mon_tx,
             ParseDispatchRouter::new(vec![ParseWorkerSender::new(parse_tx)]),
+            None,
+            None,
         );
         assert_eq!(worker.fetch_timeout_ms, 1234);
     }
@@ -402,8 +445,8 @@ mod tests {
     #[test]
     fn throttle_unit_size_clamps_to_default_upper_bound() {
         let worker = worker_with_speed_limit(500);
-        // default_unit = ActPicker::burst_max() * 4 * 5 = 320
-        assert_eq!(worker.throttle_unit_size(4, 5), 320);
+        let expected = JMActPicker::burst_max() * 4 * 5;
+        assert_eq!(worker.throttle_unit_size(4, 5), expected);
     }
 
     #[test]

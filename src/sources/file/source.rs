@@ -1,16 +1,16 @@
-use crate::compat::LegacyOwe;
 use super::chunk_reader::ChunkedLineReader;
+use crate::compat::LegacyOwe;
 use crate::sources::event_id::next_event_id;
 use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose;
 use bytes::Bytes;
-use orion_conf::{ErrorWith};
+use orion_conf::ErrorWith;
 use orion_error::conversion::ToStructError;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::Arc;
-use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+use tokio::sync::mpsc::{Receiver, channel};
 use tokio::task::JoinHandle;
 use wp_connector_api::{DataSource, SourceBatch, SourceEvent, SourceReason, SourceResult, Tags};
 use wp_model_core::raw::RawData;
@@ -22,9 +22,6 @@ pub enum FileEncoding {
     Hex,
 }
 
-const DEFAULT_BATCH_LINES: usize = 128;
-const DEFAULT_BATCH_BYTES: usize = 400 * 1024;
-const DEFAULT_CHUNK_BYTES: usize = 64 * 1024;
 const MIN_CHUNK_BYTES: usize = 4 * 1024;
 const MAX_CHUNK_BYTES: usize = 128 * 1024;
 
@@ -67,9 +64,9 @@ impl FileSource {
             .with_context(file_path)
             .doing("seek to position")?;
         tags.set("access_source", path.to_string());
-        let batch_lines = DEFAULT_BATCH_LINES;
-        let batch_bytes_budget = DEFAULT_BATCH_BYTES;
-        let chunk_bytes = DEFAULT_CHUNK_BYTES.clamp(MIN_CHUNK_BYTES, MAX_CHUNK_BYTES);
+        let batch_lines = wp_conf::limits::file_batch_lines();
+        let batch_bytes_budget = wp_conf::limits::file_batch_bytes();
+        let chunk_bytes = wp_conf::limits::file_chunk_bytes().clamp(MIN_CHUNK_BYTES, MAX_CHUNK_BYTES);
         let limit = range_end.map(|end| end.saturating_sub(range_start));
         let reader = ChunkedLineReader::new(file, chunk_bytes, limit);
         Ok(Self {
@@ -125,7 +122,7 @@ pub struct MultiFileSource {
     encode: FileEncoding,
     tags: Tags,
     instances: usize,
-    current_rx: Option<UnboundedReceiver<ParallelSourceMsg>>,
+    current_rx: Option<Receiver<ParallelSourceMsg>>,
     current_tasks: Vec<JoinHandle<()>>,
     active_tasks: usize,
 }
@@ -158,7 +155,7 @@ impl MultiFileSource {
             .owe(SourceReason::Disconnect("compute file ranges failed".to_string()))
             .with_context(path.as_str())
             .doing("compute source file ranges")?;
-        let (tx, rx) = unbounded_channel();
+        let (tx, rx) = channel(wp_conf::limits::parser_channel_cap());
         let shard_total = ranges.len();
         let mut tasks = Vec::with_capacity(shard_total);
         for (idx, (start, end)) in ranges.into_iter().enumerate() {
@@ -181,16 +178,16 @@ impl MultiFileSource {
                 loop {
                     match source.receive().await {
                         Ok(batch) => {
-                            if tx.send(ParallelSourceMsg::Batch(batch)).is_err() {
+                            if tx.send(ParallelSourceMsg::Batch(batch)).await.is_err() {
                                 break;
                             }
                         }
                         Err(err) if matches!(err.reason(), SourceReason::EOF) => {
-                            let _ = tx.send(ParallelSourceMsg::Done);
+                            let _ = tx.send(ParallelSourceMsg::Done).await;
                             break;
                         }
                         Err(err) => {
-                            let _ = tx.send(ParallelSourceMsg::Err(err));
+                            let _ = tx.send(ParallelSourceMsg::Err(err)).await;
                             break;
                         }
                     }

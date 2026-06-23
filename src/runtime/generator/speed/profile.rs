@@ -18,13 +18,15 @@ pub enum SpeedProfile {
     /// 适用场景：模拟日夜流量周期、工作日/周末波动等周期性变化
     ///
     /// # 示例
-    /// ```ignore
+    /// ```
+    /// use wp_engine::runtime::generator::SpeedProfile;
+    ///
     /// // 模拟24小时周期，基准5000/s，波动±3000
-    /// SpeedProfile::Sinusoidal {
+    /// let _profile = SpeedProfile::Sinusoidal {
     ///     base: 5000,
     ///     amplitude: 3000,
     ///     period_secs: 86400.0,  // 24小时
-    /// }
+    /// };
     /// ```
     Sinusoidal {
         /// 基准速率 (行/秒)
@@ -42,9 +44,11 @@ pub enum SpeedProfile {
     /// 适用场景：模拟业务高峰/低谷时段、分阶段压测
     ///
     /// # 示例
-    /// ```ignore
+    /// ```
+    /// use wp_engine::runtime::generator::SpeedProfile;
+    ///
     /// // 模拟：低峰30s -> 中峰30s -> 高峰30s -> 回落30s
-    /// SpeedProfile::Stepped {
+    /// let _profile = SpeedProfile::Stepped {
     ///     steps: vec![
     ///         (30.0, 1000),   // 30秒 1000/s
     ///         (30.0, 5000),   // 30秒 5000/s
@@ -52,7 +56,7 @@ pub enum SpeedProfile {
     ///         (30.0, 2000),   // 30秒 2000/s
     ///     ],
     ///     loop_forever: true,
-    /// }
+    /// };
     /// ```
     Stepped {
         /// 阶梯配置：(持续时间秒, 目标速率)
@@ -68,14 +72,16 @@ pub enum SpeedProfile {
     /// 适用场景：模拟流量尖峰、热点事件、DDoS 攻击等
     ///
     /// # 示例
-    /// ```ignore
+    /// ```
+    /// use wp_engine::runtime::generator::SpeedProfile;
+    ///
     /// // 基准1000/s，随机突发到10000/s，持续500ms
-    /// SpeedProfile::Burst {
+    /// let _profile = SpeedProfile::Burst {
     ///     base: 1000,
     ///     burst_rate: 10000,
     ///     burst_duration_ms: 500,
     ///     burst_probability: 0.05,  // 每秒5%概率触发
-    /// }
+    /// };
     /// ```
     Burst {
         /// 基准速率 (行/秒)
@@ -95,13 +101,15 @@ pub enum SpeedProfile {
     /// 适用场景：系统预热、压力测试梯度、平滑扩缩容
     ///
     /// # 示例
-    /// ```ignore
+    /// ```
+    /// use wp_engine::runtime::generator::SpeedProfile;
+    ///
     /// // 5分钟内从100/s升到10000/s
-    /// SpeedProfile::Ramp {
+    /// let _profile = SpeedProfile::Ramp {
     ///     start: 100,
     ///     end: 10000,
     ///     duration_secs: 300.0,
-    /// }
+    /// };
     /// ```
     Ramp {
         /// 起始速率 (行/秒)
@@ -119,12 +127,14 @@ pub enum SpeedProfile {
     /// 适用场景：模拟自然流量的随机抖动
     ///
     /// # 示例
-    /// ```ignore
+    /// ```
+    /// use wp_engine::runtime::generator::SpeedProfile;
+    ///
     /// // 基准5000/s，随机波动±30%
-    /// SpeedProfile::RandomWalk {
+    /// let _profile = SpeedProfile::RandomWalk {
     ///     base: 5000,
     ///     variance: 0.3,
-    /// }
+    /// };
     /// ```
     RandomWalk {
         /// 基准速率 (行/秒)
@@ -140,15 +150,18 @@ pub enum SpeedProfile {
     /// 适用场景：模拟复杂的真实流量特征
     ///
     /// # 示例
-    /// ```ignore
+    /// ```
+    /// use wp_engine::runtime::generator::SpeedProfile;
+    /// use wp_engine::runtime::generator::speed::profile::CombineMode;
+    ///
     /// // 周期波动 + 随机抖动
-    /// SpeedProfile::Composite {
+    /// let _profile = SpeedProfile::Composite {
     ///     profiles: vec![
     ///         SpeedProfile::Sinusoidal { base: 5000, amplitude: 2000, period_secs: 60.0 },
     ///         SpeedProfile::RandomWalk { base: 5000, variance: 0.1 },
     ///     ],
     ///     combine_mode: CombineMode::Average,
-    /// }
+    /// };
     /// ```
     Composite {
         /// 子模型列表
