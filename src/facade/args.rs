@@ -115,7 +115,10 @@ impl ParseArgs {
 
         Ok(RunArgs {
             line_max: self.max_line,
-            parallel: val_or(self.parse_workers, conf.parallel()),
+            parallel: wp_conf::limits::clamp_parse_workers(val_or(
+                self.parse_workers,
+                conf.parallel(),
+            )),
             speed_limit: conf.speed_limit(),
             reload_timeout_ms: val_or(self.reload_timeout_ms, conf.reload_timeout_ms()),
             fetch_timeout_ms: conf.fetch_timeout_ms(),

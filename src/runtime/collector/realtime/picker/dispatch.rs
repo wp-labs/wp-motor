@@ -2,7 +2,8 @@
 
 use super::actor::JMActPicker;
 use crate::runtime::actor::command::TaskController;
-use crate::runtime::collector::realtime::constants::PICKER_BURST_MAX;
+use crate::runtime::actor::limit::SourceRateLease;
+use crate::runtime::collector::realtime::constants::picker_burst_max;
 use crate::runtime::collector::realtime::picker::round::{RoundStat, SrcStatus};
 use crate::runtime::prelude::*;
 use crate::stat::metric_collect::MetricCollectors;
@@ -11,7 +12,7 @@ use wp_connector_api::DataSource;
 
 impl JMActPicker {
     pub(super) fn burst_max() -> usize {
-        PICKER_BURST_MAX
+        picker_burst_max()
     }
 
     /// - 先尝试处理 pending；
@@ -23,16 +24,30 @@ impl JMActPicker {
         task_ctrl: &mut TaskController,
         stat_ext: &mut MetricCollectors,
         timeout: Duration,
+        source_rate_lease: Option<&mut SourceRateLease>,
     ) -> RunResult<RoundStat> {
         let mut rs = RoundStat::new();
         // 以当前 pending 水位制定“是否拉取、拉取配额”的计划
         let pending_before_pull = self.pending_count();
         let pending_bytes_before_pull = self.pending_bytes();
-        let pull_plan = self.pull_policy().plan_pull(pending_before_pull);
+        let fixed_rate = source_rate_lease
+            .as_ref()
+            .is_some_and(|lease| lease.is_fixed());
+        let pull_plan = if fixed_rate {
+            self.pull_policy().plan_pull_fixed_rate()
+        } else {
+            self.pull_policy().plan_pull(pending_before_pull)
+        };
         if pull_plan.allow() && !self.pending_bytes_at_capacity() {
             if task_ctrl.not_alone() {
                 let status = self
-                    .fetch_into_pending(source, task_ctrl, pull_plan.fetch_budget(), timeout)
+                    .fetch_into_pending(
+                        source,
+                        task_ctrl,
+                        pull_plan.fetch_budget(),
+                        timeout,
+                        source_rate_lease,
+                    )
                     .await?;
                 trace_ctrl!(
                     "{}-picker fetch status={:?} pending_after={} pending_bytes_after={}",
@@ -51,7 +66,7 @@ impl JMActPicker {
                 source.identifier(),
                 pending_before_pull,
                 pending_bytes_before_pull,
-                crate::runtime::collector::realtime::constants::PICKER_PENDING_MAX_BYTES
+                crate::runtime::collector::realtime::constants::picker_pending_max_bytes()
             );
         }
 
@@ -251,6 +266,7 @@ mod tests {
                 &mut ctrl,
                 &mut metrics,
                 Duration::from_millis(TEST_ROUND_TIMEOUT_MS),
+                None,
             )
             .await
             .expect("round pick should succeed");
@@ -306,6 +322,7 @@ mod tests {
                 &mut ctrl,
                 &mut metrics,
                 Duration::from_millis(TEST_ROUND_TIMEOUT_MS),
+                None,
             )
             .await
             .expect("round pick should succeed even on EOF");

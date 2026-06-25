@@ -1,5 +1,5 @@
 use crate::runtime::collector::realtime::constants::{
-    PICKER_PENDING_CAPACITY, PICKER_PENDING_MAX_BYTES,
+    PICKER_PENDING_CAPACITY, picker_pending_max_bytes,
 };
 use crate::runtime::collector::realtime::picker::policy::PostPolicy;
 use crate::runtime::collector::realtime::picker::policy::PullPolicy;
@@ -69,7 +69,7 @@ impl JMActPicker {
                 self.pending.len(),
                 crate::runtime::collector::realtime::constants::PICKER_PENDING_CAPACITY,
                 self.pending_bytes,
-                PICKER_PENDING_MAX_BYTES
+                picker_pending_max_bytes()
             );
         }
     }
@@ -79,7 +79,7 @@ impl JMActPicker {
     }
     #[inline]
     pub(crate) fn pending_bytes_at_capacity(&self) -> bool {
-        self.pending_bytes >= PICKER_PENDING_MAX_BYTES
+        self.pending_bytes >= picker_pending_max_bytes()
     }
 
     /// 合并前端的多个小批次，尽量把事件数凑到 `max_events`，用于减少“批数”对解析通道的占用。

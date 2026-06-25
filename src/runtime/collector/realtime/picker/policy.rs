@@ -111,6 +111,13 @@ impl PullPolicy {
             fetch_budget: budget,
         }
     }
+
+    pub fn plan_pull_fixed_rate(&self) -> PullPlan {
+        PullPlan {
+            allow: self.burst > 0,
+            fetch_budget: self.burst,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -160,5 +167,16 @@ mod tests {
         // pending 只由水位控制；此处仍允许拉取
         let plan3 = pull.plan_pull(10);
         assert!(plan3.allow);
+    }
+
+    #[test]
+    fn fixed_rate_pull_plan_ignores_pending_watermarks() {
+        let pull = PullPolicy::new(16);
+        let normal = pull.plan_pull(pull.hi);
+        assert!(!normal.allow);
+
+        let fixed = pull.plan_pull_fixed_rate();
+        assert!(fixed.allow);
+        assert_eq!(fixed.fetch_budget, 16);
     }
 }

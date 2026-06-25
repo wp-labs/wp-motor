@@ -32,6 +32,56 @@ Entries may be written in both English and Chinese.
 - **OML/Pipe/ip4_to_int**: 修复 `ip4_to_int` 对 IPv6 地址静默透传的问题，现改为返回 Null；新增对字符串 IPv4 地址的解析支持。
 
 
+## [1.22.9] - 2026-06-25
+
+### Added
+- **Benchmarks**: Added `sink_batch_ids_success_path` under `perf-ci` to measure sink-side record-id plumbing on the success path and compare package collection with/without ids.
+  中文：新增 `sink_batch_ids_success_path` 基准，用于对比 sink 成功路径上 record id 传递开销。
+
+### Changed
+- **Sink Runtime**: Simplified batch error logging in `send_records_batch` by iterating record positions directly instead of prebuilding a `Vec<u64>`.
+  中文：`send_records_batch` 的错误日志改为直接按下标遍历，不再预分配 `Vec<u64>`。
+
+## [1.22.8] - 2026-06-23
+
+### Changed
+- **Memory Profile**: Changed the default `WP_MEMORY_PROFILE` from `standard` to `low`, so unset deployments now use smaller parser/sink channels, smaller picker pending byte caps, and earlier memory backpressure by default.
+  中文：默认内存 profile 从 `standard` 改为 `low`；未显式设置时默认使用更小队列和更早背压，优先控制 RSS。
+- **Source Rate Limit**: Fixed-rate source limiting now bypasses picker pending-count pull watermarks while still respecting the profile-defined `WP_PICKER_PENDING_MAX_BYTES` hard cap.
+  中文：固定限速不再被 picker pending 批数水位额外压低，但仍受 profile 定义的 `WP_PICKER_PENDING_MAX_BYTES` 内存上限保护。
+
+### Tests
+- **Runtime/Pickers**: Added coverage for fixed-rate pull planning and profile pending-byte cap behavior.
+  中文：补充固定限速拉取计划与 profile pending byte cap 行为测试。
+
+## [1.22.7] - 2026-06-23
+
+### Added
+- **Source Rate Limit**: Added a shared source-side global rate limiter. `performance.rate_limit_rps = 0` now enables automatic source input rate control, while `> 0` applies a fixed global EPS cap across all sources in the runtime.
+  中文：新增 source 侧全局输入限速；`rate_limit_rps = 0` 表示自动限速，`> 0` 表示所有 source 共享固定 EPS 上限。
+- **Auto Rate Limit**: Added AIMD-style automatic input control based on picker pending watermarks, parser backpressure, and RSS growth protection.
+  中文：新增自动输入调节，根据 pending 水位、parser 背压和 RSS 快速增长保护动态升降速。
+- **Memory Profiles**: Added centralized runtime memory profiles via `WP_MEMORY_PROFILE=standard|low|throughput`, with compatibility aliases for older `small/tiny/large` names.
+  中文：新增统一内存 profile，收敛 parser/sink channel、batch、pending、TCP/UDP/file buffer 等内存相关参数。
+- **Docs**: Added `docs/design/source_rate_limit_design.md` and updated wparse config docs with source rate limit and memory profile guidance.
+
+### Changed
+- **Runtime Defaults**: Default `performance.rate_limit_rps` changed from fixed `10000` to `0` automatic mode. `EngineConfig::init()` now uses `PerformanceConf::default()` so generated configs follow the same defaults as serde-loaded configs.
+  中文：默认输入限速改为自动模式；初始化生成配置与正式加载配置使用同一默认值入口。
+- **Picker/Backpressure**: Source rate lease consumption now happens before batches enter picker pending, reducing pending/RSS growth under rate limiting.
+  中文：source 限速等待前移到进入 pending 之前，减少限速场景下 pending/RSS 先膨胀。
+- **Runtime Buffers**: Parser/sink channels, picker burst/coalesce thresholds, pending byte cap, TCP/UDP/file batch buffers, sink record pools, debug view queue, and command channel now use centralized memory limits.
+  中文：运行时队列、水位和批大小统一由 `wp_conf::limits` 管理。
+- **Benchmark**: Benchmark `wparse.toml` files now use `${RATE_LIMIT_RPS:0}`; benchmark scripts derive `RATE_LIMIT_RPS` from the speed argument unless explicitly set externally.
+  中文：benchmark 入口默认用输入速率同步设置 wparse 限速；传 `0` 可测试自动限速。
+- **DebugView**: Debug output now uses a bounded channel to avoid unbounded RSS growth; queue overflow records dropped-line counts with sampled warnings instead of silently ignoring pressure.
+  中文：DebugView 改为有界队列，队列满时记录丢弃计数并抽样告警。
+
+### Fixed
+- **Config Defaults**: Fixed generated `conf/wparse.toml` initialization bypassing profile-aware performance defaults.
+- **Tests/Docs**: Converted speed profile doctests from ignored examples to compiling doctests and cleaned obsolete source-rate-limit tuning history from docs.
+
+
 ## [1.22.3] - 2026-05-19
 
 ### Added

@@ -1,6 +1,6 @@
 //! Configuration structures for syslog sources
 
-use super::constants::{DEFAULT_TCP_RECV_BYTES, DEFAULT_UDP_RECV_BUFFER};
+use super::constants::{default_tcp_recv_bytes, default_udp_recv_buffer};
 use wp_connector_api::{SourceReason, SourceResult};
 
 /// Configuration for syslog sources
@@ -76,12 +76,12 @@ impl SyslogSourceSpec {
             .get("tcp_recv_bytes")
             .and_then(|v| v.as_i64())
             .filter(|&v| v > 0)
-            .unwrap_or(DEFAULT_TCP_RECV_BYTES as i64) as usize;
+            .unwrap_or(default_tcp_recv_bytes() as i64) as usize;
         let udp_recv_buffer = params
             .get("udp_recv_buffer")
             .and_then(|v| v.as_i64())
             .filter(|&v| v > 0)
-            .unwrap_or(DEFAULT_UDP_RECV_BUFFER as i64) as usize;
+            .unwrap_or(default_udp_recv_buffer() as i64) as usize;
         // header_mode: controls how syslog header is handled
         //   New names (preferred):
         //     raw  => keep original message untouched

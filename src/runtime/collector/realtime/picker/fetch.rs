@@ -1,5 +1,6 @@
 use crate::runtime::{
     actor::command::{ActorCtrlCmd, TaskController},
+    actor::limit::SourceRateLease,
     collector::realtime::{JMActPicker, picker::round::SrcStatus},
     errors::err4_dispatch_data,
 };
@@ -22,6 +23,7 @@ impl JMActPicker {
         task_ctrl: &mut TaskController,
         batch_max: usize,
         timeout: Duration,
+        source_rate_lease: Option<&mut SourceRateLease>,
     ) -> RunResult<SrcStatus> {
         if batch_max == 0 {
             return Ok(SrcStatus::Ready);
@@ -30,9 +32,10 @@ impl JMActPicker {
         // 新版 DataSource 支持非阻塞读取：尽量使用 try_receive 降低等待成本
         let try_mode = source.can_try_receive();
         let read_result = if try_mode {
-            self.read_batch_nonblocking(source, batch_max)
+            self.read_batch_nonblocking(source, batch_max, source_rate_lease)
+                .await
         } else {
-            self.read_batch_blocking(source, task_ctrl, batch_max, timeout)
+            self.read_batch_blocking(source, task_ctrl, batch_max, timeout, source_rate_lease)
                 .await
         };
 
@@ -74,10 +77,11 @@ impl JMActPicker {
         }
     }
     /// 非阻塞批量读取数据
-    pub(crate) fn read_batch_nonblocking(
+    pub(crate) async fn read_batch_nonblocking(
         &mut self,
         source: &mut dyn DataSource,
         max_count: usize,
+        mut source_rate_lease: Option<&mut SourceRateLease>,
     ) -> SourceResult<SrcStatus> {
         let mut status = SrcStatus::Ready;
         let mut total = 0;
@@ -89,6 +93,7 @@ impl JMActPicker {
             // 非阻塞读取：若返回 None 或空批，则视为 Miss（本轮到此为止）
             match source.try_receive() {
                 Some(batch) if !batch.is_empty() => {
+                    let event_count = batch.len();
                     if log::log_enabled!(target: "data", log::Level::Info) {
                         for v in &batch {
                             info_edata!(
@@ -98,6 +103,9 @@ impl JMActPicker {
                                 v.payload
                             );
                         }
+                    }
+                    if let Some(lease) = source_rate_lease.as_deref_mut() {
+                        lease.consume(event_count).await;
                     }
                     self.extend_pending(batch);
                     if self.pending_bytes_at_capacity() {
@@ -126,6 +134,7 @@ impl JMActPicker {
         task_ctrl: &mut TaskController,
         max_count: usize,
         timeout: Duration,
+        mut source_rate_lease: Option<&mut SourceRateLease>,
     ) -> SourceResult<SrcStatus> {
         if max_count == 0 {
             return Ok(SrcStatus::Ready);
@@ -190,6 +199,7 @@ impl JMActPicker {
                 res = source.receive() => {
                     match res {
                         Ok(batch) => {
+                            let event_count = batch.len();
                             if log::log_enabled!(target: "data", log::Level::Info) {
                                 for v in &batch {
                                     info_edata!(
@@ -197,6 +207,9 @@ impl JMActPicker {
                                         "[{}] => received  data:{}",source.identifier(), v.payload
                                     );
                                 }
+                            }
+                            if let Some(lease) = source_rate_lease.as_deref_mut() {
+                                lease.consume(event_count).await;
                             }
                             self.extend_pending(batch);
                             total += 1;
@@ -244,6 +257,7 @@ mod tests {
     use super::*;
     use crate::runtime::{
         actor::command::TaskController,
+        actor::limit::SourceRateLimiter,
         parser::workflow::{ParseDispatchRouter, ParseWorkerSender},
     };
     use crate::sources::event_id::next_event_id;
@@ -454,6 +468,7 @@ mod tests {
                 &mut ctrl,
                 0,
                 Duration::from_millis(TEST_FETCH_TIMEOUT_MS),
+                None,
             )
             .await
             .expect("zero budget fetch should not fail");
@@ -481,6 +496,7 @@ mod tests {
                 &mut ctrl,
                 4,
                 Duration::from_millis(TEST_FETCH_TIMEOUT_MS),
+                None,
             )
             .await
             .expect("try-mode fetch should succeed");
@@ -507,6 +523,7 @@ mod tests {
                 &mut ctrl,
                 1,
                 Duration::from_millis(TEST_BLOCKING_TIMEOUT_MS * 5),
+                None,
             )
             .await
             .expect("blocking fetch should succeed");
@@ -521,10 +538,9 @@ mod tests {
         let mut picker =
             JMActPicker::new(ParseDispatchRouter::new(vec![ParseWorkerSender::new(tx)]));
         let mut ctrl = make_task_ctrl();
-        let large_batch = vec![make_bytes_event(
-            "large",
-            crate::runtime::collector::realtime::constants::PICKER_PENDING_MAX_BYTES / 3 + 1,
-        )];
+        let pending_max_bytes =
+            crate::runtime::collector::realtime::constants::picker_pending_max_bytes();
+        let large_batch = vec![make_bytes_event("large", pending_max_bytes / 3 + 1)];
         let mut src = TryBatchSource::new(
             "try",
             vec![
@@ -541,6 +557,7 @@ mod tests {
                 &mut ctrl,
                 TEST_TASK_UNIT,
                 Duration::from_millis(TEST_FETCH_TIMEOUT_MS),
+                None,
             )
             .await
             .expect("try-mode fetch should stop on pending byte cap");
@@ -548,9 +565,47 @@ mod tests {
         assert_eq!(status, SrcStatus::Ready);
         assert_eq!(src.idx, 3, "达到 pending byte cap 后应停止继续拉取");
         assert_eq!(picker.pending_count(), 3);
-        assert!(
-            *picker.pending_bytes()
-                >= crate::runtime::collector::realtime::constants::PICKER_PENDING_MAX_BYTES
+        assert!(*picker.pending_bytes() >= pending_max_bytes);
+    }
+
+    #[tokio::test]
+    async fn fixed_rate_fetch_respects_profile_pending_byte_cap() {
+        let (tx, _rx) = mpsc::channel::<SourceBatch>(TEST_SOURCE_CHANNEL_CAP);
+        let mut picker =
+            JMActPicker::new(ParseDispatchRouter::new(vec![ParseWorkerSender::new(tx)]));
+        let mut ctrl = make_task_ctrl();
+        let pending_max_bytes =
+            crate::runtime::collector::realtime::constants::picker_pending_max_bytes();
+        let large_batch = vec![make_bytes_event("large", pending_max_bytes / 3 + 1)];
+        let mut src = TryBatchSource::new(
+            "try",
+            vec![
+                large_batch.clone(),
+                large_batch.clone(),
+                large_batch.clone(),
+                large_batch,
+            ],
         );
+        let limiter = SourceRateLimiter::new(100_000_000).expect("fixed limiter");
+        let mut lease = limiter.new_lease();
+
+        let status = picker
+            .fetch_into_pending(
+                &mut src,
+                &mut ctrl,
+                TEST_TASK_UNIT,
+                Duration::from_millis(TEST_FETCH_TIMEOUT_MS),
+                Some(&mut lease),
+            )
+            .await
+            .expect("fixed-rate fetch should respect picker byte cap");
+
+        assert_eq!(status, SrcStatus::Ready);
+        assert_eq!(
+            src.idx, 3,
+            "固定限速应绕开 pending 水位调速，但仍受 profile pending byte cap 约束"
+        );
+        assert_eq!(picker.pending_count(), 3);
+        assert!(*picker.pending_bytes() >= pending_max_bytes);
     }
 }

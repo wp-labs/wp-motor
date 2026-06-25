@@ -9,6 +9,7 @@
 //!   因此“批更大/合并小批/水位控制”是必要的设计取舍。
 
 mod actor;
+pub(crate) mod auto_limit;
 mod dispatch;
 mod fetch;
 mod policy;

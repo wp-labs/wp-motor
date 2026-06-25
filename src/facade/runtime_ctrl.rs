@@ -11,8 +11,6 @@ pub enum CommandType {
     LoadModel,
 }
 
-const DEFAULT_COMMAND_BUFFER: usize = 64;
-
 #[derive(Clone)]
 pub struct RuntimeControlHandle {
     sender: RuntimeCommandSender,
@@ -294,7 +292,7 @@ pub(crate) fn runtime_command_bus(
 
 pub(crate) fn default_runtime_command_bus()
 -> (RuntimeControlHandle, mpsc::Receiver<RuntimeCommandReq>) {
-    runtime_command_bus(DEFAULT_COMMAND_BUFFER)
+    runtime_command_bus(wp_conf::limits::cmd_channel_cap())
 }
 
 #[cfg(test)]

@@ -216,8 +216,8 @@ pub struct PerformanceConf {
 impl Default for PerformanceConf {
     fn default() -> Self {
         Self {
-            rate_limit_rps: 10000,
-            parse_workers: 2,
+            rate_limit_rps: default_speed_limit(),
+            parse_workers: default_parse_workers(),
             reload_timeout_ms: default_reload_timeout_ms(),
             fetch_timeout_ms: default_fetch_timeout_ms(),
         }
@@ -322,11 +322,11 @@ pub fn default_rescue_path() -> String {
 }
 
 pub fn default_parse_workers() -> usize {
-    2
+    crate::limits::parse_workers()
 }
 
 pub fn default_speed_limit() -> usize {
-    10000
+    0
 }
 
 pub fn default_reload_timeout_ms() -> u64 {
@@ -415,12 +415,7 @@ impl EngineConfig {
                 sources: default_sources_root(),
                 sinks: default_sinks_root(),
             },
-            performance: PerformanceConf {
-                rate_limit_rps: 10000,
-                parse_workers: 2,
-                reload_timeout_ms: default_reload_timeout_ms(),
-                fetch_timeout_ms: default_fetch_timeout_ms(),
-            },
+            performance: PerformanceConf::default(),
             log_conf: LogConf::default(),
             stat_conf: StatConf::default(),
             robust: RobustnessMode::Normal,
@@ -793,6 +788,13 @@ mod tests {
     fn test_engine_config_uses_default_fetch_timeout_ms() {
         let conf = EngineConfig::default();
         assert_eq!(conf.fetch_timeout_ms(), default_fetch_timeout_ms());
+    }
+
+    #[test]
+    fn test_engine_config_init_uses_performance_defaults() {
+        let conf = EngineConfig::init("/tmp/wparse-test");
+        let defaults = PerformanceConf::default();
+        assert_eq!(conf.performance, defaults);
     }
 
     #[test]

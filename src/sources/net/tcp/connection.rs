@@ -194,8 +194,12 @@ impl ConnectionManager {
                                 key,
                             );
                             // Opportunistically shrink buffer when idle (no unframed residue)
-                            if buf.is_empty() && buf.capacity() > NET_SHRINK_HIGH_WATER_BYTES {
-                                buf = BytesMut::with_capacity(NET_SHRINK_TARGET_BYTES);
+                            if buf.is_empty()
+                                && buf.capacity() > wp_conf::limits::tcp_shrink_high_water_bytes()
+                            {
+                                buf = BytesMut::with_capacity(
+                                    wp_conf::limits::tcp_shrink_target_bytes(),
+                                );
                             }
                         }
                         Err(e) => {
@@ -317,8 +321,12 @@ impl ConnectionManager {
                                 key,
                                 base_stags.clone(),
                             ).await;
-                            if buf.is_empty() && buf.capacity() > NET_SHRINK_HIGH_WATER_BYTES {
-                                buf = bytes::BytesMut::with_capacity(NET_SHRINK_TARGET_BYTES);
+                            if buf.is_empty()
+                                && buf.capacity() > wp_conf::limits::tcp_shrink_high_water_bytes()
+                            {
+                                buf = bytes::BytesMut::with_capacity(
+                                    wp_conf::limits::tcp_shrink_target_bytes(),
+                                );
                             }
                         }
                         Err(e) => {
@@ -412,10 +420,6 @@ impl Default for ConnectionManager {
         Self::new()
     }
 }
-
-// Balanced shrink thresholds for per-connection read buffers (net/tcp)
-const NET_SHRINK_HIGH_WATER_BYTES: usize = 1024 * 1024; // 1MiB 以上且空时收缩
-const NET_SHRINK_TARGET_BYTES: usize = 256 * 1024; // 收缩到 256KiB
 
 #[cfg(test)]
 mod tests {

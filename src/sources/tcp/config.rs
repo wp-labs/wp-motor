@@ -1,4 +1,4 @@
-use super::framing::{DEFAULT_TCP_RECV_BYTES, FramingMode};
+use super::framing::{FramingMode, default_tcp_recv_bytes};
 use wp_connector_api::{SourceReason, SourceResult};
 
 #[derive(Debug, Clone)]
@@ -32,7 +32,7 @@ impl TcpSourceSpec {
             .get("tcp_recv_bytes")
             .and_then(|v| v.as_i64())
             .filter(|&v| v > 0)
-            .unwrap_or(DEFAULT_TCP_RECV_BYTES as i64) as usize;
+            .unwrap_or(default_tcp_recv_bytes() as i64) as usize;
         if tcp_recv_bytes == 0 {
             return Err(SourceReason::core_conf().err_detail("tcp_recv_bytes must be > 0"));
         }

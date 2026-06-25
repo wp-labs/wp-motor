@@ -335,8 +335,6 @@ impl SinkRuntime {
             return Ok(());
         }
 
-        let ids: Vec<u64> = (0..records.len() as u64).collect();
-
         // 统计开始
         self.stat_beg_records_batch(&records);
 
@@ -348,8 +346,8 @@ impl SinkRuntime {
                     return Ok(());
                 }
                 Err(e) => {
-                    for e_id in &ids {
-                        error_edata!(*e_id, "flush sink data failed: {}", e);
+                    for e_id in 0..records.len() as u64 {
+                        error_edata!(e_id, "flush sink data failed: {}", e);
                     }
                     match self.handle_send_error(&e, bad_s, mon).await? {
                         BatchErrHandle::Retry => continue,

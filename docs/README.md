@@ -134,6 +134,11 @@ docs/
   - `wp-motor` 只负责 runtime command bus 与 reload 执行
   - 包含 Bearer Token、HTTPS、并发控制、审计与 CLI 对接方案
 
+- **[Source 输入限速设计](design/source_rate_limit_design.md)** ⭐ 重要
+  - 定义 `performance.rate_limit_rps` 为所有 source 共享的全局输入 EPS 上限
+  - 说明 `SourceRateLimiter` / `SourceRateLease` 的全局 deadline 与本地 lease 机制
+  - 覆盖准确性、性能开销、`WP_SOURCE_RATE_LEASE_EVENTS` 调优和实测结果
+
 **适用人群**: 核心开发者、架构评审者、运行时改造参与者
 
 ## 🔍 快速导航
@@ -170,6 +175,9 @@ docs/
 
 ### 我想统一 review 错误设计与 `orion-error` 用法
 → [错误体系设计](design/error_system_design.md)
+
+### 我想 review source 输入限速方案
+→ [Source 输入限速设计](design/source_rate_limit_design.md)
 
 ## 📝 文档规范
 

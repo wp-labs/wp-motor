@@ -10,13 +10,6 @@ use tokio::net::TcpStream;
 use wp_connector_api::{SourceBatch, SourceEvent, SourceReason, SourceResult, Tags};
 use wp_model_core::raw::RawData;
 
-const DEFAULT_BATCH_CAPACITY: usize = 128;
-const MAX_BATCH_BYTES: usize = 64 * 1024; // soft cap; single payload may exceed but only single event allowed
-// When idle and buffer is large, shrink capacity to reduce RSS footprint.
-// Balanced shrink thresholds：空闲时将过大的缓冲收缩到较小基线
-const SHRINK_HIGH_WATER_BYTES: usize = 1024 * 1024; // 若 capacity 超过 1MiB 且 len==0 则收缩
-const SHRINK_TARGET_BYTES: usize = 256 * 1024; // 收缩到 256KiB（降低扩容↔收缩抖动）
-
 pub enum ReadOutcome {
     NoData,
     Produced(SourceBatch),
@@ -83,8 +76,8 @@ impl TcpConnection {
                 BytesMut::with_capacity(capacity),
                 base_tags,
                 source_key,
-                DEFAULT_BATCH_CAPACITY,
-                MAX_BATCH_BYTES,
+                wp_conf::limits::tcp_batch_capacity(),
+                wp_conf::limits::tcp_batch_bytes(),
             ),
         };
         debug_data!(
@@ -256,9 +249,11 @@ impl BatchBuilder {
 
     /// Opportunistically shrink the internal buffer when idle to reclaim memory.
     fn maybe_shrink(&mut self) {
-        if self.buffer.is_empty() && self.buffer.capacity() > SHRINK_HIGH_WATER_BYTES {
+        if self.buffer.is_empty()
+            && self.buffer.capacity() > wp_conf::limits::tcp_shrink_high_water_bytes()
+        {
             // Recreate with a smaller baseline capacity to actually release memory.
-            self.buffer = BytesMut::with_capacity(SHRINK_TARGET_BYTES);
+            self.buffer = BytesMut::with_capacity(wp_conf::limits::tcp_shrink_target_bytes());
         }
     }
 
@@ -559,7 +554,10 @@ mod tests {
         // Clear and try to shrink (should shrink because capacity > SHRINK_HIGH_WATER_BYTES)
         batcher.buffer.clear();
         batcher.maybe_shrink();
-        assert_eq!(batcher.buffer.capacity(), SHRINK_TARGET_BYTES);
+        assert_eq!(
+            batcher.buffer.capacity(),
+            wp_conf::limits::tcp_shrink_target_bytes()
+        );
 
         // Fill with small buffer
         let mut batcher2 = BatchBuilder::new(

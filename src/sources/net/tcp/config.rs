@@ -37,8 +37,10 @@ impl TcpTunables {
 impl Default for TcpTunables {
     fn default() -> Self {
         Self {
-            read_burst: TCP_READ_BURST_DEFAULT,
-            read_chunk: TCP_READ_CHUNK_DEFAULT,
+            read_burst: TCP_READ_BURST_DEFAULT.min(wp_conf::limits::tcp_batch_capacity()),
+            read_chunk: wp_conf::limits::tcp_recv_bytes()
+                .min(TCP_READ_CHUNK_DEFAULT)
+                .clamp(TCP_READ_CHUNK_MIN, TCP_READ_CHUNK_MAX),
         }
     }
 }

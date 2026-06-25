@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DistStatus {
     // 本轮分发已就绪（可继续发送/拉取）
     Ready,
@@ -13,7 +13,7 @@ impl DistStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SrcStatus {
     // 源侧就绪（读取成功或无错误）
     Ready,
@@ -28,7 +28,7 @@ impl SrcStatus {
     }
 }
 /// 每轮突发过程的统计汇总
-#[derive(Debug, Clone, getset::CopyGetters)]
+#[derive(Debug, Clone, Copy, getset::CopyGetters)]
 #[get_copy = "pub"]
 pub(crate) struct RoundStat {
     // 本轮累计成功发送的“批次数”（非事件数）

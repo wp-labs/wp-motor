@@ -54,7 +54,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.23.2" # @gxl:set(version)
+version = "1.23.3" # @gxl:set(version)
 edition = "2024"
 license = "Apache-2.0"
 
@@ -235,6 +235,11 @@ required-features = ["perf-ci"]
 
 [[bench]]
 name = "sink_batch_pending_blackhole"
+harness = false
+required-features = ["perf-ci"]
+
+[[bench]]
+name = "sink_batch_ids_success_path"
 harness = false
 required-features = ["perf-ci"]
 
