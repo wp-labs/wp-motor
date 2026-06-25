@@ -365,7 +365,7 @@ wp_proj = { package = "wp-proj", path = "./crates/wp-proj" }
 wp-core-connectors = "0.5"
 
 # --- External: Arrow ---
-wp-arrow = "0.1"
+wp-arrow = "0.2"
 
 # --- External: Open API (Public Interfaces) ---
 wp-connector-api = "0.10.1"
