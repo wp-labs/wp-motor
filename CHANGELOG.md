@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
+## [1.22.9] - 2026-06-25
+
+### Added
+- **Benchmarks**: Added `sink_batch_ids_success_path` under `perf-ci` to measure sink-side record-id plumbing on the success path and compare package collection with/without ids.
+  中文：新增 `sink_batch_ids_success_path` 基准，用于对比 sink 成功路径上 record id 传递开销。
+
+### Changed
+- **Sink Runtime**: Simplified batch error logging in `send_records_batch` by iterating record positions directly instead of prebuilding a `Vec<u64>`.
+  中文：`send_records_batch` 的错误日志改为直接按下标遍历，不再预分配 `Vec<u64>`。
+
 ## [1.22.8] - 2026-06-23
 
 ### Changed
