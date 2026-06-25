@@ -304,7 +304,7 @@ derive-getters = "0.5"
 strum = "0.28"
 strum_macros = "0.27"
 parse-display = "0.10"
-parse-display-derive = "0.10"
+parse-display-derive = "0.11"
 ctor = "0.10"
 
 # --- System & Platform ---
@@ -313,7 +313,7 @@ walkdir = "2.5"
 libc = "0.2"
 socket2 = "0.6"
 async-signal = "0.2"
-sysinfo = "0.38"
+sysinfo = "0.39"
 
 # --- Async Runtime & Concurrency ---
 tokio-async-drop = "0.1"
