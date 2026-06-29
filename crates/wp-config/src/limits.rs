@@ -1,8 +1,8 @@
 //! Centralized memory-related limits and queue capacities for runtime components.
 //!
 //! Defaults are selected by `WP_MEMORY_PROFILE`:
-//! - `low`/unset: smaller buffers for bounded default memory use
-//! - `standard`: balanced production profile
+//! - `low`: smaller buffers for bounded memory use
+//! - `standard`/unset: balanced production profile
 //! - `throughput`: larger parser/sink channels for complex samples or fast sinks
 //!
 //! Individual values can be overridden with the `WP_*` environment variables below.
@@ -130,9 +130,9 @@ impl MemoryLimits {
                 picker_burst_max: 6,
                 picker_coalesce_trigger: 24,
                 picker_coalesce_max_events: 96,
-                tcp_recv_bytes: MIB,
-                tcp_batch_capacity: 64,
-                tcp_batch_bytes: 64 * KIB,
+                tcp_recv_bytes: 2 * MIB,
+                tcp_batch_capacity: 256,
+                tcp_batch_bytes: 256 * KIB,
                 tcp_shrink_high_water_bytes: 512 * KIB,
                 tcp_shrink_target_bytes: 128 * KIB,
                 udp_recv_buffer_bytes: 2 * MIB,
@@ -184,7 +184,7 @@ impl MemoryLimits {
         let kind = std::env::var(ENV_MEMORY_PROFILE)
             .ok()
             .and_then(|value| value.parse::<MemoryProfileKind>().ok())
-            .unwrap_or(MemoryProfileKind::Low);
+            .unwrap_or(MemoryProfileKind::Standard);
         let mut limits = Self::for_profile(kind);
         limits.parser_channel_cap =
             env_usize(ENV_PARSER_CHANNEL_CAP).unwrap_or(limits.parser_channel_cap);
@@ -414,26 +414,28 @@ mod tests {
         assert!(low.sink_channel_cap < standard.sink_channel_cap);
         assert!(standard.sink_channel_cap < throughput.sink_channel_cap);
         assert!(low.tcp_recv_bytes < standard.tcp_recv_bytes);
-        assert!(standard.tcp_recv_bytes < throughput.tcp_recv_bytes);
+        assert_eq!(standard.tcp_recv_bytes, throughput.tcp_recv_bytes);
+        assert_eq!(standard.tcp_batch_bytes, 256 * KIB);
+        assert_eq!(standard.tcp_batch_capacity, 256);
         assert_eq!(standard.sink_batch_size, 512);
         assert_eq!(standard.picker_burst_max, 6);
         assert_eq!(standard.picker_pending_max_bytes, 2 * MIB);
     }
 
     #[test]
-    fn memory_profile_unset_defaults_to_low() {
-        let low = MemoryLimits::for_profile(MemoryProfileKind::Low);
+    fn memory_profile_unset_defaults_to_standard() {
+        let standard = MemoryLimits::for_profile(MemoryProfileKind::Standard);
         let parsed = std::env::var(ENV_MEMORY_PROFILE)
             .ok()
             .and_then(|value| value.parse::<MemoryProfileKind>().ok())
-            .unwrap_or(MemoryProfileKind::Low);
+            .unwrap_or(MemoryProfileKind::Standard);
 
         if std::env::var(ENV_MEMORY_PROFILE).is_ok() {
             return;
         }
 
-        assert_eq!(parsed, MemoryProfileKind::Low);
-        assert_eq!(MemoryLimits::for_profile(parsed), low);
+        assert_eq!(parsed, MemoryProfileKind::Standard);
+        assert_eq!(MemoryLimits::for_profile(parsed), standard);
     }
 
     #[test]

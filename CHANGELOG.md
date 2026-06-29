@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
+## [1.22.10 Unreleased]
+
+### Changed
+- **Memory Profile**: Changed the unset `WP_MEMORY_PROFILE` default back to `standard`, so default deployments use the balanced production profile instead of the low-memory profile.
+  中文：未设置 `WP_MEMORY_PROFILE` 时默认回到 `standard`，默认部署使用平衡吞吐和 RSS 的生产 profile。
+- **TCP Source Throughput**: Raised `standard` profile TCP defaults to `WP_TCP_RECV_BYTES=2097152`, `WP_TCP_BATCH_BYTES=262144`, and `WP_TCP_BATCH_CAPACITY=256` to keep long-line TCP samples such as firewall better fed without requiring the full `throughput` profile.
+  中文：提升 `standard` profile 的 TCP 默认批量参数，以改善 firewall 等长行 TCP 样本的 parser 供给和 CPU 利用率。
+- **Docs**: Updated source rate limit and wparse configuration docs to describe `standard` as the default profile and include the new TCP batch defaults.
+  中文：更新输入限速和 wparse 配置文档，说明 `standard` 为默认 profile，并补充新的 TCP 批量默认值。
+
+### Tests
+- **Config/Limits**: Updated memory profile tests to cover the new unset default and `standard` TCP batch values.
+  中文：更新 memory profile 测试，覆盖新的未设置默认值和 `standard` TCP 批量参数。
+
 ## [1.22.9] - 2026-06-25
 
 ### Added

@@ -58,17 +58,17 @@ Notes:
 Memory-related queues, watermarks, and batch sizes are controlled by `WP_MEMORY_PROFILE`. Most deployments should choose one profile instead of tuning many individual variables:
 
 ```bash
-WP_MEMORY_PROFILE=low        # Recommended default; also used when unset
-WP_MEMORY_PROFILE=standard   # Balanced throughput and RSS
+WP_MEMORY_PROFILE=low        # Lower memory
+WP_MEMORY_PROFILE=standard   # Recommended default; also used when unset
 WP_MEMORY_PROFILE=throughput # Wider parser/sink channels for complex samples or fast sinks
 ```
 
 Profile meanings:
 
-- `low`: default production profile; applies backpressure earlier and prioritizes lower RSS: `parser/sink channel = 32/16`, `sink_batch_size = 256`, `picker_burst_max = 4`, `pending = 1MB`.
-- `standard`: balanced throughput and RSS: `parser/sink channel = 48/24`, `sink_batch_size = 512`, `picker_burst_max = 6`, `pending = 2MB`.
+- `low`: applies backpressure earlier and prioritizes lower RSS: `parser/sink channel = 32/16`, `sink_batch_size = 256`, `picker_burst_max = 4`, `tcp_batch = 32KB/32 events`, `pending = 1MB`.
+- `standard`: default production profile with balanced throughput and RSS: `parser/sink channel = 48/24`, `sink_batch_size = 512`, `picker_burst_max = 6`, `tcp_recv = 2MB`, `tcp_batch = 256KB/256 events`, `pending = 2MB`.
 - `throughput`: gives parser and sink dispatch more channel headroom for heavier samples while still keeping pending bounded.
 
 Historical aliases remain accepted: `small/tiny/xs` map to `low`, `large/high` maps to `throughput`, and `default/normal/balanced` map to `standard`.
 
-Individual environment variables remain available for benchmark and targeted tuning, for example `WP_PARSER_CHANNEL_CAP`, `WP_SINK_CHANNEL_CAP`, `WP_SINK_BATCH_SIZE`, `WP_PICKER_BURST_MAX`, and `WP_PICKER_PENDING_MAX_BYTES`. Production deployments should prefer a profile so the memory behavior stays explainable.
+Individual environment variables remain available for benchmark and targeted tuning, for example `WP_PARSER_CHANNEL_CAP`, `WP_SINK_CHANNEL_CAP`, `WP_SINK_BATCH_SIZE`, `WP_PICKER_BURST_MAX`, `WP_PICKER_PENDING_MAX_BYTES`, `WP_TCP_RECV_BYTES`, `WP_TCP_BATCH_BYTES`, and `WP_TCP_BATCH_CAPACITY`. Production deployments should prefer a profile so the memory behavior stays explainable.
