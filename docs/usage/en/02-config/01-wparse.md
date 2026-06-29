@@ -66,7 +66,7 @@ WP_MEMORY_PROFILE=throughput # Wider parser/sink channels for complex samples or
 Profile meanings:
 
 - `low`: applies backpressure earlier and prioritizes lower RSS: `parser/sink channel = 32/16`, `sink_batch_size = 256`, `picker_burst_max = 4`, `tcp_batch = 32KB/32 events`, `pending = 1MB`.
-- `standard`: default production profile with balanced throughput and RSS: `parser/sink channel = 48/24`, `sink_batch_size = 512`, `picker_burst_max = 6`, `tcp_recv = 2MB`, `tcp_batch = 256KB/256 events`, `pending = 2MB`.
+- `standard`: default production profile; keeps the `low` sink, pending, UDP, and file memory watermarks while raising TCP throughput for long-line samples: `parser/sink channel = 48/16`, `sink_batch_size = 256`, `picker_burst_max = 6`, `tcp_recv = 2MB`, `tcp_batch = 256KB/256 events`, `pending = 1MB`.
 - `throughput`: gives parser and sink dispatch more channel headroom for heavier samples while still keeping pending bounded.
 
 Historical aliases remain accepted: `small/tiny/xs` map to `low`, `large/high` maps to `throughput`, and `default/normal/balanced` map to `standard`.

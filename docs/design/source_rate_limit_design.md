@@ -55,7 +55,7 @@ rate_limit_rps = 1650000
 | profile | 用途 | 核心参数 |
 |---|---|---|
 | `low` | 优先控制 RSS | `parser/sink channel = 32/16`，`sink_batch_size = 256`，`picker_burst_max = 4`，`tcp_batch = 32KB/32 events`，`pending = 1MB` |
-| `standard` | 默认推荐，兼顾吞吐和 RSS | `parser/sink channel = 48/24`，`sink_batch_size = 512`，`picker_burst_max = 6`，`tcp_recv = 2MB`，`tcp_batch = 256KB/256 events`，`pending = 2MB` |
+| `standard` | 默认推荐，兼顾吞吐和 RSS | `parser/sink channel = 48/16`，`sink_batch_size = 256`，`picker_burst_max = 6`，`tcp_recv = 2MB`，`tcp_batch = 256KB/256 events`，`pending = 1MB` |
 | `throughput` | 复杂样本或快 sink | `parser/sink channel = 96/48`，仍保留 `burst6/pending2M` |
 
 兼容别名仍可解析，但不作为主文档推荐：
@@ -224,10 +224,10 @@ RSS 只作为保护信号，不作为默认目标水位。内存目标应通过�
 `standard` profile 作为默认 profile，吸收 nginx 165W/8 worker 和 firewall 长行 TCP 样本的调优结论：
 
 ```text
-parser/sink channel = 48/24
-sink_batch_size = 512
+parser/sink channel = 48/16
+sink_batch_size = 256
 picker_burst_max = 6
-picker_pending_max_bytes = 2MB
+picker_pending_max_bytes = 1MB
 tcp_recv_bytes = 2MB
 tcp_batch_bytes = 256KB
 tcp_batch_capacity = 256
@@ -238,7 +238,7 @@ tcp_batch_capacity = 256
 多样本测试结论：
 
 - nginx：`standard` 是默认推荐。
-- 默认部署：`standard` 是默认 profile，兼顾长行 TCP 样本吞吐和 RSS。
+- 默认部署：`standard` 是默认 profile，保留 low 的 sink、pending、UDP 和 file 内存水位，同时提高 TCP 长行样本吞吐。
 - APT/mix：在更复杂样本或更高目标速率下，可切换到 `throughput`。
 - AWS ELB：单条日志和规则成本更高，吞吐上限明显低于 nginx；优先通过 `rate_limit_rps` 控制输入速率，不建议单纯放大 channel 追速。
 

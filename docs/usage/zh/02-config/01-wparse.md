@@ -66,7 +66,7 @@ WP_MEMORY_PROFILE=throughput # 更宽 parser/sink channel；适合复杂样本�
 推荐含义：
 
 - `low`：更早施加背压，优先控制 RSS：`parser/sink channel = 32/16`、`sink_batch_size = 256`、`picker_burst_max = 4`、`tcp_batch = 32KB/32 events`、`pending = 1MB`。
-- `standard`：默认生产档，平衡吞吐和 RSS：`parser/sink channel = 48/24`、`sink_batch_size = 512`、`picker_burst_max = 6`、`tcp_recv = 2MB`、`tcp_batch = 256KB/256 events`、`pending = 2MB`。
+- `standard`：默认生产档，保留 low 的 sink、pending、UDP 和 file 内存水位，同时提高 TCP 长行样本吞吐：`parser/sink channel = 48/16`、`sink_batch_size = 256`、`picker_burst_max = 6`、`tcp_recv = 2MB`、`tcp_batch = 256KB/256 events`、`pending = 1MB`。
 - `throughput`：给解析和发送链路更大的通道余量，优先跑满复杂样本；仍保留较小 pending，避免无界堆积。
 
 历史别名仍可用：`small/tiny/xs` 等价于 `low`，`large/high` 等价于 `throughput`，`default/normal/balanced` 等价于 `standard`。
