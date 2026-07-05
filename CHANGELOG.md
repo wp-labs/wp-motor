@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
+## [1.23.5] - 2026-07-06
+
+### Added
+- **wpgen/Config**: `wpgen.toml` 新增 `[models]` 段，支持 `wpl` 字段指定 WPL 规则/样本目录，与 `wparse.toml` 的 `[models].wpl` 保持一致。配置优先级：`--wpl` CLI > `[models].wpl` > 默认 `./models/wpl/`。
+- **wpgen/Validate**: `[models].wpl` 目录不存在或无 `.dat`/`.wpl` 文件时，启动阶段报错退出（不再静默 `found 0 files`）。
+
+### Changed
+- **Sink/Factories**: `register_builtin_factories()` 启动时通过 `info_ctrl!` 打印已注册的 factory 列表（BlackHole, File, Syslog, Tcp, TestRescue）。
+
+### Tests
+- **wpgen/Config**: 新增 `wpgen_config_models_wpl_parsed`、`wpgen_config_models_default_none` 两例测试 `ModelsConfig` 解析。
+
 ## [1.23.4] - 2026-07-05
 
 ### Changed

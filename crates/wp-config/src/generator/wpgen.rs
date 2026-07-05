@@ -18,11 +18,21 @@ use super::speed_profile::SpeedProfileConfig;
 pub struct WpGenConfig {
     #[serde(default = "default_version")]
     pub version: String,
+    #[serde(default)]
+    pub models: ModelsConfig,
     pub generator: GeneratorConfig,
     pub output: OutputConfig,
     pub logging: LoggingConfig,
     #[serde(default)]
     pub presets: HashMap<String, String>,
+}
+
+/// Models path configuration (mirrors wparse.toml [models] section)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct ModelsConfig {
+    /// WPL rule/sample file directory
+    #[serde(default)]
+    pub wpl: Option<String>,
 }
 
 fn default_version() -> String {
@@ -33,6 +43,7 @@ impl Default for WpGenConfig {
     fn default() -> Self {
         Self {
             version: "1.0".to_string(),
+            models: ModelsConfig::default(),
             generator: GeneratorConfig::default(),
             output: OutputConfig::default(),
             logging: LoggingConfig::default(),
@@ -879,5 +890,56 @@ output = "file"
                 .to_string()
                 .contains("wpgen.output.connect is required")
         );
+    }
+
+    #[test]
+    fn wpgen_config_models_wpl_parsed() {
+        let base = tmp_dir("wpgen_models");
+        let conf_path = base.join("wpgen.toml");
+
+        let wpgen_toml = r#"
+version = "1.0"
+
+[models]
+wpl = "./custom/wpl"
+
+[generator]
+speed = 1000
+
+[output]
+connect = "file_sink"
+
+[logging]
+level = "info"
+output = "file"
+"#;
+        fs::write(&conf_path, wpgen_toml).unwrap();
+        let dict = EnvDict::new();
+        let config = WpGenConfig::load_from_path(&conf_path, &dict).expect("load wpgen config");
+        assert_eq!(config.models.wpl, Some("./custom/wpl".to_string()));
+    }
+
+    #[test]
+    fn wpgen_config_models_default_none() {
+        let base = tmp_dir("wpgen_models_def");
+        let conf_path = base.join("wpgen.toml");
+
+        let wpgen_toml = r#"
+version = "1.0"
+
+[generator]
+speed = 1000
+
+[output]
+connect = "file_sink"
+
+[logging]
+level = "info"
+output = "file"
+"#;
+        fs::write(&conf_path, wpgen_toml).unwrap();
+        let dict = EnvDict::new();
+        let config = WpGenConfig::load_from_path(&conf_path, &dict).expect("load wpgen config");
+        assert_eq!(config.models.wpl, None);
     }
 }
