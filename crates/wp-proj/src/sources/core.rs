@@ -16,7 +16,6 @@ use wp_conf::sources::types::{SourceItem, WarpSources};
 use wp_conf::structure::SourceInstanceConf;
 use wp_conf::{engine::EngineConfig, sources::build::load_source_instances_from_file};
 use wp_engine::facade::config::WPSRC_TOML;
-use wp_engine::sources::SourceConfigParser;
 use wp_error::run_error::{RunReason, RunResult};
 
 // Re-export modules and types
@@ -69,49 +68,61 @@ impl Sources {
         self.resolve_path(self.eng_conf().src_root())
     }
 
-    fn wpsrc_path(&self) -> PathBuf {
-        self.sources_root().join(WPSRC_TOML)
-    }
-
     pub fn check(&self, dict: &EnvDict) -> RunResult<CheckStatus> {
-        let wpsrc_path = self.wpsrc_path();
+        let sources_dir = self.sources_root();
 
-        // Verify configuration file exists
-        if !wpsrc_path.exists() {
-            return Err(RunReason::from_conf()
-                .to_err()
-                .with_detail(format!("source config not found: {}", wpsrc_path.display())));
+        // Verify directory exists and has configuration (old wpsrc.toml or new .toml files)
+        if !sources_dir.exists() {
+            return Err(RunReason::from_conf().to_err().with_detail(format!(
+                "sources directory not found: {}",
+                sources_dir.display()
+            )));
         }
 
         // Parse and validate configuration
-        self.validate_wpsrc_config(self.work_root(), &wpsrc_path, dict)?;
+        self.validate_wpsrc_config(self.work_root(), &sources_dir, dict)?;
 
         // Attempt to build specifications to ensure they are valid
-        self.build_source_specs(&wpsrc_path, dict)?;
+        self.build_source_specs(&sources_dir, dict)?;
 
         eprintln!("✓ Sources configuration validation passed");
         Ok(CheckStatus::Suc)
     }
 
     pub fn init(&self, dict: &EnvDict) -> RunResult<()> {
-        let wpsrc_dir = self.sources_root();
-        let wpsrc_path = wpsrc_dir.join(WPSRC_TOML);
+        let sources_dir = self.sources_root();
+        let wpsrc_path = sources_dir.join(WPSRC_TOML);
 
         // Ensure parent directory exists
-        self.ensure_directory_exists(&wpsrc_path)?;
+        self.ensure_directory_exists(&sources_dir)?;
 
-        // Load existing configuration or create new one
-        let mut sources_config = self.load_or_create_config(&wpsrc_path, dict)?;
-
-        // Add default sources if they don't exist
-        self.add_default_sources(&mut sources_config)?;
-
-        // Save configuration
-        sources_config
-            .save_toml(&wpsrc_path)
-            .owe(RunReason::from_conf())
-            .with_context(&wpsrc_path)
-            .doing("save sources config")?;
+        // Backward compat: if wpsrc.toml already exists, use old format
+        if wpsrc_path.exists() {
+            let mut sources_config = self.load_or_create_config(&wpsrc_path, dict)?;
+            self.add_default_sources(&mut sources_config)?;
+            sources_config
+                .save_toml(&wpsrc_path)
+                .owe(RunReason::from_conf())
+                .with_context(&wpsrc_path)
+                .doing("save sources config")?;
+        } else {
+            // New format: one .toml per source, no [[sources]] wrapper
+            let default_sources = self.default_source_items();
+            for source in default_sources {
+                let file_path = sources_dir.join(format!("{}.toml", source.key));
+                if file_path.exists() {
+                    continue; // don't overwrite existing source files
+                }
+                let content = toml::to_string_pretty(&source)
+                    .owe(RunReason::from_conf())
+                    .with_context(&file_path)
+                    .doing("serialize source config")?;
+                fs::write(&file_path, content)
+                    .owe(RunReason::from_conf())
+                    .with_context(&file_path)
+                    .doing("write source config")?;
+            }
+        }
 
         println!("✓ Sources initialization completed");
         Ok(())
@@ -119,36 +130,25 @@ impl Sources {
 
     fn validate_wpsrc_config(
         &self,
-        work_root: &Path,
-        wpsrc_path: &Path,
+        _work_root: &Path,
+        sources_path: &Path,
         dict: &EnvDict,
     ) -> RunResult<()> {
-        let parser = SourceConfigParser::new(work_root.to_path_buf());
-
-        // Load configuration from TOML file
-        let sources_config = WarpSources::env_load_toml(wpsrc_path, dict).conv_err()?;
-
-        // Serialize configuration to validate structure
-        let config_content = toml::to_string_pretty(&sources_config)
+        // Use load_source_instances_from_file which handles both:
+        // - old format: wpsrc.toml with [[sources]] array
+        // - new format: directory with individual .toml files
+        load_source_instances_from_file(sources_path, dict)
             .owe(RunReason::from_conf())
-            .with_context(wpsrc_path)
-            .doing("serialize sources config")?;
-
-        // Parse and validate the configuration content
-        parser
-            .parse_and_validate_only(&config_content, dict)
-            .owe(RunReason::from_conf())
-            .with_context(wpsrc_path)
+            .with_context(sources_path)
             .doing("validate sources config")?;
-
         Ok(())
     }
 
     /// Builds source specifications for validation
-    fn build_source_specs(&self, wpsrc_path: &Path, dict: &EnvDict) -> RunResult<()> {
-        let specs = load_source_instances_from_file(wpsrc_path, dict)
+    fn build_source_specs(&self, sources_path: &Path, dict: &EnvDict) -> RunResult<()> {
+        let specs = load_source_instances_from_file(sources_path, dict)
             .owe(RunReason::from_conf())
-            .with_context(wpsrc_path)
+            .with_context(sources_path)
             .doing("build source instances")?;
         self.validate_source_file_paths(&specs)?;
         Ok(())
@@ -274,24 +274,22 @@ impl Sources {
     }
 
     fn add_default_sources(&self, config: &mut WarpSources) -> RunResult<()> {
-        let default_sources = vec![
-            // Add a default file source that matches both gen.dat and sharded gen-r*.dat outputs
+        for source in self.default_source_items() {
+            Self::ensure_source_exists(config, source);
+        }
+        Ok(())
+    }
+
+    fn default_source_items(&self) -> Vec<SourceItem> {
+        vec![
             source_builders::file_source(DEFAULT_FILE_SOURCE_KEY, DEFAULT_FILE_SOURCE_PATH),
-            // Add a default syslog TCP source (disabled by default)
             source_builders::syslog_tcp_source(
                 DEFAULT_SYSLOG_SOURCE_ID,
                 DEFAULT_SYSLOG_HOST,
                 DEFAULT_SYSLOG_PORT,
             )
             .with_enable(Some(false)),
-        ];
-
-        // Add each source if it doesn't already exist
-        for source_item in default_sources {
-            Self::ensure_source_exists(config, source_item);
-        }
-
-        Ok(())
+        ]
     }
 
     /// Adds a new source only if an entry with the same key is not present
@@ -306,12 +304,17 @@ impl Sources {
 
     /// Ensures parent directory exists for configuration file
     fn ensure_directory_exists(&self, config_path: &Path) -> RunResult<()> {
-        if let Some(parent) = config_path.parent() {
-            fs::create_dir_all(parent)
-                .owe(RunReason::from_conf())
-                .with_context(parent)
-                .doing("create sources config directory")?;
-        }
+        let dir = if config_path.is_dir() {
+            config_path.to_path_buf()
+        } else if let Some(parent) = config_path.parent() {
+            parent.to_path_buf()
+        } else {
+            config_path.to_path_buf()
+        };
+        fs::create_dir_all(&dir)
+            .owe(RunReason::from_conf())
+            .with_context(&dir)
+            .doing("create sources config directory")?;
         Ok(())
     }
 
@@ -379,8 +382,12 @@ impl Checkable for Sources {
 
 impl HasStatistics for Sources {
     fn has_statistics(&self) -> bool {
-        // Sources has statistics capabilities via the stat module
-        self.wpsrc_path().exists()
+        let dir = self.sources_root();
+        dir.exists()
+            && dir
+                .read_dir()
+                .map(|mut d| d.next().is_some())
+                .unwrap_or(false)
     }
 }
 
