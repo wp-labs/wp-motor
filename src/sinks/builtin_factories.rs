@@ -11,6 +11,8 @@ pub fn register_builtin_factories() {
     wp_core_connectors::registry::register_sink_factory(SyslogFactory);
     wp_core_connectors::registry::register_sink_factory(TcpFactory);
     wp_core_connectors::registry::register_sink_factory(TestRescueFactory);
+
+    wp_log::info_ctrl!("sink factories registered: BlackHole, File, Syslog, Tcp, TestRescue");
 }
 
 #[allow(dead_code)]
