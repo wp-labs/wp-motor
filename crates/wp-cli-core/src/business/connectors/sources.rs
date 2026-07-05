@@ -1,15 +1,18 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use orion_conf::EnvTomlLoad;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
-use orion_error::conversion::ToStructError;
+use orion_conf::{EnvTomlLoad, ErrorWith};
+use orion_error::conversion::{SourceErr, ToStructError};
 use orion_variate::{EnvDict, EnvEvalable};
 use wp_conf::connectors::{
     ConnectorScope, ParamMap, load_connector_defs_from_dir, merge_params, param_map_to_table,
 };
 use wp_conf::engine::EngineConfig;
-use wp_conf::sources::{SourceConnector, WpSourcesConfig, find_connectors_dir};
+use wp_conf::sources::{
+    SourceConnector, WpSource, WpSourcesConfig, find_connectors_dir,
+    load_source_instances_from_file,
+};
 
 /// A flattened row for listing source connectors and their usages.
 #[derive(Debug, Clone)]
@@ -35,6 +38,41 @@ pub struct RouteRow {
 fn resolve_wpsrc_path(work_root: &str, eng_conf: &EngineConfig) -> OrionConfResult<PathBuf> {
     let wr = PathBuf::from(work_root);
     Ok(wr.join(eng_conf.src_root()).join("wpsrc.toml"))
+}
+
+/// Scan sources directory for per-source .toml files and return WpSource list (new dir-based format)
+fn load_dir_based_sources_list(
+    sources_dir: &Path,
+    dict: &EnvDict,
+) -> OrionConfResult<Vec<WpSource>> {
+    let pattern = format!("{}/**/*.toml", sources_dir.display());
+    let mut sources = Vec::new();
+    for entry in glob::glob(&pattern).map_err(|e| {
+        ConfIOReason::core_conf()
+            .to_err()
+            .with_detail(format!("glob pattern failed: {}", e))
+    })? {
+        let path = entry.map_err(|e| {
+            ConfIOReason::core_conf()
+                .to_err()
+                .with_detail(format!("glob iteration failed: {}", e))
+        })?;
+        if path.file_name().and_then(|n| n.to_str()) == Some("wpsrc.toml") {
+            continue;
+        }
+        let content = std::fs::read_to_string(&path)
+            .source_err(ConfIOReason::system_error(), "read source config")
+            .with_context(&path)
+            .doing("read source config")?;
+        let source: WpSource = WpSource::env_parse_toml(&content, dict)
+            .with_context(&path)
+            .doing("parse source config")?
+            .env_eval(dict);
+        if source.enable.unwrap_or(true) {
+            sources.push(source);
+        }
+    }
+    Ok(sources)
 }
 
 /// Load connectors map from `connectors/source.d` (dedup and validate ids).
@@ -72,12 +110,23 @@ pub fn list_connectors(
             ))
     })?;
     let conn_map = load_connectors_map(&conn_base, dict)?;
-    let wp_sources = WpSourcesConfig::env_load_toml(&wpsrc_path, dict)?;
 
-    // Count how many times each connector id is referenced.
+    // Count how many times each connector id is referenced (wpsrc.toml has priority;
+    // dir-based format refs are counted via load_source_instances_from_file fallback).
     let mut refs: BTreeMap<String, usize> = BTreeMap::new();
-    for s in wp_sources.sources {
-        *refs.entry(s.connect.clone()).or_insert(0) += 1;
+    if wpsrc_path.exists() {
+        let wp_sources = WpSourcesConfig::env_load_toml(&wpsrc_path, dict)?;
+        for s in wp_sources.sources {
+            *refs.entry(s.connect.clone()).or_insert(0) += 1;
+        }
+    } else if let Some(sources_dir) = wpsrc_path.parent()
+        && let Ok(instances) = load_source_instances_from_file(sources_dir, dict)
+    {
+        for inst in instances {
+            if let Some(conn_id) = &inst.connector_id {
+                *refs.entry(conn_id.clone()).or_insert(0) += 1;
+            }
+        }
     }
 
     let mut rows: Vec<ConnectorListRow> = conn_map
@@ -111,9 +160,18 @@ pub fn route_table(
             ))
     })?;
     let conn_map = load_connectors_map(&conn_base, dict)?;
-    let wrapper = WpSourcesConfig::env_load_toml(&wpsrc_path, dict)?.env_eval(dict);
+    // Load sources from either wpsrc.toml or directory-based format
+    let sources: Vec<WpSource> = if wpsrc_path.exists() {
+        WpSourcesConfig::env_load_toml(&wpsrc_path, dict)?
+            .env_eval(dict)
+            .sources
+    } else if let Some(sources_dir) = wpsrc_path.parent() {
+        load_dir_based_sources_list(sources_dir, dict)?
+    } else {
+        Vec::new()
+    };
     let mut rows: Vec<RouteRow> = Vec::new();
-    for src in wrapper.sources.into_iter() {
+    for src in sources.into_iter() {
         let conn = conn_map.get(&src.connect).ok_or_else(|| {
             ConfIOReason::validation_error()
                 .to_err()

@@ -418,7 +418,10 @@ mod tests {
         assert_eq!(standard.tcp_batch_bytes, 256 * KIB);
         assert_eq!(standard.tcp_batch_capacity, 256);
         assert_eq!(standard.sink_batch_size, 256);
-        assert_eq!(standard.picker_pending_max_bytes, low.picker_pending_max_bytes);
+        assert_eq!(
+            standard.picker_pending_max_bytes,
+            low.picker_pending_max_bytes
+        );
         assert_eq!(standard.udp_recv_buffer_bytes, low.udp_recv_buffer_bytes);
         assert_eq!(standard.udp_batch_size, low.udp_batch_size);
         assert_eq!(standard.file_batch_lines, low.file_batch_lines);

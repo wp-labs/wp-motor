@@ -6,13 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
-## [1.23.2 Unreleased]
+## [1.23.4] - 2026-07-05
 
 ### Changed
 - **Dependencies**: 升级 `shadow-rs` 1.5 → 2.0，升级 `wp-core-connectors` 0.3.3 → 0.5。
 - **Generator/Sink**: 合并 hotfix/1.22 的 `BatchSizePolicy`——动态字节预算批量下发。预算 = `base_rate(EPS) × avg_line_bytes(EMA) × time_window(100ms)`，clamp 到 [8KiB, 1MiB]。TCP sink 场景下 `wpgen` CPU 从 ~300% 降至 ~15%。
 ### Fixed
 - **Project Init**: 修复 `wproj init` 生成的 infra route 模板包含无效的 `version = "2.0"` header 和已废弃的 `file_proto_sink` connector 引用（改为 `file_proto_text_sink`）。`init` 阶段新增自动检测旧格式文件并覆写的逻辑。
+- **wpadm/Cli**: `wpadm data stat/validate/check` 及 `wpadm sources list/route` 硬编码了 `wpsrc.toml` 路径，不支持目录式 source 格式（每个 source 一个 `.toml` 文件）。现改为在 `wpsrc.toml` 不存在时自动扫描 `topology/sources/` 目录加载 source 配置。
+- **Clippy**: 修复 `collapsible_if` 和 `unused_imports` 警告。
 
 ### Tests
 - **Generator**: 新增 `BatchSizePolicy` 单元测试 6 例及速率×行长耦合集成测试 2 例，生成器测试 84 → 92。

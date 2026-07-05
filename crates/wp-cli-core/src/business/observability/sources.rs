@@ -42,30 +42,105 @@ fn read_wpsrc_toml(path: &Path) -> OrionConfResult<Option<String>> {
     Ok(None)
 }
 
+/// Scan the sources directory for per-source .toml files (new dir-based format)
+/// and build a WpSourcesConfig from them.
+fn load_dir_based_sources_config(
+    sources_dir: &Path,
+    dict: &EnvDict,
+) -> OrionConfResult<Option<(PathBuf, WpSourcesConfig)>> {
+    let pattern = format!("{}/**/*.toml", sources_dir.display());
+    let paths: Vec<PathBuf> = match glob::glob(&pattern) {
+        Ok(iter) => iter
+            .filter_map(|e| e.ok())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n != WPSRC_TOML)
+            })
+            .collect(),
+        Err(e) => {
+            return Err(ConfIOReason::core_conf()
+                .to_err()
+                .with_detail(format!("glob pattern failed: {}", e)));
+        }
+    };
+
+    if paths.is_empty() {
+        return Ok(None);
+    }
+
+    let mut sources = Vec::new();
+    for path in &paths {
+        let content = std::fs::read_to_string(path)
+            .source_err(ConfIOReason::system_error(), "read source config")
+            .with_context(path)
+            .doing("read source config")?;
+        let source: WpSource = WpSource::env_parse_toml(&content, dict)
+            .with_context(path)
+            .doing("parse source config")?
+            .env_eval(dict);
+        if source.enable.unwrap_or(true) {
+            sources.push(source);
+        }
+    }
+
+    if sources.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some((
+        sources_dir.to_path_buf(),
+        WpSourcesConfig { sources },
+    )))
+}
+
 fn load_wpsrc_sources(
     work_root: &Path,
     engine_conf: &EngineConfig,
     dict: &EnvDict,
 ) -> OrionConfResult<Option<Vec<WpsrcSource>>> {
     let path = wpsrc_path(work_root, engine_conf);
-    let Some(content) = read_wpsrc_toml(&path)? else {
+
+    // Try wpsrc.toml first (old format)
+    if let Some(content) = read_wpsrc_toml(&path)? {
+        let parsed: WpSourcesConfig = WpSourcesConfig::env_parse_toml(&content, dict)
+            .with_context(&path)
+            .doing("parse wpsrc config")?
+            .env_eval(dict);
+        let instances = wp_conf::sources::load_source_instances_from_file(&path, dict)
+            .with_context(&path)
+            .doing("load wpsrc source instances")?;
+
+        let mut instances_by_name: BTreeMap<String, SourceInstanceConf> = instances
+            .into_iter()
+            .map(|instance| (instance.core.name.clone(), instance))
+            .collect();
+        let mut sources = Vec::new();
+        for source in parsed.sources {
+            if let Some(instance) = instances_by_name.remove(&source.key) {
+                sources.push(WpsrcSource { source, instance });
+            }
+        }
+        return Ok(Some(sources));
+    }
+
+    // Fall back to directory-based format (one .toml per source)
+    let sources_dir = work_root.join(engine_conf.src_root());
+    let Some((sources_dir, source_conf)) = load_dir_based_sources_config(&sources_dir, dict)?
+    else {
         return Ok(None);
     };
 
-    let parsed: WpSourcesConfig = WpSourcesConfig::env_parse_toml(&content, dict)
-        .with_context(&path)
-        .doing("parse wpsrc config")?
-        .env_eval(dict);
-    let instances = wp_conf::sources::load_source_instances_from_file(&path, dict)
-        .with_context(&path)
-        .doing("load wpsrc source instances")?;
+    let instances = wp_conf::sources::load_source_instances_from_file(&sources_dir, dict)
+        .with_context(&sources_dir)
+        .doing("load dir-based source instances")?;
 
     let mut instances_by_name: BTreeMap<String, SourceInstanceConf> = instances
         .into_iter()
         .map(|instance| (instance.core.name.clone(), instance))
         .collect();
     let mut sources = Vec::new();
-    for source in parsed.sources {
+    for source in source_conf.sources {
         if let Some(instance) = instances_by_name.remove(&source.key) {
             sources.push(WpsrcSource { source, instance });
         }
@@ -79,14 +154,19 @@ fn load_wpsrc_config(
     dict: &EnvDict,
 ) -> OrionConfResult<Option<(PathBuf, WpSourcesConfig)>> {
     let path = wpsrc_path(work_root, engine_conf);
-    let Some(content) = read_wpsrc_toml(&path)? else {
-        return Ok(None);
-    };
-    let parsed: WpSourcesConfig = WpSourcesConfig::env_parse_toml(&content, dict)
-        .with_context(&path)
-        .doing("parse wpsrc config")?
-        .env_eval(dict);
-    Ok(Some((path, parsed)))
+
+    // Try wpsrc.toml first (old format)
+    if let Some(content) = read_wpsrc_toml(&path)? {
+        let parsed: WpSourcesConfig = WpSourcesConfig::env_parse_toml(&content, dict)
+            .with_context(&path)
+            .doing("parse wpsrc config")?
+            .env_eval(dict);
+        return Ok(Some((path, parsed)));
+    }
+
+    // Fall back to directory-based format (one .toml per source)
+    let sources_dir = work_root.join(engine_conf.src_root());
+    load_dir_based_sources_config(&sources_dir, dict)
 }
 
 fn load_wpsrc_connectors_map(

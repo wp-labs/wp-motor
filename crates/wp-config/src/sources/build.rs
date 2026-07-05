@@ -117,12 +117,12 @@ pub fn load_source_instances_from_file(
         return load_source_instances_from_dir(path, dict);
     }
     // 文件不存在时：检查父目录是否是新格式目录（兼容旧调用者传 wpsrc.toml 文件路径）
-    if !path.exists() {
-        if let Some(parent) = path.parent() {
-            if parent.is_dir() && !parent.join("wpsrc.toml").exists() {
-                return load_source_instances_from_dir(parent, dict);
-            }
-        }
+    if !path.exists()
+        && let Some(parent) = path.parent()
+        && parent.is_dir()
+        && !parent.join("wpsrc.toml").exists()
+    {
+        return load_source_instances_from_dir(parent, dict);
     }
     // 单文件模式：保留原有逻辑
     let content = std::fs::read_to_string(path)

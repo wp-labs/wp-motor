@@ -4,7 +4,7 @@
 //! validation, initialization, and routing operations for data sources
 //! in the Warp Flow System.
 
-use crate::compat::{ErrorConv, ErrorOweBase, UvsFrom};
+use crate::compat::{ErrorOweBase, UvsFrom};
 use orion_conf::{EnvTomlLoad, ErrorWith, TomlIO};
 use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
