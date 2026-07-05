@@ -31,6 +31,19 @@ Entries may be written in both English and Chinese.
 ### Fixed
 - **OML/Pipe/ip4_to_int**: 修复 `ip4_to_int` 对 IPv6 地址静默透传的问题，现改为返回 Null；新增对字符串 IPv4 地址的解析支持。
 
+## [1.22.10 Unreleased]
+
+### Changed
+- **Memory Profile**: Changed the unset `WP_MEMORY_PROFILE` default back to `standard`. The `standard` profile keeps the `low` sink, pending, UDP, and file memory watermarks while increasing parser/source-side headroom.
+  中文：未设置 `WP_MEMORY_PROFILE` 时默认回到 `standard`；`standard` 保持 low 的 sink、pending、UDP 和 file 内存水位，同时提高 parser/source 侧余量。
+- **TCP Source Throughput**: Raised `standard` profile TCP defaults to `WP_TCP_RECV_BYTES=2097152`, `WP_TCP_BATCH_BYTES=262144`, and `WP_TCP_BATCH_CAPACITY=256` to keep long-line TCP samples such as firewall better fed without requiring the full `throughput` profile.
+  中文：提升 `standard` profile 的 TCP 默认批量参数，以改善 firewall 等长行 TCP 样本的 parser 供给和 CPU 利用率，无需切到完整 throughput profile。
+- **Docs**: Updated source rate limit and wparse configuration docs to describe `standard` as the default profile and include the new TCP batch defaults.
+  中文：更新输入限速和 wparse 配置文档，说明 `standard` 为默认 profile，并补充新的 TCP 批量默认值。
+
+### Tests
+- **Config/Limits**: Updated memory profile tests to cover the new unset default and `standard` TCP batch values.
+  中文：更新 memory profile 测试，覆盖新的未设置默认值和 `standard` TCP 批量参数。
 
 ## [1.22.9] - 2026-06-25
 

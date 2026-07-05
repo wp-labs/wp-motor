@@ -1,4 +1,5 @@
 use super::types::WpSourcesConfig;
+use crate::connectors::json_type_label;
 use crate::loader::traits::ConfigLoader;
 use crate::sources::load_connectors_for;
 use crate::sources::types::SourceConnector;
@@ -67,6 +68,19 @@ fn merge_source_params(
                 ))
                 .with_context(allow.join(",")));
         }
+        // Type check: if the key exists in base, verify type compatibility
+        if let Some(default_val) = out.get(k) {
+            let expected = json_type_label(default_val);
+            let provided = json_type_label(v);
+            if expected != provided {
+                return Err(ConfIOReason::validation_error()
+                    .to_err()
+                    .with_detail(format!(
+                        "parameter '{}' type mismatch: expected {} (from default {:?}), got {} ({:?})",
+                        k, expected, default_val, provided, v
+                    )));
+            }
+        }
         out.insert(k.clone(), v.clone());
     }
     Ok(out)
@@ -86,22 +100,94 @@ pub fn load_source_instances_from_str(
 }
 
 /// 解析文件并结合 connectors 构建 CoreSourceSpec + connector_id 列表
+///
+/// - 如果 path 目录下存在 `wpsrc.toml` → 老格式：单文件 `[[sources]]` 数组
+/// - 如果 path 是目录但无 `wpsrc.toml` → 新格式：扫目录下每个 `.toml`，每个文件一个 source
+/// - 如果 path 是文件 → 直接解析（兼容单文件传参）
 pub fn load_source_instances_from_file(
     path: &Path,
     dict: &EnvDict,
 ) -> OrionConfResult<Vec<SourceInstanceConf>> {
+    // 目录模式：有 wpsrc.toml → 老格式，否则 → 新格式（扫 *.toml）
+    if path.is_dir() {
+        let wpsrc_file = path.join("wpsrc.toml");
+        if wpsrc_file.exists() {
+            return load_source_instances_from_file(&wpsrc_file, dict);
+        }
+        return load_source_instances_from_dir(path, dict);
+    }
+    // 文件不存在时：检查父目录是否是新格式目录（兼容旧调用者传 wpsrc.toml 文件路径）
+    if !path.exists() {
+        if let Some(parent) = path.parent() {
+            if parent.is_dir() && !parent.join("wpsrc.toml").exists() {
+                return load_source_instances_from_dir(parent, dict);
+            }
+        }
+    }
+    // 单文件模式：保留原有逻辑
     let content = std::fs::read_to_string(path)
         .source_raw_err(ConfIOReason::core_conf(), "source error")
         .doing("load sources config")
         .with_context(path)?;
-    let start = if path.is_dir() {
-        path.to_path_buf()
-    } else {
-        path.parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
-    };
+    let start = path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     load_source_instances_from_str(&content, &start, dict)
+}
+
+/// 扫目录下所有 `*.toml` 文件，每个文件解析为一个 source（新格式：少一层 [[sources]] 包裹）
+pub fn load_source_instances_from_dir(
+    dir: &Path,
+    dict: &EnvDict,
+) -> OrionConfResult<Vec<SourceInstanceConf>> {
+    use crate::sources::types::WpSource;
+    let conn_dict = load_connectors_for(dir, dict)?;
+    let mut instances = Vec::new();
+
+    let pattern = format!("{}/**/*.toml", dir.display());
+    let paths: Vec<std::path::PathBuf> = glob::glob(&pattern)
+        .map_err(|e| {
+            ConfIOReason::core_conf()
+                .to_err()
+                .with_detail(format!("glob pattern failed: {}", e))
+        })?
+        .filter_map(|e| e.ok())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n != "wpsrc.toml")
+        })
+        .collect();
+
+    for path in paths {
+        let content = std::fs::read_to_string(&path)
+            .source_raw_err(ConfIOReason::core_conf(), "source error")
+            .doing("read source config")
+            .with_context(&path)?;
+        // 新格式：每个 .toml 直接是一个 WpSource，无 [[sources]] 外层
+        let source: WpSource = WpSource::env_parse_toml(&content, dict)
+            .map_err(|e| {
+                ConfIOReason::core_conf()
+                    .to_err()
+                    .with_detail(format!("parse source config: {}", e))
+            })?
+            .env_eval(dict);
+        if !source.enable.unwrap_or(true) {
+            continue;
+        }
+        instances.push(resolve_source_instance(&source, &conn_dict)?);
+    }
+
+    if instances.is_empty() {
+        return Err(ConfIOReason::validation_error()
+            .to_err()
+            .with_detail(format!(
+                "no enabled sources found under {}; place .toml files (one per source) or a wpsrc.toml with [[sources]]",
+                dir.display()
+            )));
+    }
+    Ok(instances)
 }
 
 /// 从 WarpSources + 连接器字典 构建 SourceInstanceConf（包含 Core + connector_id）列表

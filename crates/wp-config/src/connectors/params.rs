@@ -6,6 +6,27 @@
 use crate::connectors::ParamMap;
 use orion_conf::error::{ConfIOReason, OrionConfResult};
 use orion_error::conversion::ToStructError;
+use serde_json::Value;
+
+/// Classify a JSON value into a coarse type label for type-mismatch reporting.
+/// Integer and float are distinguished so that `port = 9801` (integer) is not
+/// silently accepted when overriding `port = 9000` (integer) with a float.
+pub fn json_type_label(v: &Value) -> &'static str {
+    match v {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(n) => {
+            if n.is_i64() || n.is_u64() {
+                "integer"
+            } else {
+                "float"
+            }
+        }
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
 
 /// Merge connector parameters with user overrides, respecting whitelist.
 ///
@@ -65,6 +86,23 @@ pub fn merge_params(
                     key,
                     allow_override.join(", ")
                 )));
+        }
+
+        // Type check: if the key exists in base (default_params), verify
+        // the override value has a compatible JSON type. This catches
+        // silent fallbacks like `port = "9801"` (string) overriding
+        // `port = 9000` (integer).
+        if let Some(default_val) = result.get(key) {
+            let expected = json_type_label(default_val);
+            let provided = json_type_label(value);
+            if expected != provided {
+                return Err(ConfIOReason::validation_error()
+                    .to_err()
+                    .with_detail(format!(
+                        "parameter '{}' type mismatch: expected {} (from default {:?}), got {} ({:?})",
+                        key, expected, default_val, provided, value
+                    )));
+            }
         }
 
         // Merge the override
@@ -193,5 +231,82 @@ mod tests {
             merged.get("override_me").and_then(|v| v.as_str()),
             Some("new")
         );
+    }
+
+    #[test]
+    fn merge_params_rejects_string_overriding_integer() {
+        let mut base = ParamMap::new();
+        base.insert("port".into(), json!(9000));
+
+        let mut overrides = ParamMap::new();
+        overrides.insert("port".into(), json!("9801")); // string, not integer
+
+        let allow = vec!["port".to_string()];
+
+        let result = merge_params(&base, &overrides, &allow);
+        assert!(result.is_err(), "String overriding integer must error");
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("port"), "Error should mention parameter name");
+        assert!(
+            err.contains("integer"),
+            "Error should mention expected type"
+        );
+        assert!(err.contains("string"), "Error should mention provided type");
+    }
+
+    #[test]
+    fn merge_params_rejects_integer_overriding_string() {
+        let mut base = ParamMap::new();
+        base.insert("addr".into(), json!("0.0.0.0"));
+
+        let mut overrides = ParamMap::new();
+        overrides.insert("addr".into(), json!(123)); // integer, not string
+
+        let allow = vec!["addr".to_string()];
+
+        let result = merge_params(&base, &overrides, &allow);
+        assert!(result.is_err(), "Integer overriding string must error");
+    }
+
+    #[test]
+    fn merge_params_allows_new_keys_without_type_check() {
+        // Keys that exist in overrides but NOT in base: no type to compare
+        // against, so any type is accepted (back-compat for new params)
+        let base = ParamMap::new();
+
+        let mut overrides = ParamMap::new();
+        overrides.insert("custom".into(), json!(42));
+
+        let allow = vec!["custom".to_string()];
+
+        let result = merge_params(&base, &overrides, &allow);
+        assert!(
+            result.is_ok(),
+            "New key without base default should be accepted"
+        );
+    }
+
+    #[test]
+    fn merge_params_allows_same_type_override() {
+        let mut base = ParamMap::new();
+        base.insert("port".into(), json!(9000));
+        base.insert("addr".into(), json!("0.0.0.0"));
+        base.insert("enabled".into(), json!(true));
+
+        let mut overrides = ParamMap::new();
+        overrides.insert("port".into(), json!(9801)); // int → int
+        overrides.insert("addr".into(), json!("1.2.3.4")); // str → str
+        overrides.insert("enabled".into(), json!(false)); // bool → bool
+
+        let allow = vec![
+            "port".to_string(),
+            "addr".to_string(),
+            "enabled".to_string(),
+        ];
+
+        let merged = merge_params(&base, &overrides, &allow).unwrap();
+        assert_eq!(merged.get("port").and_then(|v| v.as_i64()), Some(9801));
+        assert_eq!(merged.get("addr").and_then(|v| v.as_str()), Some("1.2.3.4"));
+        assert_eq!(merged.get("enabled").and_then(|v| v.as_bool()), Some(false));
     }
 }

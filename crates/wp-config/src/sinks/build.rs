@@ -1,5 +1,6 @@
 use super::types::RouteSink;
 use super::types::{ConnectorRec, DefaultsBody, RouteFile, StringOrArray};
+use crate::connectors::json_type_label;
 use crate::sinks::io::business_dir;
 use crate::sinks::{load_connectors_for, load_route_files_from, load_sink_defaults};
 use crate::structure::{SinkInstanceConf, SinkRouteConf, Validate as ConfValidate};
@@ -164,6 +165,23 @@ fn merge_params_with_allowlist(
                             .unwrap_or_else(|| "-".to_string())
                     )),
             );
+        }
+        // Type check: if the key exists in base, verify type compatibility
+        if let Some(default_val) = m.get(k) {
+            let expected = json_type_label(default_val);
+            let provided = json_type_label(v);
+            if expected != provided {
+                return Err(
+                    ConfIOReason::validation_error()
+                        .to_err()
+                        .with_detail(format!(
+                            "parameter '{}' type mismatch: expected {} (from default {:?}), got {} ({:?}) (group: {}, sink: {}, connector: {}, file: {})",
+                            k, expected, default_val, provided, v,
+                            group_name, sink_name, conn_id,
+                            origin.map(|p| p.display().to_string()).unwrap_or_else(|| "-".to_string())
+                        )),
+                );
+            }
         }
         m.insert(k.clone(), v.clone());
     }
