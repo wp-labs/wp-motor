@@ -653,4 +653,119 @@ connect = "conn1"
         // 应该验证失败
         assert!(result.is_err(), "空 name 应该验证失败");
     }
+
+    #[test]
+    fn load_from_dir_without_wpsrc_uses_new_format() {
+        let base = tmp_dir("src_dir_new");
+        let cdir = base.join("connectors").join("source.d");
+        fs::create_dir_all(&cdir).unwrap();
+
+        // 创建 connector 配置
+        fs::write(
+            cdir.join("conn.toml"),
+            r#"[[connectors]]
+id = "file_src"
+type = "file"
+allow_override = ["file","encode"]
+[connectors.params]
+encode = "text"
+file = "gen.dat"
+"#,
+        )
+        .unwrap();
+
+        // 新格式：每个 .toml 一个 source
+        let src_dir = base.join("topology").join("sources");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::write(
+            src_dir.join("file_1.toml"),
+            r#"key = "file_1"
+connect = "file_src"
+enable = true
+[params]
+encode = "text"
+file = "gen.dat"
+"#,
+        )
+        .unwrap();
+        fs::write(
+            src_dir.join("file_2.toml"),
+            r#"key = "file_2"
+enable = false
+connect = "file_src"
+[params]
+encode = "text"
+file = "gen2.dat"
+"#,
+        )
+        .unwrap();
+
+        // 传目录路径
+        let result = load_source_instances_from_file(&src_dir, &EnvDict::test_default());
+        assert!(
+            result.is_ok(),
+            "dir load should succeed: {:?}",
+            result.err()
+        );
+        let instances = result.unwrap();
+        // file_2 has enable=false, should be skipped
+        assert_eq!(instances.len(), 1, "only enabled sources should be loaded");
+        assert_eq!(instances[0].name(), "file_1");
+    }
+
+    #[test]
+    fn load_from_non_existent_file_falls_back_to_parent_dir() {
+        let base = tmp_dir("src_fallback");
+        let cdir = base.join("connectors").join("source.d");
+        fs::create_dir_all(&cdir).unwrap();
+
+        // 创建 connector 配置
+        fs::write(
+            cdir.join("conn.toml"),
+            r#"[[connectors]]
+id = "file_src"
+type = "file"
+allow_override = ["file","encode"]
+[connectors.params]
+encode = "text"
+file = "gen.dat"
+"#,
+        )
+        .unwrap();
+
+        // 新格式目录（有 .toml 文件，无 wpsrc.toml）
+        let src_dir = base.join("topology").join("sources");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::write(
+            src_dir.join("tcp_1.toml"),
+            r#"key = "tcp_1"
+connect = "file_src"
+[params]
+encode = "text"
+file = "gen.dat"
+"#,
+        )
+        .unwrap();
+
+        // 传不存在的 wpsrc.toml 文件路径 — 应回退到父目录扫描
+        let fake_wpsrc = src_dir.join("wpsrc.toml");
+        assert!(!fake_wpsrc.exists());
+        let result = load_source_instances_from_file(&fake_wpsrc, &EnvDict::test_default());
+        assert!(
+            result.is_ok(),
+            "fallback should succeed: {:?}",
+            result.err()
+        );
+        let instances = result.unwrap();
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].name(), "tcp_1");
+    }
+
+    #[test]
+    fn load_from_non_existent_file_without_parent_dir_fails() {
+        // 不存在的路径，父目录也不存在 → 应报错
+        let phantom = std::path::PathBuf::from("/nonexistent_xyz_test/sources/wpsrc.toml");
+        let result = load_source_instances_from_file(&phantom, &EnvDict::test_default());
+        assert!(result.is_err(), "truly missing path should fail");
+    }
 }
