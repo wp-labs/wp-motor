@@ -304,9 +304,11 @@ impl Sources {
 
     /// Ensures parent directory exists for configuration file
     fn ensure_directory_exists(&self, config_path: &Path) -> RunResult<()> {
-        let dir = if config_path.is_dir() {
+        let dir = if config_path.is_dir() || !config_path.exists() {
+            // Path is an existing directory OR doesn't exist yet → create it as a directory
             config_path.to_path_buf()
         } else if let Some(parent) = config_path.parent() {
+            // Path exists as a file → create parent directory
             parent.to_path_buf()
         } else {
             config_path.to_path_buf()
@@ -408,7 +410,7 @@ fn has_glob_pattern(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
 
-    use crate::test_utils::temp_workdir;
+    use crate::test_utils::{temp_workdir, write_basic_wparse_config};
     use serde_json::json;
 
     use super::*;
@@ -451,6 +453,86 @@ mod tests {
         assert_eq!(
             stored.params.get("base").and_then(|v| v.as_str()),
             Some("custom_base")
+        );
+    }
+
+    #[test]
+    fn default_source_items_returns_expected_sources() {
+        let temp = temp_workdir();
+        write_basic_wparse_config(temp.path());
+        let eng = std::sync::Arc::new(EngineConfig::init(temp.path()).conf_absolutize(temp.path()));
+        let sources = Sources::new(temp.path(), eng);
+        let items = sources.default_source_items();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].key, DEFAULT_FILE_SOURCE_KEY);
+        assert_eq!(items[0].connect, "file_src");
+        assert!(items[0].enable.unwrap());
+        assert_eq!(items[1].key, DEFAULT_SYSLOG_SOURCE_ID);
+        assert!(!items[1].enable.unwrap());
+    }
+
+    #[test]
+    fn init_creates_individual_toml_files_in_new_format() {
+        let temp = temp_workdir();
+        write_basic_wparse_config(temp.path());
+        let eng = std::sync::Arc::new(EngineConfig::init(temp.path()).conf_absolutize(temp.path()));
+        let sources = Sources::new(temp.path(), eng);
+
+        // Must not create wpsrc.toml
+        let wpsrc = sources.sources_root().join("wpsrc.toml");
+        assert!(
+            !wpsrc.exists(),
+            "wpsrc.toml should NOT be created in new format"
+        );
+
+        sources.init(&orion_variate::EnvDict::default()).unwrap();
+
+        // Verify individual .toml files
+        let file1 = sources
+            .sources_root()
+            .join(format!("{}.toml", DEFAULT_FILE_SOURCE_KEY));
+        let syslog1 = sources
+            .sources_root()
+            .join(format!("{}.toml", DEFAULT_SYSLOG_SOURCE_ID));
+
+        assert!(file1.exists(), "file_1.toml should exist");
+        assert!(syslog1.exists(), "syslog_1.toml should exist");
+        assert!(!wpsrc.exists(), "wpsrc.toml should still NOT exist");
+
+        // Parse and verify content
+        let content = fs::read_to_string(&file1).unwrap();
+        let src: SourceItem = toml::from_str(&content).unwrap();
+        assert_eq!(src.key, DEFAULT_FILE_SOURCE_KEY);
+        assert_eq!(src.connect, "file_src");
+    }
+
+    #[test]
+    fn init_preserves_existing_wpsrc_toml() {
+        let temp = temp_workdir();
+        write_basic_wparse_config(temp.path());
+        let eng = std::sync::Arc::new(EngineConfig::init(temp.path()).conf_absolutize(temp.path()));
+        let sources = Sources::new(temp.path(), eng);
+
+        // Pre-create wpsrc.toml with old format
+        let src_dir = sources.sources_root();
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::write(
+            src_dir.join("wpsrc.toml"),
+            "[[sources]]\nkey = \"custom\"\nconnect = \"file_src\"\nparams = { file = \"a.dat\" }\n",
+        )
+        .unwrap();
+
+        sources.init(&orion_variate::EnvDict::default()).unwrap();
+
+        // wpsrc.toml should still exist (old format preserved)
+        let wpsrc = src_dir.join("wpsrc.toml");
+        assert!(wpsrc.exists(), "existing wpsrc.toml must be preserved");
+
+        // Individual files should NOT be created
+        let file1 = src_dir.join(format!("{}.toml", DEFAULT_FILE_SOURCE_KEY));
+        assert!(
+            !file1.exists(),
+            "individual files must NOT be created when wpsrc.toml exists"
         );
     }
 }
