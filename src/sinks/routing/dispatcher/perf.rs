@@ -270,7 +270,7 @@ impl SinkWpMetaOutputPerfCase {
 
     pub fn run_once(&mut self) -> usize {
         let size = self.package.len();
-        let package = std::mem::replace(&mut self.package, SinkPackage::new());
+        let package = std::mem::take(&mut self.package);
         self.runtime.block_on(async {
             self.dispatcher
                 .group_sink_batch_direct(package, None, None)
@@ -331,7 +331,7 @@ impl SinkWpMetaDisablePerfCase {
     }
 
     pub fn run_once(&mut self) -> usize {
-        let package = std::mem::replace(&mut self.package, SinkPackage::new());
+        let package = std::mem::take(&mut self.package);
         self.runtime.block_on(async {
             self.dispatcher
                 .group_sink_batch_direct(package, None, None)
