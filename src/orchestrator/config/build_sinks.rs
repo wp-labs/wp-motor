@@ -4,7 +4,7 @@ use orion_error::conversion::SourceRawErr;
 use wp_error::DistFocus;
 
 use crate::resources::SinkResUnit;
-use wp_conf::sinks::core_to_resolved;
+use wp_conf::sinks::core_to_connector_resolved;
 // file/test_rescue/null now use built-in factories; file helpers kept for fallback logic only
 use crate::sinks::SinkDispatcher;
 use crate::sinks::SinkRuntime;
@@ -70,7 +70,7 @@ pub async fn build_sink_target(
     if let Some(factory) = wp_core_connectors::registry::get_sink_factory(&kind) {
         // Factory path: use flattened params directly
         op.debug("load factory suc!");
-        let spec: wp_connector_api::SinkSpec = core_to_resolved(&core);
+        let spec: wp_connector_api::SinkSpec = core_to_connector_resolved(&core);
         let init = factory
             .build(&spec, &ctx)
             .await

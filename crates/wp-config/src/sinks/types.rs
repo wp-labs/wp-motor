@@ -42,6 +42,9 @@ pub struct RouteGroup {
     /// 组级标签
     #[serde(default)]
     pub tags: Option<Vec<String>>,
+    /// Group-level runtime metadata fields hidden from all sinks in this group.
+    #[serde(default)]
+    pub wp_meta_disable: Option<Vec<String>>,
     #[serde(default)]
     pub expect: Option<GroupExpectSpec>,
     /// 批量超时时间，单位：毫秒，默认 300ms
@@ -59,6 +62,9 @@ impl EnvEvaluable<RouteGroup> for RouteGroup {
         self.name = self.name.env_eval(dict);
         if let Some(tags) = self.tags {
             self.tags = Some(env_eval_vec(tags, dict));
+        }
+        if let Some(wp_meta_disable) = self.wp_meta_disable {
+            self.wp_meta_disable = Some(env_eval_vec(wp_meta_disable, dict));
         }
         self.sinks = env_eval_vec(self.sinks, dict);
         self
@@ -165,6 +171,7 @@ pub struct DefaultsFile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use orion_variate::{EnvDict, ValueType};
 
     #[test]
     fn route_file_rejects_unknown_top_level_field() {
@@ -230,5 +237,34 @@ mod tests {
         .to_string();
         assert!(err.contains("unknown field"));
         assert!(err.contains("tag"));
+    }
+
+    #[test]
+    fn route_group_wp_meta_disable_env_eval() {
+        let route = toml::from_str::<RouteFile>(
+            r#"
+            [sink_group]
+            name = "demo"
+            wp_meta_disable = ["${META_FIELD}"]
+
+            [[sink_group.sinks]]
+            use = "custom_sink"
+            "#,
+        )
+        .expect("route file");
+        let mut dict = EnvDict::new();
+        dict.insert("META_FIELD", ValueType::from("wp_event_id"));
+
+        let route = route.env_eval(&dict);
+
+        assert_eq!(
+            route
+                .sink_group
+                .wp_meta_disable
+                .as_ref()
+                .and_then(|items| items.first())
+                .map(String::as_str),
+            Some("wp_event_id")
+        );
     }
 }

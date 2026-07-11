@@ -19,6 +19,8 @@ const CONNECTOR_TYPE_FILE: &str = "file";
 const CONNECTOR_TYPE_TEST_RESCUE: &str = "test_rescue";
 const FIELD_FMT: &str = "fmt";
 const DEFAULT_OUTPUT_FORMAT: &str = "json";
+const FIELD_WP_META_DISABLE: &str = "wp_meta_disable";
+const FIELD_STREAM_TAG_FIELD: &str = "stream_tag_field";
 
 fn build_sink_instance(
     group_name: &str,
@@ -115,6 +117,14 @@ fn is_nested_field_blacklisted(k: &str) -> bool {
     matches!(k, "params" | "params_override")
 }
 
+fn is_group_only_runtime_field(k: &str) -> bool {
+    matches!(k, FIELD_WP_META_DISABLE)
+}
+
+fn is_source_only_runtime_field(k: &str) -> bool {
+    matches!(k, FIELD_STREAM_TAG_FIELD)
+}
+
 /// 合并 connector 默认参数与覆盖表，并执行白名单/嵌套校验（可被 CLI/工具链共用）
 fn merge_params_with_allowlist(
     base: &ParamMap,
@@ -148,6 +158,30 @@ fn merge_params_with_allowlist(
                             .unwrap_or_else(|| "-".to_string())
                     )),
             );
+        }
+        if is_group_only_runtime_field(k) {
+            return Err(ConfIOReason::validation_error().to_err().with_detail(format!(
+                "sink param '{}' is group-level only; set it under [sink_group] instead of sink params (group: {}, sink: {}, connector: {}, file: {})",
+                k,
+                group_name,
+                sink_name,
+                conn_id,
+                origin
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "-".to_string())
+            )));
+        }
+        if is_source_only_runtime_field(k) {
+            return Err(ConfIOReason::validation_error().to_err().with_detail(format!(
+                "sink param '{}' is source-level only; set it under source params instead of sink params (group: {}, sink: {}, connector: {}, file: {})",
+                k,
+                group_name,
+                sink_name,
+                conn_id,
+                origin
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "-".to_string())
+            )));
         }
         if !allow.iter().any(|x| x == k) {
             return Err(
@@ -186,6 +220,25 @@ fn merge_params_with_allowlist(
         m.insert(k.clone(), v.clone());
     }
     Ok(m)
+}
+
+fn apply_group_runtime_params(sink: &mut SinkInstanceConf, rf: &RouteFile) -> OrionConfResult<()> {
+    if let Some(disabled) = rf.sink_group.wp_meta_disable.as_ref() {
+        if disabled.iter().any(|field| field.trim().is_empty()) {
+            return Err(ConfIOReason::validation_error().to_err().with_detail(format!(
+                "sink_group.wp_meta_disable must be an array of non-empty strings (group: {}, file: {})",
+                rf.sink_group.name,
+                rf.origin
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "-".to_string())
+            )));
+        }
+        sink.core
+            .params
+            .insert(FIELD_WP_META_DISABLE.into(), serde_json::json!(disabled));
+    }
+    Ok(())
 }
 
 fn collect_group_matchers(rf: &RouteFile) -> (Vec<String>, Vec<String>) {
@@ -291,6 +344,7 @@ pub fn build_route_conf_from_with(
             conn,
             s,
         )?;
+        apply_group_runtime_params(&mut sink, rf)?;
         assemble_sink_tags(
             &mut sink,
             defaults.and_then(|d| d.tags.as_ref()),
@@ -386,7 +440,7 @@ fn plugin_validate_with(
     let kind = sink.resolved_kind_str();
     if let Some(f) = reg.get(&kind) {
         let core: wp_specs::CoreSinkSpec = (sink).into();
-        let resolved = crate::sinks::resolved::core_to_resolved_with(
+        let resolved = crate::sinks::resolved::core_to_connector_resolved_with(
             &core,
             rf.sink_group.name.clone(),
             conn.id.clone(),
@@ -468,6 +522,12 @@ pub fn load_infra_route_confs(
 mod tests {
     use super::*;
     use crate::sinks::types::{RouteFile, RouteGroup, StringOrArray};
+    use async_trait::async_trait;
+    use serde_json::json;
+    use wp_connector_api::{
+        ConnectorDef, ConnectorScope, SinkBuildCtx, SinkDefProvider, SinkFactory, SinkHandle,
+        SinkReason, SinkResult, SinkSpec,
+    };
 
     #[test]
     fn test_collect_matchers_rule_only() {
@@ -482,6 +542,7 @@ mod tests {
                     "/api/*".to_string(),
                 ])),
                 tags: None,
+                wp_meta_disable: None,
                 expect: None,
                 sinks: vec![],
                 parallel: None,
@@ -509,6 +570,7 @@ mod tests {
                 oml: Some(StringOrArray::Single("test_model".to_string())),
                 rule: None,
                 tags: None,
+                wp_meta_disable: None,
                 expect: None,
                 sinks: vec![],
                 parallel: None,
@@ -538,6 +600,7 @@ mod tests {
                 ])),
                 rule: Some(StringOrArray::Single("/test/*".to_string())),
                 tags: None,
+                wp_meta_disable: None,
                 expect: None,
                 sinks: vec![],
                 parallel: None,
@@ -566,6 +629,7 @@ mod tests {
                 oml: None,
                 rule: None,
                 tags: None,
+                wp_meta_disable: None,
                 expect: None,
                 sinks: vec![],
                 parallel: None,
@@ -579,5 +643,182 @@ mod tests {
 
         assert_eq!(oml_vec.len(), 0);
         assert_eq!(rule_vec.len(), 0);
+    }
+
+    #[test]
+    fn merge_params_rejects_sink_level_stream_tag_field() {
+        let mut base = ParamMap::new();
+        base.insert("base".into(), json!("./data/out_dat"));
+        base.insert("file".into(), json!("default.json"));
+        let mut overrides = ParamMap::new();
+        overrides.insert("file".into(), json!("out.json"));
+        overrides.insert("stream_tag_field".into(), json!("wp_stream_tag"));
+        let allow = vec![
+            "base".to_string(),
+            "file".to_string(),
+            "stream_tag_field".to_string(),
+        ];
+
+        let err = merge_params_with_allowlist(
+            &base,
+            &overrides,
+            &allow,
+            "/sink/test",
+            "json",
+            "file_json_sink",
+            None,
+        )
+        .expect_err("stream_tag_field belongs to source config")
+        .to_string();
+
+        assert!(err.contains("source-level only"), "err={}", err);
+    }
+
+    #[test]
+    fn merge_params_rejects_sink_level_wp_meta_disable() {
+        let base = ParamMap::new();
+        let mut overrides = ParamMap::new();
+        overrides.insert("wp_meta_disable".into(), json!(["wp_event_id"]));
+        let allow = vec!["wp_meta_disable".to_string()];
+
+        let err = merge_params_with_allowlist(
+            &base,
+            &overrides,
+            &allow,
+            "/sink/test",
+            "json",
+            "file_json_sink",
+            None,
+        )
+        .expect_err("wp_meta_disable belongs to sink_group")
+        .to_string();
+
+        assert!(err.contains("group-level only"), "err={}", err);
+    }
+
+    #[test]
+    fn group_wp_meta_disable_is_injected_into_each_sink_params() {
+        let rf: RouteFile = toml::from_str(
+            r#"
+version = "2.0"
+[sink_group]
+name = "/sink/test"
+oml = ["network.netflow"]
+wp_meta_disable = ["wp_event_id"]
+
+[[sink_group.sinks]]
+name = "json"
+connect = "file_json_sink"
+params = { file = "out.json" }
+"#,
+        )
+        .expect("route file");
+        let mut conn_map = BTreeMap::new();
+        conn_map.insert(
+            "file_json_sink".to_string(),
+            ConnectorRec {
+                id: "file_json_sink".to_string(),
+                kind: "file".to_string(),
+                scope: wp_connector_api::ConnectorScope::Sink,
+                allow_override: vec!["base".to_string(), "file".to_string()],
+                default_params: ParamMap::new(),
+                origin: None,
+            },
+        );
+
+        let conf = build_route_conf_from(&rf, None, &conn_map).expect("route conf");
+        let sink = conf.sink_group.sinks.first().expect("sink");
+        assert_eq!(
+            sink.core
+                .params
+                .get("wp_meta_disable")
+                .and_then(|v| v.as_array())
+                .map(Vec::len),
+            Some(1)
+        );
+    }
+
+    struct StrictFactory;
+
+    impl SinkDefProvider for StrictFactory {
+        fn sink_def(&self) -> ConnectorDef {
+            ConnectorDef {
+                id: "strict_sink".to_string(),
+                kind: "strict".to_string(),
+                scope: ConnectorScope::Sink,
+                allow_override: vec!["file".to_string()],
+                default_params: ParamMap::new(),
+                origin: None,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl SinkFactory for StrictFactory {
+        fn kind(&self) -> &'static str {
+            "strict"
+        }
+
+        fn validate_spec(&self, spec: &SinkSpec) -> SinkResult<()> {
+            for key in ["wp_meta_disable", "stream_tag_field"] {
+                if spec.params.contains_key(key) {
+                    return Err(SinkReason::core_conf()
+                        .to_err()
+                        .with_detail(format!("connector saw runtime param: {key}")));
+                }
+            }
+            Ok(())
+        }
+
+        async fn build(&self, _spec: &SinkSpec, _ctx: &SinkBuildCtx) -> SinkResult<SinkHandle> {
+            Err(SinkReason::core_conf()
+                .to_err()
+                .with_detail("strict test factory is validate-only"))
+        }
+    }
+
+    struct StrictLookup;
+
+    impl SinkFactoryLookup for StrictLookup {
+        fn get(&self, kind: &str) -> Option<Arc<dyn SinkFactory + 'static>> {
+            (kind == "strict").then(|| Arc::new(StrictFactory) as Arc<dyn SinkFactory>)
+        }
+    }
+
+    #[test]
+    fn plugin_validate_does_not_receive_runtime_metadata_params() {
+        let rf: RouteFile = toml::from_str(
+            r#"
+version = "2.0"
+[sink_group]
+name = "/sink/test"
+oml = ["network.netflow"]
+wp_meta_disable = ["wp_event_id"]
+
+[[sink_group.sinks]]
+name = "strict"
+connect = "strict_sink"
+params = { file = "out.json" }
+"#,
+        )
+        .expect("route file");
+        let mut conn_map = BTreeMap::new();
+        conn_map.insert(
+            "strict_sink".to_string(),
+            ConnectorRec {
+                id: "strict_sink".to_string(),
+                kind: "strict".to_string(),
+                scope: ConnectorScope::Sink,
+                allow_override: vec!["file".to_string()],
+                default_params: ParamMap::new(),
+                origin: None,
+            },
+        );
+
+        let conf =
+            build_route_conf_from_with(&rf, None, &conn_map, &StrictLookup).expect("route conf");
+        let sink = conf.sink_group.sinks.first().expect("sink");
+        assert!(sink.core.params.contains_key("wp_meta_disable"));
+        assert!(!sink.core.params.contains_key("stream_tag_field"));
     }
 }

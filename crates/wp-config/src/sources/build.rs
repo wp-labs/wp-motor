@@ -13,6 +13,8 @@ use std::path::Path;
 use std::sync::Arc;
 use wp_connector_api::ParamMap;
 
+const GLOBAL_SOURCE_PARAM_ALLOW_OVERRIDE: &[&str] = &["stream_tag_field"];
+
 /// 仅解析并执行最小校验（不进行实际构建，不触发 I/O）
 pub fn parse_and_validate_only(
     config_str: &str,
@@ -40,6 +42,10 @@ fn is_nested_field_blacklisted(k: &str) -> bool {
     matches!(k, "params" | "params_override")
 }
 
+fn is_global_source_param_allowed(k: &str) -> bool {
+    GLOBAL_SOURCE_PARAM_ALLOW_OVERRIDE.contains(&k)
+}
+
 fn merge_source_params(
     base: &ParamMap,
     override_tbl: &ParamMap,
@@ -58,7 +64,7 @@ fn merge_source_params(
                     )),
             );
         }
-        if !allow.iter().any(|x| x == k) {
+        if !allow.iter().any(|x| x == k) && !is_global_source_param_allowed(k) {
             return Err(ConfIOReason::validation_error()
                 .to_err()
                 .with_detail(format!(
@@ -378,6 +384,15 @@ connector = "typo"
         let ok = merge_source_params(&base, &over, &allow).expect("ok");
         assert_eq!(ok.get("path").and_then(|v| v.as_str()), Some("/a"));
 
+        // ok: runtime-global source key
+        let mut global = ParamMap::new();
+        global.insert("stream_tag_field".into(), json!("wp_stream_tag"));
+        let ok = merge_source_params(&base, &global, &allow).expect("ok");
+        assert_eq!(
+            ok.get("stream_tag_field").and_then(|v| v.as_str()),
+            Some("wp_stream_tag")
+        );
+
         // err: disallowed key
         let mut bad = ParamMap::new();
         bad.insert("badkey".into(), json!("v"));
@@ -477,6 +492,19 @@ type = "dummy"
             "dummy"
         }
         fn validate_spec(&self, spec: &wp_connector_api::SourceSpec) -> SourceResult<()> {
+            if spec
+                .params
+                .get("require_stream_tag_field")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false)
+                && spec
+                    .params
+                    .get("stream_tag_field")
+                    .and_then(|value| value.as_str())
+                    != Some("stream")
+            {
+                return Err(SourceReason::core_conf().to_err());
+            }
             // require key 'a' in params
             if !spec.params.contains_key("a") {
                 return Err(SourceReason::core_conf().to_err());
@@ -530,6 +558,20 @@ type = "dummy"
             .expect_err("error")
             .to_string();
         assert!(err.contains("plugin validate failed"));
+    }
+
+    #[test]
+    fn plugin_validate_receives_stream_tag_field() {
+        let mut params = ParamMap::new();
+        params.insert("a".into(), json!("ok"));
+        params.insert("stream_tag_field".into(), json!("stream"));
+        params.insert("require_stream_tag_field".into(), json!(true));
+        let mut inst = SourceInstanceConf::new_type("s1".into(), "dummy".into(), params, vec![]);
+        inst.connector_id = Some("c1".into());
+        let reg = DummyReg;
+
+        validate_specs_with_factory(&[inst], &reg)
+            .expect("source connector receives source params");
     }
 
     // ========================================================================

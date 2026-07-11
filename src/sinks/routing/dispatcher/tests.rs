@@ -15,7 +15,7 @@ use wp_conf::structure::SinkInstanceConf;
 use wp_conf::structure::{FlexGroup, SinkGroupConf};
 use wp_knowledge::cache::FieldQueryCache;
 use wp_model_core::model::fmt_def::TextFmt;
-use wp_model_core::model::{DataRecord, Value};
+use wp_model_core::model::{DataField, DataRecord, DataType, Value};
 use wp_stat::{ReportVariant, StatReq, StatStage, StatTarget};
 
 #[tokio::test(flavor = "current_thread")]
@@ -146,29 +146,28 @@ async fn filter_expect_false_routes_on_false() {
 async fn fast_path_handles_multiple_sinks_without_transform() {
     use wp_model_core::model::DataField;
 
-    let sink_conf1 = SinkInstanceConf::null_new("s1".to_string(), TextFmt::Json, None);
+    let sink_conf1 = SinkInstanceConf::null_new("s1".to_string(), TextFmt::Raw, None);
     let sink_rt1 = SinkRuntime::new(
         "./rescue".to_string(),
         "s1".to_string(),
-        sink_conf1,
+        sink_conf1.clone(),
         SinkBackendType::Proxy(crate::sinks::builtin_factories::make_blackhole_sink()),
         None,
         Vec::new(),
     );
 
-    let mut sink_conf2 = SinkInstanceConf::null_new("s2".to_string(), TextFmt::Json, None);
+    let mut sink_conf2 = SinkInstanceConf::null_new("s2".to_string(), TextFmt::Raw, None);
     sink_conf2.set_tags(vec!["tag_key: val".to_string()]);
     let sink_rt2 = SinkRuntime::new(
         "./rescue".to_string(),
         "s2".to_string(),
-        sink_conf2,
+        sink_conf2.clone(),
         SinkBackendType::Proxy(crate::sinks::builtin_factories::make_blackhole_sink()),
         None,
         Vec::new(),
     );
 
-    let mut group = FlexGroup::default();
-    group.name = "g".to_string();
+    let group = FlexGroup::build_conf("g", vec![sink_conf1, sink_conf2]);
     let mut disp = SinkDispatcher::new(SinkGroupConf::Flexi(group), SinkResUnit::use_null());
     disp.append(sink_rt1);
     disp.append(sink_rt2);
@@ -192,9 +191,125 @@ async fn fast_path_handles_multiple_sinks_without_transform() {
     assert_eq!(outputs[0].len(), 1);
     assert_eq!(outputs[1].len(), 1);
     assert!(Arc::ptr_eq(&shared, outputs[0][0].data()));
-    // 第二条 sink 需要 tags，应获得新的实例
+    // 第二条 sink 需要 tags，应获得新的实例。
     assert!(!Arc::ptr_eq(&shared, outputs[1][0].data()));
     assert!(outputs[1][0].data().items.len() > shared.items.len());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn group_wp_meta_output_is_injected_before_sink_runtime() {
+    let sink_conf = SinkInstanceConf::null_new("s1".to_string(), TextFmt::Json, None);
+    let sink_rt = SinkRuntime::new(
+        "./rescue".to_string(),
+        "s1".to_string(),
+        sink_conf.clone(),
+        SinkBackendType::Proxy(crate::sinks::builtin_factories::make_blackhole_sink()),
+        None,
+        Vec::new(),
+    );
+
+    let group = FlexGroup::build_conf("g", vec![sink_conf]);
+    let mut disp = SinkDispatcher::new(SinkGroupConf::Flexi(group), SinkResUnit::use_null());
+    disp.append(sink_rt);
+
+    let mut record = DataRecord::default();
+    record.append(DataField::from_chars("k", "v"));
+    let rule = crate::sinks::ProcMeta::Rule("/fast".to_string());
+    let batch = vec![SinkRecUnit::with_record(7, rule.clone(), Arc::new(record))];
+
+    let mut cache = FieldQueryCache::default();
+    let outputs = disp
+        .oml_proc_batch_async(batch, &InfraSinkAgent::use_null(), &mut cache, &rule)
+        .await
+        .unwrap();
+
+    let rec = outputs[0][0].data();
+    assert_eq!(
+        rec.field("wp_stream_tag")
+            .and_then(|field| field.get_value().as_str()),
+        Some("/fast")
+    );
+    assert_eq!(
+        rec.field("wp_event_id")
+            .and_then(|field| field.get_value().as_str()),
+        Some("7")
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn group_wp_meta_disable_marks_field_ignore_before_sink_runtime() {
+    let mut sink_conf = SinkInstanceConf::null_new("s1".to_string(), TextFmt::Json, None);
+    sink_conf.core.params.insert(
+        "wp_meta_disable".to_string(),
+        serde_json::json!(["wp_event_id"]),
+    );
+    let sink_rt = SinkRuntime::new(
+        "./rescue".to_string(),
+        "s1".to_string(),
+        sink_conf.clone(),
+        SinkBackendType::Proxy(crate::sinks::builtin_factories::make_blackhole_sink()),
+        None,
+        Vec::new(),
+    );
+
+    let group = FlexGroup::build_conf("g", vec![sink_conf]);
+    let mut disp = SinkDispatcher::new(SinkGroupConf::Flexi(group), SinkResUnit::use_null());
+    disp.append(sink_rt);
+
+    let mut record = DataRecord::default();
+    record.append(DataField::from_chars("wp_event_id", "business-id"));
+    record.append(DataField::from_chars("k", "v"));
+    let rule = crate::sinks::ProcMeta::Rule("/fast".to_string());
+    let batch = vec![SinkRecUnit::with_record(1, rule.clone(), Arc::new(record))];
+
+    let mut cache = FieldQueryCache::default();
+    let outputs = disp
+        .oml_proc_batch_async(batch, &InfraSinkAgent::use_null(), &mut cache, &rule)
+        .await
+        .unwrap();
+
+    assert_eq!(outputs.len(), 1);
+    assert_eq!(outputs[0].len(), 1);
+    let field = outputs[0][0]
+        .data()
+        .field("wp_event_id")
+        .expect("field should still exist");
+    assert_eq!(field.get_meta(), &DataType::Ignore);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn group_wp_meta_output_overwrites_business_field_value() {
+    let sink_conf = SinkInstanceConf::null_new("s1".to_string(), TextFmt::Json, None);
+    let sink_rt = SinkRuntime::new(
+        "./rescue".to_string(),
+        "s1".to_string(),
+        sink_conf.clone(),
+        SinkBackendType::Proxy(crate::sinks::builtin_factories::make_blackhole_sink()),
+        None,
+        Vec::new(),
+    );
+
+    let group = FlexGroup::build_conf("g", vec![sink_conf]);
+    let mut disp = SinkDispatcher::new(SinkGroupConf::Flexi(group), SinkResUnit::use_null());
+    disp.append(sink_rt);
+
+    let mut record = DataRecord::default();
+    record.append(DataField::from_chars("wp_event_id", "business-id"));
+    let rule = crate::sinks::ProcMeta::Rule("/fast".to_string());
+    let batch = vec![SinkRecUnit::with_record(42, rule.clone(), Arc::new(record))];
+
+    let mut cache = FieldQueryCache::default();
+    let outputs = disp
+        .oml_proc_batch_async(batch, &InfraSinkAgent::use_null(), &mut cache, &rule)
+        .await
+        .unwrap();
+
+    let field = outputs[0][0]
+        .data()
+        .field("wp_event_id")
+        .expect("field should exist");
+    assert_eq!(field.get_value().as_str(), Some("42"));
+    assert_eq!(field.get_meta(), &DataType::Chars);
 }
 
 #[tokio::test(flavor = "current_thread")]

@@ -116,6 +116,59 @@ output = "file"
     }
 
     #[test]
+    fn test_wpgen_rejects_output_stream_tag_field() -> OrionConfResult<()> {
+        let tw = TestCasePath::new("wp", "wpgen_meta_params").owe(ConfIOReason::core_conf())?;
+        let path = tw.path_string();
+        let cm = WarpConf::new(&path);
+
+        let cdir = format!("{}/connectors/sink.d", cm.work_root_path());
+        std::fs::create_dir_all(&cdir).owe(ConfIOReason::core_conf())?;
+        let cfile = format!(
+            "{}/connectors/sink.d/file_json_sink.toml",
+            cm.work_root_path()
+        );
+        let connectors = r#"
+[[connectors]]
+id = "file_json_sink"
+type = "file"
+allow_override = ["base", "file"]
+[connectors.params]
+fmt = "json"
+base = "./data/out_dat"
+file = "default.dat"
+"#;
+        fs::write(cfile, connectors).owe(ConfIOReason::core_conf())?;
+
+        let toml = r#"
+version = "1.0"
+[generator]
+count = 5
+speed = 50
+parallel = 1
+[output]
+name = "test_out"
+connect = "file_json_sink"
+params = { file = "over.dat", stream_tag_field = "wp_stream_tag" }
+[logging]
+level = "info"
+output = "file"
+"#;
+        let p = cm.ensure_config_path_exists(WPGEN_TOML)?;
+        fs::write(&p, toml).owe(ConfIOReason::core_conf())?;
+        let err = cm
+            .load_wpgen_config(WPGEN_TOML, &EnvDict::test_default())
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("runtime output param 'stream_tag_field' is not supported in wpgen"),
+            "msg={}",
+            msg
+        );
+        cm.clear_work_directory();
+        Ok(())
+    }
+
+    #[test]
     fn test_wpgen_output_connect_reports_missing_sink_detail() -> OrionConfResult<()> {
         let tw = TestCasePath::new("wp", "wpgen_missing_sink").owe(ConfIOReason::core_conf())?;
         let path = tw.path_string();
@@ -197,6 +250,163 @@ output = "stdout"
             .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("override 'path' not allowed"), "msg={}", msg);
+        cm.clear_work_directory();
+        Ok(())
+    }
+
+    #[test]
+    fn test_wpgen_rejects_wp_meta_disable_output_param() -> OrionConfResult<()> {
+        let tw = TestCasePath::new("wp", "wpgen_reject_wp_meta_disable")
+            .owe(ConfIOReason::core_conf())?;
+        let path = tw.path_string();
+        let cm = WarpConf::new(&path);
+
+        let cdir = format!("{}/connectors/sink.d", cm.work_root_path());
+        std::fs::create_dir_all(&cdir).owe(ConfIOReason::core_conf())?;
+        let cfile = format!(
+            "{}/connectors/sink.d/file_json_sink.toml",
+            cm.work_root_path()
+        );
+        let connectors = r#"
+[[connectors]]
+id = "file_json_sink"
+type = "file"
+allow_override = ["base", "file"]
+[connectors.params]
+fmt = "json"
+base = "./data/out_dat"
+file = "default.dat"
+"#;
+        fs::write(cfile, connectors).owe(ConfIOReason::core_conf())?;
+
+        let toml = r#"
+version = "1.0"
+[generator]
+speed = 1
+[output]
+name = "test_out"
+connect = "file_json_sink"
+params = { file = "over.dat", wp_meta_disable = ["wp_event_id"] }
+[logging]
+level = "info"
+output = "stdout"
+"#;
+        let p = cm.ensure_config_path_exists(WPGEN_TOML)?;
+        fs::write(&p, toml).owe(ConfIOReason::core_conf())?;
+        let err = cm
+            .load_wpgen_config(WPGEN_TOML, &EnvDict::test_default())
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("runtime output param 'wp_meta_disable' is not supported in wpgen"),
+            "msg={}",
+            msg
+        );
+        cm.clear_work_directory();
+        Ok(())
+    }
+
+    #[test]
+    fn test_wpgen_rejects_runtime_output_param_even_if_connector_allows_it() -> OrionConfResult<()>
+    {
+        let tw = TestCasePath::new("wp", "wpgen_reject_runtime_even_allowed")
+            .owe(ConfIOReason::core_conf())?;
+        let path = tw.path_string();
+        let cm = WarpConf::new(&path);
+
+        let cdir = format!("{}/connectors/sink.d", cm.work_root_path());
+        std::fs::create_dir_all(&cdir).owe(ConfIOReason::core_conf())?;
+        let cfile = format!(
+            "{}/connectors/sink.d/file_json_sink.toml",
+            cm.work_root_path()
+        );
+        let connectors = r#"
+[[connectors]]
+id = "file_json_sink"
+type = "file"
+allow_override = ["base", "file", "wp_meta_disable", "stream_tag_field"]
+[connectors.params]
+fmt = "json"
+base = "./data/out_dat"
+file = "default.dat"
+"#;
+        fs::write(cfile, connectors).owe(ConfIOReason::core_conf())?;
+
+        let toml = r#"
+version = "1.0"
+[generator]
+speed = 1
+[output]
+name = "test_out"
+connect = "file_json_sink"
+params = { file = "over.dat", wp_meta_disable = ["wp_event_id"] }
+[logging]
+level = "info"
+output = "stdout"
+"#;
+        let p = cm.ensure_config_path_exists(WPGEN_TOML)?;
+        fs::write(&p, toml).owe(ConfIOReason::core_conf())?;
+        let err = cm
+            .load_wpgen_config(WPGEN_TOML, &EnvDict::test_default())
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("runtime output param 'wp_meta_disable' is not supported in wpgen"),
+            "msg={}",
+            msg
+        );
+        cm.clear_work_directory();
+        Ok(())
+    }
+
+    #[test]
+    fn test_wpgen_rejects_stream_tag_field_even_if_connector_allows_it() -> OrionConfResult<()> {
+        let tw = TestCasePath::new("wp", "wpgen_reject_stream_tag_even_allowed")
+            .owe(ConfIOReason::core_conf())?;
+        let path = tw.path_string();
+        let cm = WarpConf::new(&path);
+
+        let cdir = format!("{}/connectors/sink.d", cm.work_root_path());
+        std::fs::create_dir_all(&cdir).owe(ConfIOReason::core_conf())?;
+        let cfile = format!(
+            "{}/connectors/sink.d/file_json_sink.toml",
+            cm.work_root_path()
+        );
+        let connectors = r#"
+[[connectors]]
+id = "file_json_sink"
+type = "file"
+allow_override = ["base", "file", "wp_meta_disable", "stream_tag_field"]
+[connectors.params]
+fmt = "json"
+base = "./data/out_dat"
+file = "default.dat"
+"#;
+        fs::write(cfile, connectors).owe(ConfIOReason::core_conf())?;
+
+        let toml = r#"
+version = "1.0"
+[generator]
+speed = 1
+[output]
+name = "test_out"
+connect = "file_json_sink"
+params = { file = "over.dat", stream_tag_field = "wp_stream_tag" }
+[logging]
+level = "info"
+output = "stdout"
+"#;
+        let p = cm.ensure_config_path_exists(WPGEN_TOML)?;
+        fs::write(&p, toml).owe(ConfIOReason::core_conf())?;
+        let err = cm
+            .load_wpgen_config(WPGEN_TOML, &EnvDict::test_default())
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("runtime output param 'stream_tag_field' is not supported in wpgen"),
+            "msg={}",
+            msg
+        );
         cm.clear_work_directory();
         Ok(())
     }

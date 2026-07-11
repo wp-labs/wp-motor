@@ -16,5 +16,5 @@ pub use constants::*;
 pub use io::load_connectors_for;
 pub use io::load_route_files_from;
 pub use io::load_sink_defaults;
-pub use resolved::core_to_resolved;
+pub use resolved::{core_to_connector_resolved, core_to_resolved};
 pub use types::*;

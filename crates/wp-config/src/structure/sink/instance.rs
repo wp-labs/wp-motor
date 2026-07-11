@@ -246,6 +246,31 @@ impl Validate for SinkInstanceConf {
             }
             _ => {}
         }
+        if let Some(value) = p.get("stream_tag_field") {
+            return Err(ConfIOReason::validation_error()
+                .to_err()
+                .with_detail(format!(
+                    "sink.params.stream_tag_field is not supported; set stream_tag_field under source params instead (got {:?})",
+                    value
+                )));
+        }
+        if let Some(value) = p.get("wp_meta_disable") {
+            let valid = value
+                .as_array()
+                .map(|items| {
+                    items.iter().all(|item| {
+                        item.as_str()
+                            .map(|field| !field.trim().is_empty())
+                            .unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false);
+            if !valid {
+                return Err(ConfIOReason::validation_error().to_err().with_detail(
+                    "sink.params.wp_meta_disable must be an array of non-empty strings",
+                ));
+            }
+        }
         if let Some(path) = &self.core.filter {
             if Path::new(path).exists() {
                 let content = std::fs::read_to_string(path)
@@ -360,6 +385,60 @@ path = "p2.dat"
 
         s.set_filter(Some("ff".to_string()));
         assert_eq!(s.core.filter, s.filter().clone());
+    }
+
+    #[test]
+    fn validate_accepts_wp_meta_disable_params() {
+        let mut params = ParamMap::new();
+        params.insert("base".into(), json!("./data/out_dat"));
+        params.insert("file".into(), json!("out.json"));
+        params.insert("wp_meta_disable".into(), json!(["wp_event_id"]));
+        let sink = SinkInstanceConf::new_type(
+            "s".to_string(),
+            TextFmt::Json,
+            "file".to_string(),
+            params,
+            None,
+        );
+
+        sink.validate().expect("valid wp meta disable params");
+    }
+
+    #[test]
+    fn validate_rejects_sink_stream_tag_field() {
+        let mut params = ParamMap::new();
+        params.insert("base".into(), json!("./data/out_dat"));
+        params.insert("file".into(), json!("out.json"));
+        params.insert("stream_tag_field".into(), json!("stream"));
+        let sink = SinkInstanceConf::new_type(
+            "s".to_string(),
+            TextFmt::Json,
+            "file".to_string(),
+            params,
+            None,
+        );
+
+        let err = sink
+            .validate()
+            .expect_err("sink stream_tag_field is unsupported");
+        assert!(err.to_string().contains("stream_tag_field"));
+    }
+
+    #[test]
+    fn validate_rejects_bad_wp_meta_disable() {
+        let mut params = ParamMap::new();
+        params.insert("base".into(), json!("./data/out_dat"));
+        params.insert("file".into(), json!("out.json"));
+        params.insert("wp_meta_disable".into(), json!("wp_stream_tag"));
+        let sink = SinkInstanceConf::new_type(
+            "s".to_string(),
+            TextFmt::Json,
+            "file".to_string(),
+            params,
+            None,
+        );
+
+        assert!(sink.validate().is_err());
     }
 
     #[test]

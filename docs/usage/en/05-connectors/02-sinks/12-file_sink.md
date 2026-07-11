@@ -50,6 +50,10 @@ file = "default.raw"
 - `base` + `file`: Target directory and filename (recommended approach).
 - `fmt`: Output format (see above).
 
+Group-level metadata:
+
+- `sink_group.wp_meta_disable`: Disable selected fixed `wp_*` metadata fields for all sinks in the group, for example `["wp_stream_tag", "wp_event_id"]`.
+
 Note: File Sinks automatically create parent directories; internally uses buffered writes with batch flushing, with no manual buffer size/sync mode parameters.
 
 ## Configuration Examples
@@ -86,3 +90,20 @@ connect = "file_json_sink"
 filter = "./error_filter.wpl"
 params = { file = "err.json" }
 ```
+
+3) JSON Output with Stream Tag
+```toml
+version = "2.0"
+[sink_group]
+name = "/sink/netflow"
+oml  = ["network.netflow"]
+wp_meta_disable = ["wp_event_id"]
+
+[[sink_group.sinks]]
+name = "json"
+connect = "file_json_sink"
+params = { file = "netflow.json" }
+```
+
+For records routed from OML/rule output, the stream tag value is the logical rule/OML identity carried in runtime metadata.
+JSON/CSV output emits fixed `wp_stream_tag` and `wp_event_id` fields by default. To disable either field, set `sink_group.wp_meta_disable`, for example `["wp_stream_tag"]` or `["wp_event_id"]`. Disabled metadata fields are hidden for that sink group output even if the input record already contains a field with the same name.

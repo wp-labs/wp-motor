@@ -13,6 +13,12 @@ File Sink 用于将处理后的数据写入本地文件。支持多种数据格�
 | `file` | string | `out.dat` | 输出文件名 |
 | `sync` | bool | `false` | 是否立即刷新到磁盘 |
 
+组级参数：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `sink_group.wp_meta_disable` | string array | `[]` | 对整个 sink_group 禁用固定 `wp_*` 元数据字段，例如 `["wp_stream_tag", "wp_event_id"]` |
+
 ## 支持的输出格式
 
 | 格式 | 说明 | 适用场景 |
@@ -54,7 +60,24 @@ base = "./exports"
 file = "data.csv"
 ```
 
-### 示例 3: 启用同步模式
+### 示例 3: JSON 输出携带流标签
+
+```toml
+version = "2.0"
+[sink_group]
+name = "/sink/json_output"
+oml = ["network.netflow"]
+wp_meta_disable = ["wp_event_id"]
+
+[[sink_group.sinks]]
+name = "json"
+connect = "file_json_sink"
+params = { file = "results.json" }
+```
+
+当记录来自 OML/rule 输出时，流标签值来自运行时携带的逻辑输出身份。JSON/CSV 默认输出固定字段 `wp_stream_tag` 和 `wp_event_id`；如需关闭任一字段，设置 `sink_group.wp_meta_disable`，例如 `["wp_stream_tag"]` 或 `["wp_event_id"]`。被禁用的元数据字段在该 sink_group 输出中会被隐藏，即使输入记录里已经有同名字段也不会输出。
+
+### 示例 4: 启用同步模式
 
 ```toml
 [[sinks]]
@@ -70,7 +93,7 @@ sync = true
 
 **说明**: 设置 `sync = true` 可确保数据实时写入磁盘，适合关键数据。
 
-### 示例 4: 多个输出文件
+### 示例 5: 多个输出文件
 
 ```toml
 # JSON 格式

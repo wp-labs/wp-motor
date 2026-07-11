@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
+## [1.23.6 Unreleased]
+
+### Added
+- **Sink/Metadata**: JSON/CSV sink group output now emits fixed runtime metadata fields `wp_stream_tag` and `wp_event_id` by default. Added group-level `sink_group.wp_meta_disable` to hide selected metadata fields, for example `["wp_stream_tag", "wp_event_id"]`.
+  中文：JSON/CSV sink_group 输出默认携带固定运行时元字段 `wp_stream_tag` 与 `wp_event_id`；新增组级 `sink_group.wp_meta_disable`，可按组关闭指定元字段。
+- **Benchmarks**: Added `sink_wp_meta` benchmark coverage for metadata output and disable behavior.
+  中文：新增 `sink_wp_meta` 基准，覆盖元信息输出与禁用路径的性能。
+
+### Changed
+- **Sink/Runtime**: Runtime metadata injection now happens once at the `SinkDispatcher`/sink_group boundary instead of inside each sink runtime. Single-owner records use `Arc::try_unwrap` to avoid unnecessary `DataRecord` clones.
+  中文：运行时元信息在 `SinkDispatcher`/sink_group 边界统一处理，不再放到每个 sink runtime；单所有者记录通过 `Arc::try_unwrap` 避免不必要的 `DataRecord` clone。
+- **Config/Sinks**: `stream_tag_field` is source-only and is rejected from sink/wpgen output params. `wp_meta_disable` is group-level only; connector-facing sink specs filter runtime-only metadata params before validate/build.
+  中文：`stream_tag_field` 只属于 source 配置，sink/wpgen output 参数中会报错；`wp_meta_disable` 只属于 sink_group，传给 connector validate/build 的 sink spec 会过滤运行时元参数。
+
+### Tests
+- **Config/Sinks**: Added coverage for source-side `stream_tag_field` pass-through, sink/wpgen output rejection, and connector-facing runtime param filtering.
+  中文：补充 source 侧 `stream_tag_field` 放行、sink/wpgen output 侧拒绝，以及 connector-facing 过滤运行时参数的测试。
+- **Sink/Dispatcher**: Added coverage for metadata injection, disabled-field `Ignore` marking, and fixed metadata overwrite semantics.
+  中文：补充 dispatcher 元信息注入、禁用字段标记为 `Ignore`、固定元字段覆盖语义的测试。
+
 ## [1.23.5] - 2026-07-06
 
 ### Added

@@ -189,6 +189,7 @@ impl SinkDispatcher {
             .collect();
         for entry in entries {
             let (pkg_id, meta, base_arc) = entry.into_parts();
+            let base_arc = self.apply_wp_meta_to_arc(pkg_id, &meta, base_arc);
             for (idx, sink) in self.sinks.iter().enumerate() {
                 let rec = if sink.pre_tags().is_empty() {
                     Arc::clone(&base_arc)
@@ -234,6 +235,8 @@ impl SinkDispatcher {
             return;
         }
 
+        let mut base = base;
+        self.apply_wp_meta_to_record(pkg_id, &meta, &mut base);
         let mut base_slot = Some(base);
         for (idx, matched) in matches.into_iter().enumerate() {
             if !matched {

@@ -1,5 +1,6 @@
 use super::agent::InfraSinkAgent;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use wp_conf::limits::sink_channel_cap;
 
 use crate::resources::SinkResUnit;
@@ -12,6 +13,8 @@ use orion_overload::append::Appendable;
 use wp_conf::structure::SinkGroupConf;
 use wp_connector_api::{SinkErrorOwe, SinkResult};
 use wp_knowledge::cache::FieldQueryCache;
+use wp_model_core::model::fmt_def::TextFmt;
+use wp_model_core::model::{DataField, DataRecord, DataType, Value};
 use wp_stat::StatReq;
 
 // split internal helpers
@@ -22,6 +25,47 @@ mod oml; // OML/条件路由
 pub mod perf; // 性能基准工具
 mod recovery; // 故障恢复与收尾
 type GroupedRecords = HashMap<String, Vec<SinkRecUnit>>;
+
+const DEFAULT_STREAM_TAG_FIELD: &str = "wp_stream_tag";
+const WP_EVENT_ID_FIELD: &str = "wp_event_id";
+const FIELD_WP_META_DISABLE: &str = "wp_meta_disable";
+
+#[derive(Clone)]
+struct OutputMetaConfig {
+    emit_stream_tag: bool,
+    emit_event_id: bool,
+}
+
+impl OutputMetaConfig {
+    fn from_group(conf: &SinkGroupConf, disabled: &HashSet<String>) -> Self {
+        let structured_text = conf.sinks().iter().any(|sink| {
+            matches!(sink.fmt, TextFmt::Json | TextFmt::Csv) && !Self::is_arrow_framed(sink)
+        });
+
+        Self {
+            emit_stream_tag: structured_text && !disabled.contains(DEFAULT_STREAM_TAG_FIELD),
+            emit_event_id: structured_text && !disabled.contains(WP_EVENT_ID_FIELD),
+        }
+    }
+
+    fn is_arrow_framed(sink: &wp_conf::structure::SinkInstanceConf) -> bool {
+        sink.core
+            .params
+            .get("protocol")
+            .and_then(|value| value.as_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("arrow"))
+            && sink
+                .core
+                .params
+                .get("data_format")
+                .and_then(|value| value.as_str())
+                .is_some_and(|value| value.eq_ignore_ascii_case("arrow_framed"))
+    }
+
+    fn any_enabled(&self) -> bool {
+        self.emit_stream_tag || self.emit_event_id
+    }
+}
 
 struct SinkRecUnitPool {
     inner: Vec<Vec<SinkRecUnit>>,
@@ -58,6 +102,8 @@ pub struct SinkDispatcher {
     dat_r: SinkDatYReceiver,
     res: SinkResUnit,
     unit_pool: SinkRecUnitPool,
+    wp_meta_disable: HashSet<String>,
+    output_meta: OutputMetaConfig,
     ingress_target: String,
     ingress_stat: MetricCollectors,
     ingress_pending: usize,
@@ -68,6 +114,8 @@ impl SinkDispatcher {
         // 改用 tokio::mpsc 事件化通道，便于与 runtime 协作
         let (dat_s, dat_r) = tokio::sync::mpsc::channel(sink_channel_cap());
         let ingress_target = format!("{}@recv", conf.name());
+        let wp_meta_disable = Self::collect_wp_meta_disable(&conf);
+        let output_meta = OutputMetaConfig::from_group(&conf, &wp_meta_disable);
         Self {
             conf,
             sinks: Vec::new(),
@@ -75,9 +123,101 @@ impl SinkDispatcher {
             dat_r,
             res,
             unit_pool: SinkRecUnitPool::new(),
+            wp_meta_disable,
+            output_meta,
             ingress_stat: MetricCollectors::new(ingress_target.clone(), Vec::new()),
             ingress_target,
             ingress_pending: 0,
+        }
+    }
+
+    fn collect_wp_meta_disable(conf: &SinkGroupConf) -> HashSet<String> {
+        let mut fields = HashSet::new();
+        for sink in conf.sinks() {
+            if let Some(items) = sink
+                .core
+                .params
+                .get(FIELD_WP_META_DISABLE)
+                .and_then(|value| value.as_array())
+            {
+                for item in items.iter().filter_map(|item| item.as_str()) {
+                    if item.trim().is_empty() {
+                        continue;
+                    }
+                    fields.insert(item.to_string());
+                }
+            }
+        }
+        fields
+    }
+
+    pub(super) fn apply_wp_meta_disable_to_record(&self, record: &mut DataRecord) {
+        if self.wp_meta_disable.is_empty() {
+            return;
+        }
+        for item in record.items.iter_mut() {
+            if self.wp_meta_disable.contains(item.get_name()) {
+                item.as_field_mut().meta = DataType::Ignore;
+            }
+        }
+    }
+
+    pub(super) fn apply_wp_meta_to_record(
+        &self,
+        event_id: u64,
+        meta: &crate::sinks::ProcMeta,
+        record: &mut DataRecord,
+    ) {
+        self.apply_wp_meta_disable_to_record(record);
+        if !self.output_meta.any_enabled() {
+            return;
+        }
+        if self.output_meta.emit_stream_tag
+            && let crate::sinks::ProcMeta::Rule(rule) = meta
+            && !rule.is_empty()
+        {
+            Self::upsert_payload_chars(record, DEFAULT_STREAM_TAG_FIELD, rule.clone());
+        }
+        if self.output_meta.emit_event_id {
+            Self::upsert_payload_chars(record, WP_EVENT_ID_FIELD, event_id.to_string());
+        }
+    }
+
+    pub(super) fn apply_wp_meta_to_arc(
+        &self,
+        event_id: u64,
+        meta: &crate::sinks::ProcMeta,
+        record: Arc<DataRecord>,
+    ) -> Arc<DataRecord> {
+        if self.wp_meta_disable.is_empty() && !self.output_meta.any_enabled() {
+            return record;
+        }
+        let mut record = Arc::try_unwrap(record).unwrap_or_else(|arc| arc.as_ref().clone());
+        self.apply_wp_meta_to_record(event_id, meta, &mut record);
+        Arc::new(record)
+    }
+
+    pub(super) fn apply_wp_meta_to_unit(&self, unit: SinkRecUnit) -> SinkRecUnit {
+        if self.wp_meta_disable.is_empty() && !self.output_meta.any_enabled() {
+            return unit;
+        }
+        let (id, meta, record) = unit.into_parts();
+        let record = self.apply_wp_meta_to_arc(id, &meta, record);
+        SinkRecUnit::with_record(id, meta, record)
+    }
+
+    fn upsert_payload_chars(
+        record: &mut DataRecord,
+        name: &str,
+        value: impl Into<wp_model_core::model::FValueStr>,
+    ) {
+        let value = value.into();
+        if let Some(item) = record.items.iter_mut().find(|item| item.get_name() == name) {
+            let field = item.as_field_mut();
+            field.meta = DataType::Chars;
+            field.value = Value::Chars(value);
+        } else {
+            record.append(DataField::from_chars(name, value));
         }
     }
     pub fn set_ingress_stat_target(
