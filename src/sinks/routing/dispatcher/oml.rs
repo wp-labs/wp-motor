@@ -51,7 +51,7 @@ impl SinkDispatcher {
     // OML model selection by rule
     fn get_match_oml(&self, rule: &ProcMeta) -> Option<&ObjModel> {
         for mdl in self.res.aggregate_mdl() {
-            if let (DataModel::Object(om), ProcMeta::Rule(r)) = (mdl, rule) {
+            if let (DataModel::Object(om), ProcMeta::WplName(r)) = (mdl, rule) {
                 for w_rule in om.rules().as_ref() {
                     if w_rule.matches(r.as_str()) {
                         return Some(om);
@@ -114,7 +114,11 @@ impl SinkDispatcher {
                 ));
             } else {
                 info_edata!(event_id, "oml proc suc! {}", meta);
-                successes.push(TransformedRecUnit::new(event_id, meta, output));
+                successes.push(TransformedRecUnit::new(
+                    event_id,
+                    ProcMeta::OmlName(om_ins.name().to_string()),
+                    output,
+                ));
             }
         }
         Ok((successes, failures))
@@ -132,7 +136,7 @@ impl SinkDispatcher {
     ) {
         use wp_model_core::model::DataField;
         rec.append(DataField::from_chars("__err_kind", kind));
-        if let ProcMeta::Rule(r) = rule {
+        if let ProcMeta::WplName(r) = rule {
             rec.append(DataField::from_chars("__wpl_rule".to_string(), r.clone()));
         }
         rec.append(DataField::from_chars("__sink_group", group));
@@ -189,7 +193,6 @@ impl SinkDispatcher {
             .collect();
         for entry in entries {
             let (pkg_id, meta, base_arc) = entry.into_parts();
-            let base_arc = self.apply_wp_meta_to_arc(pkg_id, &meta, base_arc);
             for (idx, sink) in self.sinks.iter().enumerate() {
                 let rec = if sink.pre_tags().is_empty() {
                     Arc::clone(&base_arc)
@@ -235,8 +238,6 @@ impl SinkDispatcher {
             return;
         }
 
-        let mut base = base;
-        self.apply_wp_meta_to_record(pkg_id, &meta, &mut base);
         let mut base_slot = Some(base);
         for (idx, matched) in matches.into_iter().enumerate() {
             if !matched {

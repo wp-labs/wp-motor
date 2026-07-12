@@ -43,7 +43,7 @@ impl SinkTerminal {
                 let mut record = DataRecord::default();
                 record.append(DataField::from_chars("raw", &raw));
                 let unit =
-                    SinkRecUnit::new(id, ProcMeta::Rule("raw".to_string()), Arc::new(record));
+                    SinkRecUnit::new(id, ProcMeta::WplName("raw".to_string()), Arc::new(record));
                 self.send_to_sink(unit)
             }
         }
@@ -61,7 +61,7 @@ impl SinkTerminal {
                 let mut record = DataRecord::default();
                 record.append(DataField::from_chars("raw", &raw));
                 let unit =
-                    SinkRecUnit::new(id, ProcMeta::Rule("raw".to_string()), Arc::new(record));
+                    SinkRecUnit::new(id, ProcMeta::WplName("raw".to_string()), Arc::new(record));
                 self.try_send_to_sink(unit)
             }
         }

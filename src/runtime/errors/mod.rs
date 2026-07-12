@@ -1,8 +1,10 @@
 use orion_error::UnifiedReason;
+use orion_error::conversion::ToStructError;
 use wp_connector_api::{SinkError, SinkReason};
 use wp_connector_api::{SourceError, SourceReason};
 use wp_error::error_handling::ErrorHandlingStrategy;
 use wp_error::error_handling::RobustnessMode;
+use wp_error::{RunError, RunReason, SourceFocus};
 use wpl::{WparseError, WparseReason};
 
 // 运行时错误策略映射：统一在 runtime/errors 下维护
@@ -67,6 +69,29 @@ pub fn err4_dispatch_data(err: &SourceError, mode: &RobustnessMode) -> ErrorHand
         }
         SourceReason::Uvs(e) => universal_proc_stg(mode, e),
     }
+}
+
+pub fn source_error_to_run_error(err: SourceError) -> RunError {
+    let detail = err.detail().clone();
+    let reason = match err.reason() {
+        SourceReason::NotData => RunReason::Source(SourceFocus::NoData),
+        SourceReason::EOF => RunReason::Source(SourceFocus::Eof),
+        SourceReason::SupplierError => RunReason::Source(SourceFocus::SupplierError(
+            detail.clone().unwrap_or_default(),
+        )),
+        SourceReason::Disconnect => {
+            RunReason::Source(SourceFocus::Disconnect(detail.clone().unwrap_or_default()))
+        }
+        SourceReason::Other => {
+            RunReason::Source(SourceFocus::Other(detail.clone().unwrap_or_default()))
+        }
+        SourceReason::Uvs(reason) => RunReason::Uvs(reason.clone()),
+    };
+    let mut run_error = reason.to_err();
+    if let Some(detail) = detail {
+        run_error = run_error.with_detail(detail);
+    }
+    run_error
 }
 
 fn universal_proc_stg(mode: &RobustnessMode, e: &UnifiedReason) -> ErrorHandlingStrategy {

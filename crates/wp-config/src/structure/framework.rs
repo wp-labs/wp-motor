@@ -79,6 +79,7 @@ impl FlexGroup {
             rule: WildArray::default(),
             oml: WildArray::default(),
             tags: Vec::new(),
+            wp_meta_disable: Vec::new(),
             filter: None,
             // 生成的 framework.toml 中默认包含 expect 字段，便于后续校验/观测
             expect: Some(GroupExpectSpec {

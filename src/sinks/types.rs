@@ -18,7 +18,7 @@ use wp_model_core::model::DataRecord;
 use crate::core::sinks::sync_sink::traits::SyncCtrl;
 use crate::types::Abstract;
 
-use wp_connector_api::SinkResult;
+use wp_connector_api::{BatchMeta, SinkResult};
 
 #[derive(Display)]
 pub enum SinkBackendType {
@@ -97,6 +97,16 @@ impl AsyncRecordSink for SinkBackendType {
             SinkBackendType::Proxy(f) => f.sink_records(data).await,
         }
     }
+
+    async fn sink_records_with_meta(
+        &mut self,
+        meta: BatchMeta,
+        data: Vec<Arc<DataRecord>>,
+    ) -> SinkResult<()> {
+        match self {
+            SinkBackendType::Proxy(f) => f.sink_records_with_meta(meta, data).await,
+        }
+    }
 }
 
 #[async_trait]
@@ -137,15 +147,17 @@ pub trait SinkRouteAble {
 
 #[derive(Clone, Debug)]
 pub enum ProcMeta {
-    Rule(String),
+    WplName(String),
+    OmlName(String),
     Null,
 }
 impl Display for ProcMeta {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ProcMeta::Rule(rule) => write!(f, "ProcMeta rule:{}", rule),
+            ProcMeta::WplName(name) => write!(f, "ProcMeta wpl:{}", name),
+            ProcMeta::OmlName(name) => write!(f, "ProcMeta oml:{}", name),
             ProcMeta::Null => {
-                write!(f, "ProMeta Null")
+                write!(f, "ProcMeta null")
             }
         }
     }
@@ -154,7 +166,8 @@ impl Display for ProcMeta {
 impl ProcMeta {
     pub fn abstract_info(&self) -> String {
         match self {
-            ProcMeta::Rule(s) => format!("rule:{}", s),
+            ProcMeta::WplName(s) => format!("wpl:{}", s),
+            ProcMeta::OmlName(s) => format!("oml:{}", s),
             ProcMeta::Null => "null".to_string(),
         }
     }

@@ -255,21 +255,12 @@ impl Validate for SinkInstanceConf {
                 )));
         }
         if let Some(value) = p.get("wp_meta_disable") {
-            let valid = value
-                .as_array()
-                .map(|items| {
-                    items.iter().all(|item| {
-                        item.as_str()
-                            .map(|field| !field.trim().is_empty())
-                            .unwrap_or(false)
-                    })
-                })
-                .unwrap_or(false);
-            if !valid {
-                return Err(ConfIOReason::validation_error().to_err().with_detail(
-                    "sink.params.wp_meta_disable must be an array of non-empty strings",
-                ));
-            }
+            return Err(ConfIOReason::validation_error()
+                .to_err()
+                .with_detail(format!(
+                    "sink.params.wp_meta_disable is not supported; set wp_meta_disable under [sink_group] instead (got {:?})",
+                    value
+                )));
         }
         if let Some(path) = &self.core.filter {
             if Path::new(path).exists() {
@@ -388,23 +379,6 @@ path = "p2.dat"
     }
 
     #[test]
-    fn validate_accepts_wp_meta_disable_params() {
-        let mut params = ParamMap::new();
-        params.insert("base".into(), json!("./data/out_dat"));
-        params.insert("file".into(), json!("out.json"));
-        params.insert("wp_meta_disable".into(), json!(["wp_event_id"]));
-        let sink = SinkInstanceConf::new_type(
-            "s".to_string(),
-            TextFmt::Json,
-            "file".to_string(),
-            params,
-            None,
-        );
-
-        sink.validate().expect("valid wp meta disable params");
-    }
-
-    #[test]
     fn validate_rejects_sink_stream_tag_field() {
         let mut params = ParamMap::new();
         params.insert("base".into(), json!("./data/out_dat"));
@@ -425,11 +399,11 @@ path = "p2.dat"
     }
 
     #[test]
-    fn validate_rejects_bad_wp_meta_disable() {
+    fn validate_rejects_sink_wp_meta_disable() {
         let mut params = ParamMap::new();
         params.insert("base".into(), json!("./data/out_dat"));
         params.insert("file".into(), json!("out.json"));
-        params.insert("wp_meta_disable".into(), json!("wp_stream_tag"));
+        params.insert("wp_meta_disable".into(), json!(["wp_oml_name"]));
         let sink = SinkInstanceConf::new_type(
             "s".to_string(),
             TextFmt::Json,
@@ -438,7 +412,10 @@ path = "p2.dat"
             None,
         );
 
-        assert!(sink.validate().is_err());
+        let err = sink
+            .validate()
+            .expect_err("sink wp_meta_disable is unsupported");
+        assert!(err.to_string().contains("wp_meta_disable"));
     }
 
     #[test]

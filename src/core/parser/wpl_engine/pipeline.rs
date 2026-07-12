@@ -107,8 +107,16 @@ impl WplPipeline {
                 } else {
                     self.stat_ext.record_begin(self.wpl_key.as_str(), None);
                 }
+                let compat_event = if self.fun_vec.is_empty() {
+                    None
+                } else {
+                    Some(to_wp_source_types_event(data))
+                };
                 for func in self.fun_vec.iter() {
-                    func.proc(data, &mut record)?;
+                    let compat_event = compat_event
+                        .as_ref()
+                        .expect("compat source event should exist for annotations");
+                    func.proc(compat_event, &mut record)?;
                 }
                 if self.stat_need_pkg_rule {
                     // end 阶段优先保留 record 中已有字段；缺失时再回填默认值。
@@ -184,6 +192,21 @@ impl Ord for WplPipeline {
         let other_hit = OPTIMIZE_TIMES - other.hit_cnt;
         self_hit.cmp(&other_hit)
     }
+}
+
+fn to_wp_source_types_event(data: &SourceEvent) -> wp_source_types::SourceEvent {
+    let mut tags = wp_source_types::Tags::new();
+    for (key, value) in data.tags.iter() {
+        tags.set(key, value);
+    }
+    let mut event = wp_source_types::SourceEvent::new(
+        data.event_id,
+        data.src_key.as_str(),
+        data.payload.clone(),
+        Arc::new(tags),
+    );
+    event.ups_ip = data.ups_ip;
+    event
 }
 
 #[cfg(test)]

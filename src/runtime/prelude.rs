@@ -10,5 +10,4 @@ pub(crate) use crate::core::parser::ParseOption;
 pub(crate) use crate::core::parser::WplPipeline;
 pub(crate) use crate::core::parser::WplRepository;
 pub use crate::stat::MonSend;
-pub use orion_error::conversion::ConvStructError;
 pub use wpl::WparseResult;

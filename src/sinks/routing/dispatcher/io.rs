@@ -50,10 +50,10 @@ impl SinkDispatcher {
             // Now SinkRecUnit contains the meta and data directly
             match unit.meta() {
                 // 为与常规路由组行为对齐：并行>1 时，不再对同名 sink 广播，而是按 event_id 在同名副本间一致性分配，仅投递一次
-                ProcMeta::Rule(rule) => {
+                ProcMeta::WplName(_) | ProcMeta::OmlName(_) => {
                     self.dispatch_one_per_name_tdc(
                         event_id,
-                        (ProcMeta::Rule(rule.clone()), unit.data().clone()),
+                        (unit.meta().clone(), unit.data().clone()),
                         Some(bad_s),
                         mon,
                     )
@@ -77,13 +77,12 @@ impl SinkDispatcher {
         mon: Option<&MonSend>,
         pkg: (ProcMeta, Arc<DataRecord>),
     ) -> SinkResult<()> {
-        let record = self.apply_wp_meta_to_arc(event_id, &pkg.0, pkg.1);
         for sink_rt in self.sinks.iter_mut() {
             if sink_rt.is_ready() {
                 sink_rt
                     .send_to_sink(
                         event_id,
-                        SinkDataEnum::Rec(pkg.0.clone(), record.clone()),
+                        SinkDataEnum::Rec(pkg.0.clone(), pkg.1.clone()),
                         bad_s,
                         mon,
                     )
@@ -129,7 +128,6 @@ impl SinkDispatcher {
         // ordinals tracks the current replica index for each sink name as we iterate through sinks
         let mut ordinals: HashMap<String, usize> = HashMap::new();
         for unit in pkg.into_iter() {
-            let unit = self.apply_wp_meta_to_unit(unit);
             let event_id = *unit.id();
 
             // Reset ordinals for each unit to start from replica 0
@@ -220,7 +218,6 @@ impl SinkDispatcher {
         mon: Option<&MonSend>,
     ) -> SinkResult<()> {
         use std::collections::HashMap;
-        let record = self.apply_wp_meta_to_arc(event_id, &pkg.0, pkg.1);
         // 先统计每个 sink 名称下就绪副本数（按 String 键，避免借用冲突）
         let mut totals: HashMap<String, usize> = HashMap::new();
         for rt in self.sinks.iter() {
@@ -246,7 +243,7 @@ impl SinkDispatcher {
             if this == idx {
                 rt.send_to_sink(
                     event_id,
-                    SinkDataEnum::Rec(pkg.0.clone(), record.clone()),
+                    SinkDataEnum::Rec(pkg.0.clone(), pkg.1.clone()),
                     bad_s,
                     mon,
                 )

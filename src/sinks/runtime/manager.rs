@@ -18,13 +18,13 @@ static RESCUE_FILE_SEQ: AtomicU64 = AtomicU64::new(0);
 use crate::runtime::errors::err4_send_to_sink;
 use crate::sinks::RescueFileSink;
 use crate::sinks::{
-    ASinkHandle, ASinkSender, SinkBackendType, SinkDataEnum, SinkFFVPackage, SinkPackage,
+    ASinkHandle, ASinkSender, ProcMeta, SinkBackendType, SinkDataEnum, SinkFFVPackage, SinkPackage,
     SinkStrPackage,
 };
 use crate::stat::MonSend;
 use crate::stat::metric_collect::MetricCollectors;
 use wp_conf::structure::SinkInstanceConf;
-use wp_connector_api::{SinkReason, SinkResult};
+use wp_connector_api::{BatchMeta, SinkReason, SinkResult};
 use wp_error::error_handling::{ErrorHandlingStrategy, sys_robust_mode};
 use wp_model_core::raw::RawData;
 
@@ -48,6 +48,8 @@ pub struct SinkRuntime {
     cond: Option<Expression<DataField, RustSymbol>>,
     batch_size: usize,
     pending_records: Vec<Arc<DataRecord>>,
+    pending_meta: BatchMeta,
+    output_disabled: Vec<String>,
     status: RuntimeStautus,
     normal_stat: MetricCollectors,
     backup_stat: MetricCollectors,
@@ -109,6 +111,8 @@ impl SinkRuntime {
             cond,
             batch_size,
             pending_records: Vec::with_capacity(batch_size),
+            pending_meta: BatchMeta::default(),
+            output_disabled: Vec::new(),
             normal_stat,
             backup_stat,
             status: RuntimeStautus::Ready,
@@ -141,6 +145,9 @@ impl SinkRuntime {
     }
     pub fn freeze(&mut self) {
         self.status.freeze();
+    }
+    pub fn set_meta_output_disabled(&mut self, fields: &[String]) {
+        self.output_disabled = fields.to_vec();
     }
     pub fn ready(&mut self) {
         self.status.ready();
@@ -306,27 +313,16 @@ impl SinkRuntime {
             &mut self.pending_records,
             Vec::with_capacity(self.batch_size),
         );
-        self.send_records_batch(records, bad_s, mon, true).await
-    }
-
-    /// 直接发送当前 package（绕过 pending 缓冲）
-    async fn send_package_bypass_buffer(
-        &mut self,
-        package: &SinkPackage,
-        bad_s: Option<&ASinkSender>,
-        mon: Option<&MonSend>,
-    ) -> SinkResult<()> {
-        let mut records = Vec::with_capacity(package.len());
-        for unit in package.iter() {
-            records.push(unit.data().clone());
-        }
-        self.send_records_batch(records, bad_s, mon, false).await
+        let meta = std::mem::take(&mut self.pending_meta);
+        self.send_records_batch(records, meta, bad_s, mon, true)
+            .await
     }
 
     /// 发送一批 records；`requeue_on_throw=true` 时在 Throw 分支回填 pending 缓冲
     async fn send_records_batch(
         &mut self,
         records: Vec<Arc<DataRecord>>,
+        meta: BatchMeta,
         bad_s: Option<&ASinkSender>,
         mon: Option<&MonSend>,
         requeue_on_throw: bool,
@@ -339,7 +335,14 @@ impl SinkRuntime {
         self.stat_beg_records_batch(&records);
 
         loop {
-            match self.primary.sink_records(records.clone()).await {
+            let result = if meta.is_empty() {
+                self.primary.sink_records(records.clone()).await
+            } else {
+                self.primary
+                    .sink_records_with_meta(meta.clone(), records.clone())
+                    .await
+            };
+            match result {
                 Ok(()) => {
                     // 统计结束
                     self.stat_end_records_batch(&records);
@@ -360,6 +363,7 @@ impl SinkRuntime {
                                 // 失败时将数据放回 buffer
                                 let pending_copy = records.clone();
                                 self.pending_records = records;
+                                self.pending_meta = meta;
                                 self.stat_end_records_batch(&pending_copy);
                             } else {
                                 self.stat_end_records_batch(&records);
@@ -370,6 +374,39 @@ impl SinkRuntime {
                 }
             }
         }
+    }
+
+    async fn send_record_segment(
+        &mut self,
+        records: Vec<Arc<DataRecord>>,
+        meta: BatchMeta,
+        bad_s: Option<&ASinkSender>,
+        mon: Option<&MonSend>,
+    ) -> SinkResult<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+
+        if !self.pending_records.is_empty() && self.pending_meta != meta {
+            self.flush_pending_buffer(bad_s, mon).await?;
+        }
+
+        // 自动策略：当 pending 为空且入站段已达到阈值，直接下发可减少无效缓冲开销。
+        if self.pending_records.is_empty() && records.len() >= self.batch_size {
+            return self
+                .send_records_batch(records, meta, bad_s, mon, false)
+                .await;
+        }
+
+        if self.pending_records.is_empty() {
+            self.pending_meta = meta;
+        }
+
+        self.pending_records.extend(records);
+        if self.pending_records.len() >= self.batch_size {
+            self.flush_pending_buffer(bad_s, mon).await?;
+        }
+        Ok(())
     }
 
     /// 批量发送记录数据包到 Sink
@@ -383,20 +420,62 @@ impl SinkRuntime {
             return Ok(());
         }
 
-        // 自动策略：当 pending 为空且入站包已达到阈值，直接下发可减少无效缓冲开销
-        if self.pending_records.is_empty() && package.len() >= self.batch_size {
-            return self.send_package_bypass_buffer(package, bad_s, mon).await;
+        let mut records = Vec::with_capacity(package.len());
+        let mut segment_meta: Option<BatchMeta> = None;
+        for (idx, unit) in package.iter().enumerate() {
+            let unit_meta = self.unit_batch_meta(unit.meta());
+            if let Some(meta) = segment_meta.as_ref() {
+                if meta != &unit_meta {
+                    let meta = segment_meta.unwrap_or_default();
+                    return self
+                        .send_mixed_meta_package_by_segment_from(
+                            package, idx, records, meta, bad_s, mon,
+                        )
+                        .await;
+                }
+            } else {
+                segment_meta = Some(unit_meta);
+            }
+            records.push(unit.data().clone());
         }
 
-        // 将 package 中的数据添加到 buffer
-        for unit in package.iter() {
-            self.pending_records.push(unit.data().clone());
+        let meta = segment_meta.unwrap_or_default();
+        self.send_record_segment(records, meta, bad_s, mon).await
+    }
+
+    async fn send_mixed_meta_package_by_segment_from(
+        &mut self,
+        package: &SinkPackage,
+        start_idx: usize,
+        mut segment_records: Vec<Arc<DataRecord>>,
+        mut segment_meta: BatchMeta,
+        bad_s: Option<&ASinkSender>,
+        mon: Option<&MonSend>,
+    ) -> SinkResult<()> {
+        for unit in package.iter().skip(start_idx) {
+            let unit_meta = self.unit_batch_meta(unit.meta());
+            if segment_meta != unit_meta {
+                let records = std::mem::take(&mut segment_records);
+                self.send_record_segment(records, segment_meta, bad_s, mon)
+                    .await?;
+                segment_meta = unit_meta;
+            }
+            segment_records.push(unit.data().clone());
         }
-        // 当 buffer 达到批次大小时自动 flush
-        if self.pending_records.len() >= self.batch_size {
-            self.flush_pending_buffer(bad_s, mon).await?;
+
+        self.send_record_segment(segment_records, segment_meta, bad_s, mon)
+            .await
+    }
+
+    fn unit_batch_meta(&self, meta: &ProcMeta) -> BatchMeta {
+        let mut batch_meta = BatchMeta::default();
+        if let ProcMeta::OmlName(name) = meta
+            && !name.is_empty()
+        {
+            batch_meta.oml_name = Some(name.clone());
         }
-        Ok(())
+        batch_meta.set_output_disabled(self.output_disabled.iter().cloned());
+        batch_meta
     }
 
     /// 公开的 flush 方法，用于手动触发 buffer 刷新
@@ -748,6 +827,7 @@ mod tests {
     use crate::sinks::ProcMeta;
     use crate::sinks::SinkRecUnit;
     use async_trait::async_trait;
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tempfile::tempdir;
     use wp_model_core::model::{DataField, DataRecord};
@@ -758,9 +838,29 @@ mod tests {
         sink_records_calls: Arc<AtomicUsize>,
     }
 
+    struct CapturingMetaSink {
+        sink_records_calls: Arc<AtomicUsize>,
+        metas: Arc<Mutex<Vec<BatchMeta>>>,
+        batch_lens: Arc<Mutex<Vec<usize>>>,
+    }
+
     impl CountingSink {
         fn new(sink_records_calls: Arc<AtomicUsize>) -> Self {
             Self { sink_records_calls }
+        }
+    }
+
+    impl CapturingMetaSink {
+        fn new(
+            sink_records_calls: Arc<AtomicUsize>,
+            metas: Arc<Mutex<Vec<BatchMeta>>>,
+            batch_lens: Arc<Mutex<Vec<usize>>>,
+        ) -> Self {
+            Self {
+                sink_records_calls,
+                metas,
+                batch_lens,
+            }
         }
     }
 
@@ -847,17 +947,142 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl AsyncCtrl for CapturingMetaSink {
+        async fn stop(&mut self) -> SinkResult<()> {
+            Ok(())
+        }
+
+        async fn reconnect(&mut self) -> SinkResult<()> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl AsyncRecordSink for CapturingMetaSink {
+        async fn sink_record(&mut self, _data: &DataRecord) -> SinkResult<()> {
+            Ok(())
+        }
+
+        async fn sink_records(&mut self, data: Vec<Arc<DataRecord>>) -> SinkResult<()> {
+            self.sink_records_calls.fetch_add(1, Ordering::SeqCst);
+            self.batch_lens
+                .lock()
+                .expect("batch_lens lock")
+                .push(data.len());
+            Ok(())
+        }
+
+        async fn sink_records_with_meta(
+            &mut self,
+            meta: BatchMeta,
+            data: Vec<Arc<DataRecord>>,
+        ) -> SinkResult<()> {
+            self.metas.lock().expect("metas lock").push(meta);
+            self.batch_lens
+                .lock()
+                .expect("batch_lens lock")
+                .push(data.len());
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl AsyncRawdatSink for CapturingMetaSink {
+        async fn sink_str(&mut self, _data: &str) -> SinkResult<()> {
+            Ok(())
+        }
+
+        async fn sink_bytes(&mut self, _data: &[u8]) -> SinkResult<()> {
+            Ok(())
+        }
+
+        async fn sink_str_batch(&mut self, _data: Vec<&str>) -> SinkResult<()> {
+            Ok(())
+        }
+
+        async fn sink_bytes_batch(&mut self, _data: Vec<&[u8]>) -> SinkResult<()> {
+            Ok(())
+        }
+    }
+
     fn build_package(count: usize) -> SinkPackage {
         let units = (0..count).map(|idx| {
             let mut record = DataRecord::default();
             record.append(DataField::from_chars("k", format!("v{}", idx)));
             SinkRecUnit::new(
                 idx as u64,
-                ProcMeta::Rule("/bench/rule".to_string()),
+                ProcMeta::WplName("/bench/rule".to_string()),
                 Arc::new(record),
             )
         });
         SinkPackage::from_units(units)
+    }
+
+    fn build_oml_package(count: usize, name: &str) -> SinkPackage {
+        let units = (0..count).map(|idx| {
+            let mut record = DataRecord::default();
+            record.append(DataField::from_chars("k", format!("v{}", idx)));
+            SinkRecUnit::new(
+                idx as u64,
+                ProcMeta::OmlName(name.to_string()),
+                Arc::new(record),
+            )
+        });
+        SinkPackage::from_units(units)
+    }
+
+    fn build_mixed_oml_package(names: &[&str]) -> SinkPackage {
+        let units = names.iter().enumerate().map(|(idx, name)| {
+            let mut record = DataRecord::default();
+            record.append(DataField::from_chars("k", format!("v{}", idx)));
+            SinkRecUnit::new(
+                idx as u64,
+                ProcMeta::OmlName((*name).to_string()),
+                Arc::new(record),
+            )
+        });
+        SinkPackage::from_units(units)
+    }
+
+    struct CapturingRuntime {
+        runtime: SinkRuntime,
+        plain_calls: Arc<AtomicUsize>,
+        metas: Arc<Mutex<Vec<BatchMeta>>>,
+        batch_lens: Arc<Mutex<Vec<usize>>>,
+    }
+
+    fn capturing_runtime(batch_size: usize) -> CapturingRuntime {
+        let plain_calls = Arc::new(AtomicUsize::new(0));
+        let metas = Arc::new(Mutex::new(Vec::new()));
+        let batch_lens = Arc::new(Mutex::new(Vec::new()));
+        let primary = SinkBackendType::Proxy(Box::new(CapturingMetaSink::new(
+            plain_calls.clone(),
+            metas.clone(),
+            batch_lens.clone(),
+        )));
+        let conf = SinkInstanceConf::new_type(
+            "bench".into(),
+            TextFmt::Json,
+            "blackhole".into(),
+            Default::default(),
+            None,
+        );
+        let runtime = SinkRuntime::with_batch_size(
+            "./rescue".to_string(),
+            "/sink/bench/[0]",
+            conf,
+            primary,
+            None,
+            Vec::new(),
+            batch_size,
+        );
+        CapturingRuntime {
+            runtime,
+            plain_calls,
+            metas,
+            batch_lens,
+        }
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -892,8 +1117,10 @@ mod tests {
 
             let mut record = DataRecord::default();
             record.append(DataField::from_chars("k", "v"));
-            let packet =
-                SinkDataEnum::Rec(ProcMeta::Rule("/shh/test_rule16".into()), Arc::new(record));
+            let packet = SinkDataEnum::Rec(
+                ProcMeta::WplName("/shh/test_rule16".into()),
+                Arc::new(record),
+            );
 
             runtime
                 .send_to_sink(1, packet, Some(&bad_tx), None)
@@ -973,6 +1200,183 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         runtime.flush(None, None).await?;
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn large_oml_package_bypasses_pending_buffer_with_batch_meta() -> SinkResult<()> {
+        let mut capture = capturing_runtime(2);
+
+        let package = build_oml_package(5, "nginx_access");
+        capture
+            .runtime
+            .send_package_to_sink(&package, None, None)
+            .await?;
+
+        assert_eq!(capture.plain_calls.load(Ordering::SeqCst), 0);
+        let metas = capture.metas.lock().expect("metas lock");
+        assert_eq!(metas.len(), 1);
+        assert_eq!(metas[0].oml_name(), Some("nginx_access"));
+        assert_eq!(
+            capture
+                .batch_lens
+                .lock()
+                .expect("batch_lens lock")
+                .as_slice(),
+            &[5]
+        );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn pending_buffer_flushes_before_oml_name_changes() -> SinkResult<()> {
+        let mut capture = capturing_runtime(8);
+
+        let nginx = build_oml_package(2, "nginx_access");
+        capture
+            .runtime
+            .send_package_to_sink(&nginx, None, None)
+            .await?;
+        assert_eq!(capture.metas.lock().expect("metas lock").len(), 0);
+
+        let conn = build_oml_package(2, "conn_events");
+        capture
+            .runtime
+            .send_package_to_sink(&conn, None, None)
+            .await?;
+        {
+            let metas = capture.metas.lock().expect("metas lock");
+            assert_eq!(metas.len(), 1);
+            assert_eq!(metas[0].oml_name(), Some("nginx_access"));
+        }
+
+        capture.runtime.flush(None, None).await?;
+        assert_eq!(capture.plain_calls.load(Ordering::SeqCst), 0);
+        let metas = capture.metas.lock().expect("metas lock");
+        assert_eq!(metas.len(), 2);
+        assert_eq!(metas[0].oml_name(), Some("nginx_access"));
+        assert_eq!(metas[1].oml_name(), Some("conn_events"));
+        assert_eq!(
+            capture
+                .batch_lens
+                .lock()
+                .expect("batch_lens lock")
+                .as_slice(),
+            &[2, 2]
+        );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn mixed_oml_package_splits_batches_by_oml_name() -> SinkResult<()> {
+        let mut capture = capturing_runtime(2);
+
+        let package = build_mixed_oml_package(&[
+            "nginx_access",
+            "nginx_access",
+            "conn_events",
+            "conn_events",
+        ]);
+        capture
+            .runtime
+            .send_package_to_sink(&package, None, None)
+            .await?;
+
+        assert_eq!(capture.plain_calls.load(Ordering::SeqCst), 0);
+        let metas = capture.metas.lock().expect("metas lock");
+        assert_eq!(metas.len(), 2);
+        assert_eq!(metas[0].oml_name(), Some("nginx_access"));
+        assert_eq!(metas[1].oml_name(), Some("conn_events"));
+        assert_eq!(
+            capture
+                .batch_lens
+                .lock()
+                .expect("batch_lens lock")
+                .as_slice(),
+            &[2, 2]
+        );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn wpl_rule_package_does_not_emit_oml_batch_meta() -> SinkResult<()> {
+        let mut capture = capturing_runtime(2);
+
+        let package = build_package(5);
+        capture
+            .runtime
+            .send_package_to_sink(&package, None, None)
+            .await?;
+
+        assert_eq!(capture.plain_calls.load(Ordering::SeqCst), 1);
+        assert!(capture.metas.lock().expect("metas lock").is_empty());
+        assert_eq!(
+            capture
+                .batch_lens
+                .lock()
+                .expect("batch_lens lock")
+                .as_slice(),
+            &[5]
+        );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn group_disabled_meta_fields_are_attached_to_batch_meta() -> SinkResult<()> {
+        let mut capture = capturing_runtime(8);
+        capture
+            .runtime
+            .set_meta_output_disabled(&["wp_oml_name".to_string()]);
+
+        let package = build_oml_package(2, "nginx_access");
+        capture
+            .runtime
+            .send_package_to_sink(&package, None, None)
+            .await?;
+        capture.runtime.flush(None, None).await?;
+
+        assert_eq!(capture.plain_calls.load(Ordering::SeqCst), 0);
+        let metas = capture.metas.lock().expect("metas lock");
+        assert_eq!(metas.len(), 1);
+        assert_eq!(metas[0].oml_name(), Some("nginx_access"));
+        assert!(metas[0].is_output_disabled("wp_oml_name"));
+        assert_eq!(
+            capture
+                .batch_lens
+                .lock()
+                .expect("batch_lens lock")
+                .as_slice(),
+            &[2]
+        );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn disabled_meta_fields_call_meta_path_without_oml_name() -> SinkResult<()> {
+        let mut capture = capturing_runtime(2);
+        capture
+            .runtime
+            .set_meta_output_disabled(&["wp_oml_name".to_string()]);
+
+        let package = build_package(5);
+        capture
+            .runtime
+            .send_package_to_sink(&package, None, None)
+            .await?;
+
+        assert_eq!(capture.plain_calls.load(Ordering::SeqCst), 0);
+        let metas = capture.metas.lock().expect("metas lock");
+        assert_eq!(metas.len(), 1);
+        assert_eq!(metas[0].oml_name(), None);
+        assert!(metas[0].is_output_disabled("wp_oml_name"));
+        assert_eq!(
+            capture
+                .batch_lens
+                .lock()
+                .expect("batch_lens lock")
+                .as_slice(),
+            &[5]
+        );
         Ok(())
     }
 }

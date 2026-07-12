@@ -6,25 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
-## [1.23.6 Unreleased]
+## [1.23.7 Unreleased]
 
 ### Added
-- **Sink/Metadata**: JSON/CSV sink group output now emits fixed runtime metadata fields `wp_stream_tag` and `wp_event_id` by default. Added group-level `sink_group.wp_meta_disable` to hide selected metadata fields, for example `["wp_stream_tag", "wp_event_id"]`.
-  中文：JSON/CSV sink_group 输出默认携带固定运行时元字段 `wp_stream_tag` 与 `wp_event_id`；新增组级 `sink_group.wp_meta_disable`，可按组关闭指定元字段。
-- **Benchmarks**: Added `sink_wp_meta` benchmark coverage for metadata output and disable behavior.
-  中文：新增 `sink_wp_meta` 基准，覆盖元信息输出与禁用路径的性能。
+- **Sink/BatchMeta**: Sink runtime now passes OML output names and group-level metadata output policy to connectors through `BatchMeta.oml_name`, `BatchMeta.output_disabled`, and `sink_records_with_meta`, enabling Arrow framed sinks to use the OML `name` as the frame tag without requiring a fixed connector `tag`.
+  中文：sink runtime 现在通过 `BatchMeta.oml_name`、`BatchMeta.output_disabled` 和 `sink_records_with_meta` 将 OML 输出名与组级元信息输出策略传给 connector，使 Arrow framed sink 可直接使用 OML `name` 作为 frame tag，无需固定配置 connector `tag`。
 
 ### Changed
-- **Sink/Runtime**: Runtime metadata injection now happens once at the `SinkDispatcher`/sink_group boundary instead of inside each sink runtime. Single-owner records use `Arc::try_unwrap` to avoid unnecessary `DataRecord` clones.
-  中文：运行时元信息在 `SinkDispatcher`/sink_group 边界统一处理，不再放到每个 sink runtime；单所有者记录通过 `Arc::try_unwrap` 避免不必要的 `DataRecord` clone。
-- **Config/Sinks**: `stream_tag_field` is source-only and is rejected from sink/wpgen output params. `wp_meta_disable` is group-level only; connector-facing sink specs filter runtime-only metadata params before validate/build.
-  中文：`stream_tag_field` 只属于 source 配置，sink/wpgen output 参数中会报错；`wp_meta_disable` 只属于 sink_group，传给 connector validate/build 的 sink spec 会过滤运行时元参数。
+- **Dependencies**: Upgraded `wp-connector-api` to `0.11`, `wp-core-connectors` to `0.7`, `wp-lang` to `0.4`, and added `wp-source-types` `0.1` for the updated connector metadata contract.
+  中文：升级 `wp-connector-api` 到 `0.11`、`wp-core-connectors` 到 `0.7`、`wp-lang` 到 `0.4`，并新增 `wp-source-types` `0.1`，用于新的 connector 元信息契约。
+- **Sink/Metadata**: Removed engine-side payload injection for `wp_stream_tag` and `wp_event_id`. Metadata rendering is now sink-owned; the engine only passes batch-level OML metadata.
+  中文：移除引擎侧对 `wp_stream_tag` 与 `wp_event_id` 的 payload 注入；元信息如何输出改由 sink 自己实现，引擎只传递批次级 OML 元信息。
+- **Config/Sinks**: `wp_meta_disable` is a `sink_group`-level metadata output policy for `wp_oml_name` and is rejected from sink/wpgen output params; `stream_tag_field` remains source-only.
+  中文：`wp_meta_disable` 是 `sink_group` 级 `wp_oml_name` 元信息输出策略，sink/wpgen output 参数中会报错；`stream_tag_field` 仍只属于 source 配置。
+- **Sink/OML**: Successful OML output records now carry the OML model `name` as internal `ProcMeta::OmlName`, so batch sinks receive the logical output name rather than the original WPL rule key.
+  中文：OML 成功输出记录现在以内部 `ProcMeta::OmlName` 携带 OML 模型 `name`，批量 sink 接收到的是逻辑输出名，而不是原始 WPL rule key。
+- **Sink/Runtime**: Renamed internal `ProcMeta::Rule` to `ProcMeta::WplName` to make the WPL/OML distinction explicit.
+  中文：内部 `ProcMeta::Rule` 改名为 `ProcMeta::WplName`，明确区分 WPL 名称与 OML 输出名称。
+
+### Removed
+- **Benchmarks**: Removed the obsolete `sink_wp_meta` benchmark now that engine-side runtime metadata payload injection has been removed.
+  中文：移除过时的 `sink_wp_meta` 基准；引擎侧运行时元信息 payload 注入逻辑已删除。
 
 ### Tests
-- **Config/Sinks**: Added coverage for source-side `stream_tag_field` pass-through, sink/wpgen output rejection, and connector-facing runtime param filtering.
-  中文：补充 source 侧 `stream_tag_field` 放行、sink/wpgen output 侧拒绝，以及 connector-facing 过滤运行时参数的测试。
-- **Sink/Dispatcher**: Added coverage for metadata injection, disabled-field `Ignore` marking, and fixed metadata overwrite semantics.
-  中文：补充 dispatcher 元信息注入、禁用字段标记为 `Ignore`、固定元字段覆盖语义的测试。
+- **Config/Sinks**: Added coverage for source-side `stream_tag_field` pass-through, group-level `wp_meta_disable`, and sink/wpgen output rejection.
+  中文：补充 source 侧 `stream_tag_field` 放行、组级 `wp_meta_disable`，以及 sink/wpgen output 侧拒绝的测试。
+- **Sink/Runtime**: Added coverage for `BatchMeta.oml_name` and `BatchMeta.output_disabled` dispatch, pending-buffer flushes when OML names change, and WPL rule passthrough without OML batch metadata.
+  中文：补充 `BatchMeta.oml_name` 与 `BatchMeta.output_disabled` 下发、pending buffer 遇到 OML name 变化时先 flush，以及普通 WPL rule 透传不生成 OML 批次元信息的测试。
+- **Parser/Annotations**: Filtered `AnnotationType::Null` before parser pipeline annotation execution.
+  中文：parser pipeline 执行 annotation 前过滤 `AnnotationType::Null`。
 
 ## [1.23.5] - 2026-07-06
 

@@ -21,6 +21,7 @@ const FIELD_FMT: &str = "fmt";
 const DEFAULT_OUTPUT_FORMAT: &str = "json";
 const FIELD_WP_META_DISABLE: &str = "wp_meta_disable";
 const FIELD_STREAM_TAG_FIELD: &str = "stream_tag_field";
+const SUPPORTED_WP_META_DISABLE_FIELDS: &[&str] = &["wp_oml_name"];
 
 fn build_sink_instance(
     group_name: &str,
@@ -117,12 +118,43 @@ fn is_nested_field_blacklisted(k: &str) -> bool {
     matches!(k, "params" | "params_override")
 }
 
+fn is_source_only_runtime_field(k: &str) -> bool {
+    matches!(k, FIELD_STREAM_TAG_FIELD)
+}
+
 fn is_group_only_runtime_field(k: &str) -> bool {
     matches!(k, FIELD_WP_META_DISABLE)
 }
 
-fn is_source_only_runtime_field(k: &str) -> bool {
-    matches!(k, FIELD_STREAM_TAG_FIELD)
+fn validate_wp_meta_disable_fields(
+    fields: &[String],
+    group_name: &str,
+    origin: Option<&Path>,
+) -> OrionConfResult<Vec<String>> {
+    let origin = origin
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "-".to_string());
+    let mut normalized = Vec::with_capacity(fields.len());
+    for field in fields {
+        let field = field.trim();
+        if field.is_empty() {
+            return Err(ConfIOReason::validation_error().to_err().with_detail(format!(
+                "sink_group.wp_meta_disable must be an array of non-empty strings (group: {}, file: {})",
+                group_name, origin
+            )));
+        }
+        if !SUPPORTED_WP_META_DISABLE_FIELDS.contains(&field) {
+            return Err(ConfIOReason::validation_error().to_err().with_detail(format!(
+                "unsupported sink_group.wp_meta_disable field '{}' (supported: [{}], group: {}, file: {})",
+                field,
+                SUPPORTED_WP_META_DISABLE_FIELDS.join(", "),
+                group_name,
+                origin
+            )));
+        }
+        normalized.push(field.to_string());
+    }
+    Ok(normalized)
 }
 
 /// 合并 connector 默认参数与覆盖表，并执行白名单/嵌套校验（可被 CLI/工具链共用）
@@ -159,9 +191,9 @@ fn merge_params_with_allowlist(
                     )),
             );
         }
-        if is_group_only_runtime_field(k) {
+        if is_source_only_runtime_field(k) {
             return Err(ConfIOReason::validation_error().to_err().with_detail(format!(
-                "sink param '{}' is group-level only; set it under [sink_group] instead of sink params (group: {}, sink: {}, connector: {}, file: {})",
+                "sink param '{}' is source-level only; set it under source params instead of sink params (group: {}, sink: {}, connector: {}, file: {})",
                 k,
                 group_name,
                 sink_name,
@@ -169,11 +201,11 @@ fn merge_params_with_allowlist(
                 origin
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|| "-".to_string())
-            )));
+                )));
         }
-        if is_source_only_runtime_field(k) {
+        if is_group_only_runtime_field(k) {
             return Err(ConfIOReason::validation_error().to_err().with_detail(format!(
-                "sink param '{}' is source-level only; set it under source params instead of sink params (group: {}, sink: {}, connector: {}, file: {})",
+                "sink param '{}' is group-level only; set it under [sink_group] instead of sink params (group: {}, sink: {}, connector: {}, file: {})",
                 k,
                 group_name,
                 sink_name,
@@ -220,25 +252,6 @@ fn merge_params_with_allowlist(
         m.insert(k.clone(), v.clone());
     }
     Ok(m)
-}
-
-fn apply_group_runtime_params(sink: &mut SinkInstanceConf, rf: &RouteFile) -> OrionConfResult<()> {
-    if let Some(disabled) = rf.sink_group.wp_meta_disable.as_ref() {
-        if disabled.iter().any(|field| field.trim().is_empty()) {
-            return Err(ConfIOReason::validation_error().to_err().with_detail(format!(
-                "sink_group.wp_meta_disable must be an array of non-empty strings (group: {}, file: {})",
-                rf.sink_group.name,
-                rf.origin
-                    .as_ref()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "-".to_string())
-            )));
-        }
-        sink.core
-            .params
-            .insert(FIELD_WP_META_DISABLE.into(), serde_json::json!(disabled));
-    }
-    Ok(())
 }
 
 fn collect_group_matchers(rf: &RouteFile) -> (Vec<String>, Vec<String>) {
@@ -292,7 +305,7 @@ fn apply_group_metadata(
     g: &mut crate::structure::FlexGroup,
     rf: &RouteFile,
     defaults: Option<&DefaultsBody>,
-) {
+) -> OrionConfResult<()> {
     if let Some(p) = rf.sink_group.parallel {
         g.set_parallel(p);
     }
@@ -306,12 +319,20 @@ fn apply_group_metadata(
     if let Some(gt) = rf.sink_group.tags.as_ref() {
         g.tags = gt.clone();
     }
+    if let Some(disabled) = rf.sink_group.wp_meta_disable.as_ref() {
+        g.wp_meta_disable = validate_wp_meta_disable_fields(
+            disabled,
+            rf.sink_group.name.as_str(),
+            rf.origin.as_deref(),
+        )?;
+    }
     if let Some(timeout_ms) = rf.sink_group.batch_timeout_ms {
         g.batch_timeout_ms = timeout_ms;
     }
     if let Some(size) = rf.sink_group.batch_size {
         g.batch_size = size;
     }
+    Ok(())
 }
 
 /// 从单个 RouteFile 构建标准输出 SinkRouteConf（统一事实源）
@@ -344,7 +365,6 @@ pub fn build_route_conf_from_with(
             conn,
             s,
         )?;
-        apply_group_runtime_params(&mut sink, rf)?;
         assemble_sink_tags(
             &mut sink,
             defaults.and_then(|d| d.tags.as_ref()),
@@ -365,7 +385,7 @@ pub fn build_route_conf_from_with(
     let mut group = FlexGroup::build_conf(&rf.sink_group.name, sinks);
     group.oml = extend_matches(oml_vec);
     group.rule = extend_matches(rule_vec);
-    apply_group_metadata(&mut group, rf, defaults);
+    apply_group_metadata(&mut group, rf, defaults)?;
 
     Ok(SinkRouteConf {
         version: "2.0".into(),
@@ -678,7 +698,7 @@ mod tests {
     fn merge_params_rejects_sink_level_wp_meta_disable() {
         let base = ParamMap::new();
         let mut overrides = ParamMap::new();
-        overrides.insert("wp_meta_disable".into(), json!(["wp_event_id"]));
+        overrides.insert("wp_meta_disable".into(), json!(["wp_oml_name"]));
         let allow = vec!["wp_meta_disable".to_string()];
 
         let err = merge_params_with_allowlist(
@@ -694,48 +714,6 @@ mod tests {
         .to_string();
 
         assert!(err.contains("group-level only"), "err={}", err);
-    }
-
-    #[test]
-    fn group_wp_meta_disable_is_injected_into_each_sink_params() {
-        let rf: RouteFile = toml::from_str(
-            r#"
-version = "2.0"
-[sink_group]
-name = "/sink/test"
-oml = ["network.netflow"]
-wp_meta_disable = ["wp_event_id"]
-
-[[sink_group.sinks]]
-name = "json"
-connect = "file_json_sink"
-params = { file = "out.json" }
-"#,
-        )
-        .expect("route file");
-        let mut conn_map = BTreeMap::new();
-        conn_map.insert(
-            "file_json_sink".to_string(),
-            ConnectorRec {
-                id: "file_json_sink".to_string(),
-                kind: "file".to_string(),
-                scope: wp_connector_api::ConnectorScope::Sink,
-                allow_override: vec!["base".to_string(), "file".to_string()],
-                default_params: ParamMap::new(),
-                origin: None,
-            },
-        );
-
-        let conf = build_route_conf_from(&rf, None, &conn_map).expect("route conf");
-        let sink = conf.sink_group.sinks.first().expect("sink");
-        assert_eq!(
-            sink.core
-                .params
-                .get("wp_meta_disable")
-                .and_then(|v| v.as_array())
-                .map(Vec::len),
-            Some(1)
-        );
     }
 
     struct StrictFactory;
@@ -760,7 +738,7 @@ params = { file = "out.json" }
         }
 
         fn validate_spec(&self, spec: &SinkSpec) -> SinkResult<()> {
-            for key in ["wp_meta_disable", "stream_tag_field"] {
+            for key in ["stream_tag_field"] {
                 if spec.params.contains_key(key) {
                     return Err(SinkReason::core_conf()
                         .to_err()
@@ -786,14 +764,13 @@ params = { file = "out.json" }
     }
 
     #[test]
-    fn plugin_validate_does_not_receive_runtime_metadata_params() {
+    fn plugin_validate_does_not_receive_source_only_runtime_params() {
         let rf: RouteFile = toml::from_str(
             r#"
 version = "2.0"
 [sink_group]
 name = "/sink/test"
 oml = ["network.netflow"]
-wp_meta_disable = ["wp_event_id"]
 
 [[sink_group.sinks]]
 name = "strict"
@@ -818,7 +795,83 @@ params = { file = "out.json" }
         let conf =
             build_route_conf_from_with(&rf, None, &conn_map, &StrictLookup).expect("route conf");
         let sink = conf.sink_group.sinks.first().expect("sink");
-        assert!(sink.core.params.contains_key("wp_meta_disable"));
         assert!(!sink.core.params.contains_key("stream_tag_field"));
+    }
+
+    #[test]
+    fn group_wp_meta_disable_is_group_metadata_not_sink_param() {
+        let rf: RouteFile = toml::from_str(
+            r#"
+version = "2.0"
+[sink_group]
+name = "/sink/test"
+oml = ["network.netflow"]
+wp_meta_disable = ["wp_oml_name"]
+
+[[sink_group.sinks]]
+name = "json"
+connect = "file_json_sink"
+params = { file = "out.json" }
+"#,
+        )
+        .expect("route file");
+        let mut conn_map = BTreeMap::new();
+        conn_map.insert(
+            "file_json_sink".to_string(),
+            ConnectorRec {
+                id: "file_json_sink".to_string(),
+                kind: "file".to_string(),
+                scope: ConnectorScope::Sink,
+                allow_override: vec!["base".to_string(), "file".to_string()],
+                default_params: ParamMap::new(),
+                origin: None,
+            },
+        );
+
+        let conf = build_route_conf_from(&rf, None, &conn_map).expect("route conf");
+        assert_eq!(
+            conf.sink_group.wp_meta_disable.as_slice(),
+            &["wp_oml_name".to_string()]
+        );
+        let sink = conf.sink_group.sinks.first().expect("sink");
+        assert!(!sink.core.params.contains_key("wp_meta_disable"));
+    }
+
+    #[test]
+    fn group_wp_meta_disable_rejects_unknown_field() {
+        let rf: RouteFile = toml::from_str(
+            r#"
+version = "2.0"
+[sink_group]
+name = "/sink/test"
+oml = ["network.netflow"]
+wp_meta_disable = ["wp_oml_nam"]
+
+[[sink_group.sinks]]
+name = "json"
+connect = "file_json_sink"
+params = { file = "out.json" }
+"#,
+        )
+        .expect("route file");
+        let mut conn_map = BTreeMap::new();
+        conn_map.insert(
+            "file_json_sink".to_string(),
+            ConnectorRec {
+                id: "file_json_sink".to_string(),
+                kind: "file".to_string(),
+                scope: ConnectorScope::Sink,
+                allow_override: vec!["base".to_string(), "file".to_string()],
+                default_params: ParamMap::new(),
+                origin: None,
+            },
+        );
+
+        let err = build_route_conf_from(&rf, None, &conn_map)
+            .expect_err("unknown wp_meta_disable fields should fail")
+            .to_string();
+        assert!(err.contains("unsupported sink_group.wp_meta_disable field"));
+        assert!(err.contains("wp_oml_nam"));
+        assert!(err.contains("wp_oml_name"));
     }
 }

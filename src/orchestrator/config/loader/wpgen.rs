@@ -21,8 +21,8 @@ use crate::orchestrator::config::WPGEN_TOML;
 use crate::orchestrator::config::models::wpgen::{WpGenConfig, WpGenResolved};
 use wp_conf::engine::EngineConfig;
 
-const FIELD_WP_META_DISABLE: &str = "wp_meta_disable";
 const FIELD_STREAM_TAG_FIELD: &str = "stream_tag_field";
+const FIELD_WP_META_DISABLE: &str = "wp_meta_disable";
 
 impl WarpConf {
     /// 加载已解析的 wpgen 配置，包含 connector 解析
@@ -144,7 +144,7 @@ impl WarpConf {
                     .with_context(conn_id)
                     .doing("nested params/params_override is not allowed"));
             }
-            if matches!(k.as_str(), FIELD_WP_META_DISABLE | FIELD_STREAM_TAG_FIELD) {
+            if matches!(k.as_str(), FIELD_STREAM_TAG_FIELD | FIELD_WP_META_DISABLE) {
                 return Err(ConfIOReason::validation_error()
                     .to_err()
                     .with_context(conn_id)

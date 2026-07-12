@@ -13,12 +13,6 @@ File Sink 用于将处理后的数据写入本地文件。支持多种数据格�
 | `file` | string | `out.dat` | 输出文件名 |
 | `sync` | bool | `false` | 是否立即刷新到磁盘 |
 
-组级参数：
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `sink_group.wp_meta_disable` | string array | `[]` | 对整个 sink_group 禁用固定 `wp_*` 元数据字段，例如 `["wp_stream_tag", "wp_event_id"]` |
-
 ## 支持的输出格式
 
 | 格式 | 说明 | 适用场景 |
@@ -60,14 +54,13 @@ base = "./exports"
 file = "data.csv"
 ```
 
-### 示例 3: JSON 输出携带流标签
+### 示例 3: JSON 输出携带 OML 输出名
 
 ```toml
 version = "2.0"
 [sink_group]
 name = "/sink/json_output"
 oml = ["network.netflow"]
-wp_meta_disable = ["wp_event_id"]
 
 [[sink_group.sinks]]
 name = "json"
@@ -75,7 +68,18 @@ connect = "file_json_sink"
 params = { file = "results.json" }
 ```
 
-当记录来自 OML/rule 输出时，流标签值来自运行时携带的逻辑输出身份。JSON/CSV 默认输出固定字段 `wp_stream_tag` 和 `wp_event_id`；如需关闭任一字段，设置 `sink_group.wp_meta_disable`，例如 `["wp_stream_tag"]` 或 `["wp_event_id"]`。被禁用的元数据字段在该 sink_group 输出中会被隐藏，即使输入记录里已经有同名字段也不会输出。
+当记录来自 OML 输出时，引擎会把 OML `name` 作为批次级 `BatchMeta.oml_name` 传给 sink。具体输出形式由 sink 实现决定；当前核心文本 sink 会在 JSON/CSV 等结构化文本输出中追加 `wp_oml_name` 字段，Arrow framed sink 会把它写入 frame header tag。
+
+如需关闭文本 payload 中的 OML 元字段，可在 `sink_group` 级配置：
+
+```toml
+[sink_group]
+name = "/sink/json_output"
+oml = ["network.netflow"]
+wp_meta_disable = ["wp_oml_name"]
+```
+
+`wp_meta_disable` 只能放在 `[sink_group]`，不能放入 sink `params` 或 `wpgen.output.params`。当前支持的字段只有 `wp_oml_name`；该配置只控制 JSON/CSV 等文本 payload 字段输出，不关闭 Arrow framed 的 frame header tag。
 
 ### 示例 4: 启用同步模式
 

@@ -23,6 +23,9 @@ pub struct FlexGroup {
     /// 组级标签（仅用于路由/注入/统计），不会改变路由匹配
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Group-level metadata payload fields disabled for all sinks in this group.
+    #[serde(default)]
+    pub wp_meta_disable: Vec<String>,
     #[serde(default)]
     pub filter: Option<String>,
     /// 组级期望（仅公共参数，值域在每个 sink 下的 `sinks.expect` 覆盖）
@@ -49,6 +52,7 @@ impl EnvEvaluable<FlexGroup> for FlexGroup {
     fn env_eval(mut self, dict: &orion_variate::EnvDict) -> Self {
         self.name = self.name.env_eval(dict);
         self.tags = env_eval_vec(self.tags, dict);
+        self.wp_meta_disable = env_eval_vec(self.wp_meta_disable, dict);
         self.filter = self.filter.env_eval(dict);
         self.sinks = env_eval_vec(self.sinks, dict);
         self
@@ -200,6 +204,12 @@ impl SinkGroupConf {
             SinkGroupConf::Fixed(x) => x.batch_size,
         }
     }
+    pub fn wp_meta_disable(&self) -> &[String] {
+        match self {
+            SinkGroupConf::Flexi(x) => x.wp_meta_disable.as_slice(),
+            SinkGroupConf::Fixed(_) => &[],
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Default, Getters)]
@@ -252,6 +262,7 @@ impl FlexGroup {
             parallel: 1,
             oml: WildArray::default(),
             tags: Vec::new(),
+            wp_meta_disable: Vec::new(),
             filter: None,
             rule: WildArray::new(rule),
             expect: None,
@@ -271,6 +282,7 @@ impl FlexGroup {
             parallel: 1,
             oml: WildArray::default(),
             tags: Vec::new(),
+            wp_meta_disable: Vec::new(),
             filter: None,
             rule: WildArray::default(),
             expect: None,
@@ -383,6 +395,7 @@ impl FlexGroup {
             parallel: 1,
             oml: adm_vec,
             tags: Vec::new(),
+            wp_meta_disable: Vec::new(),
             filter: filter.map(|x| x.to_string()),
             rule: WildArray::default(),
             expect: None,
@@ -406,6 +419,7 @@ impl FlexGroup {
             parallel: 1,
             oml: adm_matches,
             tags: Vec::new(),
+            wp_meta_disable: Vec::new(),
             filter: filter.map(|x| x.into()),
             rule: rule_matches,
             batch_timeout_ms: default_batch_timeout_ms(),
@@ -453,6 +467,7 @@ mod tests {
             rule: WildArray::default(),
             oml: WildArray::default(),
             tags: vec!["env-${TAG}".to_string()],
+            wp_meta_disable: vec!["${META_FIELD}".to_string()],
             filter: Some("${GROUP_FILTER}".to_string()),
             expect: None,
             batch_timeout_ms: default_batch_timeout_ms(),
@@ -464,6 +479,7 @@ mod tests {
         dict.insert("GROUP_NAME", ValueType::from("alpha"));
         dict.insert("TAG", ValueType::from("prod"));
         dict.insert("GROUP_FILTER", ValueType::from("grp-filter"));
+        dict.insert("META_FIELD", ValueType::from("wp_oml_name"));
         dict.insert("SINK_NAME", ValueType::from("sink-file"));
         dict.insert("SINK_KIND", ValueType::from("file"));
         dict.insert("SINK_FILTER", ValueType::from("sink-filter"));
@@ -473,6 +489,10 @@ mod tests {
         let evaluated = flex.env_eval(&dict);
         assert_eq!(evaluated.name(), "alpha");
         assert_eq!(evaluated.tags(), &vec!["env-prod".to_string()]);
+        assert_eq!(
+            evaluated.wp_meta_disable(),
+            &vec!["wp_oml_name".to_string()]
+        );
         assert_eq!(evaluated.filter(), &Some("grp-filter".to_string()));
         let sink = evaluated.sinks().first().expect("one sink");
         assert_eq!(sink.name(), "sink-file");

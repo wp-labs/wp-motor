@@ -2,11 +2,10 @@ use crate::runtime::{
     actor::command::{ActorCtrlCmd, TaskController},
     actor::limit::SourceRateLease,
     collector::realtime::{JMActPicker, picker::round::SrcStatus},
-    errors::err4_dispatch_data,
+    errors::{err4_dispatch_data, source_error_to_run_error},
 };
 use crate::sample_log_with_hits;
 use async_broadcast::RecvError;
-use orion_error::conversion::ConvStructError;
 use std::time::{Duration, Instant};
 // stride uses crate::LOG_SAMPLE_STRIDE globally; no per-site stride import here
 use tokio::time::sleep;
@@ -70,7 +69,7 @@ impl JMActPicker {
                     ErrorHandlingStrategy::Terminate => Ok(SrcStatus::Terminal),
                     ErrorHandlingStrategy::Throw => {
                         error_data!("read data error, stg : interrupt:{}", e);
-                        Err(e.conv())
+                        Err(source_error_to_run_error(e))
                     }
                 }
             }

@@ -74,6 +74,9 @@ pub fn code_ins_parse_units(
 
 pub fn annotate_funcs(rule: &WplRule) -> Vec<AnnotationType> {
     AnnotationType::convert(rule.statement.tags())
+        .into_iter()
+        .filter(|ann| !matches!(ann, AnnotationType::Null(_)))
+        .collect()
 }
 
 pub fn build_multi_src_parser_set(rule: &WplRule) -> RunResult<WplEvaluator> {

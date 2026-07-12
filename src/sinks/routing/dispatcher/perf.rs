@@ -44,39 +44,6 @@ pub struct SinkBatchBufferPerfCase {
     batch_size: usize,
 }
 
-/// SinkDispatcher 输出 `wp_stream_tag`/`wp_event_id` 的性能对比场景。
-///
-/// `Enabled` 覆盖默认 JSON/CSV group 输出元字段的路径；`Disabled` 通过
-/// `wp_meta_disable` 关闭两个元字段，用于衡量关闭后是否回到 Arc clone 快路径。
-pub struct SinkWpMetaOutputPerfCase {
-    runtime: tokio::runtime::Runtime,
-    dispatcher: SinkDispatcher,
-    package: SinkPackage,
-    batch_size: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum WpMetaOutputMode {
-    Enabled,
-    Disabled,
-}
-
-/// Dispatcher 应用 `wp_meta_disable` 的性能对比场景。
-///
-/// 该场景走 `group_sink_batch_direct`，对比未配置 disable 与配置 disable 后将
-/// 业务同名字段标记为 `DataType::Ignore` 的成本。
-pub struct SinkWpMetaDisablePerfCase {
-    runtime: tokio::runtime::Runtime,
-    dispatcher: SinkDispatcher,
-    package: SinkPackage,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum WpMetaDisableMode {
-    None,
-    DisableWpFields,
-}
-
 struct PerfRecord {
     pkg_id: PkgID,
     record: Arc<DataRecord>,
@@ -99,7 +66,7 @@ impl OmlBatchPerfCase {
     /// 使用给定批量大小构造性能场景（默认 rule: `/bench/nginx`）。
     pub fn new(batch_size: usize) -> Self {
         assert!(batch_size > 0, "batch size must be > 0");
-        let rule = ProcMeta::Rule("/bench/nginx".to_string());
+        let rule = ProcMeta::WplName("/bench/nginx".to_string());
         let template = parse_nginx_template(NGINX_SAMPLE.trim());
         let records = build_records(batch_size, &template);
         let dispatcher = build_dispatcher();
@@ -171,7 +138,7 @@ impl SinkBatchBufferPerfCase {
             record.append(DataField::from_chars("k", format!("v{}", idx)));
             SinkRecUnit::new(
                 (idx as PkgID).saturating_add(1),
-                ProcMeta::Rule("/bench/batch_pending".to_string()),
+                ProcMeta::WplName("/bench/batch_pending".to_string()),
                 Arc::new(record),
             )
         });
@@ -214,133 +181,6 @@ impl SinkBatchBufferPerfCase {
     }
 }
 
-impl SinkWpMetaOutputPerfCase {
-    pub fn new(package_size: usize, batch_size: usize, mode: WpMetaOutputMode) -> Self {
-        assert!(package_size > 0, "package_size must be > 0");
-        assert!(batch_size > 0, "batch_size must be > 0");
-
-        let mut params = ParamMap::new();
-        if matches!(mode, WpMetaOutputMode::Disabled) {
-            params.insert(
-                "wp_meta_disable".into(),
-                serde_json::json!(["wp_stream_tag", "wp_event_id"]),
-            );
-        }
-        let sink_conf = SinkInstanceConf::new_type(
-            format!("blackhole_wp_meta_{:?}_{}", mode, batch_size),
-            TextFmt::Json,
-            "blackhole".to_string(),
-            params,
-            None,
-        );
-        let group = FlexGroup::build_conf("wp_meta_output_perf", vec![sink_conf.clone()]);
-        let mut dispatcher =
-            SinkDispatcher::new(SinkGroupConf::Flexi(group), SinkResUnit::use_null());
-        dispatcher.append(SinkRuntime::with_batch_size(
-            "./rescue".to_string(),
-            sink_conf.name().clone(),
-            sink_conf,
-            SinkBackendType::Proxy(builtin_factories::make_blackhole_sink()),
-            None,
-            Vec::new(),
-            batch_size,
-        ));
-
-        let package = build_meta_package(package_size, "/bench/wp_meta_output");
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("build tokio runtime for wp meta output perf case");
-
-        Self {
-            runtime,
-            dispatcher,
-            package,
-            batch_size,
-        }
-    }
-
-    pub fn package_size(&self) -> usize {
-        self.package.len()
-    }
-
-    pub fn batch_size(&self) -> usize {
-        self.batch_size
-    }
-
-    pub fn run_once(&mut self) -> usize {
-        let size = self.package.len();
-        let package = std::mem::take(&mut self.package);
-        self.runtime.block_on(async {
-            self.dispatcher
-                .group_sink_batch_direct(package, None, None)
-                .await
-                .expect("group_sink_batch_direct wp meta output perf case failed");
-        });
-        size
-    }
-}
-
-impl SinkWpMetaDisablePerfCase {
-    pub fn new(package_size: usize, batch_size: usize, mode: WpMetaDisableMode) -> Self {
-        assert!(package_size > 0, "package_size must be > 0");
-        assert!(batch_size > 0, "batch_size must be > 0");
-
-        let mut params = ParamMap::new();
-        if matches!(mode, WpMetaDisableMode::DisableWpFields) {
-            params.insert(
-                "wp_meta_disable".into(),
-                serde_json::json!(["wp_stream_tag", "wp_event_id"]),
-            );
-        }
-        let sink_conf = SinkInstanceConf::new_type(
-            format!("blackhole_wp_meta_disable_{:?}", mode),
-            TextFmt::Json,
-            "blackhole".to_string(),
-            params,
-            None,
-        );
-        let group = FlexGroup::build_conf("wp_meta_disable_perf", vec![sink_conf.clone()]);
-        let mut dispatcher =
-            SinkDispatcher::new(SinkGroupConf::Flexi(group), SinkResUnit::use_null());
-        dispatcher.append(SinkRuntime::with_batch_size(
-            "./rescue".to_string(),
-            sink_conf.name().clone(),
-            sink_conf,
-            SinkBackendType::Proxy(builtin_factories::make_blackhole_sink()),
-            None,
-            Vec::new(),
-            batch_size,
-        ));
-
-        let package = build_meta_package(package_size, "/bench/wp_meta_disable");
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("build tokio runtime for wp meta disable perf case");
-
-        Self {
-            runtime,
-            dispatcher,
-            package,
-        }
-    }
-
-    pub fn package_size(&self) -> usize {
-        self.package.len()
-    }
-
-    pub fn run_once(&mut self) -> usize {
-        let package = std::mem::take(&mut self.package);
-        self.runtime.block_on(async {
-            self.dispatcher
-                .group_sink_batch_direct(package, None, None)
-                .await
-                .expect("group_sink_batch_direct wp meta disable perf case failed")
-        })
-    }
-}
-
 fn build_dispatcher() -> SinkDispatcher {
     let mut sink_res = SinkResUnit::use_null();
     sink_res.push_model(build_nginx_model());
@@ -370,39 +210,6 @@ fn build_dispatcher() -> SinkDispatcher {
     ));
 
     dispatcher
-}
-
-fn build_meta_package(package_size: usize, rule: &str) -> SinkPackage {
-    let units = (0..package_size).map(|idx| {
-        SinkRecUnit::new(
-            idx as PkgID,
-            ProcMeta::Rule(rule.to_string()),
-            Arc::new(build_meta_record(idx)),
-        )
-    });
-    SinkPackage::from_units(units)
-}
-
-fn build_meta_record(idx: usize) -> DataRecord {
-    let mut record = DataRecord::default();
-    record.append(DataField::from_chars(
-        "tenant",
-        format!("tenant-{}", idx % 16),
-    ));
-    record.append(DataField::from_chars("host", format!("host-{}", idx % 256)));
-    record.append(DataField::from_chars("service", "edge-api"));
-    record.append(DataField::from_chars("message", format!("request {}", idx)));
-    record.append(DataField::from_digit("status", variant_status(idx, 200)));
-    record.append(DataField::from_digit("bytes", 256 + (idx as i64 % 4096)));
-    record.append(DataField::from_chars(
-        "wp_stream_tag",
-        format!("business-stream-{}", idx % 8),
-    ));
-    record.append(DataField::from_chars(
-        "wp_event_id",
-        format!("business-event-{}", idx),
-    ));
-    record
 }
 
 fn make_sink(

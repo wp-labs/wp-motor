@@ -8,6 +8,7 @@ use crate::runtime::collector::realtime::constants::{
     PICKER_CTRL_EVENT_BUFFER, PICKER_DEFAULT_ROUND_BATCH, PICKER_EVENT_CNT_OF_BATCH,
 };
 use crate::runtime::collector::realtime::picker::round::{RoundStat, SrcStatus};
+use crate::runtime::errors::source_error_to_run_error;
 use crate::runtime::parser::workflow::ParseDispatchRouter;
 use wp_error::run_error::RunReason;
 // stop_routine_run/err4_dispatch_data 仅在 dispatch.rs 中使用
@@ -98,7 +99,7 @@ impl SourceWorker {
         let ctrl_rx = spawn_ctrl_event_bridge(cmd_recv.clone(), PICKER_CTRL_EVENT_BUFFER);
         if let Err(e) = source.start(ctrl_rx).await {
             error_data!("Failed to start data source '{}': {}", source_id, e);
-            return Err(e.conv());
+            return Err(source_error_to_run_error(e));
         }
         info_ctrl!(
             "Data source '{}' started (speed_limit={:?}, max_count={:?})",

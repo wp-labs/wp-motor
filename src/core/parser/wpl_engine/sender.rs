@@ -79,7 +79,7 @@ impl WplEngine {
                     let endp = wpl_line.get_rolled_end().clone();
 
                     // 更新所有记录的元数据
-                    let proc_meta = crate::sinks::ProcMeta::Rule(wpl_key.clone());
+                    let proc_meta = crate::sinks::ProcMeta::WplName(wpl_key.clone());
                     package.update_meta(proc_meta);
 
                     // 发送批量数据

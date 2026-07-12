@@ -42,7 +42,7 @@ pub struct RouteGroup {
     /// 组级标签
     #[serde(default)]
     pub tags: Option<Vec<String>>,
-    /// Group-level runtime metadata fields hidden from all sinks in this group.
+    /// Group-level metadata payload fields disabled for all sinks in this group.
     #[serde(default)]
     pub wp_meta_disable: Option<Vec<String>>,
     #[serde(default)]
@@ -171,7 +171,6 @@ pub struct DefaultsFile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orion_variate::{EnvDict, ValueType};
 
     #[test]
     fn route_file_rejects_unknown_top_level_field() {
@@ -252,8 +251,8 @@ mod tests {
             "#,
         )
         .expect("route file");
-        let mut dict = EnvDict::new();
-        dict.insert("META_FIELD", ValueType::from("wp_event_id"));
+        let mut dict = orion_variate::EnvDict::new();
+        dict.insert("META_FIELD", orion_variate::ValueType::from("wp_oml_name"));
 
         let route = route.env_eval(&dict);
 
@@ -264,7 +263,7 @@ mod tests {
                 .as_ref()
                 .and_then(|items| items.first())
                 .map(String::as_str),
-            Some("wp_event_id")
+            Some("wp_oml_name")
         );
     }
 }

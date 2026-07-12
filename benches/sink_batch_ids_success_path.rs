@@ -21,7 +21,7 @@ fn build_package(count: usize) -> SinkPackage {
         record.append(DataField::from_chars("k", format!("v{}", idx)));
         SinkRecUnit::new(
             idx as u64,
-            ProcMeta::Rule("/bench/sink_ids".to_string()),
+            ProcMeta::WplName("/bench/sink_ids".to_string()),
             Arc::new(record),
         )
     });
