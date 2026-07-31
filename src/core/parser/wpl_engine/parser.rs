@@ -7,6 +7,7 @@ use orion_conf::ToStructError;
 use orion_error::UnifiedReason;
 use std::sync::Arc;
 use wp_connector_api::SourceEvent;
+use wp_model_core::model::DataRecord;
 use wp_model_core::model::data::Field;
 use wpl::{WparseError, WparseReason, WparseResult};
 
@@ -31,18 +32,24 @@ impl MultiParser {
 
         // 尝试用每个规则处理事件
         for (idx, wpl_line) in self.pipelines.iter_mut().enumerate() {
+            // #[no_match] rule 不参与自动匹配（仅作 copy_event_parse 等的调用目标）
+            if !wpl_line.auto_match {
+                continue;
+            }
             let is_last = idx == rule_cnt - 1;
 
             // 调用 WPL 处理
             match wpl_line.proc(event, max_depth) {
-                Ok((mut tdo_crate, un_parsed)) => {
-                    if *setting.gen_msg_id() {
-                        tdo_crate.set_id(event.event_id);
-                        tdo_crate.append(Field::from_chars("wp_src_key", event.src_key.as_str()));
-                        if let Some(ups_ip) = event.ups_ip {
-                            tdo_crate.append(Field::from_ip("wp_src_ip", ups_ip));
-                        }
-                    }
+                Ok((mut tdo_crate, un_parsed, side_records)) => {
+                    stamp_event_meta(&mut tdo_crate, event, setting);
+                    // 旁路 record 也盖事件 meta，并按 ProcessResult 需要 String 化 key
+                    let side_records: Vec<(String, DataRecord)> = side_records
+                        .into_iter()
+                        .map(|(k, mut r)| {
+                            stamp_event_meta(&mut r, event, setting);
+                            (k.to_string(), r)
+                        })
+                        .collect();
                     wpl_line.hit_cnt += 1;
 
                     let wpl_key = wpl_line.wpl_key().to_string();
@@ -51,7 +58,11 @@ impl MultiParser {
                     if un_parsed.is_empty() {
                         let record = Arc::new(tdo_crate);
                         info_edata!(event.event_id, "wpl parse suc! wpl:{} ", wpl_key,);
-                        return ProcessResult::Success { wpl_key, record };
+                        return ProcessResult::Success {
+                            wpl_key,
+                            record,
+                            side_records,
+                        };
                     } else {
                         let parsed_len = event.payload.len() - un_parsed.len();
                         if un_parsed.len() * 5 > event.payload.len() {
@@ -67,6 +78,7 @@ impl MultiParser {
                                 wpl_key,
                                 record,
                                 residue: un_parsed.to_string(),
+                                side_records,
                             };
                         }
                     }
@@ -103,6 +115,7 @@ impl MultiParser {
             best_wpl, best_error, max_depth,
         ))
     }
+
     pub fn stop(&mut self) {
         self.pipelines.iter_mut().for_each(|i| i.stop());
     }
@@ -135,6 +148,22 @@ impl MultiParser {
             i.send_stat(mon_send).await?;
         }
         Ok(())
+    }
+}
+
+/// 给 record 盖事件级 meta：wp_event_id / wp_src_key / wp_src_ip / wp_event_md5。
+/// 由 gen_msg_id 总开关 + gen_event_md5 子开关控制；主 record 与旁路 record 都走此路径。
+fn stamp_event_meta(record: &mut DataRecord, event: &SourceEvent, setting: &ParseOption) {
+    if *setting.gen_msg_id() {
+        record.set_id(event.event_id);
+        record.append(Field::from_chars("wp_src_key", event.src_key.as_str()));
+        if let Some(ups_ip) = event.ups_ip {
+            record.append(Field::from_ip("wp_src_ip", ups_ip));
+        }
+        if *setting.gen_event_md5() {
+            let digest = format!("{:x}", md5::compute(event.payload.as_bytes()));
+            record.append(Field::from_chars("wp_event_md5", digest));
+        }
     }
 }
 

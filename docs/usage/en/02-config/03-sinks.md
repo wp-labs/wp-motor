@@ -16,6 +16,7 @@
   - sink_group
     - name: Group name (string)
     - oml / rule: Flat notation recommended; can be string or string array; used for matching models or rules
+    - wp_meta_disable: Optional group-level metadata payload output disable list; currently supports `["wp_oml_name", "wp_event_md5"]`
     - expect: Optional, group-level expectation (overrides defaults)
     - sinks: Array, each item is a single sink definition
 - Single sink fields
@@ -63,6 +64,11 @@ params = { base = "./out/sink", file = "safe.dat" }
 - Naming Rules
   - Group name: sink_group.name (e.g., /sink/example/simple)
   - Sink name: name (unique within group; falls back to [0]/[1]/... by index when not explicitly provided)
+- Metadata Output Control (wp_meta_disable)
+  - `wp_meta_disable` is valid only under `[sink_group]` and applies to all sinks in that group.
+  - Currently supported fields: `wp_oml_name`, `wp_event_md5`; it disables the OML name field in structured text payloads such as JSON/CSV.
+  - It does not disable the Arrow framed frame-header tag; Arrow tags still receive the OML `name` through sink batch metadata.
+  - Do not put `wp_meta_disable` under `[[sink_group.sinks]].params` or `wpgen.output.params`; those locations are rejected so runtime control fields do not leak into connector params.
 - Filter Semantics
   - filter is an "interception condition": when the expression evaluates to true, the data is not written to that sink, but forwarded to the infrastructure group intercept (framework/intercept)
   - Each sink can independently set filter; independent of expect

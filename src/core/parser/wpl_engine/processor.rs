@@ -26,16 +26,27 @@ impl WplEngine {
         // 处理每个数据包
         for data in batch {
             match self.pipelines.parse_event(&data, setting) {
-                ProcessResult::Success { wpl_key, record } => {
+                ProcessResult::Success {
+                    wpl_key,
+                    record,
+                    side_records,
+                } => {
                     // 完全成功解析
                     let record = enrich_record_with_tags(record, &data.tags);
                     let rec_unit = SinkRecUnit::new(data.event_id, ProcMeta::Null, record);
                     sink_groups.entry(wpl_key).or_default().push(rec_unit);
+                    // copy_event_parse 旁路 record：按各自 wpl_key 独立路由
+                    for (side_key, side_rec) in side_records {
+                        let side_rec = enrich_record_with_tags(Arc::new(side_rec), &data.tags);
+                        let side_unit = SinkRecUnit::new(data.event_id, ProcMeta::Null, side_rec);
+                        sink_groups.entry(side_key).or_default().push(side_unit);
+                    }
                 }
                 ProcessResult::Partial {
                     wpl_key,
                     record,
                     residue,
+                    side_records,
                 } => {
                     // 部分成功，有残留数据
                     let record = enrich_record_with_tags(record, &data.tags);
@@ -44,6 +55,11 @@ impl WplEngine {
                         .entry(wpl_key.clone())
                         .or_default()
                         .push(rec_unit);
+                    for (side_key, side_rec) in side_records {
+                        let side_rec = enrich_record_with_tags(Arc::new(side_rec), &data.tags);
+                        let side_unit = SinkRecUnit::new(data.event_id, ProcMeta::Null, side_rec);
+                        sink_groups.entry(side_key).or_default().push(side_unit);
+                    }
                     let residue_event = format!("wpl:{},residue:{}", wpl_key, residue);
                     residue_data.push((data.event_id, residue_event));
                 }
@@ -327,6 +343,48 @@ rule json_payload {
         assert_chars_field(record, "env", "test");
         assert_chars_field(record, "dev_src_ip", "10.0.0.1");
         assert_chars_field(record, "access_source", "custom");
+    }
+
+    #[test]
+    fn batch_parse_package_stamps_payload_md5_when_enabled() {
+        let mut engine = build_real_engine(&[("nginx_access", NGINX_RULE)]);
+        // gen_msg_id=true, gen_event_md5=true
+        let option = ParseOption::new(true, true, Vec::new());
+        let event = build_event(NGINX_SAMPLE);
+
+        let parsed = engine
+            .batch_parse_package(vec![event], &option)
+            .expect("parse ok");
+
+        let nginx_pkg = parsed
+            .sink_groups
+            .get("nginx_access")
+            .expect("missing nginx group");
+        let record = nginx_pkg.first().expect("missing record").data();
+        let expected = format!("{:x}", md5::compute(NGINX_SAMPLE.as_bytes()));
+        assert_chars_field(record, "wp_event_md5", &expected);
+    }
+
+    #[test]
+    fn batch_parse_package_omits_payload_md5_when_disabled() {
+        let mut engine = build_real_engine(&[("nginx_access", NGINX_RULE)]);
+        // gen_event_md5 默认关闭
+        let option = ParseOption::default();
+        let event = build_event(NGINX_SAMPLE);
+
+        let parsed = engine
+            .batch_parse_package(vec![event], &option)
+            .expect("parse ok");
+
+        let nginx_pkg = parsed
+            .sink_groups
+            .get("nginx_access")
+            .expect("missing nginx group");
+        let record = nginx_pkg.first().expect("missing record").data();
+        assert!(
+            record.field("wp_event_md5").is_none(),
+            "wp_event_md5 should not be stamped when gen_event_md5 is disabled"
+        );
     }
 
     #[test]

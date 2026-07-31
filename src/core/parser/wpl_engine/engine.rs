@@ -10,7 +10,7 @@ use wpl::WparseResult;
 
 use crate::core::parser::indexing::ResourceIndexer;
 use crate::resources::sinks::null_resources::AssignRes;
-use crate::resources::utils::code_ins_parse_units;
+use crate::resources::utils::{build_global_parser_map, code_ins_parse_units};
 use crate::sinks::{InfraSinkAgent, SinkGroupAgent, SinkInfraAble};
 
 #[derive(Getters)]
@@ -33,10 +33,15 @@ impl WplEngine {
 
     pub fn from_code(wpl_spc: &WplRepository, infra: InfraSinkAgent) -> RunResult<Self> {
         let mut idx = ResourceIndexer::default();
+        let parser_map = build_global_parser_map(&wpl_spc.packages)?;
         let mut pipelines = Vec::new();
         for pkg in &wpl_spc.packages {
-            let mut units =
-                code_ins_parse_units(AssignRes::use_it(infra.default().clone()), pkg, &mut idx)?;
+            let mut units = code_ins_parse_units(
+                AssignRes::use_it(infra.default().clone()),
+                pkg,
+                &mut idx,
+                &parser_map,
+            )?;
             pipelines.append(&mut units);
         }
         Self::from(pipelines, infra)

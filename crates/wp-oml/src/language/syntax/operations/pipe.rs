@@ -21,7 +21,7 @@ impl PiPeOperation {
 
 impl Display for PiPeOperation {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "pipe {}", &self.from)?;
+        write!(f, "pipe {}", self.from)?;
         for i in &self.items {
             write!(f, "| {}", i)?;
         }

@@ -4,6 +4,7 @@ Complete Example (Recommended Defaults)
 ```toml
 version = "1.0"
 robust  = "normal"           # debug|normal|strict
+gen_event_md5 = false        # true stamps wp_event_md5 (MD5 of payload) on every event; default off
 
 [models]
 wpl     = "./models/wpl"
@@ -52,6 +53,7 @@ Notes:
 - `rate_limit_rps` defaults to `0`; wparse automatically adjusts source input rate from picker watermarks and parser backpressure
 - `reload_timeout_ms` defaults to `10000`; CLI `--reload-timeout-ms` overrides the config value
 - `fetch_timeout_ms` defaults to `300`; it controls how long a realtime picker waits for one blocking fetch round
+- `gen_event_md5` defaults to `false`; set `true` to stamp `wp_event_md5` (MD5 of the payload) on every event's records (including `copy_event_parse` side records). Requires `gen_msg_id` (the event-meta master switch, on by default). See [Source Meta](../05-connectors/01-sources/09-metadata.md).
 
 ## Memory Profile
 

@@ -16,6 +16,7 @@
   - sink_group
     - name：组名（字符串）
     - oml / rule：推荐扁平写法；均可为字符串或字符串数组；用于匹配模型或规则。
+    - wp_meta_disable：可选，组级元信息 payload 输出关闭列表；当前支持 `["wp_oml_name", "wp_event_md5"]`。
     - expect：可选，组级期望（覆盖 defaults）
     - sinks：数组，每项为单个 sink 定义
 - 单个 sink 字段
@@ -87,6 +88,11 @@ params = { base = "./out/sink", file = "safe.dat" }
 - 标识规则
   - 组名：sink_group.name（例如 /sink/example/simple）
   - sink 名：name（组内唯一；未显式提供时按索引回退为 [0]/[1]/…）
+- 元信息输出控制（wp_meta_disable）
+  - `wp_meta_disable` 只能配置在 `[sink_group]`，作用于该组内所有 sinks。
+  - 当前支持的字段：`wp_oml_name`、`wp_event_md5`，用于关闭 JSON/CSV 等结构化文本 payload 中的 OML 名称字段输出。
+  - 该配置不会关闭 Arrow framed 的 frame header tag；Arrow tag 仍由 OML `name` 传递给 sink 后写入 frame header。
+  - 不要把 `wp_meta_disable` 放到 `[[sink_group.sinks]].params` 或 `wpgen.output.params`；这些位置会被校验拒绝，避免运行时控制字段泄漏给 connector params。
 - 过滤语义（filter）
   - filter 是“拦截条件”：表达式求值为 true 时，该条数据不写入该 sink，而是转发到基础组 intercept（framework/intercept）
   - 每个 sink 可独立设置 filter；与 expect 相互独立

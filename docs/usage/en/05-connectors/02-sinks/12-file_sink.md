@@ -111,4 +111,4 @@ oml = ["network.netflow"]
 wp_meta_disable = ["wp_oml_name"]
 ```
 
-`wp_meta_disable` is only valid under `[sink_group]`; it is rejected from sink `params` and `wpgen.output.params`. The only supported field is currently `wp_oml_name`. This disables the JSON/CSV-like payload field only; it does not disable the Arrow framed frame-header tag.
+`wp_meta_disable` is only valid under `[sink_group]`; it is rejected from sink `params` and `wpgen.output.params`. Currently supported fields: `wp_oml_name`, `wp_event_md5`. This disables the JSON/CSV-like payload field only; it does not disable the Arrow framed frame-header tag.

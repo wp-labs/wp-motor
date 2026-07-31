@@ -4,6 +4,7 @@
 ```toml
 version = "1.0"
 robust  = "normal"           # debug|normal|strict
+gen_event_md5 = false        # true 则为每条事件盖 wp_event_md5（payload 的 MD5 指纹）；默认关闭
 
 [models]
 wpl     = "./models/wpl"
@@ -52,6 +53,7 @@ target = "*"
 - `rate_limit_rps` 默认 `0`；表示自动限速，会根据 source picker 水位和 parser 背压自动调整输入速率
 - `reload_timeout_ms` 默认 `10000`；CLI `--reload-timeout-ms` 优先于配置文件
 - `fetch_timeout_ms` 默认 `300`；用于控制 realtime picker 单轮阻塞拉取的最长等待时间
+- `gen_event_md5` 默认 `false`；置 `true` 时为每条事件产出 `wp_event_md5`（payload 的 MD5 指纹）字段，出现在该事件的所有 record（含 `copy_event_parse` 旁路 record）。需配合 `gen_msg_id`（事件 meta 总开关，默认开启）。详见 [Source Meta](../05-connectors/01-sources/09-metadata.md)。
 
 ## 内存 Profile
 

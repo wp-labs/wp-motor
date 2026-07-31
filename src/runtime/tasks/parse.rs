@@ -68,7 +68,7 @@ pub async fn start_parser_tasks_frames(
             drain_bus.reporter(TaskRole::Parser, format!("wparse-parse-{idx}")),
         );
         let reqs = stat_reqs.get_requ_items(StatStage::Parse);
-        let setting = ParseOption::new(true, reqs);
+        let setting = ParseOption::new(true, args.gen_event_md5, reqs);
         parser_group.append(tokio::spawn(async move {
             if let Err(e) = worker.proc(setting).await {
                 error_ctrl!("parse routine error: {}", e);

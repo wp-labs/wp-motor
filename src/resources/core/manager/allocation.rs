@@ -1,7 +1,7 @@
 use crate::core::parser::ResourceIndexer;
 use crate::resources::core::allocator::ParserResAlloc;
 use crate::resources::sinks::sink_resources::SinkResUnit;
-use crate::resources::utils::multi_code_ins_parse_units;
+use crate::resources::utils::{build_global_parser_map, multi_code_ins_parse_units};
 use crate::resources::{RuleKey, SinkID};
 use crate::sinks::{SinkGroupAgent, SinkRouteAgent};
 use wp_error::RunReason;
@@ -81,9 +81,15 @@ impl ResManager {
             .clone()
             .ok_or(RunReason::validation_error())?;
         let mut idx_keeper = ResourceIndexer::default();
+        let parser_map = build_global_parser_map(&wpl_space.packages)?;
         for wpl_pkg in wpl_space.packages.iter() {
-            let mut parsers =
-                multi_code_ins_parse_units(self, wpl_pkg, &mut idx_keeper, stat_reqs.clone())?;
+            let mut parsers = multi_code_ins_parse_units(
+                self,
+                wpl_pkg,
+                &mut idx_keeper,
+                stat_reqs.clone(),
+                &parser_map,
+            )?;
             self.parse_units.append(&mut parsers);
         }
         Ok(())

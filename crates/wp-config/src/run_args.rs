@@ -28,6 +28,8 @@ pub struct RuntimeArgs {
     pub skip_sink: bool,
     // 语义分析开关：从 EngineConfig [semantic].enabled 派生
     pub semantic_enabled: bool,
+    // payload MD5 指纹开关：从 EngineConfig.gen_event_md5 派生
+    pub gen_event_md5: bool,
 }
 
 impl Default for RuntimeArgs {
@@ -48,6 +50,7 @@ impl Default for RuntimeArgs {
             skip_parse: false,
             skip_sink: false,
             semantic_enabled: false,
+            gen_event_md5: false,
         }
     }
 }

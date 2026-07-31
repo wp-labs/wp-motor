@@ -260,6 +260,9 @@ pub struct EngineConfig {
     /// 语义分析功能开关（默认关闭，启用后加载 jieba 分词器和语义词典）
     #[serde(default)]
     semantic: SemanticConf,
+    /// 是否为每条事件计算 payload 的 MD5 指纹（wp_event_md5 字段，默认关闭）
+    #[serde(default)]
+    gen_event_md5: bool,
     /// 远程规则版本更新配置（默认关闭）
     #[serde(default)]
     project_remote: ProjectRemoteConf,
@@ -386,6 +389,7 @@ impl Default for EngineConfig {
             skip_parse: false,
             skip_sink: false,
             semantic: SemanticConf::default(),
+            gen_event_md5: false,
             project_remote: ProjectRemoteConf::default(),
             admin_api: AdminApiConf::default(),
             general: None,
@@ -422,6 +426,7 @@ impl EngineConfig {
             skip_parse: false,
             skip_sink: false,
             semantic: SemanticConf::default(),
+            gen_event_md5: false,
             project_remote: ProjectRemoteConf::default(),
             admin_api: AdminApiConf::default(),
             general: None,
@@ -505,6 +510,10 @@ impl EngineConfig {
 
     pub fn semantic(&self) -> &SemanticConf {
         &self.semantic
+    }
+
+    pub fn gen_event_md5(&self) -> bool {
+        self.gen_event_md5
     }
 
     pub fn project_remote(&self) -> &ProjectRemoteConf {

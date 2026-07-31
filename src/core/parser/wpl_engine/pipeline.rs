@@ -11,12 +11,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use wp_model_core::model::{DataField, DataRecord};
 use wp_model_core::raw::RawData;
-use wp_parse_api::DataResult;
 use wp_stat::StatRecorder;
 use wp_stat::StatReq;
 use wpl::WparseReason;
 use wpl::WparseResult;
-use wpl::{AnnotationFunc, AnnotationType};
+use wpl::{AnnotationFunc, AnnotationType, SideRecords, WparseError};
 use wpl::{OPTIMIZE_TIMES, WplEvaluator};
 
 #[derive(Getters, Clone)]
@@ -36,6 +35,10 @@ pub struct WplPipeline {
     // 这样可避免默认路径上每条数据都做额外字段构造与拷贝。
     stat_need_pkg_rule: bool,
     stat_ext: MetricCollectors,
+    /// 是否参与 parse_event 自动匹配。
+    /// `#[no_match]` rule 置 false：不自动匹配事件，但仍建 pipeline 以提供 sink 路由
+    /// （供 copy_event_parse 旁路 record 经其 wpl_key 路由到对应 sink）。
+    pub auto_match: bool,
 }
 
 impl WplPipeline {
@@ -74,6 +77,7 @@ impl WplPipeline {
             rule_name,
             stat_need_pkg_rule,
             stat_ext,
+            auto_match: true,
         }
     }
 
@@ -89,7 +93,11 @@ impl WplPipeline {
         let idx = self.next_output_index();
         self.output[idx].end_point()
     }
-    pub fn proc(&mut self, data: &SourceEvent, oth_suc_len: usize) -> DataResult {
+    pub fn proc(
+        &mut self,
+        data: &SourceEvent,
+        oth_suc_len: usize,
+    ) -> Result<(DataRecord, RawData, SideRecords), WparseError> {
         self.access_cnt += 1;
         match self
             .parser
@@ -112,11 +120,12 @@ impl WplPipeline {
                 } else {
                     Some(to_wp_source_types_event(data))
                 };
+                let mut side_records: SideRecords = Vec::new();
                 for func in self.fun_vec.iter() {
                     let compat_event = compat_event
                         .as_ref()
                         .expect("compat source event should exist for annotations");
-                    func.proc(compat_event, &mut record)?;
+                    side_records.extend(func.proc(compat_event, &mut record)?);
                 }
                 if self.stat_need_pkg_rule {
                     // end 阶段优先保留 record 中已有字段；缺失时再回填默认值。
@@ -139,7 +148,7 @@ impl WplPipeline {
                     self.stat_ext
                         .record_end(self.wpl_key.as_str(), Some(&record));
                 }
-                Ok((record, RawData::from_string(left)))
+                Ok((record, RawData::from_string(left), side_records))
             }
             Err(e) => Err(e),
         }

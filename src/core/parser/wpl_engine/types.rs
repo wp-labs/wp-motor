@@ -61,12 +61,16 @@ pub enum ProcessResult {
     Success {
         wpl_key: String,
         record: std::sync::Arc<DataRecord>,
+        /// copy_event_parse 等注解产出的旁路 record，按各自 wpl_key 独立路由。
+        side_records: Vec<(String, DataRecord)>,
     },
     /// 部分成功（有残留数据）
     Partial {
         wpl_key: String,
         record: std::sync::Arc<DataRecord>,
         residue: String,
+        /// 旁路 record（同 Success）。
+        side_records: Vec<(String, DataRecord)>,
     },
     /// 完全失败
     Miss(ParseFailInfo),

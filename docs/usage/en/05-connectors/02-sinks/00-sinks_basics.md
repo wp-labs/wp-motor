@@ -59,6 +59,7 @@ name = "/sink/example"
 oml = ["example_pattern"]
 parallel = 2
 tags = ["env:production"]
+wp_meta_disable = ["wp_oml_name"]
 
 [[sink_group.sinks]]
 name = "example_sink"
@@ -180,7 +181,29 @@ tags = ["output:file", "compression:gzip"]
 ["env:production", "service:warpflow", "region:us-west", "tier:processing", "output:file", "compression:gzip"]
 ```
 
+## Metadata Output Control
 
+OML output records carry batch-level metadata as `BatchMeta.oml_name`. The sink decides how to render that metadata: structured text sinks may append the payload field `wp_oml_name`, while Arrow framed sinks may write it to the frame header tag.
+
+To suppress `wp_oml_name` in text payloads for a sink group, configure it at group level:
+
+```toml
+[sink_group]
+name = "/sink/example"
+oml = ["nginx_access"]
+wp_meta_disable = ["wp_oml_name"]
+
+[[sink_group.sinks]]
+name = "json"
+connect = "file_json_sink"
+params = { file = "out.json" }
+```
+
+Rules:
+- `wp_meta_disable` belongs only under `[sink_group]` and applies to all sinks in the group.
+- Currently supported fields: `wp_oml_name`, `wp_event_md5`.
+- It only disables structured text payload fields such as JSON/CSV; it does not disable the Arrow framed frame-header tag.
+- Do not put it under `[[sink_group.sinks]].params` or `wpgen.output.params`; config loading rejects those locations.
 
 ## Expectation Configuration (Expect)
 

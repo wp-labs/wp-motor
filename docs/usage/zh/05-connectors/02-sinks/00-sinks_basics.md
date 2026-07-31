@@ -59,6 +59,7 @@ name = "/sink/example"
 oml = ["example_pattern"]
 parallel = 2
 tags = ["env:production"]
+wp_meta_disable = ["wp_oml_name"]
 
 [[sink_group.sinks]]
 name = "example_sink"
@@ -180,7 +181,29 @@ tags = ["output:file", "compression:gzip"]
 ["env:production", "service:warpflow", "region:us-west", "tier:processing", "output:file", "compression:gzip"]
 ```
 
+## 元信息输出控制
 
+OML 输出记录会携带批次级元信息 `BatchMeta.oml_name`。sink 决定如何使用这份元信息：结构化文本 sink 可把它输出为 payload 字段 `wp_oml_name`，Arrow framed sink 可把它写入 frame header tag。
+
+如果某个 sink_group 不希望文本 payload 输出 `wp_oml_name`，在组级配置：
+
+```toml
+[sink_group]
+name = "/sink/example"
+oml = ["nginx_access"]
+wp_meta_disable = ["wp_oml_name"]
+
+[[sink_group.sinks]]
+name = "json"
+connect = "file_json_sink"
+params = { file = "out.json" }
+```
+
+规则：
+- `wp_meta_disable` 只属于 `[sink_group]`，作用于组内所有 sinks。
+- 当前支持的字段：`wp_oml_name`、`wp_event_md5`。
+- 该配置只关闭 JSON/CSV 等结构化文本 payload 字段，不关闭 Arrow framed 的 frame header tag。
+- 不要放到 `[[sink_group.sinks]].params` 或 `wpgen.output.params`；配置加载会直接报错。
 
 ## 期望值配置 (Expect)
 

@@ -79,7 +79,7 @@ oml = ["network.netflow"]
 wp_meta_disable = ["wp_oml_name"]
 ```
 
-`wp_meta_disable` 只能放在 `[sink_group]`，不能放入 sink `params` 或 `wpgen.output.params`。当前支持的字段只有 `wp_oml_name`；该配置只控制 JSON/CSV 等文本 payload 字段输出，不关闭 Arrow framed 的 frame header tag。
+`wp_meta_disable` 只能放在 `[sink_group]`，不能放入 sink `params` 或 `wpgen.output.params`。当前支持的字段：`wp_oml_name`、`wp_event_md5`；该配置只控制 JSON/CSV 等文本 payload 字段输出，不关闭 Arrow framed 的 frame header tag。
 
 ### 示例 4: 启用同步模式
 

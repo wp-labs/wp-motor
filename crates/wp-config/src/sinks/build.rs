@@ -21,7 +21,7 @@ const FIELD_FMT: &str = "fmt";
 const DEFAULT_OUTPUT_FORMAT: &str = "json";
 const FIELD_WP_META_DISABLE: &str = "wp_meta_disable";
 const FIELD_STREAM_TAG_FIELD: &str = "stream_tag_field";
-const SUPPORTED_WP_META_DISABLE_FIELDS: &[&str] = &["wp_oml_name"];
+const SUPPORTED_WP_META_DISABLE_FIELDS: &[&str] = &["wp_oml_name", "wp_event_md5"];
 
 fn build_sink_instance(
     group_name: &str,

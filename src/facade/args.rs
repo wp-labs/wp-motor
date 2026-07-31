@@ -136,6 +136,8 @@ impl ParseArgs {
             skip_sink: conf.skip_sink(),
             // 语义分析开关来自 EngineConfig [semantic].enabled
             semantic_enabled: conf.semantic().enabled,
+            // payload MD5 指纹开关来自 EngineConfig.gen_event_md5
+            gen_event_md5: conf.gen_event_md5(),
             ..Default::default()
         })
     }

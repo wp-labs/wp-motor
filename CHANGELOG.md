@@ -6,7 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
-## [1.23.7 Unreleased]
+## [1.23.8 Unreleased]
+
+### Added
+- **Parser/Event meta**: New `wp_event_md5` field (MD5 of the event payload) stamped on every event's records, gated by the `gen_event_md5` config flag (default off, nested under `gen_msg_id`). Stamped on both main records and `copy_event_parse` side records. `wp_event_md5` is added to `SUPPORTED_WP_META_DISABLE_FIELDS` so sink groups can drop it via `wp_meta_disable`.
+  中文：新增 `wp_event_md5` 字段（事件 payload 的 MD5），由 `gen_event_md5` 配置项控制（默认关，嵌在 `gen_msg_id` 下），盖在主 record 与 `copy_event_parse` 旁路 record 上；并加入 `wp_meta_disable` 白名单，sink 组可按需不输出。
+- **Parser/copy_event_parse side-record routing**: `copy_event_parse` now emits the target rule's parsed record as an independent side record routed under the target's `wpl_key` to its own sink (previously merged into the main record). Side records carry the same event meta. A global parser map resolves cross-package (`pkg/rule`) and same-package bare-name references; bare names are normalized to full paths so side records route correctly.
+  中文：`copy_event_parse` 改为产出独立旁路 record，按目标 `wpl_key` 路由到自己的 sink（原为并入主 record）；旁路 record 同样盖事件 meta。全局 parser map 解析跨包（`pkg/rule`）与同包裸名引用，裸名规范化为全路径以正确路由。
+- **Parser/`#[no_match]` assembly**: `#[no_match]` rules are built as pipelines with `auto_match=false` — excluded from `parse_event` auto-matching but keeping sink bindings, so `copy_event_parse` side records can route through the target's pipeline. (The `#[no_match]` annotation itself is defined in wp-lang.)
+  中文：`#[no_match]` rule 装配为 `auto_match=false` 的 pipeline——不参与 `parse_event` 自动匹配，但保留 sink 绑定，供 `copy_event_parse` 旁路 record 经目标 pipeline 路由。（`#[no_match]` 注解本身在 wp-lang 定义。）
+
+### Fixed
+- **Clippy**: Fixed `for_kv_map` (wp-config) and `question_mark` (wp-oml) lints for `-D warnings` CI.
+  中文：修复 `for_kv_map`（wp-config）与 `question_mark`（wp-oml）clippy 告警，满足 `-D warnings` CI。
+
+## [1.23.7] - 2026-07-12
 
 ### Added
 - **Sink/BatchMeta**: Sink runtime now passes OML output names and group-level metadata output policy to connectors through `BatchMeta.oml_name`, `BatchMeta.output_disabled`, and `sink_records_with_meta`, enabling Arrow framed sinks to use the OML `name` as the frame tag without requiring a fixed connector `tag`.

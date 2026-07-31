@@ -86,14 +86,11 @@ impl ValueProcessor for Get {
 // Helper function to navigate nested objects
 fn get_from_obj<'a>(mut obj: &'a ObjectValue, keys: &[&str]) -> Option<&'a FieldStorage> {
     for (i, key) in keys.iter().enumerate() {
-        if let Some(val) = obj.get(key) {
-            if i == keys.len() - 1 {
-                return Some(val);
-            } else if let Value::Obj(nested) = val.get_value() {
-                obj = nested;
-            } else {
-                return None;
-            }
+        let val = obj.get(key)?;
+        if i == keys.len() - 1 {
+            return Some(val);
+        } else if let Value::Obj(nested) = val.get_value() {
+            obj = nested;
         } else {
             return None;
         }
