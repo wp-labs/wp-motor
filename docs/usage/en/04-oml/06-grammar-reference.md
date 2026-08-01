@@ -22,22 +22,24 @@ This document summarizes the current OML grammar based on the implementation in 
 
 ## Comments
 
-OML supports `//` single-line comments. They are stripped by `CommentParser::ignore_comment` before parsing (`wp-motor/crates/wp-oml/src/parser/code.rs`), so they may appear anywhere — between statements, after statements, or on the same line — without affecting the grammar below:
+OML supports `//` single-line comments and `#` single-line comments. They are stripped by `CommentParser::ignore_comment` before parsing (`wp-motor/crates/wp-oml/src/parser/code.rs`), so they may appear anywhere — between statements, after statements, or on the same line — without affecting the grammar below:
 
 ```oml
 // top-level comment
+# also supported
 name : demo_alert
 rule : /demo/log
 ---
 // header-to-body separator is "---"
 field1 = read(f1) ;   // trailing comment
-field2 = read(f2) ;
+field2 = read(f2) ;   # hash trailing comment
 ```
 
 Notes:
 
 - comments are removed during preprocessing and never reach the parser
-- the same `CommentParser` is shared with WPL, so the supported comment forms match the `wp-primitives` version in use
+- the grammar-level `comment` rule in `tree-sitter-oml` recognizes both `#` and `//` forms
+- unlike WPL (which cannot use `#` because of `#[...]` annotations), OML has no annotation syntax, so `#` is safe as a comment marker
 
 ---
 
@@ -137,9 +139,20 @@ builtin_fun       = "Now::time", "(", ")"
 static_ref        = ident ;
 ```
 
+The `data_type` set (aligned with `tree-sitter-oml`):
+
+```text
+auto, ip, chars, digit, float, time, bool, obj, array,
+time_iso, time_3339, time_2822, time_timestamp, time_clf,
+url, domain, ip_net, kv, json, base64,
+array/<subtype>, time/<subtype>
+```
+
 **Notes**
 
 - the actual type set for value literals reuses the WPL datatype parser
+- `obj` is OML-specific and does not appear in the WPL type table
+- `array/<subtype>` and `time/<subtype>` accept a slash-suffixed subtype (e.g. `array/digit`, `time/iso`)
 - the only directly supported built-in functions are `Now::time()`, `Now::date()`, and `Now::hour()`
 - a bare identifier is treated as an expression only when it refers to a static symbol
 

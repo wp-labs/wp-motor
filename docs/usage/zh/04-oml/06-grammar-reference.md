@@ -22,22 +22,24 @@
 
 ## 注释
 
-OML 支持 `//` 单行注释。解析前由 `CommentParser::ignore_comment` 预处理剥离（见 `wp-motor/crates/wp-oml/src/parser/code.rs`），因此注释可出现在任意位置——语句之间、语句之后或同行——不影响以下语法：
+OML 支持 `//` 单行注释和 `#` 单行注释。解析前由 `CommentParser::ignore_comment` 预处理剥离（见 `wp-motor/crates/wp-oml/src/parser/code.rs`），因此注释可出现在任意位置——语句之间、语句之后或同行——不影响以下语法：
 
 ```oml
 // 顶层注释
+# 同样支持
 name : demo_alert
 rule : /demo/log
 ---
 // 头部与 body 的分隔符是 "---"
 field1 = read(f1) ;   // 行尾注释
-field2 = read(f2) ;
+field2 = read(f2) ;   # 井号行尾注释
 ```
 
 注意：
 
 - 注释在预处理阶段被移除，不会进入解析器
-- 与 WPL 共用同一个 `CommentParser`，支持的注释形式以所用 `wp-primitives` 版本为准
+- `tree-sitter-oml` 的 `comment` 规则同时识别 `#` 和 `//` 两种形式
+- 与 WPL 不同（WPL 因 `#[...]` 注解不能把 `#` 当注释），OML 没有注解语法，`#` 可作为注释标记
 
 ---
 
@@ -137,9 +139,20 @@ builtin_fun       = "Now::time", "(", ")"
 static_ref        = ident ;
 ```
 
+`data_type` 集合（对齐 `tree-sitter-oml`）：
+
+```text
+auto, ip, chars, digit, float, time, bool, obj, array,
+time_iso, time_3339, time_2822, time_timestamp, time_clf,
+url, domain, ip_net, kv, json, base64,
+array/<子类型>, time/<子类型>
+```
+
 **说明**
 
 - 值字面量的实际类型集合复用 WPL 的 datatype 解析能力
+- `obj` 是 OML 特有类型，不在 WPL 类型表中
+- `array/<子类型>` 与 `time/<子类型>` 支持斜杠子类型（如 `array/digit`、`time/iso`）
 - 当前能直接解析的内置函数只有 `Now::time()`、`Now::date()`、`Now::hour()`
 - 裸标识符只在“静态符号引用”场景下作为表达式使用
 
