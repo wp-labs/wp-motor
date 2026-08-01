@@ -20,6 +20,27 @@ This document summarizes the current OML grammar based on the implementation in 
 
 ---
 
+## Comments
+
+OML supports `//` single-line comments. They are stripped by `CommentParser::ignore_comment` before parsing (`wp-motor/crates/wp-oml/src/parser/code.rs`), so they may appear anywhere — between statements, after statements, or on the same line — without affecting the grammar below:
+
+```oml
+// top-level comment
+name : demo_alert
+rule : /demo/log
+---
+// header-to-body separator is "---"
+field1 = read(f1) ;   // trailing comment
+field2 = read(f2) ;
+```
+
+Notes:
+
+- comments are removed during preprocessing and never reach the parser
+- the same `CommentParser` is shared with WPL, so the supported comment forms match the `wp-primitives` version in use
+
+---
+
 ## Top-Level Structure
 
 ```ebnf

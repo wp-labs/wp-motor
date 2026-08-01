@@ -20,6 +20,27 @@
 
 ---
 
+## 注释
+
+OML 支持 `//` 单行注释。解析前由 `CommentParser::ignore_comment` 预处理剥离（见 `wp-motor/crates/wp-oml/src/parser/code.rs`），因此注释可出现在任意位置——语句之间、语句之后或同行——不影响以下语法：
+
+```oml
+// 顶层注释
+name : demo_alert
+rule : /demo/log
+---
+// 头部与 body 的分隔符是 "---"
+field1 = read(f1) ;   // 行尾注释
+field2 = read(f2) ;
+```
+
+注意：
+
+- 注释在预处理阶段被移除，不会进入解析器
+- 与 WPL 共用同一个 `CommentParser`，支持的注释形式以所用 `wp-primitives` 版本为准
+
+---
+
 ## 顶层结构
 
 ```ebnf
