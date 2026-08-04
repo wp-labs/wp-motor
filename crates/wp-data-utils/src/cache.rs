@@ -9,6 +9,8 @@ pub struct FieldQueryCache {
     str_idx: HashMap<FValueStr, usize>,
     i64_idx: HashMap<i64, usize>,
     ip_idx: HashMap<IpAddr, usize>,
+    // 任意精度整数以十进制字符串为键（BigUint 无直接 Hash 表，to_string 唯一）
+    biguint_idx: HashMap<String, usize>,
     cache_data: lru::LruCache<EnumSizeIndex, Vec<DataField>>,
     idx_num: usize,
 }
@@ -18,6 +20,7 @@ impl Default for FieldQueryCache {
             str_idx: HashMap::new(),
             i64_idx: HashMap::new(),
             ip_idx: HashMap::new(),
+            biguint_idx: HashMap::new(),
             idx_num: 0,
             cache_data: lru::LruCache::new(NonZeroUsize::new(100).unwrap()),
         }
@@ -30,6 +33,7 @@ impl FieldQueryCache {
             str_idx: HashMap::new(),
             i64_idx: HashMap::new(),
             ip_idx: HashMap::new(),
+            biguint_idx: HashMap::new(),
             idx_num: 0,
             cache_data: lru::LruCache::new(NonZeroUsize::new(size).unwrap()),
         }
@@ -195,6 +199,7 @@ impl FieldQueryCache {
             Value::Chars(v) => self.str_idx.get(v).copied(),
             Value::Digit(v) => self.i64_idx.get(v).copied(),
             Value::IpAddr(v) => self.ip_idx.get(v).copied(),
+            Value::BigUint(v) => self.biguint_idx.get(&v.to_string()).copied(),
             _ => None,
         }
     }
@@ -229,6 +234,16 @@ impl FieldQueryCache {
                     Some(self.idx_num)
                 }
             }
+            Value::BigUint(v) => {
+                let key = v.to_string();
+                if let Some(idx_val) = self.biguint_idx.get(&key) {
+                    Some(*idx_val)
+                } else {
+                    self.idx_num += 1;
+                    self.biguint_idx.insert(key, self.idx_num);
+                    Some(self.idx_num)
+                }
+            }
             _ => None,
         }
     }
@@ -240,6 +255,7 @@ mod test {
     use std::collections::HashMap;
 
     use wp_model_core::model::DataField;
+    use wp_model_core::model::Value;
 
     use crate::cache::{CacheAble, EnumSizeIndex, FieldQueryCache};
 
@@ -288,5 +304,25 @@ mod test {
         cache.save(&data2, out.clone());
         let cache_ret = cache.fetch(&data2);
         assert_eq!(cache_ret, Some(&out));
+    }
+
+    #[test]
+    fn test_cache_biguint_param() {
+        // 任意精度整数参数应可命中缓存（ip_to_biguint 产物）
+        use num_bigint::BigUint;
+        use std::str::FromStr;
+
+        let key = "382824323044708348099391746388336347272";
+        let param = DataField::new(
+            wp_model_core::model::DataType::BigInt,
+            "ip_num",
+            Value::BigUint(BigUint::from_str(key).unwrap()),
+        );
+        let out = vec![DataField::from_chars("city", "Beijing")];
+
+        let mut cache = FieldQueryCache::with_capacity(10);
+        assert!(cache.fetch(&[param.clone()]).is_none());
+        cache.save(&[param.clone()], out.clone());
+        assert_eq!(cache.fetch(&[param.clone()]), Some(&out));
     }
 }

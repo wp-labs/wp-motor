@@ -519,15 +519,17 @@ user_dept = "研发部"
 
 ### 任务：IP 地理位置查询
 
-**场景**：查询 IP 地址的地理位置信息
+**场景**：查询 IP 地址的地理位置信息（IPv4/IPv6 共用同一条范围查询）
 
 **输入**：
 ```
-src_ip = "203.0.113.1"
+src_ip = "203.0.113.1"    # 或 IPv6，如 "2001:db8::1"
 ```
 
-**数据库表 (ip_geo)**：
-| ip_start_int | ip_end_int | country | city |
+**数据库表 (ip_geo_city)**：`start_ip_num` / `end_ip_num` 为 `numeric`（任意精度十进制），
+IPv4 网段映射到 `0 .. 4294967295`，IPv6 网段映射到 `2^128 .. 2^129 - 1`，两族互不重叠：
+
+| start_ip_num | end_ip_num | country | city |
 |--------------|------------|---------|------|
 | 3405803776 | 3405804031 | US | Los Angeles |
 
@@ -535,20 +537,27 @@ src_ip = "203.0.113.1"
 ```oml
 name : ip_geolocation
 ---
-# 先将 IP 转为整数
-ip_int = pipe read(src_ip) | ip4_to_int ;
+# 统一编码：IPv4/IPv6 → 任意精度整数键（BigUint，无精度损失）
+ip_num = pipe read(src_ip) | ip_to_biguint ;
 
-# 查询地理位置
+# 查询地理位置（IPv4/IPv6 共用同一条范围查询，参数绑定为 numeric）
 country, city =
     select country, city
-    from ip_geo
-    where ip_start_int <= read(ip_int)
-      and ip_end_int >= read(ip_int) ;
+    from ip_geo_city
+    where start_ip_num <= read(ip_num)
+      and end_ip_num >= read(ip_num) ;
 ```
+
+> 注：OML SQL 语法不支持 `order by` / `limit`；`ip_geo_city` 的网段互不重叠，
+> `start_ip_num <= x and end_ip_num >= x` 至多命中一行。
+
+**说明**：
+- `ip_to_biguint` 输入必须为 IP 类型字段（`Value::IpAddr`）；非 IP 输入会报错并跳过查询。
+- 旧 pipe `ip4_to_int`（仅 IPv4、返回 64 位整数）保留用于兼容，新脚本请使用 `ip_to_biguint`。
 
 **输出**：
 ```
-ip_int = 3405803777
+ip_num = 3405803777
 country = "US"
 city = "Los Angeles"
 ```
