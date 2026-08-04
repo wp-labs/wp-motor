@@ -59,6 +59,7 @@ url = { workspace = true }
 jieba-rs = "0.10"
 regex = { workspace = true }
 smallvec = { workspace = true }
+num-bigint = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

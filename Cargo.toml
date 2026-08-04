@@ -54,7 +54,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.23.8" # @gxl:set(version)
+version = "1.25.0" # @gxl:set(version)
 edition = "2024"
 license = "Apache-2.0"
 
@@ -360,19 +360,22 @@ orion_exp = { path = "./crates/orion_exp" }
 wp_primitives = { package = "wp-primitives", version = "0.2" }
 wp_config = { package = "wp-config", path = "./crates/wp-config" }
 wp_data_model = { package = "wp-data-utils", path = "./crates/wp-data-utils" }
-wp-knowledge = "0.14"
+wp-knowledge = "0.15"
 #wp_lang = { package = "wp-lang", version = "0.1" }
 wp_oml = { package = "wp-oml", path = "./crates/wp-oml" }
 wp_proj = { package = "wp-proj", path = "./crates/wp-proj" }
-wp-core-connectors = "0.7"
+wp-core-connectors = "0.8"
+
+# --- Arbitrary Precision Integer (Value::BigUint) ---
+num-bigint = "0.4"
 
 # --- External: Arrow ---
-wp-arrow = "0.1"
+wp-arrow = "0.3"
 
 # --- External: Open API (Public Interfaces) ---
-wp-connector-api = "0.11"
-wp-parse-api = "0.10"
-wp-model-core = "0.8"
+wp-connector-api = "0.12"
+wp-parse-api = "0.11"
+wp-model-core = "0.9"
 
 # --- External: Advanced API (Enterprise Features) ---
 #wp_ctrl_api = { package = "wp-ctrl-api", git = "https://github.cjm/wp-labs/wp-advanced-api", tag = "v0.2.0" }
@@ -380,9 +383,9 @@ wp-model-core = "0.8"
 
 # --- External: Infrastructure Libraries ---
 wp-log = "0.4"
-wp-lang = "0.4"
-wp-error = "0.10"
-wp-specs = "0.10"
-wp-conf-base = "0.4"
-wp-data-fmt = "0.2"
-wp-source-types = "0.1"
+wp-lang = "0.5"
+wp-error = "0.11"
+wp-specs = "0.11"
+wp-conf-base = "0.5"
+wp-data-fmt = "0.9"
+wp-source-types = "0.2"

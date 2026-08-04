@@ -25,3 +25,4 @@ arbitrary = { workspace = true, features = ["derive"] }
 libfuzzer-sys = { workspace = true }
 anyhow = { workspace = true }
 mockall = { workspace = true }
+num-bigint = { workspace = true }

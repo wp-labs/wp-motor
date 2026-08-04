@@ -1,5 +1,6 @@
+use crate::core::diagnostics::{self, OmlIssue, OmlIssueKind};
 use crate::core::prelude::*;
-use crate::language::Ip4ToInt;
+use crate::language::{Ip4ToInt, IpToBigUint, ip_to_biguint};
 use std::net::{IpAddr, Ipv4Addr};
 use wp_model_core::model::{DataField, DataType, Value};
 
@@ -13,6 +14,37 @@ fn null_field_like(field: &DataField) -> DataField {
 
 fn ipv4_to_field(name: &str, ip: Ipv4Addr) -> DataField {
     DataField::from_digit(name.to_string(), u32::from(ip) as i64)
+}
+
+/// 统一 IP 编码：IPv4/IPv6 → 任意精度 BigUint，字段类型为 BigInt
+fn ip_biguint_field(name: &str, ip: IpAddr) -> DataField {
+    DataField::new(
+        DataType::BigInt,
+        name.to_string(),
+        Value::BigUint(ip_to_biguint(ip)),
+    )
+}
+
+/// 输入不是 IP 类型：明确报错（诊断 + 日志），输出 null 使下游查询跳过
+fn ip_type_error(field: &DataField, detail: String) -> DataField {
+    let msg = format!("ip_to_biguint: {} field={}", detail, field.get_name());
+    warn_data!("{}", msg);
+    diagnostics::push(OmlIssue::new(OmlIssueKind::ParseFail, msg));
+    null_field_like(field)
+}
+
+impl ValueProcessor for IpToBigUint {
+    fn value_cacu(&self, in_val: DataField) -> DataField {
+        match in_val.get_value() {
+            Value::IpAddr(ip) => ip_biguint_field(in_val.get_name(), *ip),
+            // 无输入（缺失/空）：保持 null，不报错、不查询
+            Value::Null | Value::Ignore(_) => null_field_like(&in_val),
+            _ => ip_type_error(
+                &in_val,
+                format!("expect ip input, got {}", in_val.get_value().tag()),
+            ),
+        }
+    }
 }
 
 impl ValueProcessor for Ip4ToInt {
@@ -45,8 +77,9 @@ mod tests {
     use crate::parser::oml_parse_raw;
     use orion_error::dev::testing::TestAssert;
     use std::net::{IpAddr, Ipv4Addr};
+    use std::str::FromStr;
     use wp_knowledge::cache::FieldQueryCache;
-    use wp_model_core::model::{DataField, DataRecord, FieldStorage};
+    use wp_model_core::model::{DataField, DataRecord, FieldStorage, Value};
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_pipe_ip4_int() {
@@ -100,6 +133,100 @@ mod tests {
         name : test
         ---
         X  =  pipe  read(src_ip) | ip4_to_int ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        assert!(target.field("X").is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_ip_to_biguint_ipv4() {
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![FieldStorage::from_owned(DataField::from_ip(
+            "src_ip",
+            IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)),
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe  read(src_ip) | ip_to_biguint ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let field = target.field("X").expect("X produced").as_field();
+        assert_eq!(field.get_value().to_string(), "134744072");
+        assert!(matches!(field.get_value(), Value::BigUint(_)));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_ip_to_biguint_ipv6() {
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![FieldStorage::from_owned(DataField::from_ip(
+            "src_ip",
+            IpAddr::from_str("2001:4860:4860::8888").unwrap(),
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe  read(src_ip) | ip_to_biguint ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let field = target.field("X").expect("X produced").as_field();
+        assert_eq!(
+            field.get_value().to_string(),
+            "382824323044708348099391746388336347272"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_ip_to_biguint_ipv6_compressed_equals_full() {
+        let cache = &mut FieldQueryCache::default();
+        let v6_compressed = IpAddr::from_str("2001:4860:4860::8888").unwrap();
+        let data = vec![FieldStorage::from_owned(DataField::from_ip(
+            "src_ip",
+            v6_compressed,
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe  read(src_ip) | ip_to_biguint ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let compressed = target.field("X").expect("X produced").as_field();
+
+        let v6_full = IpAddr::from_str("2001:4860:4860:0:0:0:0:8888").unwrap();
+        let data = vec![FieldStorage::from_owned(DataField::from_ip(
+            "src_ip", v6_full,
+        ))];
+        let src = DataRecord::from(data);
+        let target = model.transform_async(src, cache).await;
+        let full = target.field("X").expect("X produced").as_field();
+
+        assert_eq!(compressed.get_value(), full.get_value());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_ip_to_biguint_non_ip_input_becomes_null() {
+        // 非 IP 类型输入（Chars）→ 报错并输出 null（下游查询跳过）
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "src_ip",
+            "not-an-ip",
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe  read(src_ip) | ip_to_biguint ;
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;

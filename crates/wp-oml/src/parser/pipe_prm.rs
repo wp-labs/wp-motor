@@ -1,13 +1,14 @@
 use std::str::FromStr;
 
 use crate::language::{
-    Base64Decode, EncodeType, Get, HtmlEscape, HtmlUnescape, Ip4ToInt, JsonEscape, JsonUnescape,
-    MapTo, MapValue, Nth, PIPE_BASE64_DECODE, PIPE_GET, PIPE_HTML_ESCAPE, PIPE_HTML_UNESCAPE,
-    PIPE_IP4_TO_INT, PIPE_JSON_ESCAPE, PIPE_JSON_UNESCAPE, PIPE_MAP_TO, PIPE_NTH, PIPE_PATH,
-    PIPE_SKIP_EMPTY, PIPE_STARTS_WITH, PIPE_STR_ESCAPE, PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS,
-    PIPE_TIME_TO_TS_US, PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON, PIPE_URL, PathGet, PathType,
-    PiPeOperation, PipeFun, PreciseEvaluator, SkipEmpty, StartsWith, StrEscape, TimeStampUnit,
-    TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone, ToJson, UrlGet, UrlType,
+    Base64Decode, EncodeType, Get, HtmlEscape, HtmlUnescape, Ip4ToInt, IpToBigUint, JsonEscape,
+    JsonUnescape, MapTo, MapValue, Nth, PIPE_BASE64_DECODE, PIPE_GET, PIPE_HTML_ESCAPE,
+    PIPE_HTML_UNESCAPE, PIPE_IP_TO_BIGUINT, PIPE_IP4_TO_INT, PIPE_JSON_ESCAPE, PIPE_JSON_UNESCAPE,
+    PIPE_MAP_TO, PIPE_NTH, PIPE_PATH, PIPE_SKIP_EMPTY, PIPE_STARTS_WITH, PIPE_STR_ESCAPE,
+    PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US, PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON,
+    PIPE_URL, PathGet, PathType, PiPeOperation, PipeFun, PreciseEvaluator, SkipEmpty, StartsWith,
+    StrEscape, TimeStampUnit, TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone, ToJson, UrlGet,
+    UrlType,
 };
 use crate::language::{
     Base64Encode, ExtractMainWord, ExtractSubjectObject, PIPE_BASE64_ENCODE,
@@ -356,6 +357,7 @@ fn pipe_fun_simple_extra(data: &mut &str) -> WResult<PipeFun> {
         PIPE_TO_STR.map(|_| PipeFun::ToStr(ToStr::default())),
         PIPE_SKIP_EMPTY.map(|_| PipeFun::SkipEmpty(SkipEmpty::default())),
         PIPE_IP4_TO_INT.map(|_| PipeFun::Ip4ToInt(Ip4ToInt::default())),
+        PIPE_IP_TO_BIGUINT.map(|_| PipeFun::IpToBigUint(IpToBigUint::default())),
         PIPE_EXTRACT_MAIN_WORD.map(|_| PipeFun::ExtractMainWord(ExtractMainWord::default())),
         PIPE_EXTRACT_SUBJECT_OBJECT
             .map(|_| PipeFun::ExtractSubjectObject(ExtractSubjectObject::default())),

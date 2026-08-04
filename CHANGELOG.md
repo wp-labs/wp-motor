@@ -6,7 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries may be written in both English and Chinese.
 
-## [1.23.8 Unreleased]
+## [1.25.0 Unreleased]
+
+### Added
+- **OML/pipe `ip_to_biguint`**: New OML pipe that encodes IPv4/IPv6 into an arbitrary-precision unsigned integer (`BigUint`, no precision loss). IPv4 maps to `0 .. 2^32-1` and IPv6 is parsed as a 128-bit integer plus a `2^128` offset, mapping to `2^128 .. 2^129-1`; the two families never overlap, so both share a single range-query SQL. Non-IP input raises a diagnostic + log and outputs null so downstream queries are skipped. The legacy `ip4_to_int` pipe (IPv4-only, 64-bit integer) is kept for compatibility.
+  中文：新增 `ip_to_biguint` pipe，将 IPv4/IPv6 统一编码为任意精度无符号整数（`BigUint`，无精度损失）。IPv4 映射到 `0 .. 2^32-1`，IPv6 先解析为 128 位整数再加 `2^128` 偏移映射到 `2^128 .. 2^129-1`，两族互不重叠，可共用同一条范围查询 SQL；非 IP 输入报错（诊断 + 日志）并输出 null，使下游查询跳过。旧 pipe `ip4_to_int`（仅 IPv4、64 位整数）保留用于兼容。
+- **OML/data BigUint support**: `FieldQueryCache` now indexes `Value::BigUint` (keyed by its decimal string) so `ip_to_biguint` outputs can hit the query cache, and `compare_datafield` supports the full `BigUint` comparison set (`Eq/Ne/Gt/Ge/Lt/Le`). Added the `num-bigint` workspace dependency (used by `wp-oml` and `wp-data-utils`).
+  中文：`FieldQueryCache` 新增 `Value::BigUint` 索引（以十进制字符串为键），`ip_to_biguint` 产物可命中查询缓存；`compare_datafield` 支持 `BigUint` 全比较算子（`Eq/Ne/Gt/Ge/Lt/Le`）；新增 `num-bigint` 工作区依赖（`wp-oml` 与 `wp-data-utils` 使用）。
+- **Docs/OML grammar comments**: Add a comments section to the OML grammar reference (en/zh) documenting `//` single-line comments stripped by `CommentParser` before parsing (shared with WPL).
+  中文：OML 语法参考（en/zh）新增注释说明段：`//` 单行注释由 `CommentParser` 在解析前剥离（与 WPL 共用）。
+
+### Changed
+- **Dependencies**: Upgraded `wp-knowledge` 0.14 → 0.15, `wp-core-connectors` 0.7 → 0.8, `wp-arrow` 0.1 → 0.3, `wp-connector-api` 0.11 → 0.12, `wp-parse-api` 0.10 → 0.11, `wp-model-core` 0.8 → 0.9, `wp-lang` 0.4 → 0.5, `wp-error` 0.10 → 0.11, `wp-specs` 0.10 → 0.11, `wp-conf-base` 0.4 → 0.5, `wp-data-fmt` 0.2 → 0.9, `wp-source-types` 0.1 → 0.2.
+  中文：升级 `wp-knowledge`、`wp-core-connectors`、`wp-arrow`、`wp-connector-api`、`wp-parse-api`、`wp-model-core`、`wp-lang`、`wp-error`、`wp-specs`、`wp-conf-base`、`wp-data-fmt`、`wp-source-types` 到最新小版本。
+- **Docs/zh practical guide**: The IP geolocation example now uses `ip_to_biguint` + `numeric` range columns shared by IPv4/IPv6 (`start_ip_num`/`end_ip_num`), with a note on non-IP input error behavior; the legacy `ip4_to_int` path is documented as compatibility-only.
+  中文：中文实战指南的 IP 地理位置查询示例改为 `ip_to_biguint` 统一编码 + `numeric` 列范围查询（IPv4/IPv6 共用），并补充非 IP 输入报错说明；旧 `ip4_to_int` 路径仅作兼容保留。
+
+### Tests
+- **OML/pipe**: Coverage for `ip_to_biguint` IPv4/IPv6 encoding, compressed-vs-full IPv6 equality, and non-IP input → null skip.
+  中文：补充 `ip_to_biguint` IPv4/IPv6 编码、IPv6 压缩写法与完整写法一致性、非 IP 输入输出 null 跳过查询的测试。
+- **Data/BigUint**: Coverage for `FieldQueryCache` BigUint parameter cache hits and `compare_datafield` BigUint interval / type-mismatch comparison.
+  中文：补充 `FieldQueryCache` BigUint 参数命中缓存，以及 `compare_datafield` BigUint 区间比较与类型不一致返回 false 的测试。
+
+## [1.23.8] - 2026-07-31
 
 ### Added
 - **Parser/Event meta**: New `wp_event_md5` field (MD5 of the event payload) stamped on every event's records, gated by the `gen_event_md5` config flag (default off, nested under `gen_msg_id`). Stamped on both main records and `copy_event_parse` side records. `wp_event_md5` is added to `SUPPORTED_WP_META_DISABLE_FIELDS` so sink groups can drop it via `wp_meta_disable`.
