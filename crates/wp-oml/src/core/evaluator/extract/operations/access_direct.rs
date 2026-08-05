@@ -1,11 +1,11 @@
 use super::operand_target;
-use crate::core::diagnostics::{self, OmlIssue, OmlIssueKind};
-use wp_knowledge::intranet_nets::is_intranet;
-use crate::core::prelude::*;
 use crate::core::AsyncFieldExtractor;
+use crate::core::diagnostics::{self, OmlIssue, OmlIssueKind};
+use crate::core::prelude::*;
 use crate::language::{AccessDirectOperation, EvaluationTarget};
 use async_trait::async_trait;
 use std::net::IpAddr;
+use wp_knowledge::intranet_nets::is_intranet;
 use wp_model_core::model::{DataField, FieldStorage, Value};
 
 /// 从字段提取 IpAddr（`Value::IpAddr` 或合法 IP 字符串）

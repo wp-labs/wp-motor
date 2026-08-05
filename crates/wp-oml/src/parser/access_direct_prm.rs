@@ -74,8 +74,10 @@ mod tests {
 
     #[test]
     fn test_access_direct_round_trip() {
-        let src = crate::language::DirectAccessor::Read(crate::language::FieldRead::new("sip".into()));
-        let dst = crate::language::DirectAccessor::Read(crate::language::FieldRead::new("dip".into()));
+        let src =
+            crate::language::DirectAccessor::Read(crate::language::FieldRead::new("sip".into()));
+        let dst =
+            crate::language::DirectAccessor::Read(crate::language::FieldRead::new("dip".into()));
         let op = AccessDirectOperation::new(src, dst);
         let disp = format!("{}", op);
 

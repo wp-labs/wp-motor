@@ -104,7 +104,7 @@ impl ValueProcessor for IntranetIp {
 #[cfg(test)]
 mod tests {
     use crate::core::AsyncDataTransformer;
-        use crate::parser::oml_parse_raw;
+    use crate::parser::oml_parse_raw;
     use orion_error::dev::testing::TestAssert;
     use std::net::{IpAddr, Ipv4Addr};
     use std::str::FromStr;
