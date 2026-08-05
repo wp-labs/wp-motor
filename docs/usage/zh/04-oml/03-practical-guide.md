@@ -209,6 +209,12 @@ encoded = read(message) | base64_encode ;
 
 # IP 转整数
 ip_int = read(src_ip) | ip4_to_int ;
+
+# 内网判断（返回 内/外，支持 IPv4/IPv6）
+side = read(src_ip) | intranet_ip ;
+
+# 访问方向（内到内/内到外/外到内/外到外，缺失兜底 unknown）
+direction = access_direct(read(sip), read(dip)) | on_fail('unknown') ;
 ```
 
 ## 数值计算

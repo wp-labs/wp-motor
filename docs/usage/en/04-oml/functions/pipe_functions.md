@@ -558,6 +558,42 @@ valid_message = pipe read(message) | skip_empty | process_function ;
 
 ---
 
+### on_fail
+
+当输入为 `Ignore` 或 `Null`（判断失败/无值）时，替换为指定字符串；其他值原样返回。
+
+**语法**
+```oml
+result = pipe read(field) | on_fail('unknown') ;
+```
+
+**输入类型**: 任意类型
+**输出类型**: `chars`（兜底值）或原值
+
+**参数**
+- `'值'`: 失败时的兜底字符串（支持任意字符串，含空串 `''`）
+
+**示例**
+```oml
+name : example_on_fail
+---
+src_ip : ip = take() ;
+side = pipe read(src_ip) | intranet_ip | on_fail('unknown') ;
+
+# src_ip 为内网 → "内"
+# src_ip 为外网 → "外"
+# src_ip 缺失/非法 → "unknown"（intranet_ip 输出 Ignore，on_fail 兜底）
+
+empty_side = pipe read(src_ip) | intranet_ip | on_fail('') ;
+# 失败 → ""（空串）
+```
+
+**用途**
+- 富化失败兜底
+- 空值填充默认值
+
+---
+
 ## 网络与路径
 
 ### url
@@ -692,6 +728,47 @@ IP = a.b.c.d
 - 只支持 IPv4 地址
 - IPv6 地址会返回原值
 - 用于 IP 范围比较、地理位置查询等
+
+---
+
+### intranet_ip
+
+判断 IP 地址属于内网还是互联网，返回中文字符串 `内` / `外`。
+
+**语法**
+```oml
+result = pipe read(ip_field) | intranet_ip ;
+```
+
+**输入类型**: `ip` (IPv4/IPv6 地址) 或 `chars` (IP 字符串)
+**输出类型**: `chars` (`内` / `外`)
+
+**示例**
+```oml
+name : example_intranet_ip
+---
+src_ip : ip = take() ;
+side = pipe read(src_ip) | intranet_ip ;
+
+# 输入: 10.0.0.1
+# 输出: "内"
+
+# 输入: 8.8.8.8
+# 输出: "外"
+
+# 输入: fc00::1
+# 输出: "内"
+```
+
+**内网网段判定**
+- 默认内网网段：RFC1918（10/8、172.16/12、192.168/16）+ IPv4/IPv6 loopback + IPv6 ULA（fc00::/7）
+- 可通过 `knowdb.toml` 的 `[intranet_nets]` 节扩展/替换
+- CGNAT、link-local 等特殊地址默认不判为内网，可按需配置
+
+**注意事项**
+- 支持 IPv4 + IPv6
+- IPv4-mapped IPv6（`::ffff:a.b.c.d`）按 IPv4 判定
+- 空/非法输入输出 `Ignore`，可结合 `on_fail` 提供兜底值
 
 ---
 

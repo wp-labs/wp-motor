@@ -20,6 +20,7 @@ This document lists only the built-in functions, built-in expressions, and pipe 
 | `Now::time()` | Current time | `event_time = Now::time() ;` |
 | `Now::date()` | Current date as `YYYYMMDD` | `today = Now::date() ;` |
 | `Now::hour()` | Current hour as `YYYYMMDDHH` | `hour = Now::hour() ;` |
+| `access_direct(src, dst)` | Access direction (`内到内`/`内到外`/`外到内`/`外到外`) | `dir = access_direct(read(sip), read(dip)) | on_fail('unknown') ;` |
 
 ### Pipe Functions
 
@@ -43,6 +44,8 @@ This document lists only the built-in functions, built-in expressions, and pipe 
 | Conversion | `to_json` | `payload = read(arr) | to_json ;` |
 | Conversion | `to_str` | `ip_s = read(ip) | to_str ;` |
 | Conversion | `ip4_to_int` | `ip_i = read(src_ip) | ip4_to_int ;` |
+| Network | `intranet_ip` | `side = read(src_ip) | intranet_ip ;` |
+| Control | `on_fail('value')` | `side = read(src_ip) | intranet_ip | on_fail('unknown') ;` |
 | Extraction | `path([name|path])` | `file = read(path) | path(name) ;` |
 | Extraction | `url([domain|host|uri|path|params])` | `host = read(url) | url(host) ;` |
 | Control | `skip_empty` | `v = read(maybe_empty) | skip_empty ;` |

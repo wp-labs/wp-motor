@@ -89,6 +89,7 @@ eval_expr         = calc_expr
                   | collect_expr
                   | sql_expr
                   | fmt_expr
+                  | access_direct_expr
                   | direct_expr
                   | value_expr
                   | builtin_fun
@@ -125,6 +126,26 @@ uid = read(option:[uid, user_id, id]) ;
 metrics = collect read(keys:[cpu_*, mem_*]) ;
 name = read(/user/info/name) ;
 country = read(country) { _ : chars(CN) } ;
+```
+
+### `access_direct(...)`
+
+组合 src/dst 两个 IP 的内外归属得到访问方向，返回 `内到内`/`内到外`/`外到内`/`外到外`。
+
+```ebnf
+access_direct_expr = "access_direct", "(", var_get, ",", var_get, ")", [ "|", pipe_item, { "|", pipe_item } ] ;
+```
+
+**说明**
+- 内/外判定使用内网网段知识（`knowdb.toml` 的 `[intranet_nets]` 节）
+- src/dst 缺失或非法输出 `Ignore`，可用管道 `| on_fail('unknown')` 提供兜底
+- 支持 IPv4 + IPv6；IPv4-mapped IPv6 按 IPv4 判定
+
+**示例**
+```oml
+direction = access_direct(read(sip), read(dip)) | on_fail('unknown') ;
+# 内网→内网: "内到内"；内网→外网: "内到外"；外网→内网: "外到内"；外网→外网: "外到外"
+# src/dst 缺失: "unknown"（on_fail 兜底）
 ```
 
 ---

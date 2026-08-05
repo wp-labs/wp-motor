@@ -89,10 +89,31 @@ eval_expr         = calc_expr
                   | collect_expr
                   | sql_expr
                   | fmt_expr
+                  | access_direct_expr
                   | direct_expr
                   | value_expr
                   | builtin_fun
                   | static_ref ;
+```
+
+### `access_direct(...)`
+
+Combines the intranet sides of src/dst IPs into an access direction, returning `内到内`/`内到外`/`外到内`/`外到外`.
+
+```ebnf
+access_direct_expr = "access_direct", "(", var_get, ",", var_get, ")", [ "|", pipe_item, { "|", pipe_item } ] ;
+```
+
+**Notes**
+- Intranet-side checks use the intranet network knowledge (`[intranet_nets]` section of `knowdb.toml`)
+- Missing/invalid src or dst output `Ignore`; chain `| on_fail('unknown')` for a fallback
+- Supports IPv4 + IPv6; IPv4-mapped IPv6 is judged as IPv4
+
+**Example**
+```oml
+direction = access_direct(read(sip), read(dip)) | on_fail('unknown') ;
+# intranet→intranet: "内到内"; intranet→internet: "内到外"; internet→intranet: "外到内"; internet→internet: "外到外"
+# missing src/dst: "unknown" (on_fail fallback)
 ```
 
 ### Direct Access

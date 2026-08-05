@@ -4,949 +4,366 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-Entries may be written in both English and Chinese.
 
 ## [1.25.0 Unreleased]
 
 ### Added
-- **OML/pipe `ip_to_biguint`**: New OML pipe that encodes IPv4/IPv6 into an arbitrary-precision unsigned integer (`BigUint`, no precision loss). IPv4 maps to `0 .. 2^32-1` and IPv6 is parsed as a 128-bit integer plus a `2^128` offset, mapping to `2^128 .. 2^129-1`; the two families never overlap, so both share a single range-query SQL. Non-IP input raises a diagnostic + log and outputs null so downstream queries are skipped. The legacy `ip4_to_int` pipe (IPv4-only, 64-bit integer) is kept for compatibility.
-  中文：新增 `ip_to_biguint` pipe，将 IPv4/IPv6 统一编码为任意精度无符号整数（`BigUint`，无精度损失）。IPv4 映射到 `0 .. 2^32-1`，IPv6 先解析为 128 位整数再加 `2^128` 偏移映射到 `2^128 .. 2^129-1`，两族互不重叠，可共用同一条范围查询 SQL；非 IP 输入报错（诊断 + 日志）并输出 null，使下游查询跳过。旧 pipe `ip4_to_int`（仅 IPv4、64 位整数）保留用于兼容。
-- **OML/data BigUint support**: `FieldQueryCache` now indexes `Value::BigUint` (keyed by its decimal string) so `ip_to_biguint` outputs can hit the query cache, and `compare_datafield` supports the full `BigUint` comparison set (`Eq/Ne/Gt/Ge/Lt/Le`). Added the `num-bigint` workspace dependency (used by `wp-oml` and `wp-data-utils`).
-  中文：`FieldQueryCache` 新增 `Value::BigUint` 索引（以十进制字符串为键），`ip_to_biguint` 产物可命中查询缓存；`compare_datafield` 支持 `BigUint` 全比较算子（`Eq/Ne/Gt/Ge/Lt/Le`）；新增 `num-bigint` 工作区依赖（`wp-oml` 与 `wp-data-utils` 使用）。
-- **Docs/OML grammar comments**: Add a comments section to the OML grammar reference (en/zh) documenting `//` single-line comments stripped by `CommentParser` before parsing (shared with WPL).
-  中文：OML 语法参考（en/zh）新增注释说明段：`//` 单行注释由 `CommentParser` 在解析前剥离（与 WPL 共用）。
-- **OML/pipe `intranet_ip`**: New pipe that determines whether an IP is intranet (`内`) or internet (`外`), returning a Chinese string. Supports IPv4 + IPv6. The internal-network set is loaded in memory as an `ipnet` set, config-driven and extensible via a TOML file (`nets`); defaults to RFC1918 + IPv4/IPv6 loopback + IPv6 ULA (special addresses such as CGNAT/link-local are excluded, extendable via config). Empty or invalid input outputs `Ignore`.
-  中文：新增 `intranet_ip` pipe，判断 IP 属于内网（`内`）还是互联网（`外`），返回中文字符串，支持 IPv4 + IPv6。内网网段以 `ipnet` 集合加载于内存，配置驱动可扩展（TOML `nets` 字段）；默认覆盖 RFC1918 + IPv4/IPv6 loopback + IPv6 ULA（CGNAT/link-local 等特殊地址默认不判内网，可由配置扩展）；空或非法输入输出 `Ignore`。
-- **OML/comm `access_direct`**: New operation that combines the intranet sides of src/dst IPs into an access direction (`内到内`/`内到外`/`外到内`/`外到外`), sharing the same config-driven intranet network set. Missing or invalid IP inputs output `Ignore`. Its result can be used as a pipe source (`access_direct(a, b) | on_fail('unknown')`) to supply a fallback value in one step.
-  中文：新增 `access_direct` 操作，组合 src/dst 两个 IP 的内外归属得到访问方向（`内到内`/`内到外`/`外到内`/`外到外`），复用同一套配置驱动内网网段集合；字段缺失或非 IP 输入输出 `Ignore`。其结果可作为管道源（`access_direct(a, b) | on_fail('unknown')`），一步提供失败兜底值。
-- **OML/pipe `on_fail`**: New generic pipe that replaces an `Ignore` or `Null` input value with a given string (`on_fail('unknown')` / `on_fail('')` / `on_fail('未知')`), leaving other values untouched. Composes with `intranet_ip`/`access_direct` to supply a fallback value for failed enrichment.
-  中文：新增通用 `on_fail` pipe，输入为 `Ignore` 或 `Null`（判断失败/无值）时替换为指定字符串（`on_fail('unknown')` / `on_fail('')` / `on_fail('未知')`），其他值原样返回；可与 `intranet_ip`/`access_direct` 组合，为富化失败提供兜底值。
-- **OML/pipe source extension (`PipeSource`)**: 管道起点从 `DirectAccessor` 扩展为 `PipeSource` 枚举（`Accessor` / `AccessDirect`），`access_direct(a, b) | fun` 形式可将操作结果直接作为管道源接续管道函数；`pipe` 前缀形式（`pipe access_direct(a, b) | fun`）同样支持。Display 输出可 round-trip 解析。
-  中文：管道起点从 `DirectAccessor` 扩展为 `PipeSource` 枚举（`Accessor` / `AccessDirect`），`access_direct(a, b) | fun` 形式可将操作结果直接作为管道源接续管道函数；`pipe` 前缀形式（`pipe access_direct(a, b) | fun`）同样支持。Display 输出可 round-trip 解析。
-- **Knowledge/wp-knowledge `intranet_nets`**: 内网网段知识管理从 wp-oml 迁移到 wp-knowledge（知识层统一管理）。wp-knowledge 新增 `intranet_nets` 模块：配置直接放在 `knowdb.toml` 的 `[intranet_nets]` 节（随 knowdb.toml 统一加载注入），内置默认 + 外部合并、`is_intranet` 查询接口、`generate_default_intranet_nets_config`（项目初始化生成 knowdb.toml 时自动含该节）。wp-oml 的 `intranet_ip`/`access_direct` 改为消费 `wp_knowledge::intranet_nets::is_intranet`。wp-motor workspace 的 `wp-knowledge` 依赖改为本地 path（`../wp-knowledge`）。
-  中文：内网网段知识管理从 wp-oml 迁移到 wp-knowledge（知识层统一管理）。wp-knowledge 新增 `intranet_nets` 模块：配置直接放在 `knowdb.toml` 的 `[intranet_nets]` 节（随 knowdb.toml 统一加载注入），内置默认 + 外部合并、`is_intranet` 查询接口、`generate_default_intranet_nets_config`（项目初始化生成 knowdb.toml 时自动含该节）。wp-oml 的 `intranet_ip`/`access_direct` 改为消费 `wp_knowledge::intranet_nets::is_intranet`。wp-motor workspace 的 `wp-knowledge` 依赖改为本地 path（`../wp-knowledge`）。
-- **Knowledge/wp-knowledge `intranet_nets` performance**: `is_intranet` 按 IPv4/IPv6 地址族分桶扫描，仅扫对应家族的网段，避免全量线性扫描。
-  中文：`is_intranet` 按 IPv4/IPv6 地址族分桶扫描，仅扫对应家族的网段，避免全量线性扫描。
-- **wp-proj/wproj check**: 增加 `intranet_nets` 校验项，`wproj check` 显示内网网段配置状态（外部配置生效 / 使用内置网段），与 semantic_dict 对称。
-  中文：`wproj check` 增加 `intranet_nets` 校验项，显示内网网段配置状态（外部配置生效 / 使用内置网段），与 semantic_dict 对称。
+- **OML 内网富化**：新增 `intranet_ip`（判内/外）、`access_direct`（访问方向）、`on_fail`（失败兜底）函数；管道源扩展支持 `access_direct(a,b) | on_fail('x')`。内网网段作为知识统一由 wp-knowledge 管理（`knowdb.toml [intranet_nets]` 节），`wproj check` 可校验
+- **OML IP 编码**：新增 `ip_to_biguint`（IPv4/IPv6 统一编码），`FieldQueryCache`/`compare_datafield` 支持 `BigUint`
+- **Docs**：OML 语法参考、富化函数与内网网段配置文档同步
 
 ### Changed
-- **Dependencies**: Upgraded `wp-knowledge` 0.14 → 0.15, `wp-core-connectors` 0.7 → 0.8, `wp-arrow` 0.1 → 0.3, `wp-connector-api` 0.11 → 0.12, `wp-parse-api` 0.10 → 0.11, `wp-model-core` 0.8 → 0.9, `wp-lang` 0.4 → 0.5, `wp-error` 0.10 → 0.11, `wp-specs` 0.10 → 0.11, `wp-conf-base` 0.4 → 0.5, `wp-data-fmt` 0.2 → 0.9, `wp-source-types` 0.1 → 0.2.
-  中文：升级 `wp-knowledge`、`wp-core-connectors`、`wp-arrow`、`wp-connector-api`、`wp-parse-api`、`wp-model-core`、`wp-lang`、`wp-error`、`wp-specs`、`wp-conf-base`、`wp-data-fmt`、`wp-source-types` 到最新小版本。
-- **Docs/zh practical guide**: The IP geolocation example now uses `ip_to_biguint` + `numeric` range columns shared by IPv4/IPv6 (`start_ip_num`/`end_ip_num`), with a note on non-IP input error behavior; the legacy `ip4_to_int` path is documented as compatibility-only.
-  中文：中文实战指南的 IP 地理位置查询示例改为 `ip_to_biguint` 统一编码 + `numeric` 列范围查询（IPv4/IPv6 共用），并补充非 IP 输入报错说明；旧 `ip4_to_int` 路径仅作兼容保留。
+- **Dependencies**：升级 `wp-knowledge` 0.14→0.15、`wp-model-core` 0.8→0.9、`wp-lang` 0.4→0.5、`wp-error` 0.10→0.11 等一批依赖；`wp-knowledge` 改为本地 path 依赖
 
-### Tests
-- **OML/pipe**: Coverage for `ip_to_biguint` IPv4/IPv6 encoding, compressed-vs-full IPv6 equality, and non-IP input → null skip.
-  中文：补充 `ip_to_biguint` IPv4/IPv6 编码、IPv6 压缩写法与完整写法一致性、非 IP 输入输出 null 跳过查询的测试。
-- **Data/BigUint**: Coverage for `FieldQueryCache` BigUint parameter cache hits and `compare_datafield` BigUint interval / type-mismatch comparison.
-  中文：补充 `FieldQueryCache` BigUint 参数命中缓存，以及 `compare_datafield` BigUint 区间比较与类型不一致返回 false 的测试。
 
 ## [1.23.8] - 2026-07-31
 
 ### Added
-- **Parser/Event meta**: New `wp_event_md5` field (MD5 of the event payload) stamped on every event's records, gated by the `gen_event_md5` config flag (default off, nested under `gen_msg_id`). Stamped on both main records and `copy_event_parse` side records. `wp_event_md5` is added to `SUPPORTED_WP_META_DISABLE_FIELDS` so sink groups can drop it via `wp_meta_disable`.
-  中文：新增 `wp_event_md5` 字段（事件 payload 的 MD5），由 `gen_event_md5` 配置项控制（默认关，嵌在 `gen_msg_id` 下），盖在主 record 与 `copy_event_parse` 旁路 record 上；并加入 `wp_meta_disable` 白名单，sink 组可按需不输出。
-- **Parser/copy_event_parse side-record routing**: `copy_event_parse` now emits the target rule's parsed record as an independent side record routed under the target's `wpl_key` to its own sink (previously merged into the main record). Side records carry the same event meta. A global parser map resolves cross-package (`pkg/rule`) and same-package bare-name references; bare names are normalized to full paths so side records route correctly.
-  中文：`copy_event_parse` 改为产出独立旁路 record，按目标 `wpl_key` 路由到自己的 sink（原为并入主 record）；旁路 record 同样盖事件 meta。全局 parser map 解析跨包（`pkg/rule`）与同包裸名引用，裸名规范化为全路径以正确路由。
-- **Parser/`#[no_match]` assembly**: `#[no_match]` rules are built as pipelines with `auto_match=false` — excluded from `parse_event` auto-matching but keeping sink bindings, so `copy_event_parse` side records can route through the target's pipeline. (The `#[no_match]` annotation itself is defined in wp-lang.)
-  中文：`#[no_match]` rule 装配为 `auto_match=false` 的 pipeline——不参与 `parse_event` 自动匹配，但保留 sink 绑定，供 `copy_event_parse` 旁路 record 经目标 pipeline 路由。（`#[no_match]` 注解本身在 wp-lang 定义。）
+- **Parser**：新增 `wp_event_md5` 事件指纹字段；`copy_event_parse` 改为独立旁路 record 路由到目标 sink；`#[no_match]` rule 装配支持旁路路由
 
-### Fixed
-- **Clippy**: Fixed `for_kv_map` (wp-config) and `question_mark` (wp-oml) lints for `-D warnings` CI.
-  中文：修复 `for_kv_map`（wp-config）与 `question_mark`（wp-oml）clippy 告警，满足 `-D warnings` CI。
 
 ## [1.23.7] - 2026-07-12
 
 ### Added
-- **Sink/BatchMeta**: Sink runtime now passes OML output names and group-level metadata output policy to connectors through `BatchMeta.oml_name`, `BatchMeta.output_disabled`, and `sink_records_with_meta`, enabling Arrow framed sinks to use the OML `name` as the frame tag without requiring a fixed connector `tag`.
-  中文：sink runtime 现在通过 `BatchMeta.oml_name`、`BatchMeta.output_disabled` 和 `sink_records_with_meta` 将 OML 输出名与组级元信息输出策略传给 connector，使 Arrow framed sink 可直接使用 OML `name` 作为 frame tag，无需固定配置 connector `tag`。
+- **Sink/BatchMeta**：OML 输出名与组级元信息输出策略经 `BatchMeta` 下发给 connector
 
 ### Changed
-- **Dependencies**: Upgraded `wp-connector-api` to `0.11`, `wp-core-connectors` to `0.7`, `wp-lang` to `0.4`, and added `wp-source-types` `0.1` for the updated connector metadata contract.
-  中文：升级 `wp-connector-api` 到 `0.11`、`wp-core-connectors` 到 `0.7`、`wp-lang` 到 `0.4`，并新增 `wp-source-types` `0.1`，用于新的 connector 元信息契约。
-- **Sink/Metadata**: Removed engine-side payload injection for `wp_stream_tag` and `wp_event_id`. Metadata rendering is now sink-owned; the engine only passes batch-level OML metadata.
-  中文：移除引擎侧对 `wp_stream_tag` 与 `wp_event_id` 的 payload 注入；元信息如何输出改由 sink 自己实现，引擎只传递批次级 OML 元信息。
-- **Config/Sinks**: `wp_meta_disable` is a `sink_group`-level metadata output policy for `wp_oml_name` and is rejected from sink/wpgen output params; `stream_tag_field` remains source-only.
-  中文：`wp_meta_disable` 是 `sink_group` 级 `wp_oml_name` 元信息输出策略，sink/wpgen output 参数中会报错；`stream_tag_field` 仍只属于 source 配置。
-- **Sink/OML**: Successful OML output records now carry the OML model `name` as internal `ProcMeta::OmlName`, so batch sinks receive the logical output name rather than the original WPL rule key.
-  中文：OML 成功输出记录现在以内部 `ProcMeta::OmlName` 携带 OML 模型 `name`，批量 sink 接收到的是逻辑输出名，而不是原始 WPL rule key。
-- **Sink/Runtime**: Renamed internal `ProcMeta::Rule` to `ProcMeta::WplName` to make the WPL/OML distinction explicit.
-  中文：内部 `ProcMeta::Rule` 改名为 `ProcMeta::WplName`，明确区分 WPL 名称与 OML 输出名称。
+- **Dependencies**：升级 `wp-connector-api` 0.11、`wp-core-connectors` 0.7、`wp-lang` 0.4，新增 `wp-source-types`
+- **Sink/Metadata**：运行时元信息改由 sink 侧渲染；`ProcMeta::Rule` 改名 `WplName` 明确 WPL/OML 区分
 
-### Removed
-- **Benchmarks**: Removed the obsolete `sink_wp_meta` benchmark now that engine-side runtime metadata payload injection has been removed.
-  中文：移除过时的 `sink_wp_meta` 基准；引擎侧运行时元信息 payload 注入逻辑已删除。
-
-### Tests
-- **Config/Sinks**: Added coverage for source-side `stream_tag_field` pass-through, group-level `wp_meta_disable`, and sink/wpgen output rejection.
-  中文：补充 source 侧 `stream_tag_field` 放行、组级 `wp_meta_disable`，以及 sink/wpgen output 侧拒绝的测试。
-- **Sink/Runtime**: Added coverage for `BatchMeta.oml_name` and `BatchMeta.output_disabled` dispatch, pending-buffer flushes when OML names change, and WPL rule passthrough without OML batch metadata.
-  中文：补充 `BatchMeta.oml_name` 与 `BatchMeta.output_disabled` 下发、pending buffer 遇到 OML name 变化时先 flush，以及普通 WPL rule 透传不生成 OML 批次元信息的测试。
-- **Parser/Annotations**: Filtered `AnnotationType::Null` before parser pipeline annotation execution.
-  中文：parser pipeline 执行 annotation 前过滤 `AnnotationType::Null`。
 
 ## [1.23.5] - 2026-07-06
 
 ### Added
-- **wpgen/Config**: `wpgen.toml` 新增 `[models]` 段，支持 `wpl` 字段指定 WPL 规则/样本目录，与 `wparse.toml` 的 `[models].wpl` 保持一致。配置优先级：`--wpl` CLI > `[models].wpl` > 默认 `./models/wpl/`。
-- **wpgen/Validate**: `[models].wpl` 目录不存在或无 `.dat`/`.wpl` 文件时，启动阶段报错退出（不再静默 `found 0 files`）。
+- **wpgen**：`wpgen.toml` 新增 `[models]` 段指定 WPL 目录；目录无效时启动报错
 
 ### Changed
-- **Sink/Factories**: `register_builtin_factories()` 启动时通过 `info_ctrl!` 打印已注册的 factory 列表（BlackHole, File, Syslog, Tcp, TestRescue）。
-
-### Tests
-- **wpgen/Config**: 新增 `wpgen_config_models_wpl_parsed`、`wpgen_config_models_default_none` 两例测试 `ModelsConfig` 解析。
+- **Sink/Factories**：启动时打印已注册 factory 列表
 
 ## [1.23.4] - 2026-07-05
 
 ### Changed
-- **Dependencies**: 升级 `shadow-rs` 1.5 → 2.0，升级 `wp-core-connectors` 0.3.3 → 0.5。
-- **Generator/Sink**: 合并 hotfix/1.22 的 `BatchSizePolicy`——动态字节预算批量下发。预算 = `base_rate(EPS) × avg_line_bytes(EMA) × time_window(100ms)`，clamp 到 [8KiB, 1MiB]。TCP sink 场景下 `wpgen` CPU 从 ~300% 降至 ~15%。
-### Fixed
-- **Project Init**: 修复 `wproj init` 生成的 infra route 模板包含无效的 `version = "2.0"` header 和已废弃的 `file_proto_sink` connector 引用（改为 `file_proto_text_sink`）。`init` 阶段新增自动检测旧格式文件并覆写的逻辑。
-- **wpadm/Cli**: `wpadm data stat/validate/check` 及 `wpadm sources list/route` 硬编码了 `wpsrc.toml` 路径，不支持目录式 source 格式（每个 source 一个 `.toml` 文件）。现改为在 `wpsrc.toml` 不存在时自动扫描 `topology/sources/` 目录加载 source 配置。
-- **Clippy**: 修复 `collapsible_if` 和 `unused_imports` 警告。
+- **Dependencies**：升级 `shadow-rs` 2.0、`wp-core-connectors` 0.5
+- **Generator/Sink**：动态字节预算批量下发（BatchSizePolicy），TCP 场景 CPU 显著下降
 
-### Tests
-- **Generator**: 新增 `BatchSizePolicy` 单元测试 6 例及速率×行长耦合集成测试 2 例，生成器测试 84 → 92。
+### Fixed
+- **Project Init**：修复 `wproj init` 模板无效 header 与废弃 connector 引用
+- **wpadm/Cli**：source 配置支持目录式扫描
 
 ## [1.23.0]
 
 ### Added
-- **Knowledge/Redis**: 升级 `wp-knowledge` 至 0.14.0，新增 Redis 外部数据源支持。knowdb.toml 新增 `[provider.redis]` 配置段，支持 `GET`、`HGET`、`BF.EXISTS`、`SISMEMBER` 等命令，适用于弱口令 Bloom filter、威胁情报 IP 查表等高速查表场景。
+- **Knowledge/Redis**：升级 wp-knowledge 0.14，knowdb.toml 支持 `[provider.redis]` 高速查表
 
 ### Changed
-- **Knowledge/Provider**: knowdb.toml 的 `[provider]` 拆分为 `[provider.sqldb]` 和 `[provider.redis]`，旧格式自动兼容并提示迁移。
+- **Knowledge/Provider**：`[provider]` 拆分为 `[provider.sqldb]` 与 `[provider.redis]`
 
 ### Removed
-- **Sinks/Arrow**: 移除独立的 `arrow-file` 和 `arrow-ipc` sink 后端（`ArrowFileFactory` / `ArrowIpcFactory`）。Arrow 输出功能已统一到 file/tcp sink 中，通过 `protocol = "arrow"` 参数使用。
+- **Sinks/Arrow**：移除独立 arrow sink，统一到 file/tcp 的 `protocol = "arrow"`
 
 ### Fixed
-- **OML/Pipe/ip4_to_int**: 修复 `ip4_to_int` 对 IPv6 地址静默透传的问题，现改为返回 Null；新增对字符串 IPv4 地址的解析支持。
+- **OML/Pipe/ip4_to_int**：IPv6 输入改返回 Null，支持字符串 IPv4 解析
 
 ## [1.22.10 Unreleased]
 
 ### Changed
-- **Memory Profile**: Changed the unset `WP_MEMORY_PROFILE` default back to `standard`. The `standard` profile keeps the `low` sink, pending, UDP, and file memory watermarks while increasing parser/source-side headroom.
-  中文：未设置 `WP_MEMORY_PROFILE` 时默认回到 `standard`；`standard` 保持 low 的 sink、pending、UDP 和 file 内存水位，同时提高 parser/source 侧余量。
-- **TCP Source Throughput**: Raised `standard` profile TCP defaults to `WP_TCP_RECV_BYTES=2097152`, `WP_TCP_BATCH_BYTES=262144`, and `WP_TCP_BATCH_CAPACITY=256` to keep long-line TCP samples such as firewall better fed without requiring the full `throughput` profile.
-  中文：提升 `standard` profile 的 TCP 默认批量参数，以改善 firewall 等长行 TCP 样本的 parser 供给和 CPU 利用率，无需切到完整 throughput profile。
-- **Docs**: Updated source rate limit and wparse configuration docs to describe `standard` as the default profile and include the new TCP batch defaults.
-  中文：更新输入限速和 wparse 配置文档，说明 `standard` 为默认 profile，并补充新的 TCP 批量默认值。
-
-### Tests
-- **Config/Limits**: Updated memory profile tests to cover the new unset default and `standard` TCP batch values.
-  中文：更新 memory profile 测试，覆盖新的未设置默认值和 `standard` TCP 批量参数。
+- **Memory Profile**：未设置 `WP_MEMORY_PROFILE` 默认回到 `standard`；提升 `standard` TCP 批量参数改善长行样本供给
 
 ## [1.22.9] - 2026-06-25
 
 ### Added
-- **Benchmarks**: Added `sink_batch_ids_success_path` under `perf-ci` to measure sink-side record-id plumbing on the success path and compare package collection with/without ids.
-  中文：新增 `sink_batch_ids_success_path` 基准，用于对比 sink 成功路径上 record id 传递开销。
+- **Benchmarks**：新增 sink record id 成功路径基准
 
 ### Changed
-- **Sink Runtime**: Simplified batch error logging in `send_records_batch` by iterating record positions directly instead of prebuilding a `Vec<u64>`.
-  中文：`send_records_batch` 的错误日志改为直接按下标遍历，不再预分配 `Vec<u64>`。
+- **Sink Runtime**：批量错误日志简化
 
 ## [1.22.8] - 2026-06-23
 
 ### Changed
-- **Memory Profile**: Changed the default `WP_MEMORY_PROFILE` from `standard` to `low`, so unset deployments now use smaller parser/sink channels, smaller picker pending byte caps, and earlier memory backpressure by default.
-  中文：默认内存 profile 从 `standard` 改为 `low`；未显式设置时默认使用更小队列和更早背压，优先控制 RSS。
-- **Source Rate Limit**: Fixed-rate source limiting now bypasses picker pending-count pull watermarks while still respecting the profile-defined `WP_PICKER_PENDING_MAX_BYTES` hard cap.
-  中文：固定限速不再被 picker pending 批数水位额外压低，但仍受 profile 定义的 `WP_PICKER_PENDING_MAX_BYTES` 内存上限保护。
-
-### Tests
-- **Runtime/Pickers**: Added coverage for fixed-rate pull planning and profile pending-byte cap behavior.
-  中文：补充固定限速拉取计划与 profile pending byte cap 行为测试。
+- **Memory Profile**：默认内存 profile 改为 `low`，更早背压、优先控制 RSS
+- **Source Rate Limit**：固定限速不再被 pending 批数水位压低，仍受内存上限保护
 
 ## [1.22.7] - 2026-06-23
 
 ### Added
-- **Source Rate Limit**: Added a shared source-side global rate limiter. `performance.rate_limit_rps = 0` now enables automatic source input rate control, while `> 0` applies a fixed global EPS cap across all sources in the runtime.
-  中文：新增 source 侧全局输入限速；`rate_limit_rps = 0` 表示自动限速，`> 0` 表示所有 source 共享固定 EPS 上限。
-- **Auto Rate Limit**: Added AIMD-style automatic input control based on picker pending watermarks, parser backpressure, and RSS growth protection.
-  中文：新增自动输入调节，根据 pending 水位、parser 背压和 RSS 快速增长保护动态升降速。
-- **Memory Profiles**: Added centralized runtime memory profiles via `WP_MEMORY_PROFILE=standard|low|throughput`, with compatibility aliases for older `small/tiny/large` names.
-  中文：新增统一内存 profile，收敛 parser/sink channel、batch、pending、TCP/UDP/file buffer 等内存相关参数。
-- **Docs**: Added `docs/design/source_rate_limit_design.md` and updated wparse config docs with source rate limit and memory profile guidance.
+- **Source Rate Limit**：新增 source 全局限速（`rate_limit_rps`）与 AIMD 自动限速
+- **Memory Profiles**：统一 `WP_MEMORY_PROFILE=standard|low|throughput`
 
 ### Changed
-- **Runtime Defaults**: Default `performance.rate_limit_rps` changed from fixed `10000` to `0` automatic mode. `EngineConfig::init()` now uses `PerformanceConf::default()` so generated configs follow the same defaults as serde-loaded configs.
-  中文：默认输入限速改为自动模式；初始化生成配置与正式加载配置使用同一默认值入口。
-- **Picker/Backpressure**: Source rate lease consumption now happens before batches enter picker pending, reducing pending/RSS growth under rate limiting.
-  中文：source 限速等待前移到进入 pending 之前，减少限速场景下 pending/RSS 先膨胀。
-- **Runtime Buffers**: Parser/sink channels, picker burst/coalesce thresholds, pending byte cap, TCP/UDP/file batch buffers, sink record pools, debug view queue, and command channel now use centralized memory limits.
-  中文：运行时队列、水位和批大小统一由 `wp_conf::limits` 管理。
-- **Benchmark**: Benchmark `wparse.toml` files now use `${RATE_LIMIT_RPS:0}`; benchmark scripts derive `RATE_LIMIT_RPS` from the speed argument unless explicitly set externally.
-  中文：benchmark 入口默认用输入速率同步设置 wparse 限速；传 `0` 可测试自动限速。
-- **DebugView**: Debug output now uses a bounded channel to avoid unbounded RSS growth; queue overflow records dropped-line counts with sampled warnings instead of silently ignoring pressure.
-  中文：DebugView 改为有界队列，队列满时记录丢弃计数并抽样告警。
-
-### Fixed
-- **Config Defaults**: Fixed generated `conf/wparse.toml` initialization bypassing profile-aware performance defaults.
-- **Tests/Docs**: Converted speed profile doctests from ignored examples to compiling doctests and cleaned obsolete source-rate-limit tuning history from docs.
-
+- **Runtime Defaults**：默认限速改自动模式；运行时缓冲/水位统一由 `wp_conf::limits` 管理
 
 ## [1.22.3] - 2026-05-19
 
 ### Added
-- **SQL/Route**: SQL 查询按表名路由到本地 SQLite 或外部 Provider——支持配置 `knowdb.toml` 的 `[[tables]]` 和 `[provider.tables]`，解析 SQL 时自动识别 `FROM` 子句中的表名并分发查询。
-- **SQL/Route**: 新增 `SqlKnowledgeRoute` 枚举（`Provider` / `Sqlite` / `Unknown`）和 `resolve_sql_route()` 路由解析函数，支持子查询、引号内关键字跳过。
-- **SQL/Parser**: `sanitize_sql_body` 支持子查询和别名语法（`FROM (子查询) AS alias`）。
-- **KnowDB/Config**: 新增 `uses_external_provider_only()` 判定，纯外部 provider 配置不再删除本地 authority 文件。
-
-### Changed
-- **Dependencies**: Bumped workspace version to 1.22.3.
+- **SQL/Route**：SQL 按表名路由到本地 SQLite 或外部 Provider；新增 `SqlKnowledgeRoute`；支持子查询与别名
 
 ## [1.22.2] - 2026-05-13
 
 ### Added
-- **Sinks/Sync**: 为 `SinkTerminal` 实现 `send_to_sink_batch` 和 `try_send_to_sink_batch` 批量写入方法，降低统计切片过多造成的反压。
+- **Sinks/Sync**：`SinkTerminal` 批量写入方法，降低统计反压
 
 ## [1.22.1] - 2026-05-12
 
 ### Fixed
-- **OML/SQL**: 当 SQL 参数全部为 Null 时跳过实际查询，避免对空参数的不必要远程调用。
-- **OML/Extract**: `SingleEvalExp` 提取字段时跳过 `Value::Null`，不再为 Null 值创建目标字段。
-- **OML/SQL**: 修复 `#90` `#91` 知识库查询相关 bug。
-
-### Changed
-- **Knowledge Base**: 知识库查询优化。
-- **Dependencies**: Bumped workspace version to 1.22.1.
+- **OML/SQL**：SQL 参数全 Null 时跳过查询；提取字段跳过 `Value::Null`；修复知识库查询 bug
 
 ## [1.22.0] - 2026-05-08
 
 ### Added
-- **Diagnostics/CLI**: Error hints are now driven by `stable_code` (from `#[derive(OrionError)]`) as primary key, with bilingual Chinese/English support; language is selected via `WP_LANG` environment variable (fallback to `LANG` then `LC_ALL`).
-  中文：错误提示改为以 `stable_code` 为主键索引，支持中英双语；通过 `WP_LANG` 环境变量切换。
-- **CLI/Help**: Added `after_long_help` documenting `WP_LANG` and `NO_COLOR` environment variables.
-  中文：在 CLI `--help` 中添加 `WP_LANG` 和 `NO_COLOR` 环境变量说明。
-- **Config/Engine**: Added `RepoGroupConf` for repository group configuration support.
-  中文：新增 `RepoGroupConf` 支持仓库组配置。
+- **Diagnostics/CLI**：错误提示以 `stable_code` 为主键，支持 `WP_LANG` 中英双语
+- **Config/Engine**：新增 `RepoGroupConf` 仓库组配置
 
 ### Changed
-- **Dependencies**: Upgraded `orion-error` from 0.6 to 0.8, adapting to the new `#[derive(OrionError)]` derive macro and updated trait paths.
-  中文：升级 `orion-error` 0.6 → 0.8，适配新的 derive 宏和 trait 路径。
-- **Dependencies**: Unified `wp-lang` on `0.3.1` and refreshed `orion-error` compatibility.
-- **Error Diagnostics**: Refactored `collect_hints` to use `stable_code` match branches (13 categories); improved nested error reason/detail/root_cause extraction.
-  中文：重构 `collect_hints` 为 13 类 `stable_code` 匹配分支；改进嵌套错误详情提取。
-- **Config Schema**: 配置解析开启 `deny_unknown_fields`，拼写错误的配置键将明确报错。
-- **Error Handling**: 统一 observability、config loading、project management 等链路的错误转换风格，附带路径上下文。
-- **Dependencies**: 升级工作区依赖（`jieba-rs 0.9`、`lru 0.17`、`ctor 0.10` 等）。
+- **Dependencies**：升级 `orion-error` 0.8，适配新 derive 宏；配置解析开启 `deny_unknown_fields`
 
 ### Fixed
-- **OML/SQL**: Fixed non-deterministic SQL parameter binding for multi-parameter `IN (...)` clauses — collect `:param` values in SQL placeholder order instead of `HashMap` iteration order.
-  中文：修复 SQL `IN (...)` 参数绑定顺序不稳定问题，按占位符出现顺序绑定。
-- **OML/SQL Cache**: Aligned SQL cache keys and query parameters to the same placeholder order for both sync and async evaluators.
-  中文：同步/异步 SQL evaluator 缓存键与参数使用同一占位符顺序。
-- **OML/SQL**: `take(field)` and `__temp_var` now correctly convert to `IN` bind parameters.
-  中文：修复 `take(field)` 与临时变量在 `IN` 子句中的参数绑定。
-- **OML/Take**: Fixed field move order when target and source records share field names — prioritize current target record's generated fields.
-  中文：修复 `take(...)` 字段移动顺序，避免前序 OML 字段被源记录同名值覆盖。
-- **OML/Take**: Fixed `take(...)` only consuming from source record; now supports consuming previously generated fields in the target record.
-  中文：修复 `take(...)` 只能从源记录取值的问题，支持消费目标记录中已生成的字段。
-- **OML/SQL Parser**: Extended strict SQL mode aggregation validation to support `string_agg(distinct field, ',')` and `group_concat(distinct ...)`.
-  中文：扩展严格 SQL 模式聚合函数校验，支持 `string_agg(distinct ...)`、`group_concat(distinct ...)`。
-- **OML/SQL Parser**: Support `IN (@sip, @dip)` and `in(@sip, @dip)` reference parameter syntax.
-  中文：支持 `IN (@sip, @dip)` 等引用参数写法。
-- **wp-proj/Load Semantics**: Restored `WarpProject::load()` to load existing projects only — missing `conf/wparse.toml` now fails instead of auto-creating.
-  中文：恢复 `WarpProject::load()` 只加载已有工程的语义。
-- **Runtime/Stats**: 修复统计切片过多导致的反压问题。
-- **Error Handling/Config Loading**: 修复 `owe_conf_source` 在加载损坏 TOML 时触发 panic 的回归问题。
-- **Config/Tests**: 修复 observability validate 测试与严格 config schema 的兼容性。
-
-### Removed
-- **Sinks/Rescue**: Removed unused `sink_err` helper method.
-  中文：移除不再使用的 `sink_err` 辅助方法。
+- **OML/SQL**：修复 `IN (...)` 参数绑定顺序、`take(field)` 字段移动顺序、SQL 解析增强（`string_agg(distinct)`、`IN (@sip,@dip)` 等）
 
 ## [1.20.7] - 2026-04-26
 
 ### Changed
-- **wpgen/Config Loading**: Unified `wpgen.toml` loading through `WpGenConfig::load_from_path`, keeping parse, environment expansion, and validation semantics consistent across runtime loading, project loading, and `wproj check`.
-  中文：统一 `wpgen.toml` 加载入口到 `WpGenConfig::load_from_path`，确保运行期、项目加载和 `wproj check` 的解析、环境变量展开和校验语义一致。
-- **wproj/check**: Added `wpgen` config checks and exposed semantic-dictionary empty words, duplicates, and empty categories as structured warnings instead of mixing them into the success message.
-  中文：新增 `wpgen` 配置检查，并将语义词典空词、重复词和空类别改为结构化 warning，不再混入“配置有效”消息。
-- **Validation/Warnings**: Downgraded missing source/sink input or output directories to non-blocking warnings so clean projects are not failed before runtime-created directories exist.
-  中文：将 source/sink 输出或输入目录缺失调整为非阻断 warning，避免干净工程在目录尚未创建时被误判为配置失败。
+- **wpgen**：统一 `wpgen.toml` 加载入口；`wproj check` 新增 wpgen 检查与结构化 warning
+- **Validation**：缺失 source/sink 目录降级为非阻断 warning
 
 ### Fixed
-- **wproj/check JSON**: Fixed warning paths that wrote directly to stdout and polluted `wproj check --json` output.
-  中文：修复多个 check 路径直接写 stdout 导致 `wproj check --json` 输出被 warning 文本污染的问题。
-- **wpgen/Schema**: Made missing `output.connect` invalid for `wpgen.toml`, and updated tests/examples to remove deprecated `mode` and `duration_secs` fields.
-  中文：明确拒绝缺失 `output.connect` 的 `wpgen.toml`，并更新测试与示例配置，移除已废弃的 `mode` 和 `duration_secs` 字段。
-- **OML/WPL Lint**: Made extra model semantic checks non-blocking lint so hand-written head parsing or empty-directory states do not override official parser results.
-  中文：将额外模型语义检查调整为非阻断 lint，避免手写 head 解析或空目录状态覆盖官方 parser 的结果。
-- **Tests/Temp Files**: Fixed the `wp-config` test that wrote temporary `framework.toml` under the source tree by using an isolated temp directory.
-  中文：修复 `wp-config` 测试把临时 `framework.toml` 写入源码目录的问题，改用隔离临时目录。
-- **Code Quality**: Cleaned clippy issues exposed by `-D warnings` in `wp-config`, `wp-cli-core`, and `wp-proj`.
-  中文：清理 `wp-config`、`wp-cli-core` 和 `wp-proj` 在 `-D warnings` 下暴露的 clippy 问题。
+- **wproj/check JSON**：修复 warning 污染 JSON 输出；修复测试临时文件写入源码目录问题
 
 ## [1.20.6] - 2026-04-24
 
 ### Fixed
-- **Error Handling/Structured Errors**: 修复多个配置与项目管理链路把 `StructError` 当作普通 source 再次挂接而触发 panic 的问题，相关路径现在按结构化错误方式转换并保留可读诊断信息。
-- **Observability/KnowDB**: 修复 `wpsrc.toml` 统计、knowdb 配置解析与 source 构建等路径在遇到无效 TOML 或配置错误时可能 panic 的问题；现在会稳定返回结构化错误。
-- **wp-proj/Config Loading**: 修复 `Knowledge` 错误转换、`load_warp_engine_confs()` 以及模型路径回退相关测试场景中的 panic，非法 `wparse.toml` 与缺失配置会按预期返回错误或走回退逻辑。
+- **Error Handling**：修复多处 `StructError` 二次挂接与无效 TOML 触发的 panic，改为结构化错误返回
 
 ## [1.20.5] - 2026-04-24
 
 ### Fixed
-- **Monitoring/Hot Reload**: 修复热加载后监控统计数据不再输出的问题；现在 engine reload 之后，统计与监控链路会继续正常产出数据，不会出现 reload 成功但统计面板长期无数据的情况。
-- **Stats/Runtime**: 调整 monitor、service、recovery 与 rule/sample 生成相关链路，补齐热加载后统计任务继续运行所需的状态衔接。
-
-### Changed
-- **Code Quality**: 清理相关模块中的 clippy 告警，收敛统计与 dispatcher 附近的实现细节，不改变对外行为。
+- **Monitoring/Hot Reload**：修复热加载后监控统计不再输出
 
 ## [1.20.4] - 2026-04-19
 
 ### Added
-- **Error Handling/Docs**: Add structured error-system design and review checklist documentation
-- **wp-proj/Templates**: Add commented VictoriaLogs/VictoriaMetrics infra sink examples to generated route templates
+- **Error Handling**：结构化错误系统设计与审查文档；模板补 VictoriaLogs 示例
 
 ### Changed
-- **Error Handling**: Improve shared CLI diagnostics and preserve upstream source chains across config, source, sink, generator, recovery, monitor, and project-management boundaries
-- **Config Loading**: Align source/sink/wpgen loading and validation with the unified loader contract, including env evaluation, path context, and structured validation details
-- **Observability**: Return structured item-level diagnostics for source/sink stats and validation failures such as invalid connectors, disallowed overrides, unreadable files, and line-count errors
-
-### Fixed
-- **CLI/Error Output**: Fix terse `wpgen`, `wproj`, and `wprescue` configuration errors so they include actionable detail and source-chain context
-- **Runtime**: Surface recovery checkpoint and monitor sink failures as structured errors instead of flattening or only logging them
-- **Tests**: Update config, observability, source-stat, and knowledge tests to assert stable diagnostic semantics
+- **Config/Observability**：统一配置加载与结构化诊断
 
 ## [1.20.3] - 2026-04-16
 
 ### Fixed
-- **Runtime/Stats**: Fix backpressure caused by excessive statistical slicing
+- **Runtime/Stats**：修复统计切片过多导致的反压
 
 ## [1.20.2] - 2026-04-16
 
 ### Changed
-- **CI/GitHub Actions**: Enable the main CI workflow on `hotfix/*` branches so maintenance releases run the same workflow checks as the main release line
+- **CI**：主 CI 支持 `hotfix/*` 分支
 
 ### Fixed
-- **Config Schema/Tests**: Update generated sink defaults fixtures and test configs to match strict `deny_unknown_fields` schemas, removing invalid `version = "2.0"` headers from `defaults.toml`-style files
-- **Observability Validation**: Fix observability validation tests to load sink defaults from schema-valid fixtures under the strict config layout
+- **Config Schema**：严格 schema 下修复测试与生成配置
 
 ## [1.20.0] - 2026-04-11
 
 ### Added
-- **Sinks/Arrow**: Add `arrow-file` sink for local length-prefixed Arrow IPC frame output, and add `arrow_file_sink` and `arrow_tcp_sink` templates to project initialization
-- **OML/Functions**: Add `iequals_any(...)`, `lookup_nocase(dict, key, default)`, and `calc(...)` with `+ - * / %` and `abs/round/floor/ceil`
-- **Runtime Control**: Add structured `LoadModel` runtime command handling with status snapshots and single-flight reload coordination for host/admin integration
-- **Runtime Config**: Add `reload_timeout_ms`, available from CLI `--reload-timeout-ms` and `wparse.toml` `[performance].reload_timeout_ms`
-- **Source/File**: Allow wildcard patterns in `file` while preserving matched file order
-- **Monitoring/Stats**: Add fixed-label propagation across the runtime metrics pipeline and expose `wp-knowledge` reload/cache/query telemetry through `wp-stats`
+- **Sinks/Arrow**：新增 arrow-file sink；**OML**：新增 `iequals_any`、`lookup_nocase`、`calc(...)`；**Runtime**：结构化 LoadModel 控制、`reload_timeout_ms`；**Source**：file 通配符
 
 ### Changed
-- **Runtime/Reload Flow**: Replace fixed-wait reload with event-driven drain coordination and return structured reload results for runtime/admin control flows
-- **Source/File Contract**: Standardize runtime file-source configuration on `base + file`, keep wildcard support limited to `file`, and process matched files sequentially
-- **Admin API/Auth**: Move the default bearer token location to `${HOME}/.warp_parse/admin_api.token`, with work-root fallback when `HOME` is unavailable
-- **Config/Knowledge**: Add `[models].knowledge` as the configurable root for knowdb and semantic dictionary files while preserving legacy semantic dictionary fallback
-- **OML/Async**: Switch OML model loading and async transform execution onto the async evaluator path consistently
-- **Runtime/Backpressure**: Lower default parser and sink channel capacities to `128` and `64` so backpressure applies earlier under sustained load
-- **Monitoring/Tags**: Standardize metric tag naming across pipeline, sources, sinks, and stats collectors
-- **wp-proj/Demo Template**: Update generated demo source configuration from `gen.dat` to `gen*.dat` so project templates match both single-file and sharded wpgen output
+- **Runtime**：重载改事件驱动协调；admin token 默认位置改 `~/.warp_parse`；OML 统一 async 路径；默认通道容量降低提前背压
 
 ### Fixed
-- **Runtime/Reload Stability**: Prevent reload and batch shutdown from hanging by draining only started workers, cleaning up detached old processing tails, and disconnecting parse routing correctly during shutdown
-- **Realtime/TCP Memory**: Bound realtime picker backlog by bytes and reduce TCP source-side pending buffering to curb memory growth under high EPS input
-- **Admin API/Auth Loading**: Apply the standard `env_eval + conf_absolutize` pipeline to all engine-config loading paths so `${HOME}` in `admin_api.auth.token_file` resolves correctly
-- **Source/File Validation**: Align source statistics and total-input calculation with the runtime-only `base + file` contract, preserve `Some(0)` for empty files, and fail explicitly on wildcard no-match or unreadable files
-- **wpgen/Clean**: Make `wpgen data clean` remove sharded outputs such as `gen-r*.dat`
-- **wp-proj/Bootstrap**: Ensure bootstrap directories are created before writing config files and fix generated OML examples so initialization no longer leaves merge artifacts or intermittent save failures
-- **Sinks/Runtime**: Fix sink runtime behavior around disconnect handling, raw input validation, output path resolution, and duplicate factory registration
-- **OML/Static**: Reject `static { ... }` blocks that reference other static symbols during parsing
-- **OML/Diagnostics**: Make `oml-diag` collection task-aware under async execution
-- **OML/Calc**: Normalize invalid arithmetic cases in `calc(...)` to `ignore`, including integer overflow, non-finite floats, and large-integer rounding edge cases
+- **Runtime**：修复重载挂起、TCP 内存增长、OML static 引用其他符号等
 
 ## [1.18.3] - 2026-03-16
 
 ### Changed
-- **Event ID/Runtime**: Switch `wp_event_id` generation to the shared `wp-model-core::event_id::next_wp_event_id()` implementation so all sources use one unified generator
+- **Event ID**：`wp_event_id` 统一用共享生成器
 
 ### Fixed
-- **Event ID/Restart**: Prevent `wp_event_id` from falling back to a process-local fixed seed path after restart, avoiding duplicate IDs in Docker and other time-fragile runtime environments
+- **Event ID/Restart**：修复重启后事件 ID 回落固定种子导致重复
 
 ## [1.18.2] - 2026-03-14
 
 ### Fixed
-- **wp-lang/kv+kvarr**: Fix WPL engine/runtime parsing for keys containing `()`, `[]`, `<>`, and `{}` (for example `protocal(80)`, `arr[0]`, `list<int>`, `set{a}`)
-- **wp-lang/ref-path**: Fix `@...` field reference path parsing so bracket-style keys are accepted without consuming outer WPL syntax delimiters
+- **wp-lang**：修复 `kv`/`kvarr` 与 `@...` 引用路径对括号类键（`()`、`[]`、`<>`、`{}`）的解析
 
 ## [1.18.1] - 2026-03-09
 
 ### Changed
-- **Semantic Dict/Loader**: Switch external dictionary discovery to default path probing (`models/knowledge/semantic_dict.toml` then `knowledge/semantic_dict.toml`) and support work-root path injection from engine startup
-- **Semantic Dict/Config**: Add `enabled` switch for external dictionary config (also accepts legacy `enable` key) so external merge can be disabled while keeping builtin dictionary
-- **Observability**: Add startup logs for semantic analysis toggle and semantic dictionary load status
-- **Documentation**: Update Chinese/English semantic dictionary docs to reflect default-path loading and `enabled` usage
+- **Semantic Dict**：外部词典改默认路径探测 + 工作根注入；新增 `enabled` 开关
 
 ### Fixed
-- **wp-proj/check**: Resolve semantic dictionary config under target `work_root` during project checks instead of relying on process environment
-- **Semantic Dict/Validation**: Treat missing auto-detected external config as builtin fallback and skip validation success output when external config is explicitly disabled
+- **wp-proj/check**：按目标 work_root 解析语义词典配置
 
 ## [1.18.0 Unreleased]
 
 ### Changed
-- **Error Handling/Deps**: Complete workspace migration to `orion-error 0.6`/`orion_conf 0.5` API surface
-  - Replace legacy `Uvs*From` traits with `UvsFrom`
-  - Update `from_validation/from_conf/from_logic` call patterns and structured error detail attachment
-  - Align `UvsReason` matching with 0.6 enum shape and update `RawData` imports to new public path
-- **wp-proj/Runtime**: Refactor error conversion flow to `owe/want` style and align generators/loaders with unified error construction
+- **Error Handling**：完成 workspace 迁移到 `orion-error 0.6`/`orion_conf 0.5` API
+
+## [1.17.8]
 
 ### Fixed
-- **Build**: Fix upgrade-induced compile breaks across `wp-config`, `wp-cli-core`, `wp-proj`, `wp-oml`, and `wp-engine` after dependency bump
-- **Tests**: Repair integration/runtime test paths impacted by error API migration
-
-## [1.17.8 ]
-
-### Fixed
-- **wp-lang**: Fix WPL engine/runtime parsing for `kv` and `kvarr` keys containing `()`, `[]`, `<>`, and `{}` (for example `protocal(80)`, `arr[0]`, `list<int>`, `set{a}`)
-- **wp-lang**: Fix `@...` field reference path parsing to support bracket-style keys without consuming outer WPL syntax delimiters
+- **wp-lang**：修复 `kv`/`kvarr` 括号类键解析
 
 ## [1.17.6] - 2026-03-02
 
 ### Changed
-- **Stats**: Refine `metric_set` merge logic and simplify conditional flow
+- **Stats**：优化 `metric_set` 合并逻辑
 
 ## [1.17.5] - 2026-02-27
 
 ### Changed
-- **Documentation/OML**: Update OML grammar docs
+- **Documentation**：更新 OML 语法文档
 
 ### Fixed
-- **Sinks/Buffer**: Fix `batch_size` behavior in sink batch path
+- **Sinks/Buffer**：修复 sink 批量路径 `batch_size` 行为
 
 ## [1.17.4] - 2026-02-18
 
 ### Added
-- **Sinks/Config**: Add `batch_size` configuration to sink groups
-
-### Changed
-- **Sinks/Runtime**: Read and apply `batch_size` directly from `sink_group` configuration
-
+- **Sinks/Config**：sink 组新增 `batch_size` 配置
 
 ## [1.17.3] - 2026-02-16
 
 ### Added
-- **Sinks/Buffer**: Add sink-level batch buffer with configurable `batch_size` parameter
-  - Small packages (< batch_size) enter pending buffer, flushed periodically or when buffer is full
-  - Large packages (>= batch_size) automatically bypass pending buffer for reduced overhead (zero-copy direct path)
-  - New `flush()` public API for manual buffer flush
-- **Sinks/Config**: Add `batch_timeout_ms` configuration to sink group (default 300ms), controls periodic buffer flush interval
+- **Sinks/Buffer**：sink 级批缓冲 + `batch_timeout_ms`（默认 300ms）
 
 ### Changed
-- **Sinks/File**: Remove `BufWriter` and `proc_cnt` periodic flush from `AsyncFileSink`, write directly to `tokio::fs::File`; upstream batch assembly makes userspace buffering redundant
+- **Sinks/File**：移除 `BufWriter` 冗余缓冲
 
-### Fixed
-- **wp-oml**: Fix llvm-cov warnings in parser and test modules
+## [1.17.2] - 2026-02-13
 
-## [1.17.2 ] - 2026-02-13
 ### Changed
-- **wp-lang**: `kv`/`kvarr` key 解析支持括号类字符 `()`、`<>`、`[]`、`{}`，新增专用 `take_kv_key` 函数，不影响 WPL 语法层面其他模块的 key 解析
+- **wp-lang**：`kv`/`kvarr` key 解析支持括号类字符
 
-## [1.17.0 ] - 2026-02-12
-
+## [1.17.0] - 2026-02-12
 
 ### Added
-- **OML Match**: Add OR condition syntax `cond1 | cond2 | ...` for match expressions
-  - Supports single-source and multi-source match
-  - Compatible with both value matching and function matching
-- **OML NLP**: Add `extract_main_word` and `extract_subject_object` pipe functions for Chinese text analysis
-- **OML NLP**: Add configurable NLP dictionary system, support custom dictionary via `NLP_DICT_CONFIG` environment variable
-- **Engine Config**: Add `[semantic]` section in `wparse.toml` to control NLP semantic dictionary loading (`enabled = false` by default, saves ~20MB memory when disabled)
-
-### Changed
-- **OML Match**: Multi-source match now supports any number of source fields (no longer limited to 2/3/4)
-- **Documentation**: Update OML documentation (Chinese and English) for match OR syntax and multi-source support
-
+- **OML Match**：OR 条件语法 `cond1 | cond2`；多源 match 不限数量
+- **OML NLP**：新增 `extract_main_word`/`extract_subject_object`；`wparse.toml [semantic]` 控制语义词典加载（默认关，省内存）
 
 ## [1.16.2] - 2026-02-11
 
 ### Fixed
-- **wp-lang**: Fix kvarr pattern separator parsing
-
+- **wp-lang**：修复 kvarr 模式分隔符解析
 
 ## [1.16.1] - 2026-02-11
 
 ### Changed
-- **wp-lang**: Extend separator pattern syntax with `\S` and `\H` matchers
-
+- **wp-lang**：分隔符模式扩展 `\S`、`\H`
 
 ## [1.16.0] - 2026-02-11
 
 ### Added
-- **wp-lang**: Add separator pattern syntax `{…}` with wildcards (`*`, `?`), whitespace matchers (`\s`, `\h`, `\S`, `\H`) and preserve groups `(…)` for expressing complex separator logic in a single declaration
-
+- **wp-lang**：分隔符模式 `{...}` 支持通配符、空白匹配与保留组
 
 ## [1.15.5] - 2026-02-10
 
 ### Changed
-- **wp-oml**: Enhanced FieldRead with zero-copy FieldStorage preservation
-
+- **wp-oml**：FieldRead 零拷贝 FieldStorage 保留
 
 ## [1.15.4] - 2026-02-10
 
-### Added
-- **wp-oml**: Add zero-copy validation test suite and lint tool
-- **Documentation**: Add zero-copy implementation guidelines
-
 ### Changed
-- **wp-oml**: Refactor FieldExtractor trait to require explicit extract_storage implementation
-- **wp-oml**: Enhanced zero-copy support across MapOperation, RecordOperation, PiPeOperation, FmtOperation, SqlQuery, and FieldRead
-
-### Fixed
-- **wp-oml**: Fix MatchOperation to preserve zero-copy for Arc variants in match branches
-
+- **wp-oml**：多操作（Map/Pipe/Fmt/Sql/FieldRead）增强零拷贝支持
 
 ## [1.15.3] - 2026-02-09
 
 ### Added
-- **WP-OML Batch Processing**: Add record-level batch processing API to DataTransformer trait
-  - New methods: `transform_batch()` and `transform_batch_ref()` for processing Vec<DataRecord>
-  - Default implementation provides backward compatibility (processes records one by one)
-  - Optimized ObjModel implementation reuses FieldQueryCache across all records
-  - Performance improvement: 12-17% faster when compared to creating fresh cache per record
-    - 100 records: 42.6µs → 37.3µs (12.4% faster with shared cache)
-    - 10 records: 4.45µs → 3.76µs (15.5% faster with shared cache)
-  - Additional 5% improvement in multi-stage pipelines with 100+ records
-  - Provides standardized batch API to prevent cache misuse patterns
+- **WP-OML**：DataTransformer 批量处理 API（`transform_batch`），性能提升 12-17%
 
 ### Changed
-- **Dependencies**: Upgrade wp-model-core 0.8.3 → 0.8.4
-  - Introduces FieldRef<'a> wrapper type for zero-copy, cur_name-aware field access
-  - DataRecord::get_field() now returns Option<FieldRef<'_>> instead of Option<&Field<Value>>
-  - Tests updated to use get_field_owned() where owned fields are needed
-- **WP-OML Performance**: Enable conditional zero-copy optimization in eval_proc
-  - Shared variants use cur_name overlay without cloning Arc (zero-copy)
-  - Owned variants or type conversions apply name to underlying field
-  - Performance improvement: 14-17% faster in multi-stage pipelines
-    - 2-stage: 1,151ns → 956ns (16.9% faster)
-    - 4-stage: 2,641ns → 2,277ns (13.8% faster)
-
+- **Dependencies**：升级 `wp-model-core` 0.8.4；启用条件零拷贝优化
 
 ## [1.15.2] - 2026-02-08
 
 ### Added
-- **Documentation**: Add complete English WPL grammar reference documentation
-  - Comprehensive syntax reference for all WPL language features
-  - Examples and usage patterns for field operations
-
+- **Documentation**：完整英文 WPL 语法参考
 
 ## [1.15.1] - 2026-02-07
 
 ### Added
-- **WPL Pipe Functions**: Add `not()` wrapper function for inverting pipe function results
-  - Syntax: `| not(f_chars_has(dev_type, NDS))` succeeds when dev_type ≠ NDS
-  - Supports wrapping any field pipe function (f_has, f_chars_has, chars_has, etc.)
-  - Preserves field value - only inverts success/failure result
-  - Supports nested negation: `not(not(...))` for double negation logic
-
-### Changed
-- **Sinks/Logging**: Unify event ID naming across the codebase for end-to-end tracing
+- **WPL**：新增 `not()` 包装函数反转管道结果
 
 ### Fixed
-- **WP-OML Tests**: Fix `DataRecord` initialization for compatibility with wp-model-core 0.7.2
-- **WP-OML Zero-Copy**: Fix FieldStorage zero-copy optimization for wp-model-core 0.8.3 migration
-  - Correctly distinguish Shared vs Owned variants in eval_proc implementation
-  - Shared variants use cur_name overlay for zero-copy field name modification
-  - Owned variants directly modify underlying field to avoid name inconsistencies
-  - Performance improvement: 17-20% faster in multi-stage pipelines (2,730ns → 2,255ns for 4-stage)
-- **WPL Pipe Functions**: Fix `f_chars_not_has` and `chars_not_has` type checking bug
-  - Previously: Non-Chars fields (e.g., Digit) incorrectly returned FALSE
-  - Now: Non-Chars fields correctly return TRUE (they are "not the target Chars value")
-  - Semantics: Missing field OR non-Chars type OR value ≠ target → TRUE; value == target → FALSE
-  - Previously: `extract_storage()` called `extract_one()` which cloned DataField, then discarded result
-  - Now: Direct `Arc::clone()` for PreciseEvaluator::ObjArc, GenericAccessor::FieldArc, NestedAccessor::FieldArc
-  - Each static field per stage: eliminated 1× DataField::clone + reduced to single Arc::clone
-  - Performance improvement: 4-stage pipeline 2,277ns → 2,211ns (3.3% faster)
-  - Static variables now consistently faster than temporary fields (6.3% advantage in 4-stage pipeline)
-  - Zero-copy optimization now truly effective as designed
-- **WP-OML Tests**: Fix `DataRecord` initialization for compatibility with wp-model-core 0.7.2
-- **WP-OML Zero-Copy**: Fix FieldStorage zero-copy optimization for wp-model-core 0.8.3 migration
-  - Correctly distinguish Shared vs Owned variants in eval_proc implementation
-  - Shared variants use cur_name overlay for zero-copy field name modification
-  - Owned variants directly modify underlying field to avoid name inconsistencies
-  - Performance improvement: 17-20% faster in multi-stage pipelines (2,730ns → 2,255ns for 4-stage)
-- **WPL Pipe Functions**: Fix `f_chars_not_has` and `chars_not_has` type checking bug
-  - Previously: Non-Chars fields (e.g., Digit) incorrectly returned FALSE
-  - Now: Non-Chars fields correctly return TRUE (they are "not the target Chars value")
-  - Semantics: Missing field OR non-Chars type OR value ≠ target → TRUE; value == target → FALSE
-
+- **wp-oml**：修复 FieldStorage 零拷贝、`f_chars_not_has` 类型检查 bug
 
 ## [1.15.0] - 2026-02-07
 
 ### Added
-- **Sinks/File**: Add `sync` parameter to control immediate disk flushing
-  - `sync: false` (default): High-performance mode with buffered writes, suitable for large data volumes
-  - `sync: true`: Real-time disk writes for data safety, suitable for critical data
-- **WPL not() Group**: Add `not()` group wrapper for negative assertion in field parsing
-- **OML Static Blocks**: Introduce `static { ... }` sections for model-scoped constants and template caching
-  - Static expressions are executed only once during model loading, results stored in constant pool for reuse across records, avoiding repeated `object { ... }` construction
-  - Static symbols can be directly used in assignments, `match` branches, `object { field = tpl; }`, default values `{ _ : tpl }`, and other scenarios
-- **OML Enable Configuration**: Add `enable` configuration option to support disabling OML models
+- **Sinks/File**：`sync` 参数控制即时落盘；**OML**：`static { ... }` 常量块、`enable` 配置
 
 ### Changed
-- **Sinks/Infrastructure**: Optimize infrastructure sink data flow to maintain batch processing
-- **Sinks/File**: Remove proto binary format support
-- **Sinks/File**: Supported output formats: json, csv, kv, show, raw, proto-text
-
-### Fixed
-- **Sinks/File**: Fix `sync` parameter not forcing data to disk
-  - Now calls `sync_all()` after `flush()` when `sync: true` to ensure data is physically written to disk
-  - Previously only flushed to OS buffer, which didn't guarantee immediate disk writes
-- **Benchmarks**: Fix compilation errors in OML benchmarks
-  - Fix dereferencing issue in `DataField::from_chars` calls
-  - Update import paths from `wp_conf` to `wp_config`
-  - Add missing dev-dependencies: orion-variate, wp_config
-
+- **Sinks/File**：移除 proto 二进制格式，支持 json/csv/kv/show/raw/proto-text
 
 ## [1.14.1] - 2026-02-05
 
 ### Added
-- **WPL Pipe Processor**: Add `strip/bom` processor for removing BOM (Byte Order Mark) from data
-  - Supports UTF-8, UTF-16 LE/BE, and UTF-32 LE/BE BOM detection and removal
-  - Fast O(1) detection by checking only first 2-4 bytes
-  - Preserves input container type (String → String, Bytes → Bytes, ArcBytes → ArcBytes)
-
+- **WPL**：`strip/bom` 处理器移除 BOM
 
 ## [1.14.0] - 2026-02-04
 
 ### Added
-- **WPL Functions**: Add `starts_with` pipe function for efficient string prefix matching
-  - Checks if a string field starts with a specified prefix
-  - More performant than regex for simple prefix checks
-  - Case-sensitive matching
-  - Converts to ignore field when prefix doesn't match
-- **OML Pipe Functions**: Add `starts_with` pipe function for OML query language
-  - Supports same prefix matching functionality as WPL
-  - Returns ignore field when prefix doesn't match
-  - Usage: `pipe take(field) | starts_with('prefix')` or `take(field) | starts_with('prefix')`
-- **OML Pipe Functions**: Add `map_to` pipe function for type-aware conditional value assignment
-  - Replaces field value when field is not ignore
-  - Supports multiple types with automatic type inference: string, integer, float, boolean
-  - Preserves ignore fields unchanged
-  - Usage examples:
-    - `pipe take(field) | map_to('string')` - map to string
-    - `pipe take(field) | map_to(123)` - map to integer
-    - `pipe take(field) | map_to(3.14)` - map to float
-    - `pipe take(field) | map_to(true)` - map to boolean
-- **OML Match Expression**: Add function-based pattern matching support
-  - Enables using functions like `starts_with` in match conditions
-  - Syntax: `match read(field) { starts_with('prefix') => result, _ => default }`
-  - More flexible than simple value comparison
-  - Useful for log parsing, URL routing, and content classification
-  - Supported functions:
-    - **String matching**:
-      - `starts_with(prefix)` - Check if string starts with prefix
-      - `ends_with(suffix)` - Check if string ends with suffix
-      - `contains(substring)` - Check if string contains substring
-      - `regex_match(pattern)` - Match string against regex pattern
-      - `is_empty()` - Check if string is empty (no arguments)
-      - `iequals(value)` - Case-insensitive string comparison
-    - **Numeric comparison**:
-      - `gt(value)` - Check if numeric field > value
-      - `lt(value)` - Check if numeric field < value
-      - `eq(value)` - Check if numeric field equals value (with floating point tolerance)
-      - `in_range(min, max)` - Check if numeric field is within range [min, max]
-- **OML Parser**: Add quoted string support for `chars()` and other value constructors
-  - Supports single quotes: `chars('hello world')`
-  - Supports double quotes: `chars("hello world")`
-  - Enables strings containing spaces and special characters
-  - Escape sequence support: `\n`, `\r`, `\t`, `\\`, `\'`, `\"`
-  - Backward compatible with unquoted syntax: `chars(hello)`
-  - Works in all contexts: field assignments, match expressions, etc.
-- **OML Transformer**: Add automatic temporary field filtering with performance optimization
-  - Fields with names starting with `__` are automatically converted to ignore type after transformation
-  - Parse-time detection: checks for temporary fields during OML parsing (one-time cost ~50-500ns)
-  - Runtime optimization: skips filtering entirely when no temporary fields exist (~99% cost reduction)
-  - Enables using intermediate/temporary fields in calculations without polluting final output
-  - Example: `__temp = chars(value); result = pipe take(__temp) | base64_encode;`
-  - The `__temp` field will be marked as ignore in the final output
-  - Performance: ~1ns overhead for models without temp fields, ~500ns for models with temp fields
-
-### Changed
-- **OML Syntax**: `pipe` keyword is now optional in pipe expressions
-  - Both `pipe take(field) | func` and `take(field) | func` are supported
-  - Simplified syntax improves readability
-  - Display output always includes `pipe` for consistency
+- **OML**：`starts_with`/`map_to` 管道函数；match 函数式匹配；`pipe` 关键字可选；`__` 临时字段自动过滤
 
 ### Fixed
-- **OML Match Parser**: Fixed `in_range` function parsing failure in match expressions
-  - Issue: `kw_in` consumed prefix `in` before `cond_fun` could parse `in_range`
-  - Fix: Reordered `match_cond1` alternatives to try `cond_fun` before `cond_in`
-  - Now `match read(x) { in_range(0, 10) => ... }` parses correctly
-- **OML map_to Parser**: Fixed large integer precision loss during parsing
-  - Issue: Parsing integers via f64 caused precision loss for values > 2^53 (e.g., 9007199254740993)
-  - Fix: Try parsing as i64 first, only fall back to f64 for actual floats
-  - Preserves exact integer values up to i64::MAX
-- **OML Display Output**: Fixed round-trip parsing compatibility for strings
-  - Issue: Display output was not parseable by `quot_str` due to escaping mismatch
-  - Fix: Removed extra escaping in Display implementations since `quot_str` preserves raw escape sequences
-  - Display output now stable across multiple round-trips (parse -> display -> parse -> display)
-
+- **OML**：修复 `in_range` 解析、`map_to` 大整数精度、Display round-trip
 
 ## [1.13.3] - 2026-02-03
 
 ### Fixed
-- **WPL Parser**: Fix compilation errors in pattern parser implementations by adding missing `event_id` parameter to all trait methods
-- **Runtime**: Remove unused `debug_data` import in vm_unit module
-
+- **WPL Parser**：修复 trait 方法 `event_id` 参数编译错误
 
 ## [1.13.2] - 2026-02-03
 
 ### Added
-- **WPL Parser**: Add support for `\t` (tab) and `\S` (non-whitespace) separators in parsing expressions
-- **WPL Parser**: Add support for quoted field names with special characters (e.g., `"field.name"`, `"field-name"`) #16
-- **WPL Functions**: Add `chars_replace` function for character-level string replacement #13
-- **WPL Functions**: Add `regex_match` function for regex pattern matching
-- **WPL Functions**: Add `digit_range` function for numeric range validation
-- **Documentation**: Add multi-language documentation structure for WPL guides
-
-### Changed
-- **Logging**: Optimize high-frequency log paths with `log_enabled!` guard to eliminate loop overhead when log level is filtered
-- **Logging**: Add `event_id` to debug messages for better traceability
-- **WPL Parser**: Add `event_id` parameter to `PatternParser` trait for improved event tracing across all parser implementations
+- **WPL**：`\t`/`\S` 分隔符、引号字段名、`chars_replace`/`regex_match`/`digit_range` 函数
 
 ### Fixed
-- **Miss Sink**: Remove base64 encoding from raw data display to show actual content
-- **Data Rescue**: Fix lost rescue data problem #19
+- **Rescue**：修复救援数据丢失问题
 
 ### Removed
-- **Syslog UDP Source**: Remove `SO_REUSEPORT` multi-instance support
-  - Security risk: allows same-UID processes to intercept traffic
-  - Cross-platform inconsistency: macOS/BSD doesn't provide kernel-level load balancing
-  - See `docs/dar/udp_reuseport.md` for detailed design rationale
-
+- **Syslog UDP**：移除 `SO_REUSEPORT` 多实例支持（安全风险）
 
 ## [1.11.0] - 2026-01-28
 
 ### Added
-- **Syslog UDP Source**: Added `udp_recv_buffer` configuration parameter to control UDP socket receive buffer size (default 8MB)
-  - Helps prevent packet loss under high throughput conditions
-  - Uses `socket2` crate for buffer configuration before socket binding
-- **Syslog UDP Source**: Added batch receiving (up to 128 packets per `receive()` call) for better throughput
-- **Syslog UDP Source**: Added `fast_strip` optimization (previously TCP-only)
-  - Skip full syslog parsing when `header_mode = "skip"` and only stripping header
-  - Fast path for RFC3164 (find `: `) and RFC5424 (skip fixed structure) formats
-  - Reduces CPU overhead significantly at high EPS
-- **Syslog UDP Source**: Added Linux `recvmmsg()` syscall support for batch receiving
-  - Receive up to 64 datagrams in a single syscall on Linux
-  - Reduces syscall overhead by ~60x compared to per-packet `recv_from()`
-  - Automatically falls back to standard loop on non-Linux platforms
-- **Syslog UDP Source**: Changed payload from `Bytes::copy_from_slice` to `Arc<[u8]>`
-  - Zero-copy sharing downstream reduces memory allocation overhead
-  - More consistent with TCP source's `ZcpMessage` pattern
+- **Syslog UDP**：`udp_recv_buffer` 配置、批量接收、Linux `recvmmsg()`、`fast_strip`、`Arc<[u8]>` 零拷贝
 
 ### Changed
-- **Syslog Architecture**: Major refactoring to eliminate duplicate parsing and unify UDP/TCP processing
-  - Removed `SyslogDecoder` dependency from UDP source (now uses raw UDP socket)
-  - UDP source passes raw bytes to `SourceEvent`, syslog processing happens in preprocessing hook
-  - Unified preprocessing logic between UDP and TCP sources
-  - `header_mode = "raw"` now correctly preserves full syslog message including header
-  - Eliminated redundant `normalize_slice()` calls (was parsing twice: in decoder + preproc hook)
-- **Syslog UDP Source**: Optimized preprocessing hook to be created once and reused via `Arc::clone()` instead of per-message allocation
-- **Syslog header_mode**: Renamed configuration values for clarity with backward compatibility
-  - `raw` (保留原样) - previously `keep`
-  - `skip` (跳过头部) - previously `strip`
-  - `tag` (提取标签) - previously `parse`
-  - Legacy values (`keep`/`strip`/`parse`) remain supported as aliases
-  - Default changed from `strip` to `skip`
-
-### Removed
-- **Syslog Protocol**: Removed `SyslogDecoder` and `SyslogFrame` from `protocol::syslog` module
-  - No longer needed after UDP source refactoring
-  - Syslog encoding (`SyslogEncoder`, `EmitMessage`) retained for sink usage
-- **Benchmarks**: Replaced deprecated `criterion::black_box` with `std::hint::black_box` across all benchmark files
-  - `crates/wp-stats/benches/wp_stats_bench.rs`
-  - `crates/orion_exp/benches/or_we_bench.rs`
-  - `crates/wp-oml/benches/oml_sql_bench*.rs`
-  - `crates/wp-parser/benches/*.rs`
-  - `crates/wp-lang/benches/nginx_10k.rs`
-  - `crates/wp-knowledge/benches/read_bench.rs`
-  - `src/sources/benches/normalize_bench.rs`
-- **Documentation**: Updated Syslog source documentation with comprehensive configuration guide
-  - Added UDP vs TCP protocol selection guide
-  - Added performance tuning recommendations
-  - Updated `wp-docs/10-user/02-config/02-sources.md`
-  - Updated `wp-docs/10-user/05-connectors/01-sources/04-syslog_source.md`
-
-### Fixed
-- **Syslog RFC3164 Parser**: Implemented strict validation to prevent misidentification of non-standard formats
-  - Added month name validation (Jan-Dec only)
-  - Added strict timestamp format validation (HH:MM:SS with colons)
-  - Added mandatory space validation after month, day, and time fields
-  - Non-standard formats (e.g., ISO timestamps, invalid month names) now correctly fallback to passthrough
-  - Examples that now correctly reject:
-    - `<11>2025-07-07 09:42:43,132 sentinel - ...` (ISO format)
-    - `<158>Jul23 17:18:36 skyeye ...` (missing space after month)
-    - `<34>Xyz 11 22:14:15 host ...` (invalid month)
-- **Clippy**: Fixed `bool_assert_comparison` warnings in syslog tests (`src/sources/syslog/mod.rs`)
-
+- **Syslog**：消除重复解析，统一 UDP/TCP 预处理；`header_mode` 值改名（raw/skip/tag，兼容旧值）
 
 ## [1.10.4] - 2026-01-27
 
 ### Changed
-- **Dependencies**: Updated `sysinfo` requirement from 0.37 to 0.38
-- **License**: Changed license from Elastic License 2.0 to Apache 2.0
-- **Support Links**: Updated support links to point to organization discussions
-
-### Fixed
-- **Monitoring**: Repaired monitoring statistics and examples for MetricCollectors
-
+- **Dependencies**：升级 `sysinfo` 0.38；License 改 Apache 2.0
 
 ## [1.10.0] - 2026-01-22
 
 ### Added
-- **KvArr Parser** (`crates/wp-lang/src/eval/value/parser/protocol/kvarr.rs`): New parser for key=value array format
-  - Supports both `=` and `:` as key-value separators (e.g., `key=value` or `key:value`)
-  - Flexible delimiter support: comma-separated, space-separated, or mixed
-  - Automatic type inference for values (bool, integer, float, string)
-  - Quoted and unquoted string values (e.g., `"value"` or `value`)
-  - Duplicate key handling with automatic array indexing (e.g., `tag=alpha tag=beta` → `tag[0]`, `tag[1]`)
-  - Subfield configuration support with type mapping and meta field ignoring (`_@name`)
-  - Nested parser invocation through sub-parser context
-  - WPL syntax: `kvarr(type@field1, type@field2, ...)`
-- **Unicode-friendly string parsing**: Added `take_string` helper for general text arguments (e.g. 汉字) without changing the legacy `take_path` semantics (`crates/wp-parser/src/atom.rs`).
-- **WPL Documentation Updates**:
-  - Added `kvarr` to builtin types in grammar specification (`wp-docs/docs/10-user/03-wpl/04-wpl_grammar.md`)
-  - New "KvArr 类型（键值对数组）" section in basics guide with syntax and examples (`wp-docs/docs/10-user/03-wpl/01-wpl_basics.md`)
-  - New "2.1 KvArr 键值对数组解析" section in examples guide with 5 practical use cases (`wp-docs/docs/10-user/03-wpl/02-wpl_example.md`)
-
-### Fixed
-- **KvArr Parser**: Fixed meta fields being ignored in sub-parser context (`crates/wp-lang/src/eval/value/parser/protocol/kvarr.rs`)
-- **Module Export**: Fixed missing `validate_groups` function export in `wp-cli-core::utils::validate` module (`crates/wp-cli-core/src/utils/validate/mod.rs`)
-- **Single-quoted strings**: `single_quot_str_impl` now rejects raw `'` and accepts `\'` escapes, aligning behavior with double-quoted parser (`crates/wp-lang/src/parser/utils.rs`).
-- **Chars* fun args**: `chars_has`/`chars_in` families switched to `take_string`, restoring `take_path` for identifiers while keeping Unicode support for free-form arguments (`crates/wp-lang/src/parser/wpl_fun.rs`).
-
+- **KvArr Parser**：键值对数组解析（`=`/`:` 分隔、类型推断、重复键索引）；Unicode 字符串解析
 
 ## [1.9.0] - 2026-01-16
 
 ### Added
-- `BlackHoleSink` now supports `sink_sleep_ms` parameter to control sleep delay per sink operation (0 = no sleep)
-- `BlackHoleFactory` reads `sleep_ms` from `SinkSpec.params` to configure sleep behavior
-- **Dynamic Speed Control Module** (`src/runtime/generator/speed/`): New module for variable data generation speed
-  - `SpeedProfile` enum with multiple speed models:
-    - `Constant` - Fixed rate generation
-    - `Sinusoidal` - Sine wave oscillation (day/night cycles)
-    - `Stepped` - Step-wise rate changes (business peak/off-peak)
-    - `Burst` - Random burst spikes (traffic surges)
-    - `Ramp` - Linear ramp up/down (load testing)
-    - `RandomWalk` - Random fluctuations (natural jitter)
-    - `Composite` - Combine multiple profiles (Average/Max/Min/Sum)
-  - `DynamicSpeedController` - Calculates target rate based on elapsed time and profile
-  - `DynamicRateLimiter` - Token bucket rate limiter with dynamic rate updates
-- `GenGRA.speed_profile` field for configuring dynamic speed models in generators
-- **wpgen.toml Configuration Support** (`crates/wp-config/src/generator/`):
-  - `SpeedProfileConfig` - TOML-parseable configuration for speed profiles
-  - `GeneratorConfig.speed_profile` - New optional field to configure dynamic speed in wpgen.toml
-  - Helper methods: `base_speed()`, `get_speed_profile()`, `is_constant_speed()`
-  - Backward compatible: Falls back to `speed` field when `speed_profile` is not set
-- **Rescue Statistics Module** (`crates/wp-cli-core/src/rescue/`): New module for rescue data statistics
-  - `RescueFileStat` - Single rescue file statistics (path, sink_name, size, line_count, modified_time)
-  - `RescueStatSummary` - Aggregated statistics with per-sink breakdown
-  - `SinkRescueStat` - Per-sink statistics (file_count, line_count, size_bytes)
-  - `scan_rescue_stat()` - Scan rescue directory and generate statistics report
-  - Multiple output formats: table, JSON, CSV
-  - Supports nested directory scanning and `.dat` file filtering
-
-### Changed
-- **Rescue stat functionality migrated to wp-cli-core**: Rescue statistics is now a standalone CLI utility in `wp-cli-core::rescue` module, decoupled from wp-engine runtime
-
-### Removed
-- `WpRescueCLI` enum removed from wp-engine (rescue CLI should be defined in application layer)
-- `RescueStatArgs` struct removed from wp-engine facade
-- `run_rescue_stat()` function removed from wp-engine facade
-
+- **Generator**：动态速度控制（`SpeedProfile`）；**Rescue**：救援数据统计模块；**BlackHole**：`sink_sleep_ms`
 
 ## [1.8.2] - 2026-01-14
 
 ### Changed
-- **Breaking**: Renamed `oml_parse` to `oml_parse_raw` for clarity (crates/wp-oml/src/parser/mod.rs)
-- Removed deprecated pipe functions from OML language module
-
-### Refactored
-- **wp-oml**: Extracted nested functions from `oml_sql` to module level for improved readability (crates/wp-oml/src/parser/sql_prm.rs)
-  - `is_sql_ident`, `sanitize_sql_body`, `rewrite_lhs_fn_eq_literal`, `to_sql_piece`, `fast_path_ip4_between_eq_one`
-- **wp-oml**: Unified OML parser error contexts using shared helpers (`ctx_desc`, `ctx_literal`)
-  - Affected files: keyword.rs, oml_aggregate.rs, oml_conf.rs, pipe_prm.rs, sql_prm.rs, utils.rs
-
-### Fixed
-- `wp_log::conf::LogConf` construction in wpgen configuration (crates/wp-config/src/generator/wpgen.rs)
+- **wp-oml**：`oml_parse` 改名 `oml_parse_raw`；移除废弃管道函数
 
 ## [1.8.1] - 2024-01-11
 
 ### Added
-- **P0-3**: `ConfigLoader` trait to unify configuration loading interface (crates/wp-config/src/loader/traits.rs)
-- **P0-4**: `ComponentBase` trait system to standardize component architecture across wp-proj
-- **P0-5**: Unified API consistency with new `fs` utilities module in wp-proj
-- **P0-2**: Error conversion helpers module (`error_conv`, `error_handler`) to simplify error handling
-- **P0-1**: Centralized knowledge base operations in wp-cli-core to eliminate duplication
-- Comprehensive documentation comments for ConfigLoader trait
-- Path normalization for log directory display to remove redundant `./` components (crates/wp-proj/src/utils/log_handler.rs:48-76)
-- Test case `normalize_path_removes_current_dir_components` to verify path normalization
+- **ConfigLoader/ComponentBase**：统一配置加载与组件架构；集中知识库操作
 
 ### Changed
-- **Breaking**: EnvDict parameter now required in all configuration loading functions
-  - `validate_routes(work_root: &str, env_dict: &EnvDict)` (wp-cli-core/src/business/connectors/sinks.rs:18)
-  - `collect_sink_statistics(sink_root: &Path, ctx: &Ctx, dict: &EnvDict)` (wp-cli-core/src/business/observability/sinks.rs:21)
-  - `load_warp_engine_confs(work_root: &str, dict: &EnvDict)` (src/orchestrator/config/models/warp_helpers.rs:17)
-  - And 13 more functions across wp-proj and wp-cli-core
-- **Architecture**: Enforced top-level EnvDict initialization pattern
-  - EnvDict must be created at application entry point (e.g., `load_sec_dict()` in warp-parse)
-  - Crate-level functions only accept `dict: &EnvDict` parameter, never create instances
-  - This follows dependency injection pattern for better testability and clarity
-- Source and sink factories now return multiple connector definitions instead of single instance
-- Improved table formatting in CLI output for better readability
-
-### Fixed
-- Default sink path resolution now works correctly
-- Engine configuration path normalization to handle `.` and `..` components properly
-- Empty stat fields are now skipped during serialization
-- Project initialization bug resolved
-- Documentation test closure parameter issues in error_conv module
-- Log directory paths now display correctly without `././` in output messages (crates/wp-proj/src/utils/log_handler.rs:96,102)
-- Clippy warning `field_reassign_with_default` in wpgen configuration (crates/wp-config/src/generator/wpgen.rs:125)
-
-### Refactored
-- **wp-proj Stage 1**: Extracted common patterns to reduce code duplication
-- **wp-proj Stage 2**: Implemented Component trait system for models, I/O, and connectors
-- **wp-proj Stage 3**: Documented standard error handling patterns
-- **wp-proj Stage 4**: Merged `check` and `checker` modules to eliminate responsibility overlap
-- Knowledge base operations delegated from wp-proj to wp-cli-core
-
-### Removed
-- `EnvDictExt` trait removed from wp-config as it violated architectural separation
-  - App layer (warp-parse, wpgen) is responsible for EnvDict creation
-  - Crate layer (wp-engine, wp-proj, wp-config) only receives and uses EnvDict
-- Documentation files: `envdict-ext-usage.md`, `envdict-ext-quickref.md`
+- **EnvDict**：配置加载函数统一要求 `EnvDict` 参数（依赖注入）
 
 ## [1.8.0] - 2024-01-05
 
 ### Added
-- Environment variable templating support via `orion-variate` integration
-- `EnvDict` type for managing environment variables during configuration loading
-- Environment variable substitution in configuration files using `${VAR}` syntax
-- Three-level variable resolution: dict → system env → default value
-- Tests for environment variable substitution in config loading
-- Path resolution for relative configuration paths
+- **Config**：环境变量模板 `${VAR}` 支持（`orion-variate`）、`EnvDict` 三值解析
 
 ### Changed
-- Updated `orion_conf` dependency to version 0.4
-- Updated `wp-infras` dependencies to track main branch
-- License changed from MIT to SLv2 (Server License v2)
-- Work root resolution now uses `Option<String>` for better API clarity
-- Configuration loading functions now accept `EnvDict` parameter
-- Replaced direct `toml::from_str` calls with `EnvTomlLoad::env_parse_toml`
-
-### Fixed
-- Work root validation issue (#56) - invalid work-root paths now properly handled
-- Partial parsing handling improved with residue tracking and error logging
+- **Dependencies**：升级 `orion_conf` 0.4；License 改 SLv2
 
 ### Removed
-- `Cargo.lock` removed from version control
-- Unnecessary `provided_root` parameter removed from path resolution functions
-
-## Version Comparison Links
+- `Cargo.lock` 移出版本控制

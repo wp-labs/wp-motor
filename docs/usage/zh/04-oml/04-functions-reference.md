@@ -20,6 +20,7 @@
 | `Now::time()` | 当前时间 | `event_time = Now::time() ;` |
 | `Now::date()` | 当前日期，返回 `YYYYMMDD` 数字 | `today = Now::date() ;` |
 | `Now::hour()` | 当前小时，返回 `YYYYMMDDHH` 数字 | `hour = Now::hour() ;` |
+| `access_direct(src, dst)` | 判断访问方向（`内到内`/`内到外`/`外到内`/`外到外`） | `dir = access_direct(read(sip), read(dip)) | on_fail('unknown') ;` |
 
 ### 管道函数
 
@@ -43,6 +44,8 @@
 | 转换 | `to_json` | `payload = read(arr) | to_json ;` |
 | 转换 | `to_str` | `ip_s = read(ip) | to_str ;` |
 | 转换 | `ip4_to_int` | `ip_i = read(src_ip) | ip4_to_int ;` |
+| 网络 | `intranet_ip` | `side = read(src_ip) | intranet_ip ;` |
+| 控制 | `on_fail('值')` | `side = read(src_ip) | intranet_ip | on_fail('unknown') ;` |
 | 提取 | `path([name|path])` | `file = read(path) | path(name) ;` |
 | 提取 | `url([domain|host|uri|path|params])` | `host = read(url) | url(host) ;` |
 | 控制 | `skip_empty` | `v = read(maybe_empty) | skip_empty ;` |
@@ -171,6 +174,35 @@ current_hour : digit = Now::hour() ;
 
 ---
 
+### `access_direct(src, dst)`
+
+组合 src/dst 两个 IP 的内外归属得到访问方向，返回 `内到内`/`内到外`/`外到内`/`外到外`。
+
+**语法**
+```oml
+direction = access_direct(read(sip), read(dip)) ;
+direction = access_direct(read(sip), read(dip)) | on_fail('unknown') ;
+```
+
+**说明**
+- 内/外判定使用内网网段知识（`knowdb.toml` 的 `[intranet_nets]` 节）
+- src/dst 缺失或非法输出 `Ignore`，可用管道 `| on_fail('unknown')` 兜底
+- 支持 IPv4 + IPv6
+
+**示例**
+```oml
+name : example_access_direct
+---
+sip : ip = take() ;
+dip : ip = take() ;
+direction = access_direct(read(sip), read(dip)) | on_fail('unknown') ;
+
+# 内网→内网: "内到内"；内网→外网: "内到外"；外网→内网: "外到内"；外网→外网: "外到外"
+# src/dst 缺失: "unknown"
+```
+
+---
+
 ## 管道函数
 
 ### 基本写法
@@ -180,11 +212,12 @@ result = pipe read(field) | function1 | function2(param) ;
 result = read(field) | function1 | function2(param) ;
 ```
 
-管道起点当前必须是：
+管道起点可以是：
 
 - `read(...)`
 - `take(...)`
 - `@field`
+- `access_direct(src, dst)`（其结果可作为管道源，如 `access_direct(a, b) | on_fail('x')`）
 
 不能直接把裸标识符当作无前缀管道起点。
 
