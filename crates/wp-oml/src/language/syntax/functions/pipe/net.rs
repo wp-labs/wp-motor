@@ -5,6 +5,7 @@ use std::sync::OnceLock;
 
 pub const PIPE_IP4_TO_INT: &str = "ip4_to_int";
 pub const PIPE_IP_TO_BIGUINT: &str = "ip_to_biguint";
+pub const PIPE_INTRANET_IP: &str = "intranet_ip";
 
 /// 2^128，IPv6 统一编码偏移量。
 /// IPv6 网段统一映射到 `[2^128, 2^129)`，与 IPv4 的 `[0, 2^32)` 互不重叠，
@@ -31,6 +32,16 @@ pub struct IpToBigUint {}
 impl Display for IpToBigUint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", PIPE_IP_TO_BIGUINT)
+    }
+}
+
+/// 判断 IP 是否内网地址（返回 `内`/`外`），支持 IPv4 + IPv6，网段由配置驱动
+#[derive(Clone, Debug, Default)]
+pub struct IntranetIp {}
+
+impl Display for IntranetIp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", PIPE_INTRANET_IP)
     }
 }
 

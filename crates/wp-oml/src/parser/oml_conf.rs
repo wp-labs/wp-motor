@@ -222,7 +222,10 @@ fn ensure_static_precise_supported(eval: &PreciseEvaluator) -> Result<(), ErrMod
         PreciseEvaluator::Sql(_) => {
             static_block_err("static block does not support SQL queries or external effects")
         }
-        PreciseEvaluator::Tdc(_) | PreciseEvaluator::Pipe(_) | PreciseEvaluator::Collect(_) => {
+        PreciseEvaluator::Tdc(_)
+        | PreciseEvaluator::Pipe(_)
+        | PreciseEvaluator::Collect(_)
+        | PreciseEvaluator::AccessDirect(_) => {
             static_block_err("static block does not support read/take-based runtime access")
         }
         PreciseEvaluator::Fun(_) => {
@@ -464,7 +467,11 @@ fn rewrite_pipe_operation(
     op: &mut crate::language::PiPeOperation,
     const_fields: &HashMap<String, Arc<DataField>>,
 ) -> Result<(), ErrMode<ContextError>> {
-    rewrite_direct_accessor(op.from_mut(), const_fields)
+    match op.from_mut() {
+        crate::language::PipeSource::Accessor(a) => rewrite_direct_accessor(a, const_fields),
+        // access_direct 作管道源：static 块不支持（已由 ensure_static_precise_supported 拦截）
+        crate::language::PipeSource::AccessDirect(_) => Ok(()),
+    }
 }
 
 fn rewrite_fun_operation(

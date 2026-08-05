@@ -6,13 +6,14 @@ use crate::language::{
     PIPE_HTML_UNESCAPE, PIPE_IP_TO_BIGUINT, PIPE_IP4_TO_INT, PIPE_JSON_ESCAPE, PIPE_JSON_UNESCAPE,
     PIPE_MAP_TO, PIPE_NTH, PIPE_PATH, PIPE_SKIP_EMPTY, PIPE_STARTS_WITH, PIPE_STR_ESCAPE,
     PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US, PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON,
-    PIPE_URL, PathGet, PathType, PiPeOperation, PipeFun, PreciseEvaluator, SkipEmpty, StartsWith,
-    StrEscape, TimeStampUnit, TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone, ToJson, UrlGet,
-    UrlType,
+    PIPE_URL, PathGet, PathType, PiPeOperation, PipeFun, PipeSource, PreciseEvaluator, SkipEmpty,
+    StartsWith, StrEscape, TimeStampUnit, TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone, ToJson,
+    UrlGet, UrlType,
 };
 use crate::language::{
-    Base64Encode, ExtractMainWord, ExtractSubjectObject, PIPE_BASE64_ENCODE,
-    PIPE_EXTRACT_MAIN_WORD, PIPE_EXTRACT_SUBJECT_OBJECT, PIPE_TO_STR, ToStr,
+    Base64Encode, ExtractMainWord, ExtractSubjectObject, IntranetIp, OnFail, PIPE_BASE64_ENCODE,
+    PIPE_EXTRACT_MAIN_WORD, PIPE_EXTRACT_SUBJECT_OBJECT, PIPE_INTRANET_IP, PIPE_ON_FAIL,
+    PIPE_TO_STR, ToStr,
 };
 use crate::parser::keyword::kw_gw_pipe;
 use crate::parser::oml_aggregate::oml_var_get;
@@ -90,6 +91,24 @@ impl Fun1Builder for Get {
 
     fn build(args: Self::ARG1) -> Self {
         Get { name: args }
+    }
+}
+
+impl Fun1Builder for OnFail {
+    type ARG1 = String;
+    fn args1(data: &mut &str) -> WResult<Self::ARG1> {
+        use wpl::parser::utils::quot_str;
+        multispace0.parse_next(data)?;
+        let value = quot_str.parse_next(data)?;
+        Ok(value.to_string())
+    }
+
+    fn fun_name() -> &'static str {
+        PIPE_ON_FAIL
+    }
+
+    fn build(args: Self::ARG1) -> Self {
+        OnFail { value: args }
     }
 }
 
@@ -279,7 +298,11 @@ impl Fun1Builder for UrlGet {
 }
 pub fn oml_aga_pipe(data: &mut &str) -> WResult<PreciseEvaluator> {
     kw_gw_pipe.parse_next(data)?;
-    let from = oml_var_get.parse_next(data)?;
+    let from = alt((
+        oml_var_get.map(PipeSource::Accessor),
+        crate::parser::access_direct_prm::oml_access_direct.map(PipeSource::AccessDirect),
+    ))
+    .parse_next(data)?;
     let items = repeat(1.., oml_pipe).parse_next(data)?;
     Ok(PreciseEvaluator::Pipe(PiPeOperation::new(from, items)))
 }
@@ -289,7 +312,10 @@ pub fn oml_aga_pipe_noprefix(data: &mut &str) -> WResult<PreciseEvaluator> {
     let cp = data.checkpoint();
     let from = oml_var_get.parse_next(data)?;
     match repeat(1.., oml_pipe).parse_next(data) {
-        Ok(items) => Ok(PreciseEvaluator::Pipe(PiPeOperation::new(from, items))),
+        Ok(items) => Ok(PreciseEvaluator::Pipe(PiPeOperation::new(
+            PipeSource::Accessor(from),
+            items,
+        ))),
         Err(_e) => {
             data.reset(&cp);
             fail.parse_next(data)
@@ -312,6 +338,7 @@ fn pipe_fun_with_args(data: &mut &str) -> WResult<PipeFun> {
         parser::call_fun_args2::<TimeToTsZone>.map(PipeFun::TimeToTsZone),
         parser::call_fun_args1::<Nth>.map(PipeFun::Nth),
         parser::call_fun_args1::<Get>.map(PipeFun::Get),
+        parser::call_fun_args1::<OnFail>.map(PipeFun::OnFail),
         parser::call_fun_args1::<StartsWith>.map(PipeFun::StartsWith),
         parser::call_fun_args1::<MapTo>.map(PipeFun::MapTo),
         parser::call_fun_args1::<Base64Decode>.map(PipeFun::Base64Decode),
@@ -358,6 +385,7 @@ fn pipe_fun_simple_extra(data: &mut &str) -> WResult<PipeFun> {
         PIPE_SKIP_EMPTY.map(|_| PipeFun::SkipEmpty(SkipEmpty::default())),
         PIPE_IP4_TO_INT.map(|_| PipeFun::Ip4ToInt(Ip4ToInt::default())),
         PIPE_IP_TO_BIGUINT.map(|_| PipeFun::IpToBigUint(IpToBigUint::default())),
+        PIPE_INTRANET_IP.map(|_| PipeFun::IntranetIp(IntranetIp::default())),
         PIPE_EXTRACT_MAIN_WORD.map(|_| PipeFun::ExtractMainWord(ExtractMainWord::default())),
         PIPE_EXTRACT_SUBJECT_OBJECT
             .map(|_| PipeFun::ExtractSubjectObject(ExtractSubjectObject::default())),

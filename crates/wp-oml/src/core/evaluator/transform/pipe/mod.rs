@@ -33,6 +33,7 @@ impl ValueProcessor for PipeFun {
             PipeFun::TimeToTsZone(o) => o.value_cacu(in_val),
             PipeFun::Nth(o) => o.value_cacu(in_val),
             PipeFun::Get(o) => o.value_cacu(in_val),
+            PipeFun::OnFail(o) => o.value_cacu(in_val),
             PipeFun::StartsWith(o) => o.value_cacu(in_val),
             PipeFun::MapTo(o) => o.value_cacu(in_val),
             PipeFun::ToStr(o) => o.value_cacu(in_val),
@@ -43,6 +44,7 @@ impl ValueProcessor for PipeFun {
             PipeFun::UrlGet(o) => o.value_cacu(in_val),
             PipeFun::Ip4ToInt(o) => o.value_cacu(in_val),
             PipeFun::IpToBigUint(o) => o.value_cacu(in_val),
+            PipeFun::IntranetIp(o) => o.value_cacu(in_val),
             PipeFun::ExtractMainWord(o) => o.value_cacu(in_val),
             PipeFun::ExtractSubjectObject(o) => o.value_cacu(in_val),
         }

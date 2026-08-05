@@ -177,6 +177,9 @@ impl WpApp {
             Err(e) => warn_ctrl!("semantic dict config invalid: {}, fallback to builtin", e),
         }
 
+        // 内网网段知识由 wp-knowledge 统一管理，随 knowdb.toml 加载自动注入；
+        // INTRANET_NETS_SET 在规则执行首次调用 is_intranet 时按注入配置初始化。
+
         let eng_res = load_engine_res(
             &self.main_conf,
             &self.conf_manager,

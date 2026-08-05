@@ -99,6 +99,8 @@ pub struct Row {
     pub oml: Cell,
     /// 语义词典配置检查结果
     pub semantic_dict: Cell,
+    /// 内网网段配置检查结果
+    pub intranet_nets: Cell,
     /// wpgen 配置检查结果
     pub wpgen: Cell,
 }
@@ -140,6 +142,9 @@ impl Row {
         if !self.semantic_dict.ok {
             count += 1;
         }
+        if !self.intranet_nets.ok {
+            count += 1;
+        }
         if !self.wpgen.ok {
             count += 1;
         }
@@ -169,6 +174,9 @@ impl Row {
             count += 1;
         }
         if self.semantic_dict.ok {
+            count += 1;
+        }
+        if self.intranet_nets.ok {
             count += 1;
         }
         if self.wpgen.ok {
@@ -211,6 +219,7 @@ mod tests {
         row.sources = Cell::failure("bad".into());
         row.oml = Cell::failure("boom".into());
         assert_eq!(row.count_failures(), 2);
-        assert_eq!(row.count_successes(), 6);
+        // 9 项（含 intranet_nets，默认 ok=true） - 2 失败 = 7
+        assert_eq!(row.count_successes(), 7);
     }
 }

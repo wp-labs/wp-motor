@@ -70,6 +70,9 @@ pub fn component_cells<'a>(row: &'a Row, comps: &CheckComponents) -> Vec<(&'stat
     if comps.semantic_dict {
         cells.push(("SemanticDict", &row.semantic_dict));
     }
+    if comps.intranet_nets {
+        cells.push(("IntranetNets", &row.intranet_nets));
+    }
     if comps.wpgen {
         cells.push(("Wpgen", &row.wpgen));
     }
@@ -190,6 +193,14 @@ fn detail_entries_for(row: &Row, comps: &CheckComponents) -> Vec<DetailEntry> {
                 result: "!".into(),
             });
         }
+    }
+    if comps.intranet_nets {
+        entries.push(DetailEntry {
+            category: cat("IntranetNets"),
+            item: "Config".into(),
+            data: cell_data(&row.intranet_nets),
+            result: status_mark(&row.intranet_nets).to_string(),
+        });
     }
     if comps.wpgen {
         entries.push(DetailEntry {

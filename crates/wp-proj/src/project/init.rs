@@ -126,6 +126,7 @@ impl WarpProject {
             self.knowledge().init(self.work_root())?;
             // 语义词典配置初始化（属于知识配置）
             Self::init_semantic_dict_config(self.work_root_path())?;
+            // 内网网段配置已随 knowdb.toml 生成（[intranet_nets] 节），无需单独文件
         }
 
         // 3) WPL 和 OML 模型初始化（仅在模型启用时）

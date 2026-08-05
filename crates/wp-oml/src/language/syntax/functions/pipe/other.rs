@@ -35,6 +35,18 @@ impl Display for Get {
     }
 }
 
+pub const PIPE_ON_FAIL: &str = "on_fail";
+#[derive(Clone, Debug)]
+pub struct OnFail {
+    pub(crate) value: String,
+}
+
+impl Display for OnFail {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}('{}')", PIPE_ON_FAIL, self.value)
+    }
+}
+
 pub const PIPE_STARTS_WITH: &str = "starts_with";
 #[derive(Clone, Debug)]
 pub struct StartsWith {

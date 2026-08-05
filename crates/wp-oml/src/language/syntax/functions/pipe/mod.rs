@@ -29,6 +29,7 @@ pub enum PipeFun {
     TimeToTsZone(TimeToTsZone),
     Nth(Nth),
     Get(Get),
+    OnFail(OnFail),
     StartsWith(StartsWith),
     MapTo(MapTo),
     ToStr(ToStr),
@@ -39,6 +40,7 @@ pub enum PipeFun {
     UrlGet(UrlGet),
     Ip4ToInt(Ip4ToInt),
     IpToBigUint(IpToBigUint),
+    IntranetIp(IntranetIp),
     ExtractMainWord(ExtractMainWord),
     ExtractSubjectObject(ExtractSubjectObject),
 }
@@ -59,6 +61,7 @@ impl Display for PipeFun {
             PipeFun::TimeToTsZone(v) => write!(f, "{}", v),
             PipeFun::Nth(v) => write!(f, "{}", v),
             PipeFun::Get(v) => write!(f, "{}", v),
+            PipeFun::OnFail(v) => write!(f, "{}", v),
             PipeFun::StartsWith(v) => write!(f, "{}", v),
             PipeFun::MapTo(v) => write!(f, "{}", v),
             PipeFun::ToJson(_) => write!(f, "{}", PIPE_TO_JSON),
@@ -69,6 +72,7 @@ impl Display for PipeFun {
             PipeFun::UrlGet(v) => write!(f, "{}", v),
             PipeFun::Ip4ToInt(v) => write!(f, "{}", v),
             PipeFun::IpToBigUint(v) => write!(f, "{}", v),
+            PipeFun::IntranetIp(v) => write!(f, "{}", v),
             PipeFun::ExtractMainWord(v) => write!(f, "{}", v),
             PipeFun::ExtractSubjectObject(v) => write!(f, "{}", v),
         }

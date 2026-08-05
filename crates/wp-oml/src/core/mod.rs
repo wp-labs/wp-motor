@@ -75,6 +75,7 @@ impl AsyncFieldExtractor for PreciseEvaluator {
             PreciseEvaluator::Val(o) => o.extract_one_async(target, src, dst).await,
             PreciseEvaluator::Obj(o) => o.extract_one_async(target, src, dst).await,
             PreciseEvaluator::Calc(o) => o.extract_one(target, src, dst),
+            PreciseEvaluator::AccessDirect(o) => o.extract_one(target, src, dst),
             PreciseEvaluator::Fmt(o) => o.extract_one(target, src, dst),
             PreciseEvaluator::ObjArc(arc) => arc.as_ref().extract_one_async(target, src, dst).await,
             PreciseEvaluator::StaticSymbol(sym) => {
@@ -101,6 +102,7 @@ impl AsyncFieldExtractor for PreciseEvaluator {
             PreciseEvaluator::Val(o) => o.extract_storage_async(target, src, dst).await,
             PreciseEvaluator::Obj(o) => o.extract_storage_async(target, src, dst).await,
             PreciseEvaluator::Calc(o) => o.extract_storage(target, src, dst),
+            PreciseEvaluator::AccessDirect(o) => o.extract_storage(target, src, dst),
             PreciseEvaluator::Fmt(o) => o.extract_storage(target, src, dst),
             PreciseEvaluator::ObjArc(arc) => {
                 arc.as_ref().extract_storage_async(target, src, dst).await
@@ -129,6 +131,7 @@ impl AsyncFieldExtractor for PreciseEvaluator {
             PreciseEvaluator::Val(o) => o.extract_more_async(src, dst, cache).await,
             PreciseEvaluator::Obj(o) => o.extract_more_async(src, dst, cache).await,
             PreciseEvaluator::Calc(o) => o.extract_more(src, dst, cache),
+            PreciseEvaluator::AccessDirect(o) => o.extract_more(src, dst, cache),
             PreciseEvaluator::Fmt(o) => o.extract_more(src, dst, cache),
             PreciseEvaluator::ObjArc(o) => o.as_ref().extract_more_async(src, dst, cache).await,
             PreciseEvaluator::StaticSymbol(sym) => {
@@ -150,6 +153,7 @@ impl AsyncFieldExtractor for PreciseEvaluator {
             PreciseEvaluator::Val(o) => o.support_batch_async(),
             PreciseEvaluator::Obj(o) => o.support_batch_async(),
             PreciseEvaluator::Calc(o) => o.support_batch(),
+            PreciseEvaluator::AccessDirect(o) => o.support_batch(),
             PreciseEvaluator::Fmt(o) => o.support_batch(),
             PreciseEvaluator::ObjArc(o) => o.as_ref().support_batch_async(),
             PreciseEvaluator::StaticSymbol(sym) => {

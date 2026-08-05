@@ -1,3 +1,4 @@
+use super::operand_target;
 use crate::core::AsyncFieldExtractor;
 use crate::core::diagnostics::{self, OmlIssue, OmlIssueKind};
 use crate::core::prelude::*;
@@ -60,17 +61,6 @@ impl CalcNumber {
             CalcNumber::Float(v) => DataField::from_float(name, v),
         }
     }
-}
-
-fn operand_target(
-    accessor: &crate::language::DirectAccessor,
-    fallback: &EvaluationTarget,
-) -> EvaluationTarget {
-    let key = accessor
-        .field_name()
-        .clone()
-        .unwrap_or_else(|| fallback.safe_name());
-    EvaluationTarget::new(key, DataType::Auto)
 }
 
 fn field_to_number(field: DataField) -> Result<CalcNumber, CalcEvalError> {

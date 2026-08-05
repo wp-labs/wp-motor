@@ -21,6 +21,18 @@ impl ValueProcessor for crate::language::StartsWith {
     }
 }
 
+/// `on_fail('值')`：输入为 Ignore 或 Null（判断失败/无值）时，替换为指定字符串；否则原样
+impl ValueProcessor for crate::language::OnFail {
+    fn value_cacu(&self, in_val: DataField) -> DataField {
+        match in_val.get_value() {
+            Value::Ignore(_) | Value::Null => {
+                DataField::from_chars(in_val.get_name().to_string(), self.value.clone())
+            }
+            _ => in_val,
+        }
+    }
+}
+
 impl ValueProcessor for crate::language::MapTo {
     fn value_cacu(&self, in_val: DataField) -> DataField {
         use crate::language::MapValue;

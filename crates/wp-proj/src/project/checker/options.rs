@@ -28,6 +28,7 @@ pub struct CheckComponents {
     pub wpl: bool,
     pub oml: bool,
     pub semantic_dict: bool,
+    pub intranet_nets: bool,
     pub wpgen: bool,
 }
 
@@ -40,6 +41,7 @@ impl CheckComponents {
         self.wpl = false;
         self.oml = false;
         self.semantic_dict = false;
+        self.intranet_nets = false;
         self.wpgen = false;
     }
 
@@ -70,6 +72,7 @@ impl CheckComponents {
             CheckComponent::Wpl => self.wpl,
             CheckComponent::Oml => self.oml,
             CheckComponent::SemanticDict => self.semantic_dict,
+            CheckComponent::IntranetNets => self.intranet_nets,
             CheckComponent::Wpgen => self.wpgen,
         }
     }
@@ -83,6 +86,7 @@ impl CheckComponents {
             CheckComponent::Wpl => self.wpl = value,
             CheckComponent::Oml => self.oml = value,
             CheckComponent::SemanticDict => self.semantic_dict = value,
+            CheckComponent::IntranetNets => self.intranet_nets = value,
             CheckComponent::Wpgen => self.wpgen = value,
         }
     }
@@ -98,6 +102,7 @@ impl Default for CheckComponents {
             wpl: true,
             oml: true,
             semantic_dict: true,
+            intranet_nets: true,
             wpgen: true,
         }
     }
@@ -112,5 +117,6 @@ pub enum CheckComponent {
     Wpl,
     Oml,
     SemanticDict,
+    IntranetNets,
     Wpgen,
 }

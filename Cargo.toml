@@ -54,7 +54,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.25.0" # @gxl:set(version)
+version = "1.25.2" # @gxl:set(version)
 edition = "2024"
 license = "Apache-2.0"
 
@@ -360,7 +360,7 @@ orion_exp = { path = "./crates/orion_exp" }
 wp_primitives = { package = "wp-primitives", version = "0.2" }
 wp_config = { package = "wp-config", path = "./crates/wp-config" }
 wp_data_model = { package = "wp-data-utils", path = "./crates/wp-data-utils" }
-wp-knowledge = "0.15"
+wp-knowledge =  "0.15"
 #wp_lang = { package = "wp-lang", version = "0.1" }
 wp_oml = { package = "wp-oml", path = "./crates/wp-oml" }
 wp_proj = { package = "wp-proj", path = "./crates/wp-proj" }

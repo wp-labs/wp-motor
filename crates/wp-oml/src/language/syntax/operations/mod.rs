@@ -1,4 +1,5 @@
 pub mod calc;
+pub mod access_direct;
 pub mod fmt;
 pub mod lookup;
 pub mod map;
@@ -7,6 +8,7 @@ pub mod pipe;
 pub mod record;
 pub mod sql;
 pub use calc::*;
+pub use access_direct::*;
 pub use fmt::*;
 pub use lookup::*;
 pub use map::*;

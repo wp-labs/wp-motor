@@ -234,6 +234,19 @@ fn evaluate_target(
         row.semantic_dict = Cell::skipped();
     }
 
+    if comps.intranet_nets {
+        row.intranet_nets = match check_intranet_nets_config(Path::new(&wrs), dict) {
+            Ok(Some(msg)) => Cell::success_with_message(msg),
+            Ok(None) => Cell::success_with_message("使用内置网段".to_string()),
+            Err(e) => Cell::failure(e),
+        };
+        if !row.intranet_nets.ok && opts.fail_fast {
+            return row;
+        }
+    } else {
+        row.intranet_nets = Cell::skipped();
+    }
+
     if comps.wpgen {
         row.wpgen = check_wpgen_config(&wrs, dict);
         if !row.wpgen.ok && opts.fail_fast {
@@ -277,6 +290,24 @@ fn check_semantic_dict_config(
                 warnings: result.warnings,
             })
         });
+    }
+
+    Ok(None)
+}
+
+/// 检查内网网段配置（从项目的 knowdb.toml 解析 `[intranet_nets]` 节）
+fn check_intranet_nets_config(work_root: &Path, dict: &EnvDict) -> Result<Option<String>, String> {
+    let (_, main_conf) = cfg_face::load_warp_engine_confs(&work_root.to_string_lossy(), dict)
+        .map_err(|e| describe_run_error(&e))?;
+
+    let primary = PathBuf::from(main_conf.knowledge_root()).join("knowdb.toml");
+    if primary.exists() {
+        return wp_knowledge::intranet_nets::check_intranet_nets_config(&primary);
+    }
+
+    let fallback = work_root.join("models/knowledge/knowdb.toml");
+    if fallback.exists() {
+        return wp_knowledge::intranet_nets::check_intranet_nets_config(&fallback);
     }
 
     Ok(None)
@@ -497,6 +528,7 @@ struct SummaryCounts {
     wpl: ComponentCount,
     oml: ComponentCount,
     semantic_dict: ComponentCount,
+    intranet_nets: ComponentCount,
     wpgen: ComponentCount,
 }
 
@@ -523,6 +555,9 @@ fn summarize_components(rows: &[Row], comps: &CheckComponents) -> SummaryCounts 
         }
         if comps.semantic_dict {
             stats.semantic_dict.record(r.semantic_dict.ok);
+        }
+        if comps.intranet_nets {
+            stats.intranet_nets.record(r.intranet_nets.ok);
         }
         if comps.wpgen {
             stats.wpgen.record(r.wpgen.ok);
@@ -562,6 +597,10 @@ fn render_output(
         stat.insert(
             "semantic_dict".into(),
             component_stat_value(comps.semantic_dict, &stats.semantic_dict),
+        );
+        stat.insert(
+            "intranet_nets".into(),
+            component_stat_value(comps.intranet_nets, &stats.intranet_nets),
         );
         stat.insert(
             "wpgen".into(),

@@ -165,6 +165,8 @@ pub fn init(work_root: &str, full: bool) -> OrionConfResult<()> {
     if !body.ends_with('\n') {
         body.push('\n');
     }
+    // 内网网段知识配置节（[intranet_nets]）
+    body.push_str(&wp_knowledge::intranet_nets::generate_default_intranet_nets_config());
     body.push_str(postgres_provider_example());
     let knowdb_path = models_dir.join("knowdb.toml");
     fs::write(&knowdb_path, body)
