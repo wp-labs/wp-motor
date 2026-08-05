@@ -164,7 +164,7 @@ The `data_type` set (aligned with `tree-sitter-oml`):
 
 ```text
 auto, ip, chars, digit, float, time, bool, obj, array,
-time_iso, time_3339, time_2822, time_timestamp, time_clf,
+time_iso, time_3339, time_2822, time_timestamp, time/clf,
 url, domain, ip_net, kv, json, base64,
 array/<subtype>, time/<subtype>
 ```
