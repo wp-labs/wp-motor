@@ -7,17 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.25.2] - 2026-08-05
 
+### Changed
+- **OML 内网富化输出**：`intranet_ip` 输出改为英文简写 `LAN`/`WAN`，`access_direct` 方向改为 `L2L`/`L2W`/`W2L`/`W2W`（L=LAN、W=WAN、2=to）
+- **Docs**：富化函数与内网网段配置文档（zh/en）同步输出值
+
+## [1.25.1] - 2026-08-05
+
 ### Added
-- **OML 内网富化**：新增 `intranet_ip`（判内/外）、`access_direct`（访问方向）、`on_fail`（失败兜底）函数；管道源扩展（`PipeSource`）支持 `access_direct(a,b) | on_fail('x')`。输出英文简写：`intranet_ip` → `LAN`/`WAN`，`access_direct` → `L2L`/`L2W`/`W2L`/`W2W`
-- **内网网段知识管理**：内网网段作为知识统一由 wp-knowledge 管理（`knowdb.toml [intranet_nets]` 节，随 knowdb 加载注入）；默认 RFC1918 + IPv4/IPv6 loopback + IPv6 ULA，可配置扩展；项目初始化自动生成该节；`wproj check` 增加校验项
-- **OML IP 编码**：新增 `ip_to_biguint`（IPv4/IPv6 统一编码为任意精度整数），`FieldQueryCache`/`compare_datafield` 支持 `BigUint`
-- **Docs**：OML 语法参考补充 `//` 注释说明与 `access_direct` 语法；富化函数与内网网段配置文档（zh/en）同步
+- **OML 内网富化**：新增 `intranet_ip`（判内/外）、`access_direct`（访问方向）、`on_fail`（失败兜底）函数；管道源扩展（`PipeSource`）支持 `access_direct(a,b) | on_fail('x')`
+- **内网网段知识管理**：内网网段作为知识统一由 wp-knowledge 管理（`knowdb.toml [intranet_nets]` 节，随 knowdb 加载注入）；默认 RFC1918 + IPv4/IPv6 loopback + IPv6 ULA，可配置扩展；项目初始化自动生成该节；`wproj check` 增加校验项；`is_intranet` 按 IPv4/IPv6 地址族分桶优化
 
 ### Changed
-- **Dependencies**：升级 `wp-knowledge` 0.14→0.15、`wp-model-core` 0.8→0.9、`wp-lang` 0.4→0.5、`wp-error` 0.10→0.11 等一批依赖；`wp-knowledge` 改为本地 path 依赖
+- **Dependencies**：`wp-knowledge` 依赖改为本地 path
 
-### Tests
-- 补充 `ip_to_biguint`/`BigUint` 编码、查询与比较，以及内网富化函数（LAN/WAN、L2\*/W2\*）测试
+## [1.25.0] - 2026-08-04
+
+### Added
+- **OML IP 编码**：新增 `ip_to_biguint`（IPv4/IPv6 统一编码为任意精度整数），`FieldQueryCache`/`compare_datafield` 支持 `BigUint`
+- **Docs**：OML 语法参考补充 `//` 注释说明；IP 地理位置查询示例改用 `ip_to_biguint`
+
+### Changed
+- **Dependencies**：升级 `wp-knowledge` 0.14→0.15、`wp-model-core` 0.8→0.9、`wp-lang` 0.4→0.5、`wp-error` 0.10→0.11 等一批依赖
 
 
 ## [1.23.8] - 2026-07-31
