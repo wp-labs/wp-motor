@@ -367,6 +367,39 @@ first_port = read(ports) | nth(0) ;
 
 ---
 
+### 任务：创建对象数组
+
+用 `array { ... }` 直接构造对象字面量数组（与 `collect` 的按字段收集不同，这里是显式构造）：
+
+```oml
+name : create_object_array
+rule : /app/process
+---
+signatures = array {
+    object {
+        signer = read(process_sign) ;
+    } ;
+    object {
+        signer = read(process_parent_sign) ;
+    } ;
+} ;
+```
+
+输出 JSON：
+
+```json
+"signatures": [
+  { "signer": "Microsoft Windows" },
+  { "signer": "Microsoft Windows Publisher" }
+]
+```
+
+- 数组元素支持 `object { ... }`、嵌套 `array { ... }`、`read/take`、值、函数等表达式
+- 元素 `read` 不到或为 null 时自动跳过，全部缺失则不输出该字段
+- `array { ... }` 与 `collect` 的区别：前者显式构造对象列表，后者按 `keys` 收集已有字段
+
+---
+
 ## 条件处理
 
 ### 任务：状态码分类

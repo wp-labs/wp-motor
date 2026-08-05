@@ -14,10 +14,12 @@ use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
 use super::functions::FunOperation;
+use super::operations::map::MapOperation;
+use super::operations::obj_array::ObjArrayOperation;
 use super::operations::record::RecordOperation;
 pub use direct::*;
 pub use nested::arr::ArrOperation;
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum NestedAccessor {
     Field(DataField),
     /// Arc-wrapped DataField for zero-copy sharing (from static symbols)
@@ -25,8 +27,31 @@ pub enum NestedAccessor {
     Direct(RecordOperation),
     Fun(FunOperation),
     Collect(ArrOperation),
+    /// 嵌套对象字面量（`object { ... }` 作为 object 子项）
+    Map(MapOperation),
+    /// 对象数组字面量（`array { object {...}; ... }` 作为 object 子项）
+    ObjArray(ObjArrayOperation),
     /// Placeholder for static symbol; resolved after parsing
     StaticSymbol(String),
+}
+
+impl PartialEq for NestedAccessor {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (NestedAccessor::Field(a), NestedAccessor::Field(b)) => a == b,
+            (NestedAccessor::FieldArc(a), NestedAccessor::FieldArc(b)) => a == b,
+            (NestedAccessor::Direct(a), NestedAccessor::Direct(b)) => a == b,
+            (NestedAccessor::Fun(a), NestedAccessor::Fun(b)) => a == b,
+            (NestedAccessor::Collect(a), NestedAccessor::Collect(b)) => a == b,
+            (NestedAccessor::StaticSymbol(a), NestedAccessor::StaticSymbol(b)) => a == b,
+            (NestedAccessor::Map(a), NestedAccessor::Map(b)) => a == b,
+            // 对象数组元素为 PreciseEvaluator（无 PartialEq），以规范化 Display 串比较
+            (NestedAccessor::ObjArray(a), NestedAccessor::ObjArray(b)) => {
+                a.to_string() == b.to_string()
+            }
+            _ => false,
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -64,6 +89,8 @@ impl NestedAccessor {
             NestedAccessor::Direct(o) => o.extract_one(target, src, dst),
             NestedAccessor::Fun(o) => o.extract_one(target, src, dst),
             NestedAccessor::Collect(o) => o.extract_one(target, src, dst),
+            NestedAccessor::Map(o) => o.extract_one(target, src, dst),
+            NestedAccessor::ObjArray(o) => o.extract_one(target, src, dst),
             NestedAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }
@@ -85,6 +112,8 @@ impl NestedAccessor {
             NestedAccessor::Direct(o) => o.extract_more(src, dst, cache),
             NestedAccessor::Fun(o) => o.extract_more(src, dst, cache),
             NestedAccessor::Collect(o) => o.extract_more(src, dst, cache),
+            NestedAccessor::Map(o) => o.extract_more(src, dst, cache),
+            NestedAccessor::ObjArray(o) => o.extract_more(src, dst, cache),
             NestedAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }
@@ -97,6 +126,8 @@ impl NestedAccessor {
             NestedAccessor::Direct(o) => o.support_batch(),
             NestedAccessor::Fun(o) => o.support_batch(),
             NestedAccessor::Collect(o) => o.support_batch(),
+            NestedAccessor::Map(o) => o.support_batch(),
+            NestedAccessor::ObjArray(o) => o.support_batch(),
             NestedAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }
@@ -118,6 +149,8 @@ impl AsyncFieldExtractor for NestedAccessor {
             NestedAccessor::Direct(o) => o.extract_one_async(target, src, dst).await,
             NestedAccessor::Fun(o) => o.extract_one_async(target, src, dst).await,
             NestedAccessor::Collect(o) => o.extract_one_async(target, src, dst).await,
+            NestedAccessor::Map(o) => o.extract_one_async(target, src, dst).await,
+            NestedAccessor::ObjArray(o) => o.extract_one_async(target, src, dst).await,
             NestedAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }
@@ -136,6 +169,8 @@ impl AsyncFieldExtractor for NestedAccessor {
             NestedAccessor::Direct(o) => o.extract_storage_async(target, src, dst).await,
             NestedAccessor::Fun(o) => o.extract_storage_async(target, src, dst).await,
             NestedAccessor::Collect(o) => o.extract_storage_async(target, src, dst).await,
+            NestedAccessor::Map(o) => o.extract_storage_async(target, src, dst).await,
+            NestedAccessor::ObjArray(o) => o.extract_storage_async(target, src, dst).await,
             NestedAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }
@@ -154,6 +189,8 @@ impl AsyncFieldExtractor for NestedAccessor {
             NestedAccessor::Direct(o) => o.extract_more_async(src, dst, cache).await,
             NestedAccessor::Fun(o) => o.extract_more_async(src, dst, cache).await,
             NestedAccessor::Collect(o) => o.extract_more_async(src, dst, cache).await,
+            NestedAccessor::Map(o) => o.extract_more_async(src, dst, cache).await,
+            NestedAccessor::ObjArray(o) => o.extract_more_async(src, dst, cache).await,
             NestedAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }
@@ -167,6 +204,8 @@ impl AsyncFieldExtractor for NestedAccessor {
             NestedAccessor::Direct(o) => o.support_batch_async(),
             NestedAccessor::Fun(o) => o.support_batch_async(),
             NestedAccessor::Collect(o) => o.support_batch_async(),
+            NestedAccessor::Map(o) => o.support_batch_async(),
+            NestedAccessor::ObjArray(o) => o.support_batch_async(),
             NestedAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }
@@ -187,6 +226,12 @@ impl Display for NestedAccessor {
                 write!(f, "{}", x)
             }
             NestedAccessor::Collect(x) => {
+                write!(f, "{}", x)
+            }
+            NestedAccessor::Map(x) => {
+                write!(f, "{}", x)
+            }
+            NestedAccessor::ObjArray(x) => {
                 write!(f, "{}", x)
             }
             NestedAccessor::Fun(x) => {

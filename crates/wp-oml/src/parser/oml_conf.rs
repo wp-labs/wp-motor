@@ -219,6 +219,12 @@ fn ensure_static_precise_supported(eval: &PreciseEvaluator) -> Result<(), ErrMod
             }
             Ok(())
         }
+        PreciseEvaluator::ObjArray(op) => {
+            for item in op.items() {
+                ensure_static_precise_supported(item)?;
+            }
+            Ok(())
+        }
         PreciseEvaluator::Sql(_) => {
             static_block_err("static block does not support SQL queries or external effects")
         }
@@ -272,6 +278,18 @@ fn ensure_static_nested_accessor_supported(
         }
         crate::language::NestedAccessor::Fun(_) => {
             static_block_err("static block does not support runtime functions")
+        }
+        crate::language::NestedAccessor::Map(op) => {
+            for binding in op.subs() {
+                ensure_static_nested_accessor_supported(binding.acquirer())?;
+            }
+            Ok(())
+        }
+        crate::language::NestedAccessor::ObjArray(op) => {
+            for item in op.items() {
+                ensure_static_precise_supported(item)?;
+            }
+            Ok(())
         }
     }
 }
@@ -371,6 +389,7 @@ fn rewrite_precise_evaluator(
         PreciseEvaluator::Pipe(pipe) => rewrite_pipe_operation(pipe, const_fields),
         PreciseEvaluator::Fun(fun) => rewrite_fun_operation(fun, const_fields),
         PreciseEvaluator::Map(map) => rewrite_map_operation(map, const_fields),
+        PreciseEvaluator::ObjArray(arr) => rewrite_obj_array_operation(arr, const_fields),
         PreciseEvaluator::Fmt(op) => rewrite_fmt_operation(op, const_fields),
         PreciseEvaluator::Tdc(op) => rewrite_record_operation(op, const_fields),
         PreciseEvaluator::Collect(arr) => rewrite_arr_operation(arr, const_fields),
@@ -461,6 +480,16 @@ fn rewrite_arr_operation(
     const_fields: &HashMap<String, Arc<DataField>>,
 ) -> Result<(), ErrMode<ContextError>> {
     rewrite_direct_accessor(&mut arr.dat_crate, const_fields)
+}
+
+fn rewrite_obj_array_operation(
+    arr: &mut crate::language::ObjArrayOperation,
+    const_fields: &HashMap<String, Arc<DataField>>,
+) -> Result<(), ErrMode<ContextError>> {
+    for item in arr.items_mut() {
+        rewrite_precise_evaluator(item, const_fields)?;
+    }
+    Ok(())
 }
 
 fn rewrite_pipe_operation(
@@ -641,6 +670,12 @@ fn rewrite_nested_accessor(
         }
         crate::language::NestedAccessor::Collect(arr) => {
             rewrite_arr_operation(arr, const_fields)?;
+        }
+        crate::language::NestedAccessor::Map(op) => {
+            rewrite_map_operation(op, const_fields)?;
+        }
+        crate::language::NestedAccessor::ObjArray(op) => {
+            rewrite_obj_array_operation(op, const_fields)?;
         }
         crate::language::NestedAccessor::Field(_)
         | crate::language::NestedAccessor::FieldArc(_)

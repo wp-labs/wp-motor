@@ -85,6 +85,7 @@ eval_expr         = calc_expr
                   | match_expr
                   | lookup_expr
                   | object_expr
+                  | array_expr
                   | pipe_expr
                   | collect_expr
                   | sql_expr
@@ -254,16 +255,21 @@ flag = @message | starts_with('ERROR') | map_to(true) ;
 object_expr       = "object", "{", object_item, { object_item }, "}" ;
 object_item       = object_targets, "=", object_value, [ ";" ] ;
 object_targets    = ident, { ",", ident }, [ ":", data_type ] ;
-object_value      = read_expr | take_expr | value_expr | builtin_fun | static_ref ;
+object_value      = read_expr | take_expr | value_expr | builtin_fun | static_ref
+                  | object_expr | array_expr ;
+
+array_expr        = "array", "{", array_item, { array_item }, "}" ;
+array_item        = object_expr | array_expr | read_expr | take_expr
+                  | value_expr | builtin_fun | static_ref, [ ";" ] ;
 
 collect_expr      = "collect", var_get ;
 ```
 
 **Notes**
 
-- `object { ... }` does not recursively accept all top-level expressions
-- object sub-values currently only support `read/take`, value literals, `Now::*`, and static symbols
-- `collect` always takes a `var_get` source
+- `object { ... }` sub-values support `read/take`, value literals, `Now::*`, static symbols, and nested `object { ... }` / `array { ... }` literals
+- `array { ... }` elements are full object/value expressions, collected into an object array (element field names are not emitted in JSON output)
+- `collect` always takes a `var_get` source (collects fields by keys into an array)
 
 **Examples**
 
@@ -271,6 +277,22 @@ collect_expr      = "collect", var_get ;
 info : obj = object {
     host : chars = read(hostname) ;
     city, province : chars = read() ;
+} ;
+
+roles_obj = object {
+    source = object {
+        entity_type = chars(host) ;
+        host = object {
+            id = read(asset_id) ;
+            name = read(computer_name) ;
+            ip = read(ip) ;
+        } ;
+    } ;
+} ;
+
+signatures = array {
+    object { signer = read(process_sign) ; } ;
+    object { signer = read(process_parent_sign) ; } ;
 } ;
 
 ports : array = collect read(keys:[sport, dport]) ;

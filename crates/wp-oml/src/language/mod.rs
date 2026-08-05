@@ -34,8 +34,8 @@ pub use syntax::{
     operations::{
         AccessDirectOperation, CalcExpr, CalcFun, CalcNumber, CalcOp, CalcOperation, FmtOperation,
         LookupDict, LookupOperation, MapOperation, MatchAble, MatchCase, MatchCond, MatchCondition,
-        MatchFun, MatchOperation, MatchSource, PiPeOperation, PipeSource, RecordOperation,
-        RecordOperationBuilder, SqlKnowledgeRoute, SqlQuery,
+        MatchFun, MatchOperation, MatchSource, ObjArrayOperation, PiPeOperation, PipeSource,
+        RecordOperation, RecordOperationBuilder, SqlKnowledgeRoute, SqlQuery,
     },
 };
 pub use types::model::DataModel;

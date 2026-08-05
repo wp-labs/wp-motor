@@ -4,6 +4,7 @@ use crate::language::PreciseEvaluator;
 use crate::language::{GenericAccessor, NestedAccessor};
 use crate::language::{SqlFnArg, SqlFnExpr};
 use crate::parser::fun_prm::oml_gw_fun;
+use crate::parser::map_prm::{oml_aga_map, oml_aga_obj_array};
 use crate::parser::static_ctx::parse_static_value;
 use winnow::ascii::multispace0;
 use winnow::combinator::{alt, opt, trace};
@@ -35,6 +36,8 @@ pub fn oml_gens_acq(data: &mut &str) -> ModalResult<GenericAccessor> {
 
 pub fn oml_sub_acq(data: &mut &str) -> ModalResult<NestedAccessor> {
     let gw = alt((
+        trace("get map:", oml_aga_map),
+        trace("get array:", oml_aga_obj_array),
         trace("get take:", oml_aga_tdc),
         trace("get fun:", oml_gw_fun),
         trace("get value:", oml_aga_value),
@@ -45,6 +48,8 @@ pub fn oml_sub_acq(data: &mut &str) -> ModalResult<NestedAccessor> {
     let sub_gw = match gw {
         PreciseEvaluator::Obj(x) => NestedAccessor::Field(x),
         PreciseEvaluator::Tdc(x) => NestedAccessor::Direct(x),
+        PreciseEvaluator::Map(x) => NestedAccessor::Map(x),
+        PreciseEvaluator::ObjArray(x) => NestedAccessor::ObjArray(x),
         PreciseEvaluator::Fun(x) => NestedAccessor::Fun(x),
         PreciseEvaluator::StaticSymbol(sym) => NestedAccessor::StaticSymbol(sym),
         _ => {

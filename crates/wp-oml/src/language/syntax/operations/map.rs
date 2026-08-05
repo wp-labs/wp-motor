@@ -1,6 +1,6 @@
 use crate::language::{NestedBinding, prelude::*};
 
-#[derive(Default, Builder, Debug, Clone, Getters)]
+#[derive(Default, Builder, Debug, Clone, Getters, PartialEq)]
 pub struct MapOperation {
     //target: AgaTarget,
     subs: Vec<NestedBinding>,

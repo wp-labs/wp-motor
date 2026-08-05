@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.3 Unreleased]
+
+### Added
+- **OML 嵌套对象**：`object { ... }` 子项值支持嵌套 `object { ... }` 字面量，可将平铺字段组织成多层 JSON；嵌套对象可任意深度，并与 `array` 互相嵌套
+- **OML 对象数组**：新增 `array { ... }` 聚合表达式，直接构造对象/值字面量数组（元素支持 `object { ... }`、嵌套 `array`、`read/take`、值、函数等表达式）；元素缺失或为 null 自动跳过，全部缺失不输出该字段
+- **static 块**：静态块支持嵌套对象/数组字面量（`ensure_static_*` 校验与静态符号重写覆盖 `NestedAccessor::Map`/`ObjArray`）
+
+### Fixed
+- **引擎启动加载失败（exit 300）**：修复嵌套 object 在 `load-engine-res` 阶段解析失败的问题——`wpadm check --what oml` 只校验文件非空，真实解析发生在引擎启动时；此前 `oml_sub_acq` 不接受 `object` 作为子项值，且 `array` 关键字未注册
+
+### Docs
+- **OML 文档**：语法参考（zh/en）补充 `array_expr` 与嵌套 `object_value`；核心概念、实战指南、完整示例新增对象数组与嵌套对象示例
+
+### Tests
+- **wp-oml 集成测试**：新增 15 个嵌套对象/数组用例（解析、求值形状、JSON 端到端输出、深层混合嵌套、缺失元素跳过、数组套数组、类型声明、get 管道、static 块、Display 往返、空数组、省略分号、文档示例）
+
 ## [1.25.2] - 2026-08-05
 
 ### Changed

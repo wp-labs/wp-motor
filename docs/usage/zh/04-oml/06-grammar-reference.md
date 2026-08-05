@@ -85,6 +85,7 @@ eval_expr         = calc_expr
                   | match_expr
                   | lookup_expr
                   | object_expr
+                  | array_expr
                   | pipe_expr
                   | collect_expr
                   | sql_expr
@@ -254,16 +255,21 @@ flag = @message | starts_with('ERROR') | map_to(true) ;
 object_expr       = "object", "{", object_item, { object_item }, "}" ;
 object_item       = object_targets, "=", object_value, [ ";" ] ;
 object_targets    = ident, { ",", ident }, [ ":", data_type ] ;
-object_value      = read_expr | take_expr | value_expr | builtin_fun | static_ref ;
+object_value      = read_expr | take_expr | value_expr | builtin_fun | static_ref
+                  | object_expr | array_expr ;
+
+array_expr        = "array", "{", array_item, { array_item }, "}" ;
+array_item        = object_expr | array_expr | read_expr | take_expr
+                  | value_expr | builtin_fun | static_ref, [ ";" ] ;
 
 collect_expr      = "collect", var_get ;
 ```
 
 **说明**
 
-- `object { ... }` 内部当前不再递归接受所有顶层表达式
-- 子项值当前只支持 `read/take`、值字面量、`Now::*`、静态符号
-- `collect` 的输入来源是一个 `var_get`
+- `object { ... }` 子项值支持 `read/take`、值字面量、`Now::*`、静态符号，以及嵌套 `object { ... }` 与 `array { ... }` 字面量
+- `array { ... }` 元素为完整的 object / 值表达式，求值后收集为对象数组（元素字段名不进入 JSON 输出）
+- `collect` 的输入来源是一个 `var_get`（按 keys 收集为数组）
 
 **示例**
 
@@ -271,6 +277,22 @@ collect_expr      = "collect", var_get ;
 info : obj = object {
     host : chars = read(hostname) ;
     city, province : chars = read() ;
+} ;
+
+roles_obj = object {
+    source = object {
+        entity_type = chars(host) ;
+        host = object {
+            id = read(asset_id) ;
+            name = read(computer_name) ;
+            ip = read(ip) ;
+        } ;
+    } ;
+} ;
+
+signatures = array {
+    object { signer = read(process_sign) ; } ;
+    object { signer = read(process_parent_sign) ; } ;
 } ;
 
 ports : array = collect read(keys:[sport, dport]) ;

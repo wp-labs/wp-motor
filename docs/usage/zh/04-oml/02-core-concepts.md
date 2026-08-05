@@ -349,9 +349,19 @@ info : obj = object {
     age = read(age) ;
 } ;
 
-# 数组聚合
+# 数组聚合：按 keys 收集已有字段
 items : array = collect read(keys:[a, b, c]) ;
+
+# 对象数组聚合：构造对象字面量列表
+signatures = array {
+    object { signer = read(process_sign) ; } ;
+    object { signer = read(process_parent_sign) ; } ;
+} ;
 ```
+
+- `object { ... }` 构造单层或嵌套对象
+- `collect` 把输入字段按 `keys` 收集成数组
+- `array { ... }` 直接构造对象/值字面量数组（元素缺失自动跳过）
 
 ## 默认值机制
 
@@ -488,6 +498,52 @@ deployment : obj = object {
     } ;
 } ;
 ```
+
+嵌套对象可以任意深度；对象、数组可以互相嵌套（如 `object` 内含 `array`，`array` 内含 `object`）。
+
+### 对象数组
+
+用 `array { ... }` 构造对象字面量数组：
+
+```oml
+name : object_array
+---
+roles_obj = object {
+    source = object {
+        entity_type = chars(host) ;
+        host = object {
+            id = read(asset_id) ;
+            name = read(computer_name) ;
+            ip = read(ip) ;
+        } ;
+    } ;
+} ;
+
+signatures = array {
+    object { signer = read(process_sign) ; } ;
+    object { signer = read(process_parent_sign) ; } ;
+} ;
+```
+
+输出 JSON：
+
+```json
+{
+  "roles_obj": {
+    "source": {
+      "entity_type": "host",
+      "host": { "id": "2868257359929541780", "name": "DESKTOP-NGMF7JI", "ip": "10.95.209.76" }
+    }
+  },
+  "signatures": [
+    { "signer": "Microsoft Windows" },
+    { "signer": "Microsoft Windows Publisher" }
+  ]
+}
+```
+
+- 数组元素可以是 `object { ... }`、嵌套 `array { ... }`、`read/take`、值、函数等表达式
+- 元素缺失（`read` 不到）或为 null 时自动跳过，不进入数组
 
 ### 管道链
 

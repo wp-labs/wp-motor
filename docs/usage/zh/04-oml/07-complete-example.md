@@ -272,6 +272,18 @@ extends = object {
 // 8.2 数组收集（collect）
 collected_ports : array = collect read(keys:[sport, dport, extra_port]);
 wildcard_items : array = collect take(keys:[details[*]/process_name]);  // 支持通配符收集
+
+// 8.3 对象数组（array 字面量）
+signatures = array {
+    object { signer = read(process_sign); };
+    object { signer = read(process_parent_sign); };
+};
+
+// 8.4 嵌套对象（object 子项支持嵌套 object / array）
+roles_obj = object {
+    source = object { entity_type = chars(host); };
+    tags = array { chars(web); chars(proxy); };
+};
 ```
 
 ---
@@ -574,6 +586,35 @@ collected_ports : array = collect read(keys:[sport, dport, extra_port]);
 
 wildcard_items : array = collect take(keys:[details[*]/process_name]);
 // 输出：["proc1", "proc2"]
+```
+
+#### 8.3 对象数组
+直接构造对象字面量数组（`array { ... }`）：
+```oml
+signatures = array {
+    object { signer = read(process_sign); };
+    object { signer = read(process_parent_sign); };
+};
+// 输出：[{"signer":"Microsoft Windows"}, {"signer":"Microsoft Windows Publisher"}]
+```
+
+#### 8.4 嵌套对象
+`object` 子项可以是嵌套 `object` 或 `array` 字面量：
+```oml
+roles_obj = object {
+    source = object {
+        entity_type = chars(host);
+        host = object {
+            id = read(asset_id);
+            name = read(computer_name);
+        };
+    };
+    tags = array {
+        chars(web);
+        chars(proxy);
+    };
+};
+// 输出：{"source":{"entity_type":"host","host":{"id":"...","name":"..."}},"tags":["web","proxy"]}
 ```
 
 ---

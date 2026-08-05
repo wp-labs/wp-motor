@@ -8,6 +8,7 @@ use crate::language::syntax::operations::fmt::FmtOperation;
 use crate::language::syntax::operations::lookup::LookupOperation;
 use crate::language::syntax::operations::map::MapOperation;
 use crate::language::syntax::operations::matchs::MatchOperation;
+use crate::language::syntax::operations::obj_array::ObjArrayOperation;
 use crate::language::syntax::operations::pipe::PiPeOperation;
 use crate::language::syntax::operations::record::RecordOperation;
 use crate::language::syntax::operations::sql::SqlQuery;
@@ -58,6 +59,7 @@ pub enum PreciseEvaluator {
     ObjArc(Arc<DataField>),
     Tdc(RecordOperation),
     Map(MapOperation),
+    ObjArray(ObjArrayOperation),
     Pipe(PiPeOperation),
     Fun(FunOperation),
     Fmt(FmtOperation),
@@ -85,6 +87,7 @@ impl Display for PreciseEvaluator {
             PreciseEvaluator::ObjArc(x) => Display::fmt(x.as_ref(), f),
             PreciseEvaluator::Tdc(x) => Display::fmt(x, f),
             PreciseEvaluator::Map(x) => Display::fmt(x, f),
+            PreciseEvaluator::ObjArray(x) => Display::fmt(x, f),
             PreciseEvaluator::Pipe(x) => Display::fmt(x, f),
             PreciseEvaluator::Fun(x) => Display::fmt(x, f),
             PreciseEvaluator::Fmt(x) => Display::fmt(x, f),

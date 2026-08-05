@@ -14,7 +14,7 @@ pub mod models;
 pub mod operations;
 pub mod traits;
 pub use traits::VarAccess;
-#[derive(Builder, Debug, Clone, Getters)]
+#[derive(Builder, Debug, Clone, Getters, PartialEq)]
 #[builder(setter(into))]
 pub struct NestedBinding {
     target: EvaluationTarget,

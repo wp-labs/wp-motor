@@ -4,6 +4,7 @@ mod calc;
 mod lookup;
 mod map;
 mod matchs;
+mod obj_array;
 mod other;
 mod record;
 

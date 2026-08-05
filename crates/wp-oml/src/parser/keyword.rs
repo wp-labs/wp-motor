@@ -221,6 +221,17 @@ pub fn kw_object(data: &mut &str) -> WResult<()> {
     Ok(())
 }
 
+pub fn kw_array(data: &mut &str) -> WResult<()> {
+    let _ = multispace0.parse_next(data)?;
+    literal("array")
+        .context(StrContext::Label("oml keyword"))
+        .context(StrContext::Expected(StrContextValue::Description(
+            "need 'array' keyword",
+        )))
+        .parse_next(data)?;
+    Ok(())
+}
+
 pub fn kw_lib(data: &mut &str) -> WResult<()> {
     let _ = multispace0.parse_next(data)?;
     literal("lib")
