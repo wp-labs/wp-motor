@@ -17,9 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **OML 内网富化**：新增 `intranet_ip`（判内/外）、`access_direct`（访问方向）、`on_fail`（失败兜底）函数；管道源扩展（`PipeSource`）支持 `access_direct(a,b) | on_fail('x')`
 - **内网网段知识管理**：内网网段作为知识统一由 wp-knowledge 管理（`knowdb.toml [intranet_nets]` 节，随 knowdb 加载注入）；默认 RFC1918 + IPv4/IPv6 loopback + IPv6 ULA，可配置扩展；项目初始化自动生成该节；`wproj check` 增加校验项；`is_intranet` 按 IPv4/IPv6 地址族分桶优化
 
-### Changed
-- **Dependencies**：`wp-knowledge` 依赖改为本地 path
-
 ## [1.25.0] - 2026-08-04
 
 ### Added
