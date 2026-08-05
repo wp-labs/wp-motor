@@ -5,10 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.25.0 Unreleased]
+## [1.25.2 Unreleased]
 
 ### Added
-- **OML 内网富化**：新增 `intranet_ip`（判内/外）、`access_direct`（访问方向）、`on_fail`（失败兜底）函数；管道源扩展支持 `access_direct(a,b) | on_fail('x')`。内网网段作为知识统一由 wp-knowledge 管理（`knowdb.toml [intranet_nets]` 节），`wproj check` 可校验
+- **OML 内网富化**：新增 `intranet_ip`（判内/外）、`access_direct`（访问方向）、`on_fail`（失败兜底）函数；管道源扩展支持 `access_direct(a,b) | on_fail('x')`。内网网段作为知识统一由 wp-knowledge 管理（`knowdb.toml [intranet_nets]` 节），`wproj check` 可校验。输出英文简写：`intranet_ip` → `LAN`/`WAN`，`access_direct` → `L2L`/`L2W`/`W2L`/`W2W`
 - **OML IP 编码**：新增 `ip_to_biguint`（IPv4/IPv6 统一编码），`FieldQueryCache`/`compare_datafield` 支持 `BigUint`
 - **Docs**：OML 语法参考、富化函数与内网网段配置文档同步
 

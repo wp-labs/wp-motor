@@ -27,10 +27,10 @@ fn ip_of(field: &DataField) -> Option<IpAddr> {
 /// 根据 src/dst 的内外归属组合通信方向
 fn access_direction_str(src: &IpAddr, dst: &IpAddr) -> &'static str {
     match (is_intranet(src), is_intranet(dst)) {
-        (true, true) => "内到内",
-        (true, false) => "内到外",
-        (false, true) => "外到内",
-        (false, false) => "外到外",
+        (true, true) => "L2L",
+        (true, false) => "L2W",
+        (false, true) => "W2L",
+        (false, false) => "W2W",
     }
 }
 
@@ -161,22 +161,22 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_access_direct_in_to_in() {
-        assert_eq!(run_access_direct(v4(PRIVATE), v4(PRIVATE)).await, "内到内");
+        assert_eq!(run_access_direct(v4(PRIVATE), v4(PRIVATE)).await, "L2L");
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_access_direct_in_to_out() {
-        assert_eq!(run_access_direct(v4(PRIVATE), v4(PUBLIC)).await, "内到外");
+        assert_eq!(run_access_direct(v4(PRIVATE), v4(PUBLIC)).await, "L2W");
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_access_direct_out_to_in() {
-        assert_eq!(run_access_direct(v4(PUBLIC), v4(PRIVATE)).await, "外到内");
+        assert_eq!(run_access_direct(v4(PUBLIC), v4(PRIVATE)).await, "W2L");
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_access_direct_out_to_out() {
-        assert_eq!(run_access_direct(v4(PUBLIC), v4(PUBLIC)).await, "外到外");
+        assert_eq!(run_access_direct(v4(PUBLIC), v4(PUBLIC)).await, "W2W");
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -184,7 +184,7 @@ mod tests {
         // IPv6 ULA → 公网 = 内到外
         assert_eq!(
             run_access_direct(IpAddr::from_str("fc00::1").unwrap(), v4(PUBLIC)).await,
-            "内到外"
+            "L2W"
         );
     }
 
@@ -258,7 +258,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_access_direct_pipe_on_fail_keeps_success() {
         let cache = &mut FieldQueryCache::default();
-        // 私网→公网 = "内到外"，on_fail 不干预成功结果
+        // 私网→公网 = "L2W"，on_fail 不干预成功结果
         let data = vec![
             FieldStorage::from_owned(DataField::from_ip("sip", v4(PRIVATE))),
             FieldStorage::from_owned(DataField::from_ip("dip", v4(PUBLIC))),
@@ -272,7 +272,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_chars("X".to_string(), "内到外");
+        let expect = DataField::from_chars("X".to_string(), "L2W");
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 

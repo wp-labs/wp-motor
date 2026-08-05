@@ -580,8 +580,8 @@ name : example_on_fail
 src_ip : ip = take() ;
 side = pipe read(src_ip) | intranet_ip | on_fail('unknown') ;
 
-# src_ip 为内网 → "内"
-# src_ip 为外网 → "外"
+# src_ip 为内网 → "LAN"
+# src_ip 为外网 → "WAN"
 # src_ip 缺失/非法 → "unknown"（intranet_ip 输出 Ignore，on_fail 兜底）
 
 empty_side = pipe read(src_ip) | intranet_ip | on_fail('') ;
@@ -733,7 +733,7 @@ IP = a.b.c.d
 
 ### intranet_ip
 
-判断 IP 地址属于内网还是互联网，返回中文字符串 `内` / `外`。
+判断 IP 地址属于内网还是互联网，返回 `LAN` / `WAN`。
 
 **语法**
 ```oml
@@ -741,7 +741,7 @@ result = pipe read(ip_field) | intranet_ip ;
 ```
 
 **输入类型**: `ip` (IPv4/IPv6 地址) 或 `chars` (IP 字符串)
-**输出类型**: `chars` (`内` / `外`)
+**输出类型**: `chars` (`LAN` / `WAN`)
 
 **示例**
 ```oml
@@ -751,13 +751,13 @@ src_ip : ip = take() ;
 side = pipe read(src_ip) | intranet_ip ;
 
 # 输入: 10.0.0.1
-# 输出: "内"
+# 输出: "LAN"
 
 # 输入: 8.8.8.8
-# 输出: "外"
+# 输出: "WAN"
 
 # 输入: fc00::1
-# 输出: "内"
+# 输出: "LAN"
 ```
 
 **内网网段判定**

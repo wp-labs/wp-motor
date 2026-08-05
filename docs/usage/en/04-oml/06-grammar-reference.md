@@ -98,7 +98,7 @@ eval_expr         = calc_expr
 
 ### `access_direct(...)`
 
-Combines the intranet sides of src/dst IPs into an access direction, returning `内到内`/`内到外`/`外到内`/`外到外`.
+Combines the intranet sides of src/dst IPs into an access direction, returning `L2L`/`L2W`/`W2L`/`W2W`.
 
 ```ebnf
 access_direct_expr = "access_direct", "(", var_get, ",", var_get, ")", [ "|", pipe_item, { "|", pipe_item } ] ;
@@ -112,7 +112,7 @@ access_direct_expr = "access_direct", "(", var_get, ",", var_get, ")", [ "|", pi
 **Example**
 ```oml
 direction = access_direct(read(sip), read(dip)) | on_fail('unknown') ;
-# intranet→intranet: "内到内"; intranet→internet: "内到外"; internet→intranet: "外到内"; internet→internet: "外到外"
+# intranet→intranet: "L2L"; intranet→internet: "L2W"; internet→intranet: "W2L"; internet→internet: "W2W"
 # missing src/dst: "unknown" (on_fail fallback)
 ```
 

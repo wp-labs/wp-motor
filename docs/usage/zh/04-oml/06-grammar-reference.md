@@ -130,21 +130,21 @@ country = read(country) { _ : chars(CN) } ;
 
 ### `access_direct(...)`
 
-组合 src/dst 两个 IP 的内外归属得到访问方向，返回 `内到内`/`内到外`/`外到内`/`外到外`。
+组合 src/dst 两个 IP 的内外归属得到访问方向，返回 `L2L`/`L2W`/`W2L`/`W2W`。
 
 ```ebnf
 access_direct_expr = "access_direct", "(", var_get, ",", var_get, ")", [ "|", pipe_item, { "|", pipe_item } ] ;
 ```
 
 **说明**
-- 内/外判定使用内网网段知识（`knowdb.toml` 的 `[intranet_nets]` 节）
+- intranet/internet判定使用内网网段知识（`knowdb.toml` 的 `[intranet_nets]` 节）
 - src/dst 缺失或非法输出 `Ignore`，可用管道 `| on_fail('unknown')` 提供兜底
 - 支持 IPv4 + IPv6；IPv4-mapped IPv6 按 IPv4 判定
 
 **示例**
 ```oml
 direction = access_direct(read(sip), read(dip)) | on_fail('unknown') ;
-# 内网→内网: "内到内"；内网→外网: "内到外"；外网→内网: "外到内"；外网→外网: "外到外"
+# 内网→内网: "L2L"；内网→外网: "L2W"；外网→内网: "W2L"；外网→外网: "W2W"
 # src/dst 缺失: "unknown"（on_fail 兜底）
 ```
 

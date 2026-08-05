@@ -79,7 +79,7 @@ impl ValueProcessor for IntranetIp {
     fn value_cacu(&self, in_val: DataField) -> DataField {
         match in_val.get_value() {
             Value::IpAddr(ip) => {
-                let side = if is_intranet(ip) { "内" } else { "外" };
+                let side = if is_intranet(ip) { "LAN" } else { "WAN" };
                 DataField::from_chars(in_val.get_name().to_string(), side)
             }
             Value::Chars(value) => {
@@ -90,7 +90,7 @@ impl ValueProcessor for IntranetIp {
                 value
                     .parse::<IpAddr>()
                     .map(|ip| {
-                        let side = if is_intranet(&ip) { "内" } else { "外" };
+                        let side = if is_intranet(&ip) { "LAN" } else { "WAN" };
                         DataField::from_chars(in_val.get_name().to_string(), side)
                     })
                     .unwrap_or_else(|_| DataField::from_ignore(in_val.get_name().to_string()))
@@ -127,7 +127,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_chars("X".to_string(), "内");
+        let expect = DataField::from_chars("X".to_string(), "LAN");
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -147,7 +147,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_chars("X".to_string(), "外");
+        let expect = DataField::from_chars("X".to_string(), "WAN");
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -167,7 +167,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_chars("X".to_string(), "内");
+        let expect = DataField::from_chars("X".to_string(), "LAN");
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -187,7 +187,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_chars("X".to_string(), "外");
+        let expect = DataField::from_chars("X".to_string(), "WAN");
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -207,7 +207,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_chars("X".to_string(), "内");
+        let expect = DataField::from_chars("X".to_string(), "LAN");
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -276,7 +276,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn test_pipe_intranet_ip_on_fail_keeps_success_value() {
         let cache = &mut FieldQueryCache::default();
-        // 公网 IP → "外"，on_fail 不干预成功结果
+        // 公网 IP → "WAN"，on_fail 不干预成功结果
         let data = vec![FieldStorage::from_owned(DataField::from_ip(
             "src_ip",
             IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)),
@@ -290,7 +290,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_chars("X".to_string(), "外");
+        let expect = DataField::from_chars("X".to_string(), "WAN");
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 

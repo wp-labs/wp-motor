@@ -20,7 +20,7 @@
 | `Now::time()` | 当前时间 | `event_time = Now::time() ;` |
 | `Now::date()` | 当前日期，返回 `YYYYMMDD` 数字 | `today = Now::date() ;` |
 | `Now::hour()` | 当前小时，返回 `YYYYMMDDHH` 数字 | `hour = Now::hour() ;` |
-| `access_direct(src, dst)` | 判断访问方向（`内到内`/`内到外`/`外到内`/`外到外`） | `dir = access_direct(read(sip), read(dip)) | on_fail('unknown') ;` |
+| `access_direct(src, dst)` | 判断访问方向（`L2L`/`L2W`/`W2L`/`W2W`） | `dir = access_direct(read(sip), read(dip)) | on_fail('unknown') ;` |
 
 ### 管道函数
 
@@ -176,7 +176,7 @@ current_hour : digit = Now::hour() ;
 
 ### `access_direct(src, dst)`
 
-组合 src/dst 两个 IP 的内外归属得到访问方向，返回 `内到内`/`内到外`/`外到内`/`外到外`。
+组合 src/dst 两个 IP 的内外归属得到访问方向，返回 `L2L`/`L2W`/`W2L`/`W2W`。
 
 **语法**
 ```oml
@@ -185,7 +185,7 @@ direction = access_direct(read(sip), read(dip)) | on_fail('unknown') ;
 ```
 
 **说明**
-- 内/外判定使用内网网段知识（`knowdb.toml` 的 `[intranet_nets]` 节）
+- intranet/internet判定使用内网网段知识（`knowdb.toml` 的 `[intranet_nets]` 节）
 - src/dst 缺失或非法输出 `Ignore`，可用管道 `| on_fail('unknown')` 兜底
 - 支持 IPv4 + IPv6
 
@@ -197,7 +197,7 @@ sip : ip = take() ;
 dip : ip = take() ;
 direction = access_direct(read(sip), read(dip)) | on_fail('unknown') ;
 
-# 内网→内网: "内到内"；内网→外网: "内到外"；外网→内网: "外到内"；外网→外网: "外到外"
+# 内网→内网: "L2L"；内网→外网: "L2W"；外网→内网: "W2L"；外网→外网: "W2W"
 # src/dst 缺失: "unknown"
 ```
 

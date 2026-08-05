@@ -20,7 +20,7 @@ This document lists only the built-in functions, built-in expressions, and pipe 
 | `Now::time()` | Current time | `event_time = Now::time() ;` |
 | `Now::date()` | Current date as `YYYYMMDD` | `today = Now::date() ;` |
 | `Now::hour()` | Current hour as `YYYYMMDDHH` | `hour = Now::hour() ;` |
-| `access_direct(src, dst)` | Access direction (`内到内`/`内到外`/`外到内`/`外到外`) | `dir = access_direct(read(sip), read(dip)) | on_fail('unknown') ;` |
+| `access_direct(src, dst)` | Access direction (`L2L`/`L2W`/`W2L`/`W2W`) | `dir = access_direct(read(sip), read(dip)) | on_fail('unknown') ;` |
 
 ### Pipe Functions
 
