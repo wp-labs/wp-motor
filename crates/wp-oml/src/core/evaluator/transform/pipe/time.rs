@@ -593,4 +593,111 @@ mod tests {
         let model = oml_parse_raw(&mut conf).await;
         assert!(model.is_err(), "from_ts(999) 超 ±24h 应在解析期被拒绝");
     }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_time_from_ts_ms_negative() {
+        let cache = &mut FieldQueryCache::default();
+        // 负毫秒时间戳（1970 前）：-1000 ms → 1969-12-31 23:59:59.000 UTC
+        let data = vec![FieldStorage::from_owned(DataField::from_digit("ts_ms", -1000))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe read(ts_ms) | Time::from_ts_ms(0) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(-1000)
+            .unwrap()
+            .naive_utc();
+        let out = target.field("X").expect("X field").as_field();
+        assert_eq!(out.get_value(), &wp_model_core::model::Value::Time(expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_time_from_ts_negative() {
+        let cache = &mut FieldQueryCache::default();
+        // 负秒时间戳（1970 前）：-1 s → 1969-12-31 23:59:59 UTC
+        let data = vec![FieldStorage::from_owned(DataField::from_digit("ts", -1))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe read(ts) | Time::from_ts(0) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect =
+            chrono::DateTime::<chrono::Utc>::from_timestamp(-1, 0).unwrap().naive_utc();
+        let out = target.field("X").expect("X field").as_field();
+        assert_eq!(out.get_value(), &wp_model_core::model::Value::Time(expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_time_from_ts_us_negative() {
+        let cache = &mut FieldQueryCache::default();
+        // 负微秒时间戳（1970 前）：-1000000 us → 1969-12-31 23:59:59.000000 UTC
+        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+            "ts_us",
+            -1000000,
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe read(ts_us) | Time::from_ts_us(0) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = chrono::DateTime::<chrono::Utc>::from_timestamp_micros(-1000000)
+            .unwrap()
+            .naive_utc();
+        let out = target.field("X").expect("X field").as_field();
+        assert_eq!(out.get_value(), &wp_model_core::model::Value::Time(expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_time_ts_ms_roundtrip_negative() {
+        let cache = &mut FieldQueryCache::default();
+        // 负时间戳（1970 前）默认东8往返互逆
+        let data = vec![FieldStorage::from_owned(DataField::from_digit("ts_ms", -1000))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe read(ts_ms) | Time::from_ts_ms ;
+        Y  =  pipe read(X) | Time::to_ts_ms ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_digit("Y".to_string(), -1000);
+        assert_eq!(target.field("Y").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_time_ts_cross_zone_not_inverse() {
+        let cache = &mut FieldQueryCache::default();
+        // 文档「互逆需使用相同 zone」：from_ts_ms(8) 后接 to_ts_ms(0) 得原值 + 8h
+        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+            "ts_ms",
+            1739000000000,
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe read(ts_ms) | Time::from_ts_ms(8) ;
+        Y  =  pipe read(X) | Time::to_ts_ms(0) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        // 东8墙钟再按 UTC 解释 → 原值 + 8h = 1739028800000
+        let expect = DataField::from_digit("Y".to_string(), 1739028800000);
+        assert_eq!(target.field("Y").map(|s| s.as_field()), Some(&expect));
+    }
 }
