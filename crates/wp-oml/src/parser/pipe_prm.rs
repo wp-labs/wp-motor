@@ -462,6 +462,9 @@ mod tests {
         let mut code = r#" pipe take(ip) | Time::to_ts_ms | Time::to_ts_ms(8) | Time::from_ts_ms | Time::from_ts_ms(-5)"#;
         assert_oml_parse(&mut code, oml_aga_pipe);
 
+        let mut code = r#" pipe take(ip) | Time::to_ts_ms(0) | Time::from_ts_ms(0) "#;
+        assert_oml_parse(&mut code, oml_aga_pipe);
+
         let mut code = r#" pipe take(ip) | skip_empty"#;
         assert_oml_parse(&mut code, oml_aga_pipe);
 
@@ -600,6 +603,53 @@ mod tests {
             println!("Second display output: {}", output2);
 
             // Output should stabilize after first round-trip
+            assert_eq!(
+                output, output2,
+                "Display output should be stable after round-trip"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_time_ts_round_trip() -> WResult<()> {
+        use crate::parser::pipe_prm::oml_aga_pipe;
+        use wp_primitives::Parser;
+
+        // 时间戳函数各形式（无参/正 zone/负 zone/组合）Display 往返稳定
+        let cases = vec![
+            r#" pipe take(field) | Time::to_ts_ms "#,
+            r#" pipe take(field) | Time::to_ts_ms(8) "#,
+            r#" pipe take(field) | Time::to_ts_ms(-5) "#,
+            r#" pipe take(field) | Time::from_ts_ms "#,
+            r#" pipe take(field) | Time::from_ts_ms(0) "#,
+            r#" pipe take(field) | Time::from_ts_ms(-5) "#,
+            r#" pipe take(field) | Time::from_ts_ms(0) | Time::to_ts_ms "#,
+        ];
+
+        for code in cases {
+            println!("\n=== Testing code: {} ===", code);
+
+            let mut code_slice = code;
+            let result = oml_aga_pipe.parse_next(&mut code_slice);
+            assert!(result.is_ok(), "Should parse code: '{}'", code);
+
+            let parsed = result.unwrap();
+            let output = format!("{}", parsed);
+            println!("Display output: {}", output);
+
+            let mut output_slice = output.as_str();
+            let result2 = oml_aga_pipe.parse_next(&mut output_slice);
+            assert!(
+                result2.is_ok(),
+                "Round-trip parse should succeed: '{}' -> '{}'",
+                code,
+                output
+            );
+
+            let parsed2 = result2.unwrap();
+            let output2 = format!("{}", parsed2);
             assert_eq!(
                 output, output2,
                 "Display output should be stable after round-trip"
