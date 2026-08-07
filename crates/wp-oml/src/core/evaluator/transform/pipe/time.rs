@@ -10,7 +10,7 @@ impl ValueProcessor for TimeFromTsMs {
             Value::Digit(ms) => {
                 let hour = 3600;
                 if let Some(dt) = DateTime::from_timestamp_millis(*ms)
-                    && let Some(tz) = FixedOffset::east_opt(self.zone.unwrap_or(8) * hour)
+                    && let Some(tz) = FixedOffset::east_opt(self.zone.unwrap_or(8).saturating_mul(hour))
                 {
                     let local = dt.with_timezone(&tz).naive_local();
                     return DataField::from_time(in_val.get_name().to_string(), local);
@@ -44,7 +44,7 @@ impl ValueProcessor for TimeToTsMs {
         match in_val.get_value() {
             Value::Time(x) => {
                 let hour = 3600;
-                if let Some(tz) = FixedOffset::east_opt(self.zone.unwrap_or(8) * hour)
+                if let Some(tz) = FixedOffset::east_opt(self.zone.unwrap_or(8).saturating_mul(hour))
                     && let Some(local) = x.and_local_timezone(tz).single()
                 {
                     return DataField::from_digit(
@@ -82,7 +82,7 @@ impl ValueProcessor for TimeToTsZone {
         match in_val.get_value() {
             Value::Time(x) => {
                 let hour = 3600;
-                if let Some(tz) = FixedOffset::east_opt(self.zone * hour)
+                if let Some(tz) = FixedOffset::east_opt(self.zone.saturating_mul(hour))
                     && let Some(local) = x.and_local_timezone(tz).single()
                 {
                     match self.unit {
@@ -413,5 +413,31 @@ mod tests {
         let target = model.transform_async(src, cache).await;
         let expect = DataField::from_digit("X", i64::MAX);
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_time_ts_overflow_zone_no_panic() {
+        let cache = &mut FieldQueryCache::default();
+        // zone 极大（|zone| > 596523）时 i32 乘法溢出：应透传而非 panic（debug 溢出检查）
+        let data = vec![FieldStorage::from_owned(DataField::from_digit("ts_ms", 0))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe read(ts_ms) | Time::from_ts_ms(1000000) ;
+        B  =  time(2000-10-10 0:0:0);
+        Y  =  pipe read(B) | Time::to_ts_ms(1000000) ;
+        C  =  pipe read(B) | Time::to_ts_zone(1000000, ms) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        assert_eq!(
+            target.field("X").map(|s| s.as_field()),
+            Some(&DataField::from_digit("X", 0))
+        );
+        let b = target.field("B").expect("B field").as_field().get_value().clone();
+        assert_eq!(target.field("Y").expect("Y field").as_field().get_value(), &b);
+        assert_eq!(target.field("C").expect("C field").as_field().get_value(), &b);
     }
 }
