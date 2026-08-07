@@ -1,7 +1,8 @@
 use crate::language::prelude::*;
 use wp_primitives::fun::fun_trait::Fun2Builder;
+
 pub const PIPE_TIME_TO_TS: &str = "Time::to_ts";
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TimeToTs {
     pub(crate) zone: Option<i32>,
 }
@@ -20,7 +21,7 @@ fn fmt_optional_zone(f: &mut Formatter<'_>, fun: &str, zone: &Option<i32>) -> st
 }
 
 pub const PIPE_TIME_TO_TS_MS: &str = "Time::to_ts_ms";
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TimeToTsMs {
     pub(crate) zone: Option<i32>,
 }
@@ -30,7 +31,7 @@ impl Display for TimeToTsMs {
     }
 }
 
-#[derive(Clone, Debug, Default, Display)]
+#[derive(Clone, Debug, Default, Display, Serialize, Deserialize)]
 #[display(style = "snake_case")]
 pub enum TimeStampUnit {
     MS,
@@ -39,7 +40,7 @@ pub enum TimeStampUnit {
     SS,
 }
 pub const PIPE_TIME_TO_TS_US: &str = "Time::to_ts_us";
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TimeToTsUs {
     pub(crate) zone: Option<i32>,
 }
@@ -49,7 +50,7 @@ impl Display for TimeToTsUs {
     }
 }
 pub const PIPE_TIME_TO_TS_ZONE: &str = "Time::to_ts_zone";
-#[derive(Clone, Debug, Default, Builder)]
+#[derive(Clone, Debug, Default, Builder, Serialize, Deserialize)]
 pub struct TimeToTsZone {
     pub(crate) unit: TimeStampUnit,
     pub(crate) zone: i32,
@@ -60,13 +61,35 @@ impl Display for TimeToTsZone {
     }
 }
 
+pub const PIPE_TIME_FROM_TS: &str = "Time::from_ts";
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TimeFromTs {
+    pub(crate) zone: Option<i32>,
+}
+impl Display for TimeFromTs {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        fmt_optional_zone(f, PIPE_TIME_FROM_TS, &self.zone)
+    }
+}
+
 pub const PIPE_TIME_FROM_TS_MS: &str = "Time::from_ts_ms";
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TimeFromTsMs {
     pub(crate) zone: Option<i32>,
 }
 impl Display for TimeFromTsMs {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         fmt_optional_zone(f, PIPE_TIME_FROM_TS_MS, &self.zone)
+    }
+}
+
+pub const PIPE_TIME_FROM_TS_US: &str = "Time::from_ts_us";
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TimeFromTsUs {
+    pub(crate) zone: Option<i32>,
+}
+impl Display for TimeFromTsUs {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        fmt_optional_zone(f, PIPE_TIME_FROM_TS_US, &self.zone)
     }
 }

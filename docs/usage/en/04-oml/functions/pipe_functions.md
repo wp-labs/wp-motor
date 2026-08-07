@@ -385,7 +385,8 @@ ts_utc = pipe read(occur_time) | Time::to_ts_zone(0, s) ;
 ```
 
 **注意事项**
-- 时区范围：-12 到 +14
+- 时区范围（整点）：-23 到 +23（`FixedOffset` 上限，超出在解析期报错）
+- 与可选 zone 的 `Time::to_ts(zone)` / `Time::to_ts_ms(zone)` / `Time::to_ts_us(zone)` 等价
 - 时间戳计算会自动调整时区偏移
 
 ---
@@ -427,6 +428,80 @@ event_time = pipe read(ts_ms) | Time::from_ts_ms(0) ;
 
 **注意**
 - 互逆需使用相同 `zone`：`from_ts_ms(8)` 得到的是东8区墙钟时间，再经 `to_ts_ms(0)` 按 UTC 解释，不会还原原时间戳
+
+---
+
+### Time::from_ts
+
+将秒级时间戳转换为时间。
+
+**语法**
+```oml
+result = pipe read(ts) | Time::from_ts ;       # 默认东8区
+result = pipe read(ts) | Time::from_ts(0) ;    # UTC
+result = pipe read(ts) | Time::from_ts(8) ;    # 东8区
+```
+
+**输入类型**: `digit` (秒时间戳)
+**输出类型**: `time` (时间)
+
+**参数**
+- `zone` - 时区偏移（可选，默认东8区），整数，正数东时区、负数西时区、零 UTC
+
+**示例**
+```oml
+name : example_time_from_ts
+---
+ts : digit = take() ;
+event_time = pipe read(ts) | Time::from_ts(0) ;
+
+# 输入: 971136000
+# 输出 (UTC+0): 2000-10-10 00:00:00
+```
+
+**用途**
+- 秒级时间戳还原为时间
+- 与 `Time::to_ts` 互为逆操作
+
+**注意**
+- 互逆需使用相同 `zone`（见 `Time::from_ts_ms`）
+
+---
+
+### Time::from_ts_us
+
+将微秒级时间戳转换为时间。
+
+**语法**
+```oml
+result = pipe read(ts_us) | Time::from_ts_us ;      # 默认东8区
+result = pipe read(ts_us) | Time::from_ts_us(0) ;   # UTC
+result = pipe read(ts_us) | Time::from_ts_us(8) ;   # 东8区
+```
+
+**输入类型**: `digit` (微秒时间戳)
+**输出类型**: `time` (时间)
+
+**参数**
+- `zone` - 时区偏移（可选，默认东8区），整数，正数东时区、负数西时区、零 UTC
+
+**示例**
+```oml
+name : example_time_from_ts_us
+---
+ts_us : digit = take() ;
+event_time = pipe read(ts_us) | Time::from_ts_us(0) ;
+
+# 输入: 971136000000000
+# 输出 (UTC+0): 2000-10-10 00:00:00
+```
+
+**用途**
+- 微秒级时间戳还原为时间
+- 与 `Time::to_ts_us` 互为逆操作
+
+**注意**
+- 互逆需使用相同 `zone`（见 `Time::from_ts_ms`）
 
 ---
 

@@ -41,7 +41,9 @@ This document lists only the built-in functions, built-in expressions, and pipe 
 | Time | `Time::to_ts_ms([zone])` | `ts = read(time) | Time::to_ts_ms ;` |
 | Time | `Time::to_ts_us([zone])` | `ts = read(time) | Time::to_ts_us ;` |
 | Time | `Time::to_ts_zone(zone, unit)` | `ts = read(time) | Time::to_ts_zone(0, ms) ;` |
+| Time | `Time::from_ts([zone])` | `t = read(ts) | Time::from_ts(0) ;` |
 | Time | `Time::from_ts_ms([zone])` | `t = read(ts_ms) | Time::from_ts_ms(0) ;` |
+| Time | `Time::from_ts_us([zone])` | `t = read(ts_us) | Time::from_ts_us(0) ;` |
 | Conversion | `to_json` | `payload = read(arr) | to_json ;` |
 | Conversion | `to_str` | `ip_s = read(ip) | to_str ;` |
 | Conversion | `ip4_to_int` | `ip_i = read(src_ip) | ip4_to_int ;` |
@@ -315,33 +317,36 @@ raw = read(message) | json_unescape ;
 
 ## Time Conversion Functions
 
-### `Time::to_ts`
+### `Time::to_ts([zone])`
 
 Converts to a second-level timestamp.
 
 ```oml
-ts = read(event_time) | Time::to_ts ;
+ts = read(event_time) | Time::to_ts ;       # default UTC+8
+ts_utc = read(event_time) | Time::to_ts(0) ;
 ```
 
-### `Time::to_ts_ms`
+### `Time::to_ts_ms([zone])`
 
 Converts to a millisecond timestamp.
 
 ```oml
-ts = read(event_time) | Time::to_ts_ms ;
+ts = read(event_time) | Time::to_ts_ms ;      # default UTC+8
+ts_utc = read(event_time) | Time::to_ts_ms(0) ;
 ```
 
-### `Time::to_ts_us`
+### `Time::to_ts_us([zone])`
 
 Converts to a microsecond timestamp.
 
 ```oml
-ts = read(event_time) | Time::to_ts_us ;
+ts = read(event_time) | Time::to_ts_us ;      # default UTC+8
+ts_utc = read(event_time) | Time::to_ts_us(0) ;
 ```
 
 ### `Time::to_ts_zone(zone, unit)`
 
-Converts to a timestamp using the specified timezone offset and unit.
+Converts to a timestamp using the specified timezone offset and unit. Equivalent to `Time::to_ts(zone)` / `Time::to_ts_ms(zone)` / `Time::to_ts_us(zone)`.
 
 Current supported units:
 
@@ -353,6 +358,33 @@ Current supported units:
 ```oml
 utc_ms = read(event_time) | Time::to_ts_zone(0, ms) ;
 local_s = read(event_time) | Time::to_ts_zone(8, s) ;
+```
+
+### `Time::from_ts([zone])`
+
+Converts a second-level timestamp to time. Inverse of `Time::to_ts`.
+
+```oml
+t = read(ts) | Time::from_ts ;       # default UTC+8
+t_utc = read(ts) | Time::from_ts(0) ;
+```
+
+### `Time::from_ts_ms([zone])`
+
+Converts a millisecond timestamp to time. Inverse of `Time::to_ts_ms`.
+
+```oml
+t = read(ts_ms) | Time::from_ts_ms ;      # default UTC+8
+t_utc = read(ts_ms) | Time::from_ts_ms(0) ;
+```
+
+### `Time::from_ts_us([zone])`
+
+Converts a microsecond timestamp to time. Inverse of `Time::to_ts_us`.
+
+```oml
+t = read(ts_us) | Time::from_ts_us ;      # default UTC+8
+t_utc = read(ts_us) | Time::from_ts_us(0) ;
 ```
 
 ---

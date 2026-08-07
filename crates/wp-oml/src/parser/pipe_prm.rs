@@ -5,10 +5,11 @@ use crate::language::{
     JsonUnescape, MapTo, MapValue, Nth, PIPE_BASE64_DECODE, PIPE_GET, PIPE_HTML_ESCAPE,
     PIPE_HTML_UNESCAPE, PIPE_IP_TO_BIGUINT, PIPE_IP4_TO_INT, PIPE_JSON_ESCAPE, PIPE_JSON_UNESCAPE,
     PIPE_MAP_TO, PIPE_NTH, PIPE_PATH, PIPE_SKIP_EMPTY, PIPE_STARTS_WITH, PIPE_STR_ESCAPE,
-    PIPE_TIME_FROM_TS_MS, PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US,
-    PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON, PIPE_URL, PathGet, PathType, PiPeOperation, PipeFun,
-    PipeSource, PreciseEvaluator, SkipEmpty, StartsWith, StrEscape, TimeFromTsMs, TimeStampUnit,
-    TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone, ToJson, UrlGet, UrlType,
+    PIPE_TIME_FROM_TS, PIPE_TIME_FROM_TS_MS, PIPE_TIME_FROM_TS_US, PIPE_TIME_TO_TS,
+    PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US, PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON, PIPE_URL,
+    PathGet, PathType, PiPeOperation, PipeFun, PipeSource, PreciseEvaluator, SkipEmpty,
+    StartsWith, StrEscape, TimeFromTs, TimeFromTsMs, TimeFromTsUs, TimeStampUnit, TimeToTs,
+    TimeToTsMs, TimeToTsUs, TimeToTsZone, ToJson, UrlGet, UrlType,
 };
 use crate::language::{
     Base64Encode, ExtractMainWord, ExtractSubjectObject, IntranetIp, OnFail, PIPE_BASE64_ENCODE,
@@ -47,7 +48,7 @@ impl Fun1Builder for Nth {
         Nth { index: args }
     }
 }
-/// zone 时区偏移解析：可选负号 + 数字；超 i32 范围时报错（避免静默变 0）
+/// zone 时区偏移解析：可选负号 + 数字；超 i32 范围或超出 FixedOffset 上限时报错（避免静默变 0）
 fn parse_zone(data: &mut &str) -> WResult<i32> {
     let sign = opt("-").parse_next(data)?;
     multispace0.parse_next(data)?;
@@ -56,11 +57,18 @@ fn parse_zone(data: &mut &str) -> WResult<i32> {
         Some(_) => format!("-{}", zone),
         None => zone.to_string(),
     };
-    signed.parse::<i32>().map_err(|_| {
+    let z = signed.parse::<i32>().map_err(|_| {
         warn_rule!("invalid zone '{}': out of i32 range", signed);
         // Cut：硬错误，避免被 alt 兜底成无参形式后在顶层残留括号报错
         ErrMode::Cut(ContextError::from_input(data))
-    })
+    })?;
+    // FixedOffset 上限 -86400 < secs < 86400，整点 zone 合法范围 -23..=23；
+    // 超范围的字面量是模型错误，解析期报错而非运行时透传
+    if z.abs() > 23 {
+        warn_rule!("invalid zone '{}': 超出 FixedOffset 范围（整点 ±23h）", z);
+        return Err(ErrMode::Cut(ContextError::from_input(data)));
+    }
+    Ok(z)
 }
 
 impl Fun2Builder for TimeToTsZone {
@@ -136,6 +144,30 @@ impl Fun1Builder for TimeToTsUs {
     }
     fn build(args: Self::ARG1) -> Self {
         TimeToTsUs { zone: Some(args) }
+    }
+}
+impl Fun1Builder for TimeFromTs {
+    type ARG1 = i32;
+    fn fun_name() -> &'static str {
+        PIPE_TIME_FROM_TS
+    }
+    fn args1(data: &mut &str) -> WResult<i32> {
+        parse_zone(data)
+    }
+    fn build(args: Self::ARG1) -> Self {
+        TimeFromTs { zone: Some(args) }
+    }
+}
+impl Fun1Builder for TimeFromTsUs {
+    type ARG1 = i32;
+    fn fun_name() -> &'static str {
+        PIPE_TIME_FROM_TS_US
+    }
+    fn args1(data: &mut &str) -> WResult<i32> {
+        parse_zone(data)
+    }
+    fn build(args: Self::ARG1) -> Self {
+        TimeFromTsUs { zone: Some(args) }
     }
 }
 impl Fun1Builder for Get {
@@ -396,19 +428,22 @@ pub fn oml_pipe(data: &mut &str) -> WResult<PipeFun> {
 
 fn pipe_fun_with_args(data: &mut &str) -> WResult<PipeFun> {
     // 带参管道函数（winnow alt 元组上限 9，超限时拆多层）
+    // 注意前缀关系：to_ts_zone/to_ts_ms/to_ts_us 排在 to_ts 前，from_ts_ms/from_ts_us 排在 from_ts 前
     alt((
         alt((
             parser::call_fun_args2::<TimeToTsZone>.map(PipeFun::TimeToTsZone),
             parser::call_fun_args1::<TimeToTsMs>.map(PipeFun::TimeToTsMs),
-            parser::call_fun_args1::<TimeFromTsMs>.map(PipeFun::TimeFromTsMs),
             parser::call_fun_args1::<TimeToTsUs>.map(PipeFun::TimeToTsUs),
             parser::call_fun_args1::<TimeToTs>.map(PipeFun::TimeToTs),
+            parser::call_fun_args1::<TimeFromTsMs>.map(PipeFun::TimeFromTsMs),
+            parser::call_fun_args1::<TimeFromTsUs>.map(PipeFun::TimeFromTsUs),
+            parser::call_fun_args1::<TimeFromTs>.map(PipeFun::TimeFromTs),
             parser::call_fun_args1::<Nth>.map(PipeFun::Nth),
             parser::call_fun_args1::<Get>.map(PipeFun::Get),
-            parser::call_fun_args1::<OnFail>.map(PipeFun::OnFail),
-            parser::call_fun_args1::<StartsWith>.map(PipeFun::StartsWith),
         )),
         alt((
+            parser::call_fun_args1::<OnFail>.map(PipeFun::OnFail),
+            parser::call_fun_args1::<StartsWith>.map(PipeFun::StartsWith),
             parser::call_fun_args1::<MapTo>.map(PipeFun::MapTo),
             parser::call_fun_args1::<Base64Decode>.map(PipeFun::Base64Decode),
             parser::call_fun_args1::<PathGet>.map(PipeFun::PathGet),
@@ -445,6 +480,8 @@ fn pipe_fun_simple_core_b(data: &mut &str) -> WResult<PipeFun> {
         PIPE_TIME_TO_TS_US.map(|_| PipeFun::TimeToTsUs(TimeToTsUs::default())),
         PIPE_TIME_TO_TS.map(|_| PipeFun::TimeToTs(TimeToTs::default())),
         PIPE_TIME_FROM_TS_MS.map(|_| PipeFun::TimeFromTsMs(TimeFromTsMs::default())),
+        PIPE_TIME_FROM_TS_US.map(|_| PipeFun::TimeFromTsUs(TimeFromTsUs::default())),
+        PIPE_TIME_FROM_TS.map(|_| PipeFun::TimeFromTs(TimeFromTs::default())),
         PIPE_TO_JSON.map(|_| PipeFun::ToJson(ToJson::default())),
     ))
     .parse_next(data)
@@ -489,10 +526,10 @@ mod tests {
         assert_oml_parse(&mut code, oml_aga_pipe);
 
         // 时间戳函数支持可选 zone（无参、带正/负 zone 均可解析）
-        let mut code = r#" pipe take(ip) | Time::to_ts | Time::to_ts_ms | Time::to_ts_us | Time::from_ts_ms"#;
+        let mut code = r#" pipe take(ip) | Time::to_ts | Time::to_ts_ms | Time::to_ts_us | Time::from_ts | Time::from_ts_ms | Time::from_ts_us"#;
         assert_oml_parse(&mut code, oml_aga_pipe);
 
-        let mut code = r#" pipe take(ip) | Time::to_ts(0) | Time::to_ts_ms(8) | Time::to_ts_us(-8) | Time::from_ts_ms(-5)"#;
+        let mut code = r#" pipe take(ip) | Time::to_ts(0) | Time::to_ts_ms(8) | Time::to_ts_us(-8) | Time::from_ts(8) | Time::from_ts_ms(-5) | Time::from_ts_us(0)"#;
         assert_oml_parse(&mut code, oml_aga_pipe);
 
         let mut code = r#" pipe take(ip) | Time::to_ts_ms(0) | Time::from_ts_ms(0) "#;
@@ -661,11 +698,18 @@ mod tests {
             r#" pipe take(field) | Time::to_ts_us "#,
             r#" pipe take(field) | Time::to_ts_us(8) "#,
             r#" pipe take(field) | Time::to_ts_us(-5) "#,
+            r#" pipe take(field) | Time::from_ts "#,
+            r#" pipe take(field) | Time::from_ts(0) "#,
+            r#" pipe take(field) | Time::from_ts(-5) "#,
             r#" pipe take(field) | Time::from_ts_ms "#,
             r#" pipe take(field) | Time::from_ts_ms(0) "#,
             r#" pipe take(field) | Time::from_ts_ms(-5) "#,
+            r#" pipe take(field) | Time::from_ts_us "#,
+            r#" pipe take(field) | Time::from_ts_us(0) "#,
+            r#" pipe take(field) | Time::from_ts_us(-5) "#,
             r#" pipe take(field) | Time::from_ts_ms(0) | Time::to_ts_ms "#,
             r#" pipe take(field) | Time::to_ts(0) | Time::to_ts_us(8) "#,
+            r#" pipe take(field) | Time::from_ts(0) | Time::from_ts_us(8) "#,
         ];
 
         for code in cases {
@@ -724,5 +768,48 @@ mod tests {
         let mut code = r#" pipe take(ip) | Time::to_ts_us(99999999999) "#;
         let result = oml_aga_pipe.parse_next(&mut code);
         assert!(result.is_err(), "to_ts_us 超 i32 zone 应被拒绝");
+
+        let mut code = r#" pipe take(ip) | Time::from_ts(99999999999) "#;
+        let result = oml_aga_pipe.parse_next(&mut code);
+        assert!(result.is_err(), "from_ts 超 i32 zone 应被拒绝");
+    }
+
+    #[test]
+    fn test_time_ts_zone_range_rejected() {
+        use crate::parser::pipe_prm::oml_aga_pipe;
+        use wp_primitives::Parser;
+
+        // |zone| >= 24 超出 FixedOffset 上限（-86400 < secs < 86400）：解析期报错
+        for code in [
+            r#" pipe take(ip) | Time::to_ts(24) "#,
+            r#" pipe take(ip) | Time::to_ts_ms(-24) "#,
+            r#" pipe take(ip) | Time::to_ts_us(25) "#,
+            r#" pipe take(ip) | Time::from_ts(24) "#,
+            r#" pipe take(ip) | Time::from_ts_ms(-25) "#,
+            r#" pipe take(ip) | Time::from_ts_us(24) "#,
+            r#" pipe take(ip) | Time::to_ts_zone(25, ms) "#,
+        ] {
+            let mut slice = code;
+            let result = oml_aga_pipe.parse_next(&mut slice);
+            assert!(result.is_err(), "超 FixedOffset 范围应被拒绝: '{}'", code);
+        }
+    }
+
+    #[test]
+    fn test_time_ts_zone_range_accepted() {
+        use crate::parser::pipe_prm::oml_aga_pipe;
+        use wp_primitives::Parser;
+
+        // 边界 |zone| == 23 合法（FixedOffset 上限前一个整点）
+        for code in [
+            r#" pipe take(ip) | Time::to_ts(23) "#,
+            r#" pipe take(ip) | Time::to_ts_ms(-23) "#,
+            r#" pipe take(ip) | Time::from_ts_us(23) "#,
+            r#" pipe take(ip) | Time::to_ts_zone(-23, ms) "#,
+        ] {
+            let mut slice = code;
+            let result = oml_aga_pipe.parse_next(&mut slice);
+            assert!(result.is_ok(), "|zone| == 23 应能解析: '{}'", code);
+        }
     }
 }

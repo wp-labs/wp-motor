@@ -41,7 +41,9 @@
 | 时间 | `Time::to_ts_ms([zone])` | `ts = read(time) | Time::to_ts_ms ;` |
 | 时间 | `Time::to_ts_us([zone])` | `ts = read(time) | Time::to_ts_us ;` |
 | 时间 | `Time::to_ts_zone(zone, unit)` | `ts = read(time) | Time::to_ts_zone(0, ms) ;` |
+| 时间 | `Time::from_ts([zone])` | `t = read(ts) | Time::from_ts(0) ;` |
 | 时间 | `Time::from_ts_ms([zone])` | `t = read(ts_ms) | Time::from_ts_ms(0) ;` |
+| 时间 | `Time::from_ts_us([zone])` | `t = read(ts_us) | Time::from_ts_us(0) ;` |
 | 转换 | `to_json` | `payload = read(arr) | to_json ;` |
 | 转换 | `to_str` | `ip_s = read(ip) | to_str ;` |
 | 转换 | `ip4_to_int` | `ip_i = read(src_ip) | ip4_to_int ;` |
@@ -345,33 +347,36 @@ raw = read(message) | json_unescape ;
 
 ## 时间转换类
 
-### `Time::to_ts`
+### `Time::to_ts([zone])`
 
 转为秒级时间戳。
 
 ```oml
-ts = read(event_time) | Time::to_ts ;
+ts = read(event_time) | Time::to_ts ;       # 默认东8区
+ts_utc = read(event_time) | Time::to_ts(0) ;
 ```
 
-### `Time::to_ts_ms`
+### `Time::to_ts_ms([zone])`
 
 转为毫秒级时间戳。
 
 ```oml
-ts = read(event_time) | Time::to_ts_ms ;
+ts = read(event_time) | Time::to_ts_ms ;      # 默认东8区
+ts_utc = read(event_time) | Time::to_ts_ms(0) ;
 ```
 
-### `Time::to_ts_us`
+### `Time::to_ts_us([zone])`
 
 转为微秒级时间戳。
 
 ```oml
-ts = read(event_time) | Time::to_ts_us ;
+ts = read(event_time) | Time::to_ts_us ;      # 默认东8区
+ts_utc = read(event_time) | Time::to_ts_us(0) ;
 ```
 
 ### `Time::to_ts_zone(zone, unit)`
 
-按指定时区和单位转换时间戳。
+按指定时区和单位转换时间戳。与 `Time::to_ts(zone)` / `Time::to_ts_ms(zone)` / `Time::to_ts_us(zone)` 等价。
 
 `unit` 当前支持：
 
@@ -383,6 +388,33 @@ ts = read(event_time) | Time::to_ts_us ;
 ```oml
 utc_ms = read(event_time) | Time::to_ts_zone(0, ms) ;
 local_s = read(event_time) | Time::to_ts_zone(8, s) ;
+```
+
+### `Time::from_ts([zone])`
+
+秒级时间戳还原为时间。`Time::to_ts` 的逆操作。
+
+```oml
+t = read(ts) | Time::from_ts ;       # 默认东8区
+t_utc = read(ts) | Time::from_ts(0) ;
+```
+
+### `Time::from_ts_ms([zone])`
+
+毫秒级时间戳还原为时间。`Time::to_ts_ms` 的逆操作。
+
+```oml
+t = read(ts_ms) | Time::from_ts_ms ;      # 默认东8区
+t_utc = read(ts_ms) | Time::from_ts_ms(0) ;
+```
+
+### `Time::from_ts_us([zone])`
+
+微秒级时间戳还原为时间。`Time::to_ts_us` 的逆操作。
+
+```oml
+t = read(ts_us) | Time::from_ts_us ;      # 默认东8区
+t_utc = read(ts_us) | Time::from_ts_us(0) ;
 ```
 
 ---
