@@ -1,7 +1,7 @@
 use crate::core::prelude::*;
 use crate::language::{
     TimeFromTsMs, TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone, PIPE_TIME_FROM_TS_MS,
-    PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_ZONE,
+    PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US, PIPE_TIME_TO_TS_ZONE,
 };
 use chrono::{DateTime, FixedOffset};
 use wp_model_core::model::{DataField, Value};
@@ -50,7 +50,7 @@ impl ValueProcessor for TimeToTs {
     fn value_cacu(&self, in_val: DataField) -> DataField {
         match in_val.get_value() {
             Value::Time(x) => {
-                if let Some(tz) = FixedOffset::east_opt(8 * SECS_PER_HOUR)
+                if let Some(tz) = zone_offset(self.zone.unwrap_or(8), PIPE_TIME_TO_TS)
                     && let Some(local) = x.and_local_timezone(tz).single()
                 {
                     return DataField::from_digit(in_val.get_name().to_string(), local.timestamp());
@@ -84,7 +84,7 @@ impl ValueProcessor for TimeToTsUs {
     fn value_cacu(&self, in_val: DataField) -> DataField {
         match in_val.get_value() {
             Value::Time(x) => {
-                if let Some(tz) = FixedOffset::east_opt(8 * SECS_PER_HOUR)
+                if let Some(tz) = zone_offset(self.zone.unwrap_or(8), PIPE_TIME_TO_TS_US)
                     && let Some(local) = x.and_local_timezone(tz).single()
                 {
                     return DataField::from_digit(
@@ -459,5 +459,83 @@ mod tests {
         let b = target.field("B").expect("B field").as_field().get_value().clone();
         assert_eq!(target.field("Y").expect("Y field").as_field().get_value(), &b);
         assert_eq!(target.field("C").expect("C field").as_field().get_value(), &b);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_time_to_ts_with_zone() {
+        let cache = &mut FieldQueryCache::default();
+        // to_ts(0)：本地时间按 UTC 解释，2000-10-10 00:00:00 → 971136000（秒）
+        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars(
+            "A1", "<html>",
+        ))]);
+        let mut conf = r#"
+        name : test
+        ---
+        Y  =  time(2000-10-10 0:0:0);
+        Z  =  pipe  read(Y) | Time::to_ts(0) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_digit("Z".to_string(), 971136000);
+        assert_eq!(target.field("Z").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_time_to_ts_us_with_zone() {
+        let cache = &mut FieldQueryCache::default();
+        // to_ts_us(0)：本地时间按 UTC 解释，2000-10-10 00:00:00 → 971136000000000（微秒）
+        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars(
+            "A1", "<html>",
+        ))]);
+        let mut conf = r#"
+        name : test
+        ---
+        Y  =  time(2000-10-10 0:0:0);
+        Z  =  pipe  read(Y) | Time::to_ts_us(0) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_digit("Z".to_string(), 971136000000000);
+        assert_eq!(target.field("Z").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_time_to_ts_negative_zone() {
+        let cache = &mut FieldQueryCache::default();
+        // to_ts(-5)：本地时间按 UTC-5 解释，2000-10-10 00:00:00 → 971154000（秒）
+        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars(
+            "A1", "<html>",
+        ))]);
+        let mut conf = r#"
+        name : test
+        ---
+        Y  =  time(2000-10-10 0:0:0);
+        Z  =  pipe  read(Y) | Time::to_ts(-5) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_digit("Z".to_string(), 971154000);
+        assert_eq!(target.field("Z").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_time_to_ts_out_of_range_zone_pass_through() {
+        let cache = &mut FieldQueryCache::default();
+        // to_ts/to_ts_us 无效 zone（±24h 外）原样透传
+        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars(
+            "A1", "<html>",
+        ))]);
+        let mut conf = r#"
+        name : test
+        ---
+        B  =  time(2000-10-10 0:0:0);
+        C  =  pipe  read(B) | Time::to_ts(999) ;
+        D  =  pipe  read(B) | Time::to_ts_us(999) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let b = target.field("B").expect("B field").as_field().get_value().clone();
+        assert_eq!(target.field("C").expect("C field").as_field().get_value(), &b);
+        assert_eq!(target.field("D").expect("D field").as_field().get_value(), &b);
     }
 }

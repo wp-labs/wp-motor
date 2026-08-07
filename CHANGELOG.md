@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **OML 嵌套对象**：`object { ... }` 子项值支持嵌套 `object { ... }` 字面量，可将平铺字段组织成多层 JSON；嵌套对象可任意深度，并与 `array` 互相嵌套
 - **OML 对象数组**：新增 `array { ... }` 聚合表达式，直接构造对象/值字面量数组（元素支持 `object { ... }`、嵌套 `array`、`read/take`、值、函数等表达式）；元素缺失或为 null 自动跳过，全部缺失不输出该字段
 - **static 块**：静态块支持嵌套对象/数组字面量（`ensure_static_*` 校验与静态符号重写覆盖 `NestedAccessor::Map`/`ObjArray`）
-- **OML/Time 时间戳函数**: 新增 `Time::from_ts_ms([zone])` 管道函数，将毫秒时间戳转换为时间（与 `Time::to_ts_ms` 互为逆操作）；`Time::from_ts_ms`/`Time::to_ts_ms` 的 `zone` 参数可选，默认东8区，支持时区偏移（正东负西，0 = UTC）
+- **OML/Time 时间戳函数**: 新增 `Time::from_ts_ms([zone])` 管道函数，将毫秒时间戳转换为时间（与 `Time::to_ts_ms` 互为逆操作）；`Time::from_ts_ms`/`Time::to_ts`/`Time::to_ts_ms`/`Time::to_ts_us` 的 `zone` 参数可选，默认东8区，支持时区偏移（正东负西，0 = UTC）
 
 ### Fixed
 - **引擎启动加载失败（exit 300）**：修复嵌套 object 在 `load-engine-res` 阶段解析失败的问题——`wpadm check --what oml` 只校验文件非空，真实解析发生在引擎启动时；此前 `oml_sub_acq` 不接受 `object` 作为子项值，且 `array` 关键字未注册

@@ -37,9 +37,9 @@ This document lists only the built-in functions, built-in expressions, and pipe 
 | Escaping | `str_escape` | `escaped = read(message) | str_escape ;` |
 | Escaping | `json_escape` | `escaped = read(text) | json_escape ;` |
 | Escaping | `json_unescape` | `raw = read(text) | json_unescape ;` |
-| Time | `Time::to_ts` | `ts = read(time) | Time::to_ts ;` |
+| Time | `Time::to_ts([zone])` | `ts = read(time) | Time::to_ts ;` |
 | Time | `Time::to_ts_ms([zone])` | `ts = read(time) | Time::to_ts_ms ;` |
-| Time | `Time::to_ts_us` | `ts = read(time) | Time::to_ts_us ;` |
+| Time | `Time::to_ts_us([zone])` | `ts = read(time) | Time::to_ts_us ;` |
 | Time | `Time::to_ts_zone(zone, unit)` | `ts = read(time) | Time::to_ts_zone(0, ms) ;` |
 | Time | `Time::from_ts_ms([zone])` | `t = read(ts_ms) | Time::from_ts_ms(0) ;` |
 | Conversion | `to_json` | `payload = read(arr) | to_json ;` |

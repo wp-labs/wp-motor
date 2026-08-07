@@ -247,11 +247,16 @@ escaped = pipe read(raw) | str_escape ;
 
 **语法**
 ```oml
-result = pipe read(time_field) | Time::to_ts ;
+result = pipe read(time_field) | Time::to_ts ;       # 默认东8区
+result = pipe read(time_field) | Time::to_ts(0) ;    # UTC
+result = pipe read(time_field) | Time::to_ts(8) ;    # 东8区
 ```
 
 **输入类型**: `time` (时间类型)
 **输出类型**: `digit` (整数时间戳，单位：秒)
+
+**参数**
+- `zone` - 时区偏移（可选，默认东8区），整数，正数东时区、负数西时区、零 UTC
 
 **示例**
 ```oml
@@ -261,7 +266,7 @@ occur_time : time = take() ;
 timestamp = pipe read(occur_time) | Time::to_ts ;
 
 # 输入: 2000-10-10 00:00:00
-# 输出: 971107200 (秒级时间戳)
+# 输出: 971107200 (秒级时间戳，东8区)
 ```
 
 **用途**
@@ -307,11 +312,16 @@ timestamp_ms = pipe read(occur_time) | Time::to_ts_ms ;
 
 **语法**
 ```oml
-result = pipe read(time_field) | Time::to_ts_us ;
+result = pipe read(time_field) | Time::to_ts_us ;      # 默认东8区
+result = pipe read(time_field) | Time::to_ts_us(0) ;   # UTC
+result = pipe read(time_field) | Time::to_ts_us(8) ;   # 东8区
 ```
 
 **输入类型**: `time` (时间类型)
 **输出类型**: `digit` (整数时间戳，单位：微秒)
+
+**参数**
+- `zone` - 时区偏移（可选，默认东8区），整数，正数东时区、负数西时区、零 UTC
 
 **示例**
 ```oml
@@ -321,7 +331,7 @@ occur_time : time = take() ;
 timestamp_us = pipe read(occur_time) | Time::to_ts_us ;
 
 # 输入: 2000-10-10 00:00:00
-# 输出: 971107200000000 (微秒级时间戳)
+# 输出: 971107200000000 (微秒级时间戳，东8区)
 ```
 
 ---

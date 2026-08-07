@@ -114,6 +114,30 @@ impl Fun1Builder for TimeFromTsMs {
         TimeFromTsMs { zone: Some(args) }
     }
 }
+impl Fun1Builder for TimeToTs {
+    type ARG1 = i32;
+    fn fun_name() -> &'static str {
+        PIPE_TIME_TO_TS
+    }
+    fn args1(data: &mut &str) -> WResult<i32> {
+        parse_zone(data)
+    }
+    fn build(args: Self::ARG1) -> Self {
+        TimeToTs { zone: Some(args) }
+    }
+}
+impl Fun1Builder for TimeToTsUs {
+    type ARG1 = i32;
+    fn fun_name() -> &'static str {
+        PIPE_TIME_TO_TS_US
+    }
+    fn args1(data: &mut &str) -> WResult<i32> {
+        parse_zone(data)
+    }
+    fn build(args: Self::ARG1) -> Self {
+        TimeToTsUs { zone: Some(args) }
+    }
+}
 impl Fun1Builder for Get {
     type ARG1 = String;
     fn args1(data: &mut &str) -> WResult<Self::ARG1> {
@@ -377,14 +401,16 @@ fn pipe_fun_with_args(data: &mut &str) -> WResult<PipeFun> {
             parser::call_fun_args2::<TimeToTsZone>.map(PipeFun::TimeToTsZone),
             parser::call_fun_args1::<TimeToTsMs>.map(PipeFun::TimeToTsMs),
             parser::call_fun_args1::<TimeFromTsMs>.map(PipeFun::TimeFromTsMs),
+            parser::call_fun_args1::<TimeToTsUs>.map(PipeFun::TimeToTsUs),
+            parser::call_fun_args1::<TimeToTs>.map(PipeFun::TimeToTs),
             parser::call_fun_args1::<Nth>.map(PipeFun::Nth),
             parser::call_fun_args1::<Get>.map(PipeFun::Get),
             parser::call_fun_args1::<OnFail>.map(PipeFun::OnFail),
             parser::call_fun_args1::<StartsWith>.map(PipeFun::StartsWith),
-            parser::call_fun_args1::<MapTo>.map(PipeFun::MapTo),
-            parser::call_fun_args1::<Base64Decode>.map(PipeFun::Base64Decode),
         )),
         alt((
+            parser::call_fun_args1::<MapTo>.map(PipeFun::MapTo),
+            parser::call_fun_args1::<Base64Decode>.map(PipeFun::Base64Decode),
             parser::call_fun_args1::<PathGet>.map(PipeFun::PathGet),
             parser::call_fun_args1::<UrlGet>.map(PipeFun::UrlGet),
         )),
@@ -462,8 +488,11 @@ mod tests {
         let mut code = r#" pipe take(ip) | Time::to_ts_zone(8,ms) | Time::to_ts_zone(-8,ss)"#;
         assert_oml_parse(&mut code, oml_aga_pipe);
 
-        // to_ts_ms / from_ts_ms 支持可选 zone（无参、带正/负 zone 均可解析）
-        let mut code = r#" pipe take(ip) | Time::to_ts_ms | Time::to_ts_ms(8) | Time::from_ts_ms | Time::from_ts_ms(-5)"#;
+        // 时间戳函数支持可选 zone（无参、带正/负 zone 均可解析）
+        let mut code = r#" pipe take(ip) | Time::to_ts | Time::to_ts_ms | Time::to_ts_us | Time::from_ts_ms"#;
+        assert_oml_parse(&mut code, oml_aga_pipe);
+
+        let mut code = r#" pipe take(ip) | Time::to_ts(0) | Time::to_ts_ms(8) | Time::to_ts_us(-8) | Time::from_ts_ms(-5)"#;
         assert_oml_parse(&mut code, oml_aga_pipe);
 
         let mut code = r#" pipe take(ip) | Time::to_ts_ms(0) | Time::from_ts_ms(0) "#;
@@ -623,13 +652,20 @@ mod tests {
 
         // 时间戳函数各形式（无参/正 zone/负 zone/组合）Display 往返稳定
         let cases = vec![
+            r#" pipe take(field) | Time::to_ts "#,
+            r#" pipe take(field) | Time::to_ts(0) "#,
+            r#" pipe take(field) | Time::to_ts(-5) "#,
             r#" pipe take(field) | Time::to_ts_ms "#,
             r#" pipe take(field) | Time::to_ts_ms(8) "#,
             r#" pipe take(field) | Time::to_ts_ms(-5) "#,
+            r#" pipe take(field) | Time::to_ts_us "#,
+            r#" pipe take(field) | Time::to_ts_us(8) "#,
+            r#" pipe take(field) | Time::to_ts_us(-5) "#,
             r#" pipe take(field) | Time::from_ts_ms "#,
             r#" pipe take(field) | Time::from_ts_ms(0) "#,
             r#" pipe take(field) | Time::from_ts_ms(-5) "#,
             r#" pipe take(field) | Time::from_ts_ms(0) | Time::to_ts_ms "#,
+            r#" pipe take(field) | Time::to_ts(0) | Time::to_ts_us(8) "#,
         ];
 
         for code in cases {
@@ -680,5 +716,13 @@ mod tests {
         let mut code = r#" pipe take(ip) | Time::to_ts_zone(99999999999, ms) "#;
         let result = oml_aga_pipe.parse_next(&mut code);
         assert!(result.is_err(), "to_ts_zone 超 i32 zone 应被拒绝");
+
+        let mut code = r#" pipe take(ip) | Time::to_ts(99999999999) "#;
+        let result = oml_aga_pipe.parse_next(&mut code);
+        assert!(result.is_err(), "to_ts 超 i32 zone 应被拒绝");
+
+        let mut code = r#" pipe take(ip) | Time::to_ts_us(99999999999) "#;
+        let result = oml_aga_pipe.parse_next(&mut code);
+        assert!(result.is_err(), "to_ts_us 超 i32 zone 应被拒绝");
     }
 }

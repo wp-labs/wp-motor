@@ -2,7 +2,14 @@ use crate::language::prelude::*;
 use wp_primitives::fun::fun_trait::Fun2Builder;
 pub const PIPE_TIME_TO_TS: &str = "Time::to_ts";
 #[derive(Clone, Debug, Default)]
-pub struct TimeToTs {}
+pub struct TimeToTs {
+    pub(crate) zone: Option<i32>,
+}
+impl Display for TimeToTs {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        fmt_optional_zone(f, PIPE_TIME_TO_TS, &self.zone)
+    }
+}
 
 /// 可选 zone 的 Display：`Time::to_ts_ms` / `Time::to_ts_ms(8)`
 fn fmt_optional_zone(f: &mut Formatter<'_>, fun: &str, zone: &Option<i32>) -> std::fmt::Result {
@@ -33,7 +40,14 @@ pub enum TimeStampUnit {
 }
 pub const PIPE_TIME_TO_TS_US: &str = "Time::to_ts_us";
 #[derive(Clone, Debug, Default)]
-pub struct TimeToTsUs {}
+pub struct TimeToTsUs {
+    pub(crate) zone: Option<i32>,
+}
+impl Display for TimeToTsUs {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        fmt_optional_zone(f, PIPE_TIME_TO_TS_US, &self.zone)
+    }
+}
 pub const PIPE_TIME_TO_TS_ZONE: &str = "Time::to_ts_zone";
 #[derive(Clone, Debug, Default, Builder)]
 pub struct TimeToTsZone {
