@@ -20,7 +20,7 @@ use crate::parser::keyword::kw_gw_pipe;
 use crate::parser::oml_aggregate::oml_var_get;
 use crate::winnow::error::ParserError;
 use winnow::ascii::{alphanumeric0, digit1, multispace0};
-use winnow::combinator::{alt, fail, opt, repeat};
+use winnow::combinator::{alt, cut_err, fail, opt, repeat};
 use winnow::error::{ContextError, ErrMode, StrContext};
 use winnow::stream::Stream; // for checkpoint/reset on &str
 use winnow::token::take;
@@ -57,16 +57,20 @@ fn parse_zone(data: &mut &str) -> WResult<i32> {
         Some(_) => format!("-{}", zone),
         None => zone.to_string(),
     };
-    let z = signed.parse::<i32>().map_err(|_| {
-        warn_rule!("invalid zone '{}': out of i32 range", signed);
-        // Cut：硬错误，避免被 alt 兜底成无参形式后在顶层残留括号报错
-        ErrMode::Cut(ContextError::from_input(data))
-    })?;
+    let z = match signed.parse::<i32>() {
+        Ok(z) => z,
+        Err(_) => {
+            warn_rule!("invalid zone '{}': out of i32 range", signed);
+            // Cut：硬错误且携带具体原因，避免被 alt 兜底成无参形式后误导
+            return cut_err(fail.context(ctx_desc("invalid zone (out of i32 range)")))
+                .parse_next(data);
+        }
+    };
     // FixedOffset 上限 -86400 < secs < 86400，整点 zone 合法范围 -23..=23；
     // 超范围的字面量是模型错误，解析期报错而非运行时透传
     if z.abs() > 23 {
         warn_rule!("invalid zone '{}': 超出 FixedOffset 范围（整点 ±23h）", z);
-        return Err(ErrMode::Cut(ContextError::from_input(data)));
+        return cut_err(fail.context(ctx_desc("invalid zone, |zone| <= 23"))).parse_next(data);
     }
     Ok(z)
 }
@@ -710,6 +714,9 @@ mod tests {
             r#" pipe take(field) | Time::from_ts_ms(0) | Time::to_ts_ms "#,
             r#" pipe take(field) | Time::to_ts(0) | Time::to_ts_us(8) "#,
             r#" pipe take(field) | Time::from_ts(0) | Time::from_ts_us(8) "#,
+            r#" pipe take(field) | Time::to_ts_zone(8, ms) "#,
+            r#" pipe take(field) | Time::to_ts_zone(-5, ss) "#,
+            r#" pipe take(field) | Time::to_ts_zone(0, us) "#,
         ];
 
         for code in cases {
@@ -811,5 +818,36 @@ mod tests {
             let result = oml_aga_pipe.parse_next(&mut slice);
             assert!(result.is_ok(), "|zone| == 23 应能解析: '{}'", code);
         }
+    }
+
+    #[test]
+    fn test_time_ts_zone_error_message() {
+        use crate::parser::pipe_prm::oml_aga_pipe;
+        use wp_primitives::Parser;
+
+        // 越界/溢出 zone 的解析错误应携带具体原因（而非通用 "fun not found"）
+        let mut code = r#" pipe take(ip) | Time::from_ts(999) "#;
+        let err = match oml_aga_pipe.parse_next(&mut code) {
+            Err(e) => e,
+            Ok(_) => panic!("from_ts(999) 超 ±23h 应报错"),
+        };
+        let msg = format!("{}", err);
+        assert!(
+            msg.contains("invalid zone"),
+            "错误消息应含具体原因，实际: {}",
+            msg
+        );
+
+        let mut code = r#" pipe take(ip) | Time::to_ts_ms(99999999999) "#;
+        let err = match oml_aga_pipe.parse_next(&mut code) {
+            Err(e) => e,
+            Ok(_) => panic!("to_ts_ms 超 i32 应报错"),
+        };
+        let msg = format!("{}", err);
+        assert!(
+            msg.contains("invalid zone"),
+            "错误消息应含具体原因，实际: {}",
+            msg
+        );
     }
 }

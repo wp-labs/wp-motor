@@ -1,10 +1,10 @@
 use crate::core::prelude::*;
 use crate::language::{
-    TimeFromTs, TimeFromTsMs, TimeFromTsUs, TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone,
-    PIPE_TIME_FROM_TS, PIPE_TIME_FROM_TS_MS, PIPE_TIME_FROM_TS_US, PIPE_TIME_TO_TS,
-    PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US, PIPE_TIME_TO_TS_ZONE,
+    TimeFromTs, TimeFromTsMs, TimeFromTsUs, TimeStampUnit, TimeToTs, TimeToTsMs, TimeToTsUs,
+    TimeToTsZone, PIPE_TIME_FROM_TS, PIPE_TIME_FROM_TS_MS, PIPE_TIME_FROM_TS_US,
+    PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US, PIPE_TIME_TO_TS_ZONE,
 };
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, FixedOffset, Utc};
 use wp_model_core::model::{DataField, Value};
 
 /// 秒/时换算
@@ -25,168 +25,101 @@ fn zone_offset(zone_hours: i32, fun: &str) -> Option<FixedOffset> {
     }
 }
 
-/// `Time::from_ts([zone])`：秒时间戳 → 时间（zone 默认东8区）
-impl ValueProcessor for TimeFromTs {
-    fn value_cacu(&self, in_val: DataField) -> DataField {
-        match in_val.get_value() {
-            Value::Digit(secs) => {
-                let zone = self.zone.unwrap_or(8);
-                match DateTime::from_timestamp(*secs, 0) {
-                    Some(dt) => {
-                        if let Some(tz) = zone_offset(zone, PIPE_TIME_FROM_TS) {
-                            let local = dt.with_timezone(&tz).naive_local();
-                            return DataField::from_time(in_val.get_name().to_string(), local);
-                        }
-                    }
-                    None => warn_rule!(
-                        "{}: timestamp {} 超出可表示范围，按透传处理",
-                        PIPE_TIME_FROM_TS,
-                        secs
-                    ),
-                }
-                in_val
-            }
-            _ => in_val,
-        }
-    }
+/// 时间 → 时间戳。输入非 time 或 zone 无效时返回 `None`（调用方透传）
+fn time_to_ts_value(
+    in_val: &DataField,
+    zone: Option<i32>,
+    fun: &str,
+    conv: impl Fn(&DateTime<FixedOffset>) -> i64,
+) -> Option<DataField> {
+    let Value::Time(x) = in_val.get_value() else {
+        return None;
+    };
+    let tz = zone_offset(zone.unwrap_or(8), fun)?;
+    let local = x.and_local_timezone(tz).single()?;
+    Some(DataField::from_digit(
+        in_val.get_name().to_string(),
+        conv(&local),
+    ))
 }
 
-/// `Time::from_ts_us([zone])`：微秒时间戳 → 时间（zone 默认东8区）
-impl ValueProcessor for TimeFromTsUs {
-    fn value_cacu(&self, in_val: DataField) -> DataField {
-        match in_val.get_value() {
-            Value::Digit(us) => {
-                let zone = self.zone.unwrap_or(8);
-                match DateTime::from_timestamp_micros(*us) {
-                    Some(dt) => {
-                        if let Some(tz) = zone_offset(zone, PIPE_TIME_FROM_TS_US) {
-                            let local = dt.with_timezone(&tz).naive_local();
-                            return DataField::from_time(in_val.get_name().to_string(), local);
-                        }
-                    }
-                    None => warn_rule!(
-                        "{}: timestamp {} 超出可表示范围，按透传处理",
-                        PIPE_TIME_FROM_TS_US,
-                        us
-                    ),
-                }
-                in_val
-            }
-            _ => in_val,
+/// 时间戳 → 时间。输入非 digit、时间戳越界或 zone 无效时返回 `None`（调用方透传）
+fn ts_to_time_value(
+    in_val: &DataField,
+    zone: Option<i32>,
+    fun: &str,
+    conv: impl Fn(i64) -> Option<DateTime<Utc>>,
+) -> Option<DataField> {
+    let Value::Digit(x) = in_val.get_value() else {
+        return None;
+    };
+    let dt = match conv(*x) {
+        Some(dt) => dt,
+        None => {
+            warn_rule!("{}: timestamp {} 超出可表示范围，按透传处理", fun, x);
+            return None;
         }
-    }
+    };
+    let tz = zone_offset(zone.unwrap_or(8), fun)?;
+    let local = dt.with_timezone(&tz).naive_local();
+    Some(DataField::from_time(
+        in_val.get_name().to_string(),
+        local,
+    ))
 }
 
-/// `Time::from_ts_ms([zone])`：毫秒时间戳 → 时间（zone 默认东8区）
-impl ValueProcessor for TimeFromTsMs {
-    fn value_cacu(&self, in_val: DataField) -> DataField {
-        match in_val.get_value() {
-            Value::Digit(ms) => {
-                let zone = self.zone.unwrap_or(8);
-                match DateTime::from_timestamp_millis(*ms) {
-                    Some(dt) => {
-                        if let Some(tz) = zone_offset(zone, PIPE_TIME_FROM_TS_MS) {
-                            let local = dt.with_timezone(&tz).naive_local();
-                            return DataField::from_time(in_val.get_name().to_string(), local);
-                        }
-                    }
-                    None => warn_rule!(
-                        "{}: timestamp {} 超出可表示范围，按透传处理",
-                        PIPE_TIME_FROM_TS_MS,
-                        ms
-                    ),
-                }
-                in_val
-            }
-            _ => in_val,
-        }
-    }
-}
-
+/// `Time::to_ts([zone])`：时间 → 秒时间戳（zone 默认东8区）
 impl ValueProcessor for TimeToTs {
     fn value_cacu(&self, in_val: DataField) -> DataField {
-        match in_val.get_value() {
-            Value::Time(x) => {
-                if let Some(tz) = zone_offset(self.zone.unwrap_or(8), PIPE_TIME_TO_TS)
-                    && let Some(local) = x.and_local_timezone(tz).single()
-                {
-                    return DataField::from_digit(in_val.get_name().to_string(), local.timestamp());
-                }
-                in_val
-                //TDOEnum::Time()
-            }
-            _ => in_val,
-        }
+        time_to_ts_value(&in_val, self.zone, PIPE_TIME_TO_TS, |l| l.timestamp()).unwrap_or(in_val)
     }
 }
 impl ValueProcessor for TimeToTsMs {
     fn value_cacu(&self, in_val: DataField) -> DataField {
-        match in_val.get_value() {
-            Value::Time(x) => {
-                if let Some(tz) = zone_offset(self.zone.unwrap_or(8), PIPE_TIME_TO_TS_MS)
-                    && let Some(local) = x.and_local_timezone(tz).single()
-                {
-                    return DataField::from_digit(
-                        in_val.get_name().to_string(),
-                        local.timestamp_millis(),
-                    );
-                }
-                in_val
-            }
-            _ => in_val,
-        }
+        time_to_ts_value(&in_val, self.zone, PIPE_TIME_TO_TS_MS, |l| l.timestamp_millis())
+            .unwrap_or(in_val)
     }
 }
 impl ValueProcessor for TimeToTsUs {
     fn value_cacu(&self, in_val: DataField) -> DataField {
-        match in_val.get_value() {
-            Value::Time(x) => {
-                if let Some(tz) = zone_offset(self.zone.unwrap_or(8), PIPE_TIME_TO_TS_US)
-                    && let Some(local) = x.and_local_timezone(tz).single()
-                {
-                    return DataField::from_digit(
-                        in_val.get_name().to_string(),
-                        local.timestamp_micros(),
-                    );
-                }
-                in_val
-            }
-            _ => in_val,
-        }
+        time_to_ts_value(&in_val, self.zone, PIPE_TIME_TO_TS_US, |l| l.timestamp_micros())
+            .unwrap_or(in_val)
     }
 }
 impl ValueProcessor for TimeToTsZone {
     fn value_cacu(&self, in_val: DataField) -> DataField {
-        match in_val.get_value() {
-            Value::Time(x) => {
-                if let Some(tz) = zone_offset(self.zone, PIPE_TIME_TO_TS_ZONE)
-                    && let Some(local) = x.and_local_timezone(tz).single()
-                {
-                    match self.unit {
-                        crate::language::TimeStampUnit::MS => {
-                            return DataField::from_digit(
-                                in_val.get_name().to_string(),
-                                local.timestamp_millis(),
-                            );
-                        }
-                        crate::language::TimeStampUnit::US => {
-                            return DataField::from_digit(
-                                in_val.get_name().to_string(),
-                                local.timestamp_micros(),
-                            );
-                        }
-                        crate::language::TimeStampUnit::SS => {
-                            return DataField::from_digit(
-                                in_val.get_name().to_string(),
-                                local.timestamp(),
-                            );
-                        }
-                    }
-                }
-                in_val
-            }
-            _ => in_val,
-        }
+        let conv: fn(&DateTime<FixedOffset>) -> i64 = match self.unit {
+            TimeStampUnit::MS => |l| l.timestamp_millis(),
+            TimeStampUnit::US => |l| l.timestamp_micros(),
+            TimeStampUnit::SS => |l| l.timestamp(),
+        };
+        time_to_ts_value(&in_val, Some(self.zone), PIPE_TIME_TO_TS_ZONE, conv).unwrap_or(in_val)
+    }
+}
+
+/// `Time::from_ts([zone])`：秒时间戳 → 时间（zone 默认东8区）
+impl ValueProcessor for TimeFromTs {
+    fn value_cacu(&self, in_val: DataField) -> DataField {
+        ts_to_time_value(&in_val, self.zone, PIPE_TIME_FROM_TS, |x| {
+            DateTime::from_timestamp(x, 0)
+        })
+        .unwrap_or(in_val)
+    }
+}
+impl ValueProcessor for TimeFromTsMs {
+    fn value_cacu(&self, in_val: DataField) -> DataField {
+        ts_to_time_value(&in_val, self.zone, PIPE_TIME_FROM_TS_MS, |x| {
+            DateTime::from_timestamp_millis(x)
+        })
+        .unwrap_or(in_val)
+    }
+}
+impl ValueProcessor for TimeFromTsUs {
+    fn value_cacu(&self, in_val: DataField) -> DataField {
+        ts_to_time_value(&in_val, self.zone, PIPE_TIME_FROM_TS_US, |x| {
+            DateTime::from_timestamp_micros(x)
+        })
+        .unwrap_or(in_val)
     }
 }
 
