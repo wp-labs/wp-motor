@@ -47,6 +47,22 @@ impl Fun1Builder for Nth {
         Nth { index: args }
     }
 }
+/// zone 时区偏移解析：可选负号 + 数字；超 i32 范围时报错（避免静默变 0）
+fn parse_zone(data: &mut &str) -> WResult<i32> {
+    let sign = opt("-").parse_next(data)?;
+    multispace0.parse_next(data)?;
+    let zone = digit1.parse_next(data)?;
+    let signed = match sign {
+        Some(_) => format!("-{}", zone),
+        None => zone.to_string(),
+    };
+    signed.parse::<i32>().map_err(|_| {
+        warn_rule!("invalid zone '{}': out of i32 range", signed);
+        // Cut：硬错误，避免被 alt 兜底成无参形式后在顶层残留括号报错
+        ErrMode::Cut(ContextError::from_input(data))
+    })
+}
+
 impl Fun2Builder for TimeToTsZone {
     type ARG1 = i32;
     type ARG2 = TimeStampUnit;
@@ -54,11 +70,7 @@ impl Fun2Builder for TimeToTsZone {
         PIPE_TIME_TO_TS_ZONE
     }
     fn args1(data: &mut &str) -> WResult<i32> {
-        let sign = opt("-").parse_next(data)?;
-        multispace0.parse_next(data)?;
-        let zone = digit1.parse_next(data)?;
-        let i: i32 = zone.parse::<i32>().unwrap_or(0);
-        if sign.is_some() { Ok(-i) } else { Ok(i) }
+        parse_zone(data)
     }
     fn args2(data: &mut &str) -> WResult<TimeStampUnit> {
         let unit = alt((
@@ -83,11 +95,7 @@ impl Fun1Builder for TimeToTsMs {
         PIPE_TIME_TO_TS_MS
     }
     fn args1(data: &mut &str) -> WResult<i32> {
-        let sign = opt("-").parse_next(data)?;
-        multispace0.parse_next(data)?;
-        let zone = digit1.parse_next(data)?;
-        let i: i32 = zone.parse::<i32>().unwrap_or(0);
-        if sign.is_some() { Ok(-i) } else { Ok(i) }
+        parse_zone(data)
     }
     fn build(args: Self::ARG1) -> Self {
         TimeToTsMs { zone: Some(args) }
@@ -100,11 +108,7 @@ impl Fun1Builder for TimeFromTsMs {
         PIPE_TIME_FROM_TS_MS
     }
     fn args1(data: &mut &str) -> WResult<i32> {
-        let sign = opt("-").parse_next(data)?;
-        multispace0.parse_next(data)?;
-        let zone = digit1.parse_next(data)?;
-        let i: i32 = zone.parse::<i32>().unwrap_or(0);
-        if sign.is_some() { Ok(-i) } else { Ok(i) }
+        parse_zone(data)
     }
     fn build(args: Self::ARG1) -> Self {
         TimeFromTsMs { zone: Some(args) }
@@ -657,5 +661,24 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn test_time_ts_zone_overflow_rejected() {
+        use crate::parser::pipe_prm::oml_aga_pipe;
+        use wp_primitives::Parser;
+
+        // zone 超 i32 范围：应报语法错误，而非静默变 0（UTC）
+        let mut code = r#" pipe take(ip) | Time::from_ts_ms(99999999999) "#;
+        let result = oml_aga_pipe.parse_next(&mut code);
+        assert!(result.is_err(), "from_ts_ms 超 i32 zone 应被拒绝");
+
+        let mut code = r#" pipe take(ip) | Time::to_ts_ms(99999999999) "#;
+        let result = oml_aga_pipe.parse_next(&mut code);
+        assert!(result.is_err(), "to_ts_ms 超 i32 zone 应被拒绝");
+
+        let mut code = r#" pipe take(ip) | Time::to_ts_zone(99999999999, ms) "#;
+        let result = oml_aga_pipe.parse_next(&mut code);
+        assert!(result.is_err(), "to_ts_zone 超 i32 zone 应被拒绝");
     }
 }

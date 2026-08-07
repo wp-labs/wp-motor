@@ -1,19 +1,43 @@
 use crate::core::prelude::*;
-use crate::language::{TimeFromTsMs, TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone};
+use crate::language::{
+    TimeFromTsMs, TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone, PIPE_TIME_FROM_TS_MS,
+    PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_ZONE,
+};
 use chrono::{DateTime, FixedOffset};
 use wp_model_core::model::{DataField, Value};
+
+/// 秒/时换算
+const SECS_PER_HOUR: i32 = 3600;
+
+/// 构造时区偏移。zone 超出 ±24h（含 i32 乘法溢出）时告警并返回 `None` → 调用方透传
+fn zone_offset(zone_hours: i32, fun: &str) -> Option<FixedOffset> {
+    match FixedOffset::east_opt(zone_hours.saturating_mul(SECS_PER_HOUR)) {
+        Some(tz) => Some(tz),
+        None => {
+            warn_rule!("{}: invalid zone {} (超出 ±24h，按透传处理)", fun, zone_hours);
+            None
+        }
+    }
+}
 
 /// `Time::from_ts_ms([zone])`：毫秒时间戳 → 时间（zone 默认东8区）
 impl ValueProcessor for TimeFromTsMs {
     fn value_cacu(&self, in_val: DataField) -> DataField {
         match in_val.get_value() {
             Value::Digit(ms) => {
-                let hour = 3600;
-                if let Some(dt) = DateTime::from_timestamp_millis(*ms)
-                    && let Some(tz) = FixedOffset::east_opt(self.zone.unwrap_or(8).saturating_mul(hour))
-                {
-                    let local = dt.with_timezone(&tz).naive_local();
-                    return DataField::from_time(in_val.get_name().to_string(), local);
+                let zone = self.zone.unwrap_or(8);
+                match DateTime::from_timestamp_millis(*ms) {
+                    Some(dt) => {
+                        if let Some(tz) = zone_offset(zone, PIPE_TIME_FROM_TS_MS) {
+                            let local = dt.with_timezone(&tz).naive_local();
+                            return DataField::from_time(in_val.get_name().to_string(), local);
+                        }
+                    }
+                    None => warn_rule!(
+                        "{}: timestamp {} 超出可表示范围，按透传处理",
+                        PIPE_TIME_FROM_TS_MS,
+                        ms
+                    ),
                 }
                 in_val
             }
@@ -26,8 +50,7 @@ impl ValueProcessor for TimeToTs {
     fn value_cacu(&self, in_val: DataField) -> DataField {
         match in_val.get_value() {
             Value::Time(x) => {
-                let hour = 3600;
-                if let Some(tz) = FixedOffset::east_opt(8 * hour)
+                if let Some(tz) = FixedOffset::east_opt(8 * SECS_PER_HOUR)
                     && let Some(local) = x.and_local_timezone(tz).single()
                 {
                     return DataField::from_digit(in_val.get_name().to_string(), local.timestamp());
@@ -43,8 +66,7 @@ impl ValueProcessor for TimeToTsMs {
     fn value_cacu(&self, in_val: DataField) -> DataField {
         match in_val.get_value() {
             Value::Time(x) => {
-                let hour = 3600;
-                if let Some(tz) = FixedOffset::east_opt(self.zone.unwrap_or(8).saturating_mul(hour))
+                if let Some(tz) = zone_offset(self.zone.unwrap_or(8), PIPE_TIME_TO_TS_MS)
                     && let Some(local) = x.and_local_timezone(tz).single()
                 {
                     return DataField::from_digit(
@@ -62,8 +84,7 @@ impl ValueProcessor for TimeToTsUs {
     fn value_cacu(&self, in_val: DataField) -> DataField {
         match in_val.get_value() {
             Value::Time(x) => {
-                let hour = 3600;
-                if let Some(tz) = FixedOffset::east_opt(8 * hour)
+                if let Some(tz) = FixedOffset::east_opt(8 * SECS_PER_HOUR)
                     && let Some(local) = x.and_local_timezone(tz).single()
                 {
                     return DataField::from_digit(
@@ -81,8 +102,7 @@ impl ValueProcessor for TimeToTsZone {
     fn value_cacu(&self, in_val: DataField) -> DataField {
         match in_val.get_value() {
             Value::Time(x) => {
-                let hour = 3600;
-                if let Some(tz) = FixedOffset::east_opt(self.zone.saturating_mul(hour))
+                if let Some(tz) = zone_offset(self.zone, PIPE_TIME_TO_TS_ZONE)
                     && let Some(local) = x.and_local_timezone(tz).single()
                 {
                     match self.unit {
