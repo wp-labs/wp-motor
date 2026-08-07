@@ -277,11 +277,16 @@ timestamp = pipe read(occur_time) | Time::to_ts ;
 
 **语法**
 ```oml
-result = pipe read(time_field) | Time::to_ts_ms ;
+result = pipe read(time_field) | Time::to_ts_ms ;      # 默认东8区
+result = pipe read(time_field) | Time::to_ts_ms(0) ;   # UTC
+result = pipe read(time_field) | Time::to_ts_ms(8) ;   # 东8区
 ```
 
 **输入类型**: `time` (时间类型)
 **输出类型**: `digit` (整数时间戳，单位：毫秒)
+
+**参数**
+- `zone` - 时区偏移（可选，默认东8区），整数，正数东时区、负数西时区、零 UTC
 
 **示例**
 ```oml
@@ -291,7 +296,7 @@ occur_time : time = take() ;
 timestamp_ms = pipe read(occur_time) | Time::to_ts_ms ;
 
 # 输入: 2000-10-10 00:00:00
-# 输出: 971107200000 (毫秒级时间戳)
+# 输出: 971107200000 (毫秒级时间戳，东8区)
 ```
 
 ---
@@ -372,6 +377,42 @@ ts_utc = pipe read(occur_time) | Time::to_ts_zone(0, s) ;
 **注意事项**
 - 时区范围：-12 到 +14
 - 时间戳计算会自动调整时区偏移
+
+---
+
+### Time::from_ts_ms
+
+将毫秒时间戳转换为时间。
+
+**语法**
+```oml
+result = pipe read(ts_ms) | Time::from_ts_ms ;      # 默认东8区
+result = pipe read(ts_ms) | Time::from_ts_ms(0) ;   # UTC
+result = pipe read(ts_ms) | Time::from_ts_ms(8) ;   # 东8区
+```
+
+**输入类型**: `digit` (毫秒时间戳)
+**输出类型**: `time` (时间)
+
+**参数**
+- `zone` - 时区偏移（可选，默认东8区），整数，正数东时区、负数西时区、零 UTC
+
+**示例**
+```oml
+name : example_time_from_ts_ms
+---
+ts_ms : digit = take() ;
+event_time = pipe read(ts_ms) | Time::from_ts_ms(0) ;
+
+# 输入: 0
+# 输出 (UTC+0): 1970-01-01 00:00:00
+# 输入 (UTC+0): 1739000000000
+# 输出 (UTC+0): 2025-02-07 18:13:20
+```
+
+**用途**
+- 毫秒时间戳还原为时间
+- 与 `Time::to_ts_ms` 互为逆操作
 
 ---
 

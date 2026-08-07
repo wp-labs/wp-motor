@@ -1,7 +1,26 @@
 use crate::core::prelude::*;
-use crate::language::{TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone};
-use chrono::FixedOffset;
+use crate::language::{TimeFromTsMs, TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone};
+use chrono::{DateTime, FixedOffset};
 use wp_model_core::model::{DataField, Value};
+
+/// `Time::from_ts_ms([zone])`：毫秒时间戳 → 时间（zone 默认东8区）
+impl ValueProcessor for TimeFromTsMs {
+    fn value_cacu(&self, in_val: DataField) -> DataField {
+        match in_val.get_value() {
+            Value::Digit(ms) => {
+                let hour = 3600;
+                if let Some(dt) = DateTime::from_timestamp_millis(*ms)
+                    && let Some(tz) = FixedOffset::east_opt(self.zone.unwrap_or(8) * hour)
+                {
+                    let local = dt.with_timezone(&tz).naive_local();
+                    return DataField::from_time(in_val.get_name().to_string(), local);
+                }
+                in_val
+            }
+            _ => in_val,
+        }
+    }
+}
 
 impl ValueProcessor for TimeToTs {
     fn value_cacu(&self, in_val: DataField) -> DataField {
@@ -25,7 +44,7 @@ impl ValueProcessor for TimeToTsMs {
         match in_val.get_value() {
             Value::Time(x) => {
                 let hour = 3600;
-                if let Some(tz) = FixedOffset::east_opt(8 * hour)
+                if let Some(tz) = FixedOffset::east_opt(self.zone.unwrap_or(8) * hour)
                     && let Some(local) = x.and_local_timezone(tz).single()
                 {
                     return DataField::from_digit(
@@ -128,5 +147,114 @@ mod tests {
 
         let expect = DataField::from_digit("U".to_string(), 971107200000000);
         assert_eq!(target.field("U").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_time_from_ts_ms_utc() {
+        let cache = &mut FieldQueryCache::default();
+        // 1739000000000 ms = 2025-02-07 18:13:20 UTC
+        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+            "ts_ms",
+            1739000000000,
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe read(ts_ms) | Time::from_ts_ms(0) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(1739000000000)
+            .unwrap()
+            .naive_utc();
+        let out = target.field("X").expect("X field").as_field();
+        assert_eq!(out.get_value(), &wp_model_core::model::Value::Time(expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_time_from_ts_ms_with_zone() {
+        let cache = &mut FieldQueryCache::default();
+        // 东 8 区：0 ms → 1970-01-01 08:00:00
+        let data = vec![FieldStorage::from_owned(DataField::from_digit("ts_ms", 0))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe read(ts_ms) | Time::from_ts_ms(8) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(0)
+            .unwrap()
+            .with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap())
+            .naive_local();
+        let out = target.field("X").expect("X field").as_field();
+        assert_eq!(out.get_value(), &wp_model_core::model::Value::Time(expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_time_to_ts_ms_with_zone() {
+        let cache = &mut FieldQueryCache::default();
+        // to_ts_ms(0)：本地时间按 UTC 解释，2000-10-10 00:00:00 → 971136000000
+        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars(
+            "A1", "<html>",
+        ))]);
+        let mut conf = r#"
+        name : test
+        ---
+        Y  =  time(2000-10-10 0:0:0);
+        Z  =  pipe  read(Y) | Time::to_ts_ms(0) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_digit("Z".to_string(), 971136000000);
+        assert_eq!(target.field("Z").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_time_ts_ms_roundtrip_default_zone() {
+        let cache = &mut FieldQueryCache::default();
+        // 默认东 8 区往返互逆：from_ts_ms → to_ts_ms 复原原时间戳
+        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+            "ts_ms",
+            1739000000000,
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe read(ts_ms) | Time::from_ts_ms ;
+        Y  =  pipe read(X) | Time::to_ts_ms ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_digit("Y".to_string(), 1739000000000);
+        assert_eq!(target.field("Y").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_time_ts_ms_roundtrip_utc_zone() {
+        let cache = &mut FieldQueryCache::default();
+        // 显式 UTC 往返互逆：from_ts_ms(0) → to_ts_ms(0) 复原原时间戳
+        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+            "ts_ms",
+            1739000000000,
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe read(ts_ms) | Time::from_ts_ms(0) ;
+        Y  =  pipe read(X) | Time::to_ts_ms(0) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_digit("Y".to_string(), 1739000000000);
+        assert_eq!(target.field("Y").map(|s| s.as_field()), Some(&expect));
     }
 }

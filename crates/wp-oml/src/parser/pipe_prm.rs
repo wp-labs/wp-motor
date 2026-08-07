@@ -5,10 +5,10 @@ use crate::language::{
     JsonUnescape, MapTo, MapValue, Nth, PIPE_BASE64_DECODE, PIPE_GET, PIPE_HTML_ESCAPE,
     PIPE_HTML_UNESCAPE, PIPE_IP_TO_BIGUINT, PIPE_IP4_TO_INT, PIPE_JSON_ESCAPE, PIPE_JSON_UNESCAPE,
     PIPE_MAP_TO, PIPE_NTH, PIPE_PATH, PIPE_SKIP_EMPTY, PIPE_STARTS_WITH, PIPE_STR_ESCAPE,
-    PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US, PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON,
-    PIPE_URL, PathGet, PathType, PiPeOperation, PipeFun, PipeSource, PreciseEvaluator, SkipEmpty,
-    StartsWith, StrEscape, TimeStampUnit, TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone, ToJson,
-    UrlGet, UrlType,
+    PIPE_TIME_FROM_TS_MS, PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US,
+    PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON, PIPE_URL, PathGet, PathType, PiPeOperation, PipeFun,
+    PipeSource, PreciseEvaluator, SkipEmpty, StartsWith, StrEscape, TimeFromTsMs, TimeStampUnit,
+    TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone, ToJson, UrlGet, UrlType,
 };
 use crate::language::{
     Base64Encode, ExtractMainWord, ExtractSubjectObject, IntranetIp, OnFail, PIPE_BASE64_ENCODE,
@@ -75,6 +75,39 @@ impl Fun2Builder for TimeToTsZone {
             zone: args.0,
             unit: args.1,
         }
+    }
+}
+impl Fun1Builder for TimeToTsMs {
+    type ARG1 = i32;
+    fn fun_name() -> &'static str {
+        PIPE_TIME_TO_TS_MS
+    }
+    fn args1(data: &mut &str) -> WResult<i32> {
+        let sign = opt("-").parse_next(data)?;
+        multispace0.parse_next(data)?;
+        let zone = digit1.parse_next(data)?;
+        let i: i32 = zone.parse::<i32>().unwrap_or(0);
+        if sign.is_some() { Ok(-i) } else { Ok(i) }
+    }
+    fn build(args: Self::ARG1) -> Self {
+        TimeToTsMs { zone: Some(args) }
+    }
+}
+
+impl Fun1Builder for TimeFromTsMs {
+    type ARG1 = i32;
+    fn fun_name() -> &'static str {
+        PIPE_TIME_FROM_TS_MS
+    }
+    fn args1(data: &mut &str) -> WResult<i32> {
+        let sign = opt("-").parse_next(data)?;
+        multispace0.parse_next(data)?;
+        let zone = digit1.parse_next(data)?;
+        let i: i32 = zone.parse::<i32>().unwrap_or(0);
+        if sign.is_some() { Ok(-i) } else { Ok(i) }
+    }
+    fn build(args: Self::ARG1) -> Self {
+        TimeFromTsMs { zone: Some(args) }
     }
 }
 impl Fun1Builder for Get {
@@ -334,16 +367,23 @@ pub fn oml_pipe(data: &mut &str) -> WResult<PipeFun> {
 }
 
 fn pipe_fun_with_args(data: &mut &str) -> WResult<PipeFun> {
+    // 带参管道函数（winnow alt 元组上限 9，超限时拆多层）
     alt((
-        parser::call_fun_args2::<TimeToTsZone>.map(PipeFun::TimeToTsZone),
-        parser::call_fun_args1::<Nth>.map(PipeFun::Nth),
-        parser::call_fun_args1::<Get>.map(PipeFun::Get),
-        parser::call_fun_args1::<OnFail>.map(PipeFun::OnFail),
-        parser::call_fun_args1::<StartsWith>.map(PipeFun::StartsWith),
-        parser::call_fun_args1::<MapTo>.map(PipeFun::MapTo),
-        parser::call_fun_args1::<Base64Decode>.map(PipeFun::Base64Decode),
-        parser::call_fun_args1::<PathGet>.map(PipeFun::PathGet),
-        parser::call_fun_args1::<UrlGet>.map(PipeFun::UrlGet),
+        alt((
+            parser::call_fun_args2::<TimeToTsZone>.map(PipeFun::TimeToTsZone),
+            parser::call_fun_args1::<TimeToTsMs>.map(PipeFun::TimeToTsMs),
+            parser::call_fun_args1::<TimeFromTsMs>.map(PipeFun::TimeFromTsMs),
+            parser::call_fun_args1::<Nth>.map(PipeFun::Nth),
+            parser::call_fun_args1::<Get>.map(PipeFun::Get),
+            parser::call_fun_args1::<OnFail>.map(PipeFun::OnFail),
+            parser::call_fun_args1::<StartsWith>.map(PipeFun::StartsWith),
+            parser::call_fun_args1::<MapTo>.map(PipeFun::MapTo),
+            parser::call_fun_args1::<Base64Decode>.map(PipeFun::Base64Decode),
+        )),
+        alt((
+            parser::call_fun_args1::<PathGet>.map(PipeFun::PathGet),
+            parser::call_fun_args1::<UrlGet>.map(PipeFun::UrlGet),
+        )),
     ))
     .parse_next(data)
 }
@@ -374,6 +414,7 @@ fn pipe_fun_simple_core_b(data: &mut &str) -> WResult<PipeFun> {
         PIPE_TIME_TO_TS_MS.map(|_| PipeFun::TimeToTsMs(TimeToTsMs::default())),
         PIPE_TIME_TO_TS_US.map(|_| PipeFun::TimeToTsUs(TimeToTsUs::default())),
         PIPE_TIME_TO_TS.map(|_| PipeFun::TimeToTs(TimeToTs::default())),
+        PIPE_TIME_FROM_TS_MS.map(|_| PipeFun::TimeFromTsMs(TimeFromTsMs::default())),
         PIPE_TO_JSON.map(|_| PipeFun::ToJson(ToJson::default())),
     ))
     .parse_next(data)
@@ -415,6 +456,10 @@ mod tests {
         assert_oml_parse(&mut code, oml_aga_pipe);
 
         let mut code = r#" pipe take(ip) | Time::to_ts_zone(8,ms) | Time::to_ts_zone(-8,ss)"#;
+        assert_oml_parse(&mut code, oml_aga_pipe);
+
+        // to_ts_ms / from_ts_ms 支持可选 zone（无参、带正/负 zone 均可解析）
+        let mut code = r#" pipe take(ip) | Time::to_ts_ms | Time::to_ts_ms(8) | Time::from_ts_ms | Time::from_ts_ms(-5)"#;
         assert_oml_parse(&mut code, oml_aga_pipe);
 
         let mut code = r#" pipe take(ip) | skip_empty"#;

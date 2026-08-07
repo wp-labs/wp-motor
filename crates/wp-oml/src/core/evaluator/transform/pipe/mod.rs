@@ -31,6 +31,7 @@ impl ValueProcessor for PipeFun {
             PipeFun::TimeToTsMs(o) => o.value_cacu(in_val),
             PipeFun::TimeToTsUs(o) => o.value_cacu(in_val),
             PipeFun::TimeToTsZone(o) => o.value_cacu(in_val),
+            PipeFun::TimeFromTsMs(o) => o.value_cacu(in_val),
             PipeFun::Nth(o) => o.value_cacu(in_val),
             PipeFun::Get(o) => o.value_cacu(in_val),
             PipeFun::OnFail(o) => o.value_cacu(in_val),

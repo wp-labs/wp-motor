@@ -38,9 +38,10 @@
 | 转义 | `json_escape` | `escaped = read(text) | json_escape ;` |
 | 转义 | `json_unescape` | `raw = read(text) | json_unescape ;` |
 | 时间 | `Time::to_ts` | `ts = read(time) | Time::to_ts ;` |
-| 时间 | `Time::to_ts_ms` | `ts = read(time) | Time::to_ts_ms ;` |
+| 时间 | `Time::to_ts_ms([zone])` | `ts = read(time) | Time::to_ts_ms ;` |
 | 时间 | `Time::to_ts_us` | `ts = read(time) | Time::to_ts_us ;` |
 | 时间 | `Time::to_ts_zone(zone, unit)` | `ts = read(time) | Time::to_ts_zone(0, ms) ;` |
+| 时间 | `Time::from_ts_ms([zone])` | `t = read(ts_ms) | Time::from_ts_ms(0) ;` |
 | 转换 | `to_json` | `payload = read(arr) | to_json ;` |
 | 转换 | `to_str` | `ip_s = read(ip) | to_str ;` |
 | 转换 | `ip4_to_int` | `ip_i = read(src_ip) | ip4_to_int ;` |
