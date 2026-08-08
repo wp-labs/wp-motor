@@ -5,13 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.25.3 Unreleased]
+## [1.25.4 Unreleased]
+
+### Added
+- **OML/Time 时间戳函数**：新增 `Time::from_ts`/`Time::from_ts_ms`/`Time::from_ts_us`（秒/毫秒/微秒时间戳 → 时间），与 `Time::to_ts`/`to_ts_ms`/`to_ts_us` 互为逆操作；六个函数的 `zone` 参数可选、默认东8区（正东负西，0 = UTC），超 i32 范围或 `|zone| > 23`（超出 `FixedOffset` 上限）在解析期报错，zone 值非法（超范围/溢出）时原样透传
+
+### Fixed
+- **OML/Time 时间戳 zone 溢出**：`|zone|` 极大（> 596523）时 `zone * 3600` 溢出 i32，debug 构建（`cargo test`/引擎 debug）直接 panic；改用 `saturating_mul` 饱和后由 `FixedOffset::east_opt` 返回 `None` → 无效 zone 透传，避免用户 OML 源码触发崩溃
+
+### Docs
+- **OML/Time 时间戳函数文档**：函数参考（zh/en）与 pipe_functions 补充六个时间戳函数的 `zone` 语法与示例；`to_ts_zone` 标注与 `to_ts(zone)`/`to_ts_ms(zone)`/`to_ts_us(zone)` 等价；说明「互逆需使用相同 zone」
+
+### Tests
+- **wp-oml Time 时间戳函数测试**：新增 33 个用例（六函数求值、无参/正/负 zone、边界 ±23、越界/溢出拒绝、同 zone 往返互逆、跨 zone 不对称、负时间戳、非匹配类型/越界时间戳透传、Display 往返、错误消息含具体原因）
+
+## [1.25.3] - 2026-08-05
 
 ### Added
 - **OML 嵌套对象**：`object { ... }` 子项值支持嵌套 `object { ... }` 字面量，可将平铺字段组织成多层 JSON；嵌套对象可任意深度，并与 `array` 互相嵌套
 - **OML 对象数组**：新增 `array { ... }` 聚合表达式，直接构造对象/值字面量数组（元素支持 `object { ... }`、嵌套 `array`、`read/take`、值、函数等表达式）；元素缺失或为 null 自动跳过，全部缺失不输出该字段
 - **static 块**：静态块支持嵌套对象/数组字面量（`ensure_static_*` 校验与静态符号重写覆盖 `NestedAccessor::Map`/`ObjArray`）
-- **OML/Time 时间戳函数**: 新增 `Time::from_ts`/`Time::from_ts_ms`/`Time::from_ts_us`（秒/毫秒/微秒时间戳 → 时间），与 `Time::to_ts`/`to_ts_ms`/`to_ts_us` 互为逆操作；六个函数的 `zone` 参数可选、默认东8区（正东负西，0 = UTC），超 i32 范围或 `|zone| > 23`（超出 `FixedOffset` 上限）在解析期报错
 
 ### Fixed
 - **引擎启动加载失败（exit 300）**：修复嵌套 object 在 `load-engine-res` 阶段解析失败的问题——`wpadm check --what oml` 只校验文件非空，真实解析发生在引擎启动时；此前 `oml_sub_acq` 不接受 `object` 作为子项值，且 `array` 关键字未注册
