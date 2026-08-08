@@ -194,9 +194,13 @@ ip : ip = read(ip_addr) ;                      # 转 IP
 cpu : float = read(cpu_usage) ;                # 转浮点数
 active : bool = read(is_active) ;              # 转布尔值
 
-# 时间转时间戳
-ts_sec = read(event_time) | Time::to_ts_zone(0, s) ;    # 秒
-ts_ms = read(event_time) | Time::to_ts_zone(8, ms) ;    # 毫秒（UTC+8）
+# 时间转时间戳（zone 可选，默认东8区；正东负西，0 = UTC）
+ts_sec = read(event_time) | Time::to_ts(0) ;            # 秒（UTC）
+ts_ms = read(event_time) | Time::to_ts_ms(8) ;          # 毫秒（UTC+8）
+ts_us = read(event_time) | Time::to_ts_us ;             # 微秒（默认东8区）
+
+# 时间戳转时间（与 to_ts* 互为逆操作，需使用相同 zone）
+event_ts = read(ts_ms) | Time::from_ts_ms(8) ;          # 毫秒时间戳 → 时间（UTC+8）
 
 # URL 解析
 domain = read(url) | url(domain) ;
@@ -667,7 +671,8 @@ size = "1234"
 name : web_log_processing
 ---
 # 时间处理
-event_ts = pipe read(timestamp) | Time::to_ts_zone(0, s) ;
+event_ts = pipe read(timestamp) | Time::to_ts(0) ;      # 秒（UTC）
+event_ts_ms = pipe read(timestamp) | Time::to_ts_ms ;   # 毫秒（默认东8区）
 
 # 字段提取
 source_ip : ip = read(src_ip) ;

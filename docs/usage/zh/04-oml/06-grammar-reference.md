@@ -214,6 +214,12 @@ pipe_fun_with_args = "nth", "(", unsigned, ")"
                    | "base64_decode", "(", [ encode_type ], ")"
                    | "path", "(", [ "name" | "path" ], ")"
                    | "url", "(", [ "domain" | "host" | "uri" | "path" | "params" ], ")"
+                   | "Time::to_ts", "(", signed_int, ")"
+                   | "Time::to_ts_ms", "(", signed_int, ")"
+                   | "Time::to_ts_us", "(", signed_int, ")"
+                   | "Time::from_ts", "(", signed_int, ")"
+                   | "Time::from_ts_ms", "(", signed_int, ")"
+                   | "Time::from_ts_us", "(", signed_int, ")"
                    | "Time::to_ts_zone", "(", signed_int, ",", ("s" | "ss" | "ms" | "us"), ")" ;
 
 pipe_fun_simple   = "base64_encode"
@@ -225,6 +231,9 @@ pipe_fun_simple   = "base64_encode"
                   | "Time::to_ts"
                   | "Time::to_ts_ms"
                   | "Time::to_ts_us"
+                  | "Time::from_ts"
+                  | "Time::from_ts_ms"
+                  | "Time::from_ts_us"
                   | "to_json"
                   | "to_str"
                   | "skip_empty"
@@ -238,12 +247,14 @@ pipe_fun_simple   = "base64_encode"
 - `pipe` 关键字可以省略
 - 无前缀管道的起点仍然必须是 `read(...)`、`take(...)` 或 `@field`
 - 当前实现中没有 `sxf_get(...)`、`str_unescape`
+- 六个时间戳函数（`to_ts`/`to_ts_ms`/`to_ts_us`/`from_ts`/`from_ts_ms`/`from_ts_us`）的 `zone` 参数可选，默认东8区（正东负西，0 = UTC）；`|zone| > 23` 或超 i32 范围在解析期报错
 
 **示例**
 
 ```oml
 host = read(url) | url(host) ;
-ts = pipe read(time) | Time::to_ts_zone(0, ms) ;
+ts = pipe read(time) | Time::to_ts(0) ;
+t = pipe read(ts_ms) | Time::from_ts_ms(0) ;
 flag = @message | starts_with('ERROR') | map_to(true) ;
 ```
 

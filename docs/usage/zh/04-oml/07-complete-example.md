@@ -209,12 +209,16 @@ status_class = match read(status) {
 
 // ==================== 6. 管道函数 ====================
 
-// 6.1 时间转换
-timestamp_zone = pipe read(timestamp_zone) | Time::to_ts_zone(0, ms);  // 修改时区
-timestamp_s = pipe read(timestamp_zone) | Time::to_ts;                 // 转秒级时间戳
-timestamp_ms = pipe @current_time | Time::to_ts_ms;                    // 转毫秒级时间戳
-timestamp_us = pipe @current_time | Time::to_ts_us;                    // 转微秒级时间戳
-timestamp_zone_8 = pipe @current_time | Time::to_ts_zone(8, s);        // UTC+8 时区
+// 6.1 时间转换（zone 可选，默认东8区；正东负西，0 = UTC）
+timestamp_zone = pipe read(timestamp_zone) | Time::to_ts(0);           // 秒级（UTC）
+timestamp_s = pipe read(timestamp_zone) | Time::to_ts;                 // 秒级（默认东8区）
+timestamp_ms = pipe @current_time | Time::to_ts_ms;                    // 毫秒级
+timestamp_us = pipe @current_time | Time::to_ts_us;                    // 微秒级
+timestamp_zone_8 = pipe @current_time | Time::to_ts_ms(8);             // 毫秒级（UTC+8）
+
+// 时间戳还原（与 to_ts* 互为逆操作，需使用相同 zone）
+restored = pipe read(timestamp_ms) | Time::from_ts_ms;                 // 毫秒时间戳 → 时间（默认东8区）
+restored_utc = pipe read(timestamp_ms) | Time::from_ts_ms(0);          // UTC
 
 // 6.2 编码/解码
 base64_decoded = pipe read(base64) | base64_decode(Utf8);  // Base64 解码
@@ -491,11 +495,15 @@ status_class = match read(status) {
 
 #### 6.1 时间转换
 ```oml
-timestamp_zone = pipe read(timestamp_zone) | Time::to_ts_zone(0, ms);  // UTC 毫秒
-timestamp_s = pipe read(timestamp_zone) | Time::to_ts;                 // 秒级
+timestamp_zone = pipe read(timestamp_zone) | Time::to_ts(0);           // 秒级（UTC）
+timestamp_s = pipe read(timestamp_zone) | Time::to_ts;                 // 秒级（默认东8区）
 timestamp_ms = pipe @current_time | Time::to_ts_ms;                    // 毫秒级
 timestamp_us = pipe @current_time | Time::to_ts_us;                    // 微秒级
-timestamp_zone_8 = pipe @current_time | Time::to_ts_zone(8, s);        // UTC+8
+timestamp_zone_8 = pipe @current_time | Time::to_ts_ms(8);             // 毫秒级（UTC+8）
+
+// 时间戳还原（与 to_ts* 互为逆操作，需使用相同 zone）
+restored = pipe read(timestamp_ms) | Time::from_ts_ms;                 // 毫秒时间戳 → 时间（默认东8区）
+restored_utc = pipe read(timestamp_ms) | Time::from_ts_ms(0);          // UTC
 ```
 
 #### 6.2 编码/解码

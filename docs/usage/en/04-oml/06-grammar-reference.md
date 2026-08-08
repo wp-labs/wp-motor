@@ -214,6 +214,12 @@ pipe_fun_with_args = "nth", "(", unsigned, ")"
                    | "base64_decode", "(", [ encode_type ], ")"
                    | "path", "(", [ "name" | "path" ], ")"
                    | "url", "(", [ "domain" | "host" | "uri" | "path" | "params" ], ")"
+                   | "Time::to_ts", "(", signed_int, ")"
+                   | "Time::to_ts_ms", "(", signed_int, ")"
+                   | "Time::to_ts_us", "(", signed_int, ")"
+                   | "Time::from_ts", "(", signed_int, ")"
+                   | "Time::from_ts_ms", "(", signed_int, ")"
+                   | "Time::from_ts_us", "(", signed_int, ")"
                    | "Time::to_ts_zone", "(", signed_int, ",", ("s" | "ss" | "ms" | "us"), ")" ;
 
 pipe_fun_simple   = "base64_encode"
@@ -225,6 +231,9 @@ pipe_fun_simple   = "base64_encode"
                   | "Time::to_ts"
                   | "Time::to_ts_ms"
                   | "Time::to_ts_us"
+                  | "Time::from_ts"
+                  | "Time::from_ts_ms"
+                  | "Time::from_ts_us"
                   | "to_json"
                   | "to_str"
                   | "skip_empty"
@@ -238,12 +247,14 @@ pipe_fun_simple   = "base64_encode"
 - the `pipe` keyword may be omitted
 - even without the keyword, the pipe source must still be `read(...)`, `take(...)`, or `@field`
 - the current implementation does not support `sxf_get(...)` or `str_unescape`
+- the six timestamp functions (`to_ts`/`to_ts_ms`/`to_ts_us`/`from_ts`/`from_ts_ms`/`from_ts_us`) take an optional `zone` argument, defaulting to UTC+8 (positive = east, negative = west, 0 = UTC); `|zone| > 23` or out-of-i32-range values are rejected at parse time
 
 **Examples**
 
 ```oml
 host = read(url) | url(host) ;
-ts = pipe read(time) | Time::to_ts_zone(0, ms) ;
+ts = pipe read(time) | Time::to_ts(0) ;
+t = pipe read(ts_ms) | Time::from_ts_ms(0) ;
 flag = @message | starts_with('ERROR') | map_to(true) ;
 ```
 
