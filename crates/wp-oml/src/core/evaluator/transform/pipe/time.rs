@@ -1,8 +1,8 @@
 use crate::core::prelude::*;
 use crate::language::{
-    TimeFromTs, TimeFromTsMs, TimeFromTsUs, TimeStampUnit, TimeToTs, TimeToTsMs, TimeToTsUs,
-    TimeToTsZone, PIPE_TIME_FROM_TS, PIPE_TIME_FROM_TS_MS, PIPE_TIME_FROM_TS_US,
-    PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US, PIPE_TIME_TO_TS_ZONE,
+    PIPE_TIME_FROM_TS, PIPE_TIME_FROM_TS_MS, PIPE_TIME_FROM_TS_US, PIPE_TIME_TO_TS,
+    PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US, PIPE_TIME_TO_TS_ZONE, TimeFromTs, TimeFromTsMs,
+    TimeFromTsUs, TimeStampUnit, TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone,
 };
 use chrono::{DateTime, FixedOffset, Utc};
 use wp_model_core::model::{DataField, Value};
@@ -62,10 +62,7 @@ fn ts_to_time_value(
     };
     let tz = zone_offset(zone.unwrap_or(8), fun)?;
     let local = dt.with_timezone(&tz).naive_local();
-    Some(DataField::from_time(
-        in_val.get_name().to_string(),
-        local,
-    ))
+    Some(DataField::from_time(in_val.get_name().to_string(), local))
 }
 
 /// `Time::to_ts([zone])`：时间 → 秒时间戳（zone 默认东8区）
@@ -76,14 +73,18 @@ impl ValueProcessor for TimeToTs {
 }
 impl ValueProcessor for TimeToTsMs {
     fn value_cacu(&self, in_val: DataField) -> DataField {
-        time_to_ts_value(&in_val, self.zone, PIPE_TIME_TO_TS_MS, |l| l.timestamp_millis())
-            .unwrap_or(in_val)
+        time_to_ts_value(&in_val, self.zone, PIPE_TIME_TO_TS_MS, |l| {
+            l.timestamp_millis()
+        })
+        .unwrap_or(in_val)
     }
 }
 impl ValueProcessor for TimeToTsUs {
     fn value_cacu(&self, in_val: DataField) -> DataField {
-        time_to_ts_value(&in_val, self.zone, PIPE_TIME_TO_TS_US, |l| l.timestamp_micros())
-            .unwrap_or(in_val)
+        time_to_ts_value(&in_val, self.zone, PIPE_TIME_TO_TS_US, |l| {
+            l.timestamp_micros()
+        })
+        .unwrap_or(in_val)
     }
 }
 impl ValueProcessor for TimeToTsZone {
@@ -404,7 +405,9 @@ mod tests {
     async fn test_time_from_ts_utc() {
         let cache = &mut FieldQueryCache::default();
         // from_ts(0)：971136000 秒 → 2000-10-10 00:00:00 UTC
-        let data = vec![FieldStorage::from_owned(DataField::from_digit("ts", 971136000))];
+        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+            "ts", 971136000,
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -449,7 +452,9 @@ mod tests {
     async fn test_time_ts_roundtrip_default_zone() {
         let cache = &mut FieldQueryCache::default();
         // from_ts → to_ts 默认东8往返互逆，复原原秒时间戳
-        let data = vec![FieldStorage::from_owned(DataField::from_digit("ts", 1739000000))];
+        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+            "ts", 1739000000,
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -598,7 +603,9 @@ mod tests {
     async fn test_time_from_ts_ms_negative() {
         let cache = &mut FieldQueryCache::default();
         // 负毫秒时间戳（1970 前）：-1000 ms → 1969-12-31 23:59:59.000 UTC
-        let data = vec![FieldStorage::from_owned(DataField::from_digit("ts_ms", -1000))];
+        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+            "ts_ms", -1000,
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -629,8 +636,9 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect =
-            chrono::DateTime::<chrono::Utc>::from_timestamp(-1, 0).unwrap().naive_utc();
+        let expect = chrono::DateTime::<chrono::Utc>::from_timestamp(-1, 0)
+            .unwrap()
+            .naive_utc();
         let out = target.field("X").expect("X field").as_field();
         assert_eq!(out.get_value(), &wp_model_core::model::Value::Time(expect));
     }
@@ -640,8 +648,7 @@ mod tests {
         let cache = &mut FieldQueryCache::default();
         // 负微秒时间戳（1970 前）：-1000000 us → 1969-12-31 23:59:59.000000 UTC
         let data = vec![FieldStorage::from_owned(DataField::from_digit(
-            "ts_us",
-            -1000000,
+            "ts_us", -1000000,
         ))];
         let src = DataRecord::from(data);
 
@@ -663,7 +670,9 @@ mod tests {
     async fn test_time_ts_ms_roundtrip_negative() {
         let cache = &mut FieldQueryCache::default();
         // 负时间戳（1970 前）默认东8往返互逆
-        let data = vec![FieldStorage::from_owned(DataField::from_digit("ts_ms", -1000))];
+        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+            "ts_ms", -1000,
+        ))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
