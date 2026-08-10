@@ -3,6 +3,7 @@ pub mod nested;
 
 use crate::core::AsyncFieldExtractor;
 use crate::language::EvaluationTarget;
+use crate::language::PiPeOperation;
 use crate::language::prelude::*;
 use async_trait::async_trait;
 
@@ -31,6 +32,8 @@ pub enum NestedAccessor {
     Map(MapOperation),
     /// 对象数组字面量（`array { object {...}; ... }` 作为 object 子项）
     ObjArray(ObjArrayOperation),
+    /// 管道表达式（`pipe read(...) | fun | ...` 作为 object 子项）
+    Pipe(PiPeOperation),
     /// Placeholder for static symbol; resolved after parsing
     StaticSymbol(String),
 }
@@ -49,6 +52,8 @@ impl PartialEq for NestedAccessor {
             (NestedAccessor::ObjArray(a), NestedAccessor::ObjArray(b)) => {
                 a.to_string() == b.to_string()
             }
+            // PiPeOperation 未派生 PartialEq，以规范化 Display 串比较
+            (NestedAccessor::Pipe(a), NestedAccessor::Pipe(b)) => a.to_string() == b.to_string(),
             _ => false,
         }
     }
@@ -91,6 +96,7 @@ impl NestedAccessor {
             NestedAccessor::Collect(o) => o.extract_one(target, src, dst),
             NestedAccessor::Map(o) => o.extract_one(target, src, dst),
             NestedAccessor::ObjArray(o) => o.extract_one(target, src, dst),
+            NestedAccessor::Pipe(o) => o.extract_one(target, src, dst),
             NestedAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }
@@ -114,6 +120,7 @@ impl NestedAccessor {
             NestedAccessor::Collect(o) => o.extract_more(src, dst, cache),
             NestedAccessor::Map(o) => o.extract_more(src, dst, cache),
             NestedAccessor::ObjArray(o) => o.extract_more(src, dst, cache),
+            NestedAccessor::Pipe(o) => o.extract_more(src, dst, cache),
             NestedAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }
@@ -128,6 +135,7 @@ impl NestedAccessor {
             NestedAccessor::Collect(o) => o.support_batch(),
             NestedAccessor::Map(o) => o.support_batch(),
             NestedAccessor::ObjArray(o) => o.support_batch(),
+            NestedAccessor::Pipe(o) => o.support_batch(),
             NestedAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }
@@ -151,6 +159,7 @@ impl AsyncFieldExtractor for NestedAccessor {
             NestedAccessor::Collect(o) => o.extract_one_async(target, src, dst).await,
             NestedAccessor::Map(o) => o.extract_one_async(target, src, dst).await,
             NestedAccessor::ObjArray(o) => o.extract_one_async(target, src, dst).await,
+            NestedAccessor::Pipe(o) => o.extract_one_async(target, src, dst).await,
             NestedAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }
@@ -171,6 +180,7 @@ impl AsyncFieldExtractor for NestedAccessor {
             NestedAccessor::Collect(o) => o.extract_storage_async(target, src, dst).await,
             NestedAccessor::Map(o) => o.extract_storage_async(target, src, dst).await,
             NestedAccessor::ObjArray(o) => o.extract_storage_async(target, src, dst).await,
+            NestedAccessor::Pipe(o) => o.extract_storage_async(target, src, dst).await,
             NestedAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }
@@ -191,6 +201,7 @@ impl AsyncFieldExtractor for NestedAccessor {
             NestedAccessor::Collect(o) => o.extract_more_async(src, dst, cache).await,
             NestedAccessor::Map(o) => o.extract_more_async(src, dst, cache).await,
             NestedAccessor::ObjArray(o) => o.extract_more_async(src, dst, cache).await,
+            NestedAccessor::Pipe(o) => o.extract_more_async(src, dst, cache).await,
             NestedAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }
@@ -206,6 +217,7 @@ impl AsyncFieldExtractor for NestedAccessor {
             NestedAccessor::Collect(o) => o.support_batch_async(),
             NestedAccessor::Map(o) => o.support_batch_async(),
             NestedAccessor::ObjArray(o) => o.support_batch_async(),
+            NestedAccessor::Pipe(o) => o.support_batch_async(),
             NestedAccessor::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }
@@ -232,6 +244,9 @@ impl Display for NestedAccessor {
                 write!(f, "{}", x)
             }
             NestedAccessor::ObjArray(x) => {
+                write!(f, "{}", x)
+            }
+            NestedAccessor::Pipe(x) => {
                 write!(f, "{}", x)
             }
             NestedAccessor::Fun(x) => {

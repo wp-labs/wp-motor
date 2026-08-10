@@ -29,7 +29,7 @@ use crate::parser::syntax::oml_default;
 use crate::parser::tdc_prm::{oml_aga_tdc, oml_aga_value, oml_batch_gw_get};
 use crate::parser::{oml_acq, syntax};
 use winnow::ascii::multispace0;
-use winnow::combinator::{alt, fail, peek, repeat, separated, trace};
+use winnow::combinator::{alt, cut_err, fail, peek, repeat, separated, trace};
 use winnow::error::StrContext;
 use winnow::error::StrContextValue;
 use winnow::stream::Stream;
@@ -72,7 +72,8 @@ pub fn oml_target(data: &mut &str) -> WResult<EvaluationTarget> {
 }
 pub fn oml_target_vec_same_meta(data: &mut &str) -> WResult<Vec<EvaluationTarget>> {
     let _ = multispace0.parse_next(data)?;
-    let names: Vec<&str> = separated(1.., take_var_name, ",").parse_next(data)?;
+    // 分隔符容忍逗号前后空白（如 `a , b`），与 take_var_name 跳过前导空白一致
+    let names: Vec<&str> = separated(1.., take_var_name, (multispace0, ",")).parse_next(data)?;
     let _ = multispace0.parse_next(data)?;
     //symbol_colon.parse_next(data)?;
     //let meta = tdm_meta.parse_next(data)?;
@@ -96,7 +97,9 @@ pub fn oml_target_vec_same_meta(data: &mut &str) -> WResult<Vec<EvaluationTarget
 
 pub fn oml_target_vec(data: &mut &str) -> WResult<Vec<EvaluationTarget>> {
     let _ = multispace0.parse_next(data)?;
-    let targets: Vec<EvaluationTarget> = separated(1.., oml_target, ",").parse_next(data)?;
+    // 分隔符容忍逗号前后空白（如 `a , b`）
+    let targets: Vec<EvaluationTarget> =
+        separated(1.., oml_target, (multispace0, ",")).parse_next(data)?;
     Ok(targets)
 }
 
@@ -239,7 +242,21 @@ pub fn oml_read(data: &mut &str) -> WResult<DirectAccessor> {
     let code = get_scope(data, '(', ')').inspect_err(|_e| {
         data.reset(&cp);
     })?;
-    let args: Vec<(String, String)> = repeat(0.., syntax::oml_args).parse_next(&mut &code[..])?;
+    let mut code_data: &str = code;
+    let args: Vec<(String, String)> = repeat(0.., syntax::oml_args).parse_next(&mut code_data)?;
+    multispace0.parse_next(&mut code_data)?;
+    if !code_data.is_empty() {
+        // `repeat(0..)` 在某个参数无法解析时会静默结束，必须确认括号内已被完整消费，
+        // 否则非法参数会被悄悄丢弃（与 object 成员静默丢弃同类）。
+        data.reset(&cp);
+        return cut_err(
+            fail.context(ctx_desc("unexpected content in read() args"))
+                .context(StrContext::Expected(StrContextValue::StringLiteral(
+                    "get | keys | option | <json_path>",
+                ))),
+        )
+        .parse_next(&mut code_data);
+    }
 
     let mut builder = ReadOptionBuilder::default();
     for (k, v) in args {
@@ -285,7 +302,21 @@ pub fn oml_take(data: &mut &str) -> WResult<DirectAccessor> {
     let code = get_scope(data, '(', ')').inspect_err(|_e| {
         data.reset(&cp);
     })?;
-    let args: Vec<(String, String)> = repeat(0.., syntax::oml_args).parse_next(&mut &code[..])?;
+    let mut code_data: &str = code;
+    let args: Vec<(String, String)> = repeat(0.., syntax::oml_args).parse_next(&mut code_data)?;
+    multispace0.parse_next(&mut code_data)?;
+    if !code_data.is_empty() {
+        // `repeat(0..)` 在某个参数无法解析时会静默结束，必须确认括号内已被完整消费，
+        // 否则非法参数会被悄悄丢弃（与 object 成员静默丢弃同类）。
+        data.reset(&cp);
+        return cut_err(
+            fail.context(ctx_desc("unexpected content in take() args"))
+                .context(StrContext::Expected(StrContextValue::StringLiteral(
+                    "get | keys | option | <json_path>",
+                ))),
+        )
+        .parse_next(&mut code_data);
+    }
 
     let mut builder = FieldTakeBuilder::default();
     for (k, v) in args {
@@ -443,6 +474,53 @@ mod tests {
        "#;
         let x = oml_target.parse_next(&mut code)?;
         println!("{:?}", x);
+        Ok(())
+    }
+
+    // issue #348 同类：read() 括号内非法参数必须整体失败，合法参数完整消费
+    #[test]
+    fn test_oml_read_garbage_args_rejected() -> ModalResult<()> {
+        let mut ok_code = r#"read(option : [src_ip, s_ip, source_ip])"#;
+        super::oml_read.parse_next(&mut ok_code)?;
+        assert!(
+            ok_code.trim().is_empty(),
+            "合法 read() 应被完整消费，remain: {:?}",
+            ok_code
+        );
+
+        let mut bad_code = r#"read(option : [src_ip] @@garbage@@)"#;
+        assert!(
+            super::oml_read.parse_next(&mut bad_code).is_err(),
+            "read() 非法参数应被拒绝"
+        );
+
+        // 垃圾参数位于开头/中间同样拒绝
+        let mut bad_head = r#"read(@@garbage@@ option : [src_ip])"#;
+        assert!(super::oml_read.parse_next(&mut bad_head).is_err());
+        let mut bad_mid = r#"read(option : [src_ip] @@garbage@@ keys : [a])"#;
+        assert!(super::oml_read.parse_next(&mut bad_mid).is_err());
+        Ok(())
+    }
+
+    // issue #348 同类：take() 括号内非法参数必须整体失败，合法参数完整消费
+    #[test]
+    fn test_oml_take_garbage_args_rejected() -> ModalResult<()> {
+        let mut ok_code = r#"take(keys : [a, b] )"#;
+        super::oml_take.parse_next(&mut ok_code)?;
+        assert!(
+            ok_code.trim().is_empty(),
+            "合法 take() 应被完整消费，remain: {:?}",
+            ok_code
+        );
+
+        let mut bad_code = r#"take(keys : [a, b] @@garbage@@)"#;
+        assert!(
+            super::oml_take.parse_next(&mut bad_code).is_err(),
+            "take() 非法参数应被拒绝"
+        );
+
+        let mut bad_all = r#"take(@@)"#;
+        assert!(super::oml_take.parse_next(&mut bad_all).is_err());
         Ok(())
     }
 }

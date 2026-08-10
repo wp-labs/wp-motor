@@ -279,6 +279,9 @@ fn ensure_static_nested_accessor_supported(
         crate::language::NestedAccessor::Fun(_) => {
             static_block_err("static block does not support runtime functions")
         }
+        crate::language::NestedAccessor::Pipe(_) => {
+            static_block_err("static block does not support pipe operations")
+        }
         crate::language::NestedAccessor::Map(op) => {
             for binding in op.subs() {
                 ensure_static_nested_accessor_supported(binding.acquirer())?;
@@ -676,6 +679,9 @@ fn rewrite_nested_accessor(
         }
         crate::language::NestedAccessor::ObjArray(op) => {
             rewrite_obj_array_operation(op, const_fields)?;
+        }
+        crate::language::NestedAccessor::Pipe(op) => {
+            rewrite_pipe_operation(op, const_fields)?;
         }
         crate::language::NestedAccessor::Field(_)
         | crate::language::NestedAccessor::FieldArc(_)
@@ -1505,6 +1511,215 @@ field = chars(value);
         assert!(result.is_ok());
         assert!(!result.unwrap());
 
+        Ok(())
+    }
+
+    // issue #348: 完整文件回归 —— 嵌套 object + pipe 成员，后续兄弟字段全部保留
+    #[test]
+    fn test_issue_348_nested_object_pipe_tail() -> ModalResult<()> {
+        use crate::language::{EvalExp, NestedAccessor, PreciseEvaluator};
+
+        let mut code = r#"
+name : nested_object_tail
+rule : issue_probe/nested_object_tail
+---
+input_name = read(name);
+parser_bug_probe = object {
+    before = chars(before);
+    rule = object {
+        signature_id = pipe read(missing_rule_ids) | nth(0);
+    };
+    after = chars(after);
+    nested_after = object {
+        value = chars(also_after);
+    };
+};
+"#;
+        let model = oml_parse_syntax_raw.parse_next(&mut code)?;
+        assert_eq!(model.items.len(), 2, "input_name + parser_bug_probe");
+        match &model.items[1] {
+            EvalExp::Single(single) => match single.eval_way() {
+                PreciseEvaluator::Map(map) => {
+                    let names: Vec<String> =
+                        map.subs().iter().map(|b| b.target().safe_name()).collect();
+                    assert_eq!(names, vec!["before", "rule", "after", "nested_after"]);
+                    match map.subs()[1].acquirer() {
+                        NestedAccessor::Map(rule) => {
+                            let inner: Vec<String> =
+                                rule.subs().iter().map(|b| b.target().safe_name()).collect();
+                            assert_eq!(inner, vec!["signature_id"]);
+                            assert!(
+                                matches!(rule.subs()[0].acquirer(), NestedAccessor::Pipe(_)),
+                                "nested pipe member must be a Pipe accessor"
+                            );
+                        }
+                        other => panic!("expected nested Map, got {:?}", other),
+                    }
+                }
+                other => panic!("expected Map, got {:?}", other),
+            },
+            other => panic!("expected Single, got {:?}", other),
+        }
+        Ok(())
+    }
+
+    // issue #348: 非法 object 成员必须使整个 OML 校验失败，而不是静默丢弃
+    #[test]
+    fn test_issue_348_invalid_member_rejected() -> ModalResult<()> {
+        let mut code = r#"
+name : bad
+---
+probe = object {
+    before = chars(before);
+    after = ;
+};
+"#;
+        let result = oml_parse_syntax_raw.parse_next(&mut code);
+        assert!(
+            result.is_err(),
+            "invalid object member must fail the whole OML validation"
+        );
+        println!("err: {}", result.unwrap_err());
+        Ok(())
+    }
+
+    // issue #348: static 块内嵌套 object 使用 pipe 应被明确拒绝（而非 panic）
+    #[test]
+    fn test_issue_348_static_block_pipe_rejected() -> ModalResult<()> {
+        let mut code = r#"
+name : static_pipe
+---
+static {
+    tpl = object {
+        sig = pipe read(x) | to_str;
+    };
+}
+result = read(tpl);
+"#;
+        let result = oml_parse_syntax_raw.parse_next(&mut code);
+        assert!(
+            result.is_err(),
+            "static 块不允许 pipe 操作，应报错而非静默接受/panic"
+        );
+        Ok(())
+    }
+
+    // issue #348: 多目标列表容忍逗号前后空白（`a , b`），完整文件被消费
+    #[test]
+    fn test_issue_348_multi_target_space_before_comma() -> ModalResult<()> {
+        let mut code = r#"
+name : multi
+---
+values : obj = object {
+    cpu_free, memory_free , cpu_used : digit = take();
+    process, disk_free , disk_used : digit = take();
+};
+"#;
+        oml_parse_syntax_raw.parse_next(&mut code)?;
+        assert!(code.trim().is_empty(), "完整文件应被消费");
+        Ok(())
+    }
+
+    // 同类问题：read()/take() 括号内非法参数此前被静默丢弃，现在必须整体失败
+    #[test]
+    fn test_issue_348_read_take_args_rejected() -> ModalResult<()> {
+        // 顶层 read() 参数含垃圾
+        let mut code = r#"
+name : t
+---
+x = read(option : [src_ip] @@garbage@@);
+"#;
+        assert!(
+            oml_parse_syntax_raw.parse_next(&mut code).is_err(),
+            "read() 非法参数必须使整个 OML 校验失败"
+        );
+
+        // object 成员内 take() 参数含垃圾
+        let mut code = r#"
+name : t
+---
+probe = object {
+    x = take(keys : [a, b] @@garbage@@);
+    after = chars(after);
+};
+"#;
+        assert!(
+            oml_parse_syntax_raw.parse_next(&mut code).is_err(),
+            "object 成员内 take() 非法参数必须使整个 OML 校验失败"
+        );
+
+        // 合法参数形式不受影响
+        let mut code = r#"
+name : t
+---
+probe = object {
+    x = read(option : [src_ip]);
+    y = take(keys : [a, b], in : [c]);
+};
+"#;
+        oml_parse_syntax_raw.parse_next(&mut code)?;
+        assert!(code.trim().is_empty());
+        Ok(())
+    }
+
+    // read()/take() 参数静默丢弃：垃圾参数位于不同位置、合法边界形式
+    #[test]
+    fn test_issue_348_read_take_args_more_forms() -> ModalResult<()> {
+        // 垃圾在参数开头
+        let mut code = r#"
+name : t
+---
+x = read(@@garbage@@ option : [src_ip]);
+"#;
+        assert!(
+            oml_parse_syntax_raw.parse_next(&mut code).is_err(),
+            "垃圾参数在开头应失败"
+        );
+
+        // 垃圾在参数中间
+        let mut code = r#"
+name : t
+---
+x = read(option : [src_ip] @@garbage@@ keys : [a]);
+"#;
+        assert!(
+            oml_parse_syntax_raw.parse_next(&mut code).is_err(),
+            "垃圾参数在中间应失败"
+        );
+
+        // take() 全部为垃圾
+        let mut code = r#"
+name : t
+---
+x = take(@@);
+"#;
+        assert!(
+            oml_parse_syntax_raw.parse_next(&mut code).is_err(),
+            "take() 全垃圾应失败"
+        );
+
+        // pipe 源内的 read() 参数含垃圾（管道源也走 oml_read 校验）
+        let mut code = r#"
+name : t
+---
+x = pipe read(option : [src_ip] @@garbage@@) | to_str;
+"#;
+        assert!(
+            oml_parse_syntax_raw.parse_next(&mut code).is_err(),
+            "pipe 源内 read() 非法参数应失败"
+        );
+
+        // 合法边界形式：尾逗号、尾空白、多参数
+        let mut code = r#"
+name : t
+---
+x = read(option : [src_ip] ,);
+y = take(keys : [a, b] );
+z = read(keys : [a, b], in : [c]);
+w = read(/a/b/[0]/1);
+"#;
+        oml_parse_syntax_raw.parse_next(&mut code)?;
+        assert!(code.trim().is_empty());
         Ok(())
     }
 }
