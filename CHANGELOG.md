@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.25.4 Unreleased]
+## [1.25.5 latest]
+
+### Fixed
+- **OML 嵌套 object 成员静默丢弃**：修复嵌套 `object { ... }` 的成员解析失败时，该成员及其后的兄弟字段被静默丢弃、但模型加载仍报成功的问题。`oml_map()` 解析后不再假设 `repeat` 已消费全部 body，剩余未解析内容将作为明确语法错误返回（非法成员使整个 OML 校验失败，不再静默加载部分对象）；`oml_sub_acq` 新增 `pipe`（含省略前缀）分支，`NestedAccessor` 新增 `Pipe` 变体，嵌套 object 成员支持 `pipe read(...) | fun`；目标列表解析容忍逗号前后空白
+- **OML read/take 参数静默丢弃**：同类问题——`read(...)`/`take(...)` 括号内非法参数（如 `read(option : [x] @@garbage@@)`）此前被 `repeat(0.., oml_args)` 静默忽略、加载仍成功；现确认括号内已被完整消费，存在剩余内容时整体 OML 校验失败
+
+### Tests
+- **wp-oml issue #348 回归**：新增 28 个用例——真实报告结构（`category` 后的 `rule` 不丢弃 `behavior/confidence/attacker`）、pipe 成员任意位置（首/中/末）、省略前缀 `read(x) | fun`、`take` 源 pipe、同对象多 pipe 成员、数组元素内嵌套 object 的 pipe、深层混合嵌套、`get` 管道取前序对象输出、非法成员在首/中/末位置均整体失败、static 块拒绝 pipe、多目标逗号前后空白、`read()`/`take()` 非法参数整体失败（垃圾参数在开头/中间/末尾、pipe 源内、全部垃圾、object 成员内；合法边界形式尾逗号/尾空白/多参数/json path 不受影响）、Display 往返
+
+## [1.25.4] - 2026-08-08
 
 ### Added
 - **OML/Time 时间戳函数**：新增 `Time::from_ts`/`Time::from_ts_ms`/`Time::from_ts_us`（秒/毫秒/微秒时间戳 → 时间），与 `Time::to_ts`/`to_ts_ms`/`to_ts_us` 互为逆操作；六个函数的 `zone` 参数可选、默认东8区（正东负西，0 = UTC），超 i32 范围或 `|zone| > 23`（超出 `FixedOffset` 上限）在解析期报错，zone 值非法（超范围/溢出）时原样透传
