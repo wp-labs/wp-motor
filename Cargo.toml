@@ -384,8 +384,9 @@ wp-model-core = "0.9"
 # --- External: Infrastructure Libraries ---
 wp-log = "0.4"
 wp-lang = "0.5"
-wp-error = "0.11"
+wp-error = "0.11.1"
 wp-specs = "0.11"
 wp-conf-base = "0.5"
 wp-data-fmt = "0.9"
 wp-source-types = "0.2"
+

@@ -2,12 +2,13 @@ use crate::{
     core::parser::wpl_engine, facade::diagnostics::print_run_error,
     orchestrator::config::loader::WarpConf,
 };
-use orion_error::{conversion::ConvErr, conversion::SourceErr, conversion::ToStructError};
+use orion_conf::ErrorWith;
+use orion_error::{conversion::ConvErr, conversion::ToStructError};
 use orion_variate::{EnvDict, EnvEvaluable};
 use std::{env, path::PathBuf};
 use wp_conf::engine::EngineConfig;
 use wp_conf::stat::StatConf;
-use wp_error::{RunReason, run_error::RunResult};
+use wp_error::{RunReason, run_error::{IntoRunError, RunResult}};
 use wp_knowledge::facade;
 use wp_log::conf::LogConf;
 use wp_stat::{StatReq, StatRequires, StatStage, StatTarget};
@@ -31,7 +32,9 @@ pub fn load_warp_engine_confs(
             .with_source(err)
     })?;
     let main_conf = EngineConfig::load(&abs_root, dict)
-        .source_err(RunReason::core_conf(), "load engine config failed")?
+        // 保留配置解析详情（IntoRunError 提取 ConfIOReason::Other 内层 toml 错误）
+        .map_err(IntoRunError::into_run_err)
+        .doing("load engine config failed")?
         .env_eval(dict)
         .conf_absolutize(&abs_root);
     Ok((conf_manager, main_conf))
