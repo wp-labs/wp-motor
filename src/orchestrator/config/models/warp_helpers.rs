@@ -8,7 +8,10 @@ use orion_variate::{EnvDict, EnvEvaluable};
 use std::{env, path::PathBuf};
 use wp_conf::engine::EngineConfig;
 use wp_conf::stat::StatConf;
-use wp_error::{RunReason, run_error::{IntoRunError, RunResult}};
+use wp_error::{
+    RunReason,
+    run_error::{IntoRunError, RunResult},
+};
 use wp_knowledge::facade;
 use wp_log::conf::LogConf;
 use wp_stat::{StatReq, StatRequires, StatStage, StatTarget};

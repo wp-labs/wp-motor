@@ -8,9 +8,7 @@ use crate::sinks::SinkGroupAgent;
 use oml::core::ConfADMExt;
 use oml::language::{DataModel, ObjModel};
 use orion_conf::ErrorWith;
-use orion_error::{
-    OperationContext, conversion::SourceErr, conversion::ToStructError,
-};
+use orion_error::{OperationContext, conversion::SourceErr, conversion::ToStructError};
 use orion_variate::EnvDict;
 use wp_conf::engine::EngineConfig;
 use wp_error::RunReason;
