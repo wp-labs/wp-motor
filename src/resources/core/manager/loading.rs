@@ -9,11 +9,12 @@ use oml::core::ConfADMExt;
 use oml::language::{DataModel, ObjModel};
 use orion_conf::ErrorWith;
 use orion_error::{
-    OperationContext, conversion::ConvErr, conversion::SourceErr, conversion::ToStructError,
+    OperationContext, conversion::SourceErr, conversion::ToStructError,
 };
 use orion_variate::EnvDict;
 use wp_conf::engine::EngineConfig;
 use wp_error::RunReason;
+use wp_error::parse_error::OMLCodeReason;
 use wp_error::run_error::RunResult;
 
 use crate::core::parser::{SpaceIndex, WplRepository};
@@ -47,7 +48,18 @@ impl ResManager {
             if std::path::Path::new(path.as_str()).exists() && path.ends_with(".oml") {
                 let mdl = ObjModel::load(path.as_str())
                     .await
-                    .conv_err()
+                    .map_err(|e| {
+                        // 保留 OML 解析详情（conv_err 会压缩为无细节的配置错误）
+                        let detail = match e.reason() {
+                            OMLCodeReason::Syntax(s) => s.clone(),
+                            OMLCodeReason::NotFound(s) => s.clone(),
+                            OMLCodeReason::Uvs(_) => e.to_string(),
+                        };
+                        RunReason::core_conf()
+                            .to_err()
+                            .with_detail(detail)
+                            .with_source(e)
+                    })
                     .doing("load oml")
                     .with_context(path.as_str())?;
                 // Skip disabled models
