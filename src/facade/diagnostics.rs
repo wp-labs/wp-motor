@@ -689,6 +689,81 @@ struct DiagnosticPrint<'a> {
     exit_code: Option<i32>,
 }
 
+/// OML 解析错误的结构化部分：`[path]`/`[where]`/`[error]`。
+struct OmlParseParts {
+    file: String,
+    excerpt: String,
+    error: String,
+}
+
+/// 解析 OML `from_syntax` 生成的 detail（`:oml code parse fail!\n[path]:...\n[where]:...\n[error]:...`），
+/// 提取文件路径、代码摘录与错误消息，便于结构化展示而非整段原始文本。
+fn parse_oml_parse_detail(detail: &str) -> Option<OmlParseParts> {
+    if !detail.contains("code parse fail") && !detail.contains("oml code parse fail") {
+        return None;
+    }
+    enum Phase {
+        None,
+        File,
+        Where,
+        Error,
+    }
+    let mut phase = Phase::None;
+    let mut file = None;
+    let mut excerpt = None;
+    let mut error_lines: Vec<String> = Vec::new();
+    for line in detail.lines() {
+        let t = line.trim();
+        if t.starts_with("[path") {
+            phase = Phase::File;
+            file = t
+                .split_once(':')
+                .map(|(_, v)| v.trim().trim_matches('\'').to_string());
+        } else if t.starts_with("[where") {
+            phase = Phase::Where;
+            let v = t.split_once(':').map(|(_, v)| v).unwrap_or("").trim();
+            excerpt = Some(v.trim_matches('\'').to_string());
+        } else if t.starts_with("[error") {
+            phase = Phase::Error;
+            let v = t.split_once(':').map(|(_, v)| v).unwrap_or("").trim();
+            if !v.is_empty() {
+                error_lines.push(v.to_string());
+            }
+        } else {
+            match phase {
+                Phase::Where => {
+                    // [where] 摘录可能跨多行，以单引号包裹
+                    if let Some(e) = excerpt.as_mut() {
+                        let trimmed = t.trim_matches('\'');
+                        if !trimmed.is_empty() {
+                            if !e.is_empty() {
+                                e.push('\n');
+                            }
+                            e.push_str(trimmed);
+                        }
+                    }
+                }
+                Phase::Error => {
+                    let trimmed = t.trim();
+                    if !trimmed.is_empty() {
+                        error_lines.push(trimmed.to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let file = file?;
+    if error_lines.is_empty() {
+        return None;
+    }
+    Some(OmlParseParts {
+        file,
+        excerpt: excerpt.unwrap_or_default(),
+        error: error_lines.join("\n"),
+    })
+}
+
 fn print_diagnostic(diag: DiagnosticPrint<'_>) {
     let title = format!("{} error", diag.app);
     let pretty_msg = pretty_reason(diag.reason);
@@ -699,30 +774,43 @@ fn print_diagnostic(diag: DiagnosticPrint<'_>) {
 
     eprintln!("{} {}", bg_red(" ERROR "), bold(&title));
     eprintln!("{}", red(pretty_msg.trim()));
-    if let Some(d) = &detail_opt {
-        eprintln!("{} {}", bold("detail:"), pretty_reason(d).trim());
-    }
-    if let Some(want) = diag.want {
-        eprintln!("{} {}", bold("doing:"), yellow(want));
-    }
-    if let Some(location) = diag.location {
-        let pretty_location = location
-            .trim_start_matches('(')
-            .replace(": ", "=")
-            .trim()
-            .to_string();
-        let label = if looks_like_file_location(&location) {
-            "file:"
-        } else {
-            "location:"
-        };
-        eprintln!("{} {}", bold(label), yellow(pretty_location));
-    }
-    if let Some(excerpt) = diag.parse_excerpt {
-        eprintln!("{} {}", bold("parse:"), yellow(excerpt));
-    }
-    if let Some(root_cause) = diag.root_cause {
-        eprintln!("{} {}", bold("cause:"), yellow(pretty_reason(&root_cause)));
+
+    // OML 解析错误：结构化展示 file / error / at，隐藏误导性的 location/cause
+    if let Some(oml) = detail_opt.as_deref().and_then(parse_oml_parse_detail) {
+        eprintln!("{} {}", bold("file:"), yellow(&oml.file));
+        eprintln!("{} {}", bold("error:"), yellow(&oml.error));
+        if !oml.excerpt.is_empty() {
+            eprintln!("{}", bold("at:"));
+            for line in oml.excerpt.lines() {
+                eprintln!("  {}", yellow(line));
+            }
+        }
+    } else {
+        if let Some(d) = &detail_opt {
+            eprintln!("{} {}", bold("detail:"), pretty_reason(d).trim());
+        }
+        if let Some(want) = diag.want {
+            eprintln!("{} {}", bold("doing:"), yellow(want));
+        }
+        if let Some(location) = diag.location {
+            let pretty_location = location
+                .trim_start_matches('(')
+                .replace(": ", "=")
+                .trim()
+                .to_string();
+            let label = if looks_like_file_location(&location) {
+                "file:"
+            } else {
+                "location:"
+            };
+            eprintln!("{} {}", bold(label), yellow(pretty_location));
+        }
+        if let Some(excerpt) = diag.parse_excerpt {
+            eprintln!("{} {}", bold("parse:"), yellow(excerpt));
+        }
+        if let Some(root_cause) = diag.root_cause {
+            eprintln!("{} {}", bold("cause:"), yellow(pretty_reason(&root_cause)));
+        }
     }
     if !diag.hints.is_empty() {
         eprintln!("{}", bold("hints:"));
@@ -776,6 +864,27 @@ pub fn print_error(app: &str, err: &impl std::fmt::Display) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_oml_parse_detail_extracts_parts() {
+        let detail = ":oml code parse fail!\n\
+            [path ]: '/work/models/oml/benchmark1/adm.oml'\n\
+            [where]: 'take2();\n\
+            dev_name : chars = ta'\n\
+            [error]: invalid method\n\
+            expected `<meta>(...)`, `inner fun`";
+        let parts = parse_oml_parse_detail(detail).expect("should parse OML detail");
+        assert!(parts.file.ends_with("benchmark1/adm.oml"));
+        assert_eq!(parts.error, "invalid method\nexpected `<meta>(...)`, `inner fun`");
+        assert_eq!(parts.excerpt, "take2();\ndev_name : chars = ta");
+    }
+
+    #[test]
+    fn parse_oml_parse_detail_rejects_non_oml() {
+        assert!(parse_oml_parse_detail("toml parse error at line 3").is_none());
+        assert!(parse_oml_parse_detail("").is_none());
+    }
+
     #[test]
     fn test_hint_file_source() {
         let hs = collect_hints("biz.source", Some("missing 'path'"));
