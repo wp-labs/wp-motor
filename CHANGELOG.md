@@ -5,12 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.25.5 latest]
+## [1.25.6 latest]
+
+### Fixed
+- **加载错误提示过泛**：修复引擎启动（`load-engine-res`）阶段 OML/配置解析失败时控制台仅显示 "配置错误"、无具体原因的问题——`conv_err()` 仅按 reason 转换（`From<XReason> for RunReason`），把 `Syntax/NotFound/Other` 内层详情压缩为无 detail 的配置错误。新增 `wp-error` 的 `IntoRunError` 转换（`OMLCodeError`/`ConfError`/`OrionConfError`），提取内层消息为 detail 并保留 source；OML 加载（`loading.rs`）与配置加载（`warp_helpers.rs`）改用该机制，错误提示现定位到具体文件、解析位置与 toml 语法错误
+
+## [1.25.5] - 2026-08-10
 
 ### Fixed
 - **OML 嵌套 object 成员静默丢弃**：修复嵌套 `object { ... }` 的成员解析失败时，该成员及其后的兄弟字段被静默丢弃、但模型加载仍报成功的问题。`oml_map()` 解析后不再假设 `repeat` 已消费全部 body，剩余未解析内容将作为明确语法错误返回（非法成员使整个 OML 校验失败，不再静默加载部分对象）；`oml_sub_acq` 新增 `pipe`（含省略前缀）分支，`NestedAccessor` 新增 `Pipe` 变体，嵌套 object 成员支持 `pipe read(...) | fun`；目标列表解析容忍逗号前后空白
 - **OML read/take 参数静默丢弃**：同类问题——`read(...)`/`take(...)` 括号内非法参数（如 `read(option : [x] @@garbage@@)`）此前被 `repeat(0.., oml_args)` 静默忽略、加载仍成功；现确认括号内已被完整消费，存在剩余内容时整体 OML 校验失败
-- **加载错误提示过泛**：修复引擎启动（`load-engine-res`）阶段 OML/配置解析失败时控制台仅显示 "配置错误"、无具体原因的问题——`conv_err()` 仅按 reason 转换（`From<XReason> for RunReason`），把 `Syntax/NotFound/Other` 内层详情压缩为无 detail 的配置错误。新增 `wp-error` 的 `IntoRunError` 转换（`OMLCodeError`/`ConfError`/`OrionConfError`），提取内层消息为 detail 并保留 source；OML 加载（`loading.rs`）与配置加载（`warp_helpers.rs`）改用该机制，错误提示现定位到具体文件、解析位置与 toml 语法错误
 
 ### Tests
 - **wp-oml issue #348 回归**：新增 28 个用例——真实报告结构（`category` 后的 `rule` 不丢弃 `behavior/confidence/attacker`）、pipe 成员任意位置（首/中/末）、省略前缀 `read(x) | fun`、`take` 源 pipe、同对象多 pipe 成员、数组元素内嵌套 object 的 pipe、深层混合嵌套、`get` 管道取前序对象输出、非法成员在首/中/末位置均整体失败、static 块拒绝 pipe、多目标逗号前后空白、`read()`/`take()` 非法参数整体失败（垃圾参数在开头/中间/末尾、pipe 源内、全部垃圾、object 成员内；合法边界形式尾逗号/尾空白/多参数/json path 不受影响）、Display 往返
