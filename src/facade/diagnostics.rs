@@ -875,7 +875,10 @@ mod tests {
             expected `<meta>(...)`, `inner fun`";
         let parts = parse_oml_parse_detail(detail).expect("should parse OML detail");
         assert!(parts.file.ends_with("benchmark1/adm.oml"));
-        assert_eq!(parts.error, "invalid method\nexpected `<meta>(...)`, `inner fun`");
+        assert_eq!(
+            parts.error,
+            "invalid method\nexpected `<meta>(...)`, `inner fun`"
+        );
         assert_eq!(parts.excerpt, "take2();\ndev_name : chars = ta");
     }
 
