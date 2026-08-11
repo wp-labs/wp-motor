@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.25.6 latest]
+## [1.25.7 latest]
+
+### Changed
+- **OML 解析错误结构化展示**：`print_diagnostic` 对 OML 解析错误渲染为 `file:`/`error:`/`at:`——解析 `from_syntax` 的 `[path]/[where]/[error]` 结构，去掉整段原始 detail 文本与误导性的 `location`（操作名）/`cause`（syntax）
+
+## [1.25.6] - 2026-08-11
 
 ### Fixed
 - **加载错误提示过泛**：修复引擎启动（`load-engine-res`）阶段 OML/配置解析失败时控制台仅显示 "配置错误"、无具体原因的问题——`conv_err()` 仅按 reason 转换（`From<XReason> for RunReason`），把 `Syntax/NotFound/Other` 内层详情压缩为无 detail 的配置错误。新增 `wp-error` 的 `IntoRunError` 转换（`OMLCodeError`/`ConfError`/`OrionConfError`），提取内层消息为 detail 并保留 source；OML 加载（`loading.rs`）与配置加载（`warp_helpers.rs`）改用该机制，错误提示现定位到具体文件、解析位置与 toml 语法错误
