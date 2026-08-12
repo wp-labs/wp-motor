@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.25.7 latest]
+## [1.25.8 latest]
+
+### Added
+- **OML 多 SQL provider 路由**：`select ... from <provider>.<schema>.<table>` 前缀路由到 knowdb.toml 中配置的命名数据库（`[[provider.sqldb]]` + `name`）；无前缀查询走默认库。评估期通过 `route_provider_sql` 识别并剥离前缀后派发到对应 provider。
+- **knowdb probe 识别新版 provider 格式**：`uses_external_provider_only` 支持 `[provider.sqldb]` / `[[provider.sqldb]]` / `[provider.redis]`，外部 provider 专用配置不再误走本地 authority 清理路径。
+
+
+
+## [1.25.7] - 2026-08-11
 
 ### Changed
 - **OML 解析错误结构化展示**：`print_diagnostic` 对 OML 解析错误渲染为 `file:`/`error:`/`at:`——解析 `from_syntax` 的 `[path]/[where]/[error]` 结构，去掉整段原始 detail 文本与误导性的 `location`（操作名）/`cause`（syntax）

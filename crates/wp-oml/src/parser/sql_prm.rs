@@ -841,6 +841,21 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn test_oml_sql_multi_provider_dotted_table() -> ModalResult<()> {
+        super::set_sql_strict_for_test(Some(true));
+        // 多 provider 场景：`<provider>.public.<table>` 三段表引用在 strict 模式下可解析
+        let mut code = r#" select asset_name, asset_env, asset_owner from asset.public.asset_inventory where ip = read(sip) ;"#;
+        let parsed = oml_sql.parse_next(&mut code)?;
+        assert!(parsed.oml_sql().contains("asset.public.asset_inventory"));
+
+        let mut code =
+            r#" select country, city from geo.public.ip_geo_city where ip = read(sip) ;"#;
+        let parsed = oml_sql.parse_next(&mut code)?;
+        assert!(parsed.oml_sql().contains("geo.public.ip_geo_city"));
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn test_oml_sql2() -> ModalResult<()> {
         super::set_sql_strict_for_test(Some(true));
         let mut code = r#" select a, b from table_1 where x = Now::time() and y = read(src) ;"#;

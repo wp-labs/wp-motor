@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, OnceLock};
 use wp_know::mem::thread_clone::ThreadClonedMDB;
 use wp_knowledge::facade as kdb;
+use wp_knowledge::sql_route::first_table_name;
 use wp_model_core::model::FieldStorage;
 use wp_model_core::model::{DataType, Value};
 
@@ -42,138 +43,6 @@ pub fn set_sql_table_route(
 
 pub fn clear_sql_table_route() {
     // OnceLock 不支持在运行时重置；当前路由在进程启动期初始化一次即可。
-}
-
-fn is_sql_ident_byte(byte: u8) -> bool {
-    byte == b'_' || byte.is_ascii_alphanumeric()
-}
-
-fn find_keyword(sql: &str, keyword: &[u8]) -> Option<usize> {
-    let bytes = sql.as_bytes();
-    let mut idx = 0usize;
-
-    while idx < bytes.len() {
-        match bytes[idx] {
-            b'\'' | b'"' => {
-                let quote = bytes[idx];
-                idx += 1;
-                while idx < bytes.len() {
-                    if bytes[idx] == quote {
-                        idx += 1;
-                        if idx < bytes.len() && bytes[idx] == quote {
-                            idx += 1;
-                            continue;
-                        }
-                        break;
-                    }
-                    idx += 1;
-                }
-            }
-            b'`' => {
-                idx += 1;
-                while idx < bytes.len() && bytes[idx] != b'`' {
-                    idx += 1;
-                }
-                idx += usize::from(idx < bytes.len());
-            }
-            b'[' => {
-                idx += 1;
-                while idx < bytes.len() && bytes[idx] != b']' {
-                    idx += 1;
-                }
-                idx += usize::from(idx < bytes.len());
-            }
-            _ => {
-                let end = idx + keyword.len();
-                if end <= bytes.len()
-                    && bytes[idx..end].eq_ignore_ascii_case(keyword)
-                    && idx
-                        .checked_sub(1)
-                        .is_none_or(|prev| !is_sql_ident_byte(bytes[prev]))
-                    && bytes.get(end).is_none_or(|next| !is_sql_ident_byte(*next))
-                {
-                    return Some(idx);
-                }
-                idx += 1;
-            }
-        }
-    }
-
-    None
-}
-
-fn matching_paren(sql: &str, open_pos: usize) -> Option<usize> {
-    let bytes = sql.as_bytes();
-    let mut depth = 0usize;
-    let mut idx = open_pos;
-
-    while idx < bytes.len() {
-        match bytes[idx] {
-            b'\'' | b'"' => {
-                let quote = bytes[idx];
-                idx += 1;
-                while idx < bytes.len() {
-                    if bytes[idx] == quote {
-                        idx += 1;
-                        if idx < bytes.len() && bytes[idx] == quote {
-                            idx += 1;
-                            continue;
-                        }
-                        break;
-                    }
-                    idx += 1;
-                }
-            }
-            b'`' => {
-                idx += 1;
-                while idx < bytes.len() && bytes[idx] != b'`' {
-                    idx += 1;
-                }
-                idx += usize::from(idx < bytes.len());
-            }
-            b'[' => {
-                idx += 1;
-                while idx < bytes.len() && bytes[idx] != b']' {
-                    idx += 1;
-                }
-                idx += usize::from(idx < bytes.len());
-            }
-            b'(' => {
-                depth += 1;
-                idx += 1;
-            }
-            b')' => {
-                depth = depth.checked_sub(1)?;
-                if depth == 0 {
-                    return Some(idx);
-                }
-                idx += 1;
-            }
-            _ => idx += 1,
-        }
-    }
-
-    None
-}
-
-fn first_table_name(sql: &str) -> Option<&str> {
-    let from_pos = find_keyword(sql, b"from")?;
-    let mut table_start = from_pos + b"from".len();
-    let bytes = sql.as_bytes();
-    while table_start < bytes.len() && bytes[table_start].is_ascii_whitespace() {
-        table_start += 1;
-    }
-
-    if bytes.get(table_start) == Some(&b'(') {
-        let close_pos = matching_paren(sql, table_start)?;
-        return first_table_name(&sql[table_start + 1..close_pos]);
-    }
-
-    let table_end = sql[table_start..]
-        .find(|c: char| c.is_ascii_whitespace() || matches!(c, ';' | ',' | ')'))
-        .map_or(sql.len(), |end| table_start + end);
-    let table = sql[table_start..table_end].trim();
-    if table.is_empty() { None } else { Some(table) }
 }
 
 pub fn resolve_sql_route(sql: &str) -> SqlKnowledgeRoute {
@@ -218,30 +87,71 @@ fn ordered_sql_param_names(sql: &str, query: &SqlQuery) -> Vec<String> {
     let mut idx = 0usize;
 
     while idx < bytes.len() {
-        if bytes[idx] != b':' {
-            idx += 1;
-            continue;
-        }
-
-        let start = idx + 1;
-        let mut end = start;
-        while end < bytes.len() {
-            let ch = bytes[end] as char;
-            if ch == '_' || ch.is_ascii_alphanumeric() {
-                end += 1;
-            } else {
-                break;
+        match bytes[idx] {
+            // 跳过字符串字面量与引号/方括号标识符
+            b'\'' | b'"' | b'`' => {
+                let quote = bytes[idx];
+                idx += 1;
+                while idx < bytes.len() {
+                    if bytes[idx] == quote {
+                        idx += 1;
+                        if idx < bytes.len() && bytes[idx] == quote {
+                            idx += 1;
+                            continue;
+                        }
+                        break;
+                    }
+                    idx += 1;
+                }
             }
-        }
-
-        if end > start {
-            let name = &sql[start..end];
-            if query.vars().contains_key(name) {
-                out.push(name.to_string());
+            b'[' => {
+                idx += 1;
+                while idx < bytes.len() && bytes[idx] != b']' {
+                    idx += 1;
+                }
+                idx += usize::from(idx < bytes.len());
             }
-            idx = end;
-        } else {
-            idx += 1;
+            // 跳过注释，避免把注释里的 `:名` 误当参数
+            b'-' if bytes.get(idx + 1) == Some(&b'-') => {
+                idx += 2;
+                while idx < bytes.len() && bytes[idx] != b'\n' {
+                    idx += 1;
+                }
+            }
+            b'/' if bytes.get(idx + 1) == Some(&b'*') => {
+                idx += 2;
+                while idx + 1 < bytes.len() && !(bytes[idx] == b'*' && bytes[idx + 1] == b'/') {
+                    idx += 1;
+                }
+                if idx + 1 < bytes.len() {
+                    idx += 2;
+                } else {
+                    idx = bytes.len();
+                }
+            }
+            b':' => {
+                let start = idx + 1;
+                let mut end = start;
+                while end < bytes.len() {
+                    let ch = bytes[end] as char;
+                    if ch == '_' || ch.is_ascii_alphanumeric() {
+                        end += 1;
+                    } else {
+                        break;
+                    }
+                }
+
+                if end > start {
+                    let name = &sql[start..end];
+                    if query.vars().contains_key(name) {
+                        out.push(name.to_string());
+                    }
+                    idx = end;
+                } else {
+                    idx += 1;
+                }
+            }
+            _ => idx += 1,
         }
     }
 
@@ -337,11 +247,21 @@ impl SqlQuery {
             };
         }
 
+        // 命名 provider 路由：`from <provider>.<schema>.<table>` 命中已安装的 provider 时，
+        // 剥离前缀后派发到对应命名 provider；未命中走默认 provider。
+        let routed = kdb::route_provider_sql(&sql);
+        let provider = routed.as_ref().map(|(name, _)| name.as_str());
+        let exec_sql = routed
+            .as_ref()
+            .map(|(_, stripped)| stripped.as_str())
+            .unwrap_or(&sql);
+
         match params.len() {
             0 => {
                 let c_params: [DataField; 1] = [norm_query_field(&md5)];
-                let out = kdb::cache_query_fields_with_scope(
-                    sql.as_str(),
+                let out = kdb::cache_query_fields_route(
+                    provider,
+                    exec_sql,
                     INLINE_SQL_LOCAL_CACHE_SCOPE,
                     &c_params,
                     &[],
@@ -355,8 +275,9 @@ impl SqlQuery {
                 let c_params: [DataField; 2] =
                     [norm_query_field(&md5), norm_query_field(&params[0])];
                 let query_params = [c_params[1].clone()];
-                let out = kdb::cache_query_fields_with_scope(
-                    sql.as_str(),
+                let out = kdb::cache_query_fields_route(
+                    provider,
+                    exec_sql,
                     INLINE_SQL_LOCAL_CACHE_SCOPE,
                     &c_params,
                     &query_params,
@@ -372,8 +293,9 @@ impl SqlQuery {
                     norm_query_field(&params[1]),
                 ];
                 let query_params = [c_params[1].clone(), c_params[2].clone()];
-                let out = kdb::cache_query_fields_with_scope(
-                    sql.as_str(),
+                let out = kdb::cache_query_fields_route(
+                    provider,
+                    exec_sql,
                     INLINE_SQL_LOCAL_CACHE_SCOPE,
                     &c_params,
                     &query_params,
@@ -394,8 +316,9 @@ impl SqlQuery {
                     c_params[2].clone(),
                     c_params[3].clone(),
                 ];
-                let out = kdb::cache_query_fields_with_scope(
-                    sql.as_str(),
+                let out = kdb::cache_query_fields_route(
+                    provider,
+                    exec_sql,
                     INLINE_SQL_LOCAL_CACHE_SCOPE,
                     &c_params,
                     &query_params,
@@ -419,8 +342,9 @@ impl SqlQuery {
                     c_params[3].clone(),
                     c_params[4].clone(),
                 ];
-                let out = kdb::cache_query_fields_with_scope(
-                    sql.as_str(),
+                let out = kdb::cache_query_fields_route(
+                    provider,
+                    exec_sql,
                     INLINE_SQL_LOCAL_CACHE_SCOPE,
                     &c_params,
                     &query_params,
@@ -445,8 +369,9 @@ impl SqlQuery {
                     c_params[4].clone(),
                     c_params[5].clone(),
                 ];
-                let out = kdb::cache_query_fields_with_scope(
-                    sql.as_str(),
+                let out = kdb::cache_query_fields_route(
+                    provider,
+                    exec_sql,
                     INLINE_SQL_LOCAL_CACHE_SCOPE,
                     &c_params,
                     &query_params,
@@ -509,11 +434,20 @@ impl AsyncFieldExtractor for SqlQuery {
             };
         }
 
+        // 命名 provider 路由（异步）：逻辑与同步路径一致。
+        let routed = kdb::route_provider_sql(&sql);
+        let provider = routed.as_ref().map(|(name, _)| name.as_str());
+        let exec_sql = routed
+            .as_ref()
+            .map(|(_, stripped)| stripped.as_str())
+            .unwrap_or(&sql);
+
         match params.len() {
             0 => {
                 let c_params: [DataField; 1] = [norm_query_field(&md5)];
-                let out = kdb::cache_query_fields_async_with_scope(
-                    sql.as_str(),
+                let out = kdb::cache_query_fields_route_async(
+                    provider,
+                    exec_sql,
                     INLINE_SQL_LOCAL_CACHE_SCOPE,
                     &c_params,
                     Vec::new,
@@ -526,8 +460,9 @@ impl AsyncFieldExtractor for SqlQuery {
             1 => {
                 let c_params: [DataField; 2] =
                     [norm_query_field(&md5), norm_query_field(&params[0])];
-                let out = kdb::cache_query_fields_async_with_scope(
-                    sql.as_str(),
+                let out = kdb::cache_query_fields_route_async(
+                    provider,
+                    exec_sql,
                     INLINE_SQL_LOCAL_CACHE_SCOPE,
                     &c_params,
                     || vec![c_params[1].clone()],
@@ -543,8 +478,9 @@ impl AsyncFieldExtractor for SqlQuery {
                     norm_query_field(&params[0]),
                     norm_query_field(&params[1]),
                 ];
-                let out = kdb::cache_query_fields_async_with_scope(
-                    sql.as_str(),
+                let out = kdb::cache_query_fields_route_async(
+                    provider,
+                    exec_sql,
                     INLINE_SQL_LOCAL_CACHE_SCOPE,
                     &c_params,
                     || vec![c_params[1].clone(), c_params[2].clone()],
@@ -561,8 +497,9 @@ impl AsyncFieldExtractor for SqlQuery {
                     norm_query_field(&params[1]),
                     norm_query_field(&params[2]),
                 ];
-                let out = kdb::cache_query_fields_async_with_scope(
-                    sql.as_str(),
+                let out = kdb::cache_query_fields_route_async(
+                    provider,
+                    exec_sql,
                     INLINE_SQL_LOCAL_CACHE_SCOPE,
                     &c_params,
                     || {
@@ -586,8 +523,9 @@ impl AsyncFieldExtractor for SqlQuery {
                     norm_query_field(&params[2]),
                     norm_query_field(&params[3]),
                 ];
-                let out = kdb::cache_query_fields_async_with_scope(
-                    sql.as_str(),
+                let out = kdb::cache_query_fields_route_async(
+                    provider,
+                    exec_sql,
                     INLINE_SQL_LOCAL_CACHE_SCOPE,
                     &c_params,
                     || {
@@ -613,8 +551,9 @@ impl AsyncFieldExtractor for SqlQuery {
                     norm_query_field(&params[3]),
                     norm_query_field(&params[4]),
                 ];
-                let out = kdb::cache_query_fields_async_with_scope(
-                    sql.as_str(),
+                let out = kdb::cache_query_fields_route_async(
+                    provider,
+                    exec_sql,
                     INLINE_SQL_LOCAL_CACHE_SCOPE,
                     &c_params,
                     || {
@@ -741,6 +680,25 @@ mod tests {
 
         assert!(matches!(
             resolve_sql_route("SELECT ' from asset_data ' AS marker FROM local_asset_data"),
+            SqlKnowledgeRoute::Sqlite
+        ));
+    }
+
+    #[test]
+    fn test_resolve_sql_route_ignores_from_inside_comment() {
+        set_sql_table_route(
+            "file:/tmp/test-authority.sqlite?mode=ro&uri=true".to_string(),
+            vec!["local_asset_data".to_string()],
+            vec!["asset_data".to_string()],
+        );
+
+        // 注释里的 `from asset_data`（provider 表）不应干扰 → 真实表 local_asset_data → Sqlite
+        assert!(matches!(
+            resolve_sql_route("SELECT 1 /* from asset_data */ FROM local_asset_data"),
+            SqlKnowledgeRoute::Sqlite
+        ));
+        assert!(matches!(
+            resolve_sql_route("SELECT 1 -- from asset_data\nFROM local_asset_data"),
             SqlKnowledgeRoute::Sqlite
         ));
     }
@@ -908,5 +866,194 @@ mod tests {
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].get_name(), "id");
         assert_eq!(result[0].get_value(), &Value::Digit(1));
+    }
+
+    // 命名 provider 路由测试用的桩 executor。
+    struct NamedTestProvider {
+        marker: &'static str,
+    }
+
+    #[async_trait]
+    impl wp_knowledge::runtime::ProviderExecutor for NamedTestProvider {
+        fn query(&self, _sql: &str) -> wp_knowledge::error::KnowledgeResult<Vec<Vec<DataField>>> {
+            Ok(vec![vec![DataField::from_chars(
+                "country_name",
+                self.marker,
+            )]])
+        }
+
+        fn query_fields(
+            &self,
+            _sql: &str,
+            _params: &[DataField],
+        ) -> wp_knowledge::error::KnowledgeResult<Vec<Vec<DataField>>> {
+            self.query("")
+        }
+
+        fn query_row(&self, _sql: &str) -> wp_knowledge::error::KnowledgeResult<Vec<DataField>> {
+            Ok(vec![DataField::from_chars("country_name", self.marker)])
+        }
+
+        fn query_named_fields(
+            &self,
+            _sql: &str,
+            _params: &[DataField],
+        ) -> wp_knowledge::error::KnowledgeResult<Vec<DataField>> {
+            self.query_row("")
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_named_provider_routing() {
+        use wp_knowledge::loader::ProviderKind;
+        use wp_knowledge::runtime::DatasourceId;
+
+        wp_knowledge::runtime::runtime()
+            .install_provider_named(
+                "geo",
+                ProviderKind::SqliteAuthority,
+                DatasourceId::from_seed(ProviderKind::SqliteAuthority, "geo"),
+                |_generation| {
+                    Ok(std::sync::Arc::new(NamedTestProvider {
+                        marker: "geo-country",
+                    }))
+                },
+                false,
+            )
+            .expect("install named geo provider");
+
+        let cache = &mut FieldQueryCache::default();
+        let query = create_test_query(
+            "select country_name from geo.public.ip_geo_city where ip_num = :ip",
+            vec![("ip", DataField::from_digit("ip".to_string(), 1))],
+        );
+        let result = query.extract_more(
+            &mut DataRecordRef::from(&DataRecord::default()),
+            &mut DataRecord::default(),
+            cache,
+        );
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].get_name(), "country_name");
+        assert_eq!(result[0].get_value(), &Value::Chars("geo-country".into()));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_named_provider_unknown_falls_back_to_default() {
+        // 未安装的 provider 名应回退到默认 provider（mem 库里有 test 表）。
+        ensure_provider();
+        let cache = &mut FieldQueryCache::default();
+        let query = create_test_query(
+            "select * from test where id = :id",
+            vec![("id", DataField::from_digit("id".to_string(), 1))],
+        );
+        let result = query.extract_more(
+            &mut DataRecordRef::from(&DataRecord::default()),
+            &mut DataRecord::default(),
+            cache,
+        );
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].get_value(), &Value::Digit(1));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_named_provider_routing_async() {
+        use wp_knowledge::loader::ProviderKind;
+        use wp_knowledge::runtime::DatasourceId;
+
+        wp_knowledge::runtime::runtime()
+            .install_provider_named(
+                "geo",
+                ProviderKind::SqliteAuthority,
+                DatasourceId::from_seed(ProviderKind::SqliteAuthority, "geo"),
+                |_generation| {
+                    Ok(std::sync::Arc::new(NamedTestProvider {
+                        marker: "geo-country",
+                    }))
+                },
+                false,
+            )
+            .expect("install named geo provider");
+
+        let cache = &mut FieldQueryCache::default();
+        let query = create_test_query(
+            "select country_name from geo.public.ip_geo_city where ip_num = :ip",
+            vec![("ip", DataField::from_digit("ip".to_string(), 1))],
+        );
+        let mut dst = DataRecord::default();
+        let result = query
+            .extract_more_async(
+                &mut DataRecordRef::from(&DataRecord::default()),
+                &mut dst,
+                cache,
+            )
+            .await;
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].get_value(), &Value::Chars("geo-country".into()));
+    }
+
+    #[test]
+    fn test_named_provider_routing_two_params() {
+        use wp_knowledge::loader::ProviderKind;
+        use wp_knowledge::runtime::DatasourceId;
+
+        wp_knowledge::runtime::runtime()
+            .install_provider_named(
+                "asset",
+                ProviderKind::SqliteAuthority,
+                DatasourceId::from_seed(ProviderKind::SqliteAuthority, "asset"),
+                |_generation| {
+                    Ok(std::sync::Arc::new(NamedTestProvider {
+                        marker: "asset-value",
+                    }))
+                },
+                false,
+            )
+            .expect("install named asset provider");
+
+        let cache = &mut FieldQueryCache::default();
+        let query = create_test_query(
+            "select name from asset.public.t where id = :id and kind = :kind",
+            vec![
+                ("id", DataField::from_digit("id".to_string(), 1)),
+                (
+                    "kind",
+                    DataField::from_chars("kind".to_string(), "k1".to_string()),
+                ),
+            ],
+        );
+        let result = query.extract_more(
+            &mut DataRecordRef::from(&DataRecord::default()),
+            &mut DataRecord::default(),
+            cache,
+        );
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].get_name(), "country_name");
+        assert_eq!(result[0].get_value(), &Value::Chars("asset-value".into()));
+    }
+
+    #[test]
+    fn ordered_sql_param_names_skips_comments_and_strings() {
+        let query = create_test_query(
+            "select x from t where ip = :ip",
+            vec![
+                ("ip", DataField::from_digit("ip".to_string(), 1)),
+                (
+                    "name",
+                    DataField::from_chars("name".to_string(), "x".to_string()),
+                ),
+            ],
+        );
+
+        // 注释 / 字符串字面量里的 `:name` 不应被当作参数收集；仅 `:ip` 生效
+        let names = ordered_sql_param_names(
+            "select x /* :name */ from t where name = ':name' and ip = :ip",
+            &query,
+        );
+        assert_eq!(names, vec!["ip".to_string()]);
+
+        let names = ordered_sql_param_names("select x -- :name\nfrom t where ip = :ip", &query);
+        assert_eq!(names, vec!["ip".to_string()]);
     }
 }

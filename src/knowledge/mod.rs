@@ -37,6 +37,56 @@ pub(crate) struct KnowdbProviderProbe {
     pub kind: Option<String>,
     #[serde(default)]
     pub tables: Vec<String>,
+    /// 新版 `[provider.sqldb]` / `[[provider.sqldb]]`（单表或数组都接受）。
+    /// 只关心是否存在；字段值由 wp-knowledge 解析时校验。
+    #[serde(default, deserialize_with = "deserialize_sqldb_probe")]
+    pub sqldb: Option<Vec<serde::de::IgnoredAny>>,
+    /// 新版 `[provider.redis]`。
+    #[serde(default)]
+    pub redis: Option<serde::de::IgnoredAny>,
+}
+
+/// 同时接受 `[provider.sqldb]`（单表）与 `[[provider.sqldb]]`（数组）两种 TOML 写法。
+fn deserialize_sqldb_probe<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<serde::de::IgnoredAny>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{MapAccess, SeqAccess, Visitor};
+
+    struct SqldbProbeVisitor;
+
+    impl<'de> Visitor<'de> for SqldbProbeVisitor {
+        type Value = Option<Vec<serde::de::IgnoredAny>>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter
+                .write_str("a `[provider.sqldb]` table or a `[[provider.sqldb]]` array of tables")
+        }
+
+        fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            let spec = serde::de::IgnoredAny::deserialize(
+                serde::de::value::MapAccessDeserializer::new(map),
+            )?;
+            Ok(Some(vec![spec]))
+        }
+
+        fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            let specs = Vec::<serde::de::IgnoredAny>::deserialize(
+                serde::de::value::SeqAccessDeserializer::new(seq),
+            )?;
+            Ok(Some(specs))
+        }
+    }
+
+    deserializer.deserialize_any(SqldbProbeVisitor)
 }
 
 #[derive(Deserialize)]
@@ -91,11 +141,22 @@ pub(crate) fn uses_external_provider_only(conf: &Path) -> bool {
     let Some(probe) = load_knowdb_probe(conf) else {
         return false;
     };
-    let provider_only = matches!(
-        probe.provider.and_then(|provider| provider.kind),
-        Some(kind) if kind == "postgres" || kind == "mysql" || kind == "redis"
-    );
-    provider_only && probe.tables.into_iter().all(|table| !table.enabled)
+    let has_external = probe.provider.as_ref().is_some_and(|provider| {
+        // 旧版 `[provider]` 格式
+        let legacy_kind = matches!(
+            provider.kind.as_deref(),
+            Some("postgres" | "mysql" | "redis")
+        );
+        // 新版 `[provider.sqldb]` / `[[provider.sqldb]]`
+        let new_sqldb = provider
+            .sqldb
+            .as_ref()
+            .is_some_and(|specs| !specs.is_empty());
+        // 新版 `[provider.redis]`
+        let new_redis = provider.redis.is_some();
+        legacy_kind || new_sqldb || new_redis
+    });
+    has_external && probe.tables.into_iter().all(|table| !table.enabled)
 }
 
 #[derive(Clone, Debug)]
@@ -213,6 +274,90 @@ tables = ["asset_data", "zone"]
         assert_eq!(
             load_provider_table_names(&conf),
             vec!["asset_data".to_string(), "zone".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_uses_external_provider_only_with_new_array_format() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let conf = dir.path().join("knowdb.toml");
+        std::fs::write(
+            &conf,
+            r#"
+version = 2
+[[provider.sqldb]]
+name = "geo"
+kind = "postgres"
+connection_uri = "postgres://demo@127.0.0.1/geo_db"
+
+[[provider.sqldb]]
+name = "asset"
+kind = "postgres"
+connection_uri = "postgres://demo@127.0.0.1/asset_db"
+            "#,
+        )
+        .expect("write knowdb");
+
+        assert!(uses_external_provider_only(&conf));
+    }
+
+    #[test]
+    fn test_uses_external_provider_only_with_new_single_format() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let conf = dir.path().join("knowdb.toml");
+        std::fs::write(
+            &conf,
+            r#"
+version = 2
+[provider.sqldb]
+kind = "postgres"
+connection_uri = "postgres://demo@127.0.0.1/demo"
+            "#,
+        )
+        .expect("write knowdb");
+
+        assert!(uses_external_provider_only(&conf));
+    }
+
+    #[test]
+    fn test_uses_external_provider_only_with_redis_new_format() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let conf = dir.path().join("knowdb.toml");
+        std::fs::write(
+            &conf,
+            r#"
+version = 2
+[provider.redis]
+connection_uri = "redis://127.0.0.1:6379"
+            "#,
+        )
+        .expect("write knowdb");
+
+        assert!(uses_external_provider_only(&conf));
+    }
+
+    #[test]
+    fn test_uses_external_provider_only_false_when_new_format_has_local_tables() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let conf = dir.path().join("knowdb.toml");
+        std::fs::write(
+            &conf,
+            r#"
+version = 2
+[provider.sqldb]
+kind = "postgres"
+connection_uri = "postgres://demo@127.0.0.1/demo"
+
+[[tables]]
+name = "local_asset_data"
+            "#,
+        )
+        .expect("write knowdb");
+
+        assert!(!uses_external_provider_only(&conf));
+        assert_eq!(
+            load_local_table_names(&conf),
+            vec!["local_asset_data".to_string()]
         );
     }
 }

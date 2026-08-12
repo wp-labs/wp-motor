@@ -3,4 +3,21 @@
 # Only reaches us indirectly via rustls → pkcs8 → rsa.
 # Admin API listens on loopback and TLS is disabled by default; real risk is low.
 # Next review: 2026-07-25
-ignore = ["RUSTSEC-2023-0071"]
+#
+# RUSTSEC-2026-0183 / RUSTSEC-2026-0184: git2 0.20.4 unsound
+#   - Remote::list() 的未定义行为
+#   - buffer 创建的 BlameHunk 的 Signature 未定义行为
+# 仅经 shadow-rs 2.0.0（build-time，最新版仍锁定 git2 0.20）间接引入；
+# shadow-rs 仅用 git2 获取 commit/status 信息，不调用 Remote::list / BlameHunk 路径。
+# 待 shadow-rs 升级到使用 git2 >=0.21 后移除。
+#
+# RUSTSEC-2026-0253: lru <0.18.2 unsound — LruCache::pop() 缺少 panic 安全（潜在 use-after-free）
+# 经 crates.io 已发布 wp-knowledge 0.16.0（其 Cargo.toml 锁定 lru ^0.16）间接引入；
+# 本地 wp-knowledge 已升级 lru 0.18，下次发布 wp-knowledge 0.16.x 后本告警自动消除，届时移除。
+# 另 mysql 28.0.0 亦传递锁定 lru ^0.16（wp-knowledge 正常依赖），mysql 升级前该条保持。
+ignore = [
+    "RUSTSEC-2023-0071",
+    "RUSTSEC-2026-0183",
+    "RUSTSEC-2026-0184",
+    "RUSTSEC-2026-0253",
+]
