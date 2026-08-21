@@ -55,6 +55,53 @@ pub trait AsyncFieldExtractor {
     }
 }
 
+impl PreciseEvaluator {
+    /// 是否可用同步路径求值。只有 SQL / 字典查找等真实异步 I/O 才返回 false。
+    pub(crate) fn support_sync(&self) -> bool {
+        !matches!(
+            self,
+            PreciseEvaluator::Sql(_)
+                | PreciseEvaluator::Lookup(_)
+                | PreciseEvaluator::StaticSymbol(_)
+        )
+    }
+
+    /// 同步求值存储字段；仅对 `support_sync() == true` 的求值器调用。
+    pub(crate) fn extract_storage_sync(
+        &self,
+        target: &EvaluationTarget,
+        src: &mut DataRecordRef<'_>,
+        dst: &mut DataRecord,
+    ) -> Option<FieldStorage> {
+        match self {
+            PreciseEvaluator::Sql(_)
+            | PreciseEvaluator::Lookup(_)
+            | PreciseEvaluator::StaticSymbol(_) => None,
+            PreciseEvaluator::Tdc(o) => o.extract_storage(target, src, dst),
+            PreciseEvaluator::Map(o) => o.extract_storage(target, src, dst),
+            PreciseEvaluator::ObjArray(o) => o
+                .extract_one(target, src, dst)
+                .map(FieldStorage::from_owned),
+            PreciseEvaluator::Pipe(o) => o.extract_storage(target, src, dst),
+            PreciseEvaluator::Fun(o) => o.extract_storage(target, src, dst),
+            PreciseEvaluator::Fmt(o) => o.extract_storage(target, src, dst),
+            PreciseEvaluator::Collect(o) => o.extract_storage(target, src, dst),
+            PreciseEvaluator::Calc(o) => o.extract_storage(target, src, dst),
+            PreciseEvaluator::AccessDirect(o) => o.extract_storage(target, src, dst),
+            PreciseEvaluator::Match(o) => o.extract_storage(target, src, dst),
+            PreciseEvaluator::Obj(o) => {
+                crate::language::data_field_extract_one(o, target, src, dst)
+                    .map(FieldStorage::from_owned)
+            }
+            PreciseEvaluator::ObjArc(o) => {
+                crate::language::data_field_extract_one(o.as_ref(), target, src, dst)
+                    .map(FieldStorage::from_owned)
+            }
+            PreciseEvaluator::Val(o) => crate::language::value_extract_storage(o, target, src, dst),
+        }
+    }
+}
+
 #[async_trait]
 impl AsyncFieldExtractor for PreciseEvaluator {
     async fn extract_one_async(

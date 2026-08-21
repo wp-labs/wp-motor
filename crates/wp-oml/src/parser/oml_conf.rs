@@ -32,6 +32,7 @@ pub async fn oml_parse_raw(data: &mut &str) -> WResult<ObjModel> {
     let mut model = oml_conf_code.parse_next(data)?;
     let static_items = std::mem::take(&mut model.static_items);
     finalize_static_blocks(&mut model, static_items).await?;
+    compute_sync_flags(&mut model);
     Ok(model)
 }
 
@@ -368,6 +369,18 @@ fn rewrite_static_references(
         }
     }
     Ok(())
+}
+
+/// 在静态符号重写完成后，为每个单值求值器计算并缓存「是否可同步求值」。
+/// 必须在 `rewrite_static_references` 之后调用：`StaticSymbol` 重写为 `ObjArc`
+/// 后才是同步可求值的。
+fn compute_sync_flags(model: &mut ObjModel) {
+    for item in &mut model.items {
+        if let EvalExp::Single(single) = item {
+            let sync = single.eval_way().support_sync();
+            single.set_sync(sync);
+        }
+    }
 }
 
 fn rewrite_precise_evaluator(
@@ -887,6 +900,40 @@ target_template = template;
             },
             _ => panic!("expected single evaluator"),
         }
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_sync_flag_computed_after_static_rewrite() -> ModalResult<()> {
+        use crate::language::EvalExp;
+
+        // 普通 read：同步。
+        let mut code = r#"
+name : sync_read
+---
+a = read(__sip) ;
+"#;
+        let model = oml_parse_raw(&mut code).await?;
+        match &model.items[0] {
+            EvalExp::Single(single) => assert!(*single.sync()),
+            _ => panic!("expected single evaluator"),
+        }
+
+        // 静态符号引用会被重写为 ObjArc，重写完成后同样应判定为同步。
+        let mut code = r#"
+name : sync_static
+---
+static {
+    x = chars(hello);
+}
+a = x ;
+"#;
+        let model = oml_parse_raw(&mut code).await?;
+        match &model.items[0] {
+            EvalExp::Single(single) => assert!(*single.sync()),
+            _ => panic!("expected single evaluator"),
+        }
+
         Ok(())
     }
 

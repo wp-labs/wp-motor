@@ -11,7 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **OML 多 SQL provider 路由**：`select ... from <provider>.<schema>.<table>` 前缀路由到 knowdb.toml 中配置的命名数据库（`[[provider.sqldb]]` + `name`）；无前缀查询走默认库。评估期通过 `route_provider_sql` 识别并剥离前缀后派发到对应 provider。
 - **knowdb probe 识别新版 provider 格式**：`uses_external_provider_only` 支持 `[provider.sqldb]` / `[[provider.sqldb]]` / `[provider.redis]`，外部 provider 专用配置不再误走本地 authority 清理路径。
 
+### Changed
+- **OML 求值性能优化（同步快路径 + 索引查找）**：`DataRecordRef` 增加惰性 `name → position` 索引（`FxHashMap<&str, usize>` + 字段数阈值，`remove` 自动失效），`read()`/`take()` 的源字段查找由线性扫描改为 O(1)，避免嵌套 `object { ... }` 中大量 `read()` 反复扫描输入记录；`PreciseEvaluator` 增加同步求值快路径（`support_sync`/`extract_storage_sync`），纯内存求值器（read/take/object/array/calc/fmt/pipe/match/fun/collect/access_direct/字面量）不再经过 `async_trait` 逐层 boxed future，仅 `select`/`lookup` 保留异步；`SingleEvalExp` 增加静态 `sync` 标志，在静态符号重写完成后于解析阶段一次性确定求值方式。
 
+### Tests
+- **wp-oml 性能与索引测试**：新增 `oml_nested_object` 基准（复现 issue #352 嵌套 `roles_obj`，0/64/256/1024 输入字段档位）；`DataRecordRef` 索引单测（线性一致、remove 后重建、重复名取首）；同步标志在静态符号重写后正确判定的测试。
 
 ## [1.25.7] - 2026-08-11
 

@@ -142,31 +142,28 @@ fn find_tdc_target_storage(src: &DataRecord, key: &str, option: bool) -> Option<
 
 fn find_tdr_target(
     _target: &EvaluationTarget,
-    src: &DataRecordRef,
+    src: &mut DataRecordRef<'_>,
     key: &str,
     option: bool,
 ) -> Option<DataField> {
-    if let Some((_, found)) = src.get_pos(key)
-        && !(option && found.value.is_empty())
-    {
-        let obj = (*found).clone();
-        return Some(obj);
+    let found = src.get_indexed(key)?;
+    if option && found.value.is_empty() {
+        return None;
     }
-    None
+    Some((*found).clone())
 }
 
 // Zero-copy version: returns FieldStorage directly
-fn find_tdr_target_storage(src: &DataRecordRef, key: &str, option: bool) -> Option<FieldStorage> {
-    // Search in source record with FieldStorage preservation
-    for item in src.iter() {
-        if item.get_name() == key {
-            if option && item.value.is_empty() {
-                return None;
-            }
-            return Some(FieldStorage::from_owned((*item).clone()));
-        }
+fn find_tdr_target_storage(
+    src: &mut DataRecordRef<'_>,
+    key: &str,
+    option: bool,
+) -> Option<FieldStorage> {
+    let found = src.get_indexed(key)?;
+    if option && found.value.is_empty() {
+        return None;
     }
-    None
+    Some(FieldStorage::from_owned((*found).clone()))
 }
 impl FieldCollector for FieldRead {
     fn collect_item(

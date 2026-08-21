@@ -8,6 +8,31 @@ use async_trait::async_trait;
 use wp_knowledge::cache::FieldQueryCache;
 use wp_model_core::model::{DataField, DataRecord, DataType, FieldStorage, Value};
 
+fn emit_single_storage(mut storage: FieldStorage, target: &EvaluationTarget, dst: &mut DataRecord) {
+    let needs_conversion =
+        target.data_type() != storage.get_meta() && target.data_type() != &DataType::Auto;
+
+    if storage.is_shared() && !needs_conversion {
+        if matches!(storage.as_field().get_value(), Value::Null) {
+            return;
+        }
+        storage.set_name(target.safe_name());
+        dst.items.push(storage);
+    } else {
+        let mut field = storage.into_owned();
+        if matches!(field.get_value(), Value::Null) {
+            return;
+        }
+        field.set_name(target.safe_name());
+
+        if needs_conversion {
+            field = omlobj_meta_conv(field, target);
+        }
+
+        dst.items.push(FieldStorage::from_owned(field));
+    }
+}
+
 #[async_trait]
 impl AsyncExpEvaluator for SingleEvalExp {
     async fn eval_proc_async(
@@ -30,34 +55,19 @@ impl AsyncExpEvaluator for SingleEvalExp {
                         .push(FieldStorage::from_owned(omlobj_meta_conv(v, target)));
                 }
             }
+        } else if *self.sync() {
+            if let Some(target) = self.target().first()
+                && let Some(storage) = self.eval_way().extract_storage_sync(target, src, dst)
+            {
+                emit_single_storage(storage, target, dst);
+            }
         } else if let Some(target) = self.target().first()
-            && let Some(mut storage) = self
+            && let Some(storage) = self
                 .eval_way()
                 .extract_storage_async(target, src, dst)
                 .await
         {
-            let needs_conversion =
-                target.data_type() != storage.get_meta() && target.data_type() != &DataType::Auto;
-
-            if storage.is_shared() && !needs_conversion {
-                if matches!(storage.as_field().get_value(), Value::Null) {
-                    return;
-                }
-                storage.set_name(target.safe_name());
-                dst.items.push(storage);
-            } else {
-                let mut field = storage.into_owned();
-                if matches!(field.get_value(), Value::Null) {
-                    return;
-                }
-                field.set_name(target.safe_name());
-
-                if needs_conversion {
-                    field = omlobj_meta_conv(field, target);
-                }
-
-                dst.items.push(FieldStorage::from_owned(field));
-            }
+            emit_single_storage(storage, target, dst);
         }
     }
 }

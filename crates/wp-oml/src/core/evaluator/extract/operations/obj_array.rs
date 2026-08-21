@@ -91,6 +91,11 @@ fn eval_item_sync(
         }
         PreciseEvaluator::Val(v) => crate::language::value_extract_one(v, target, src, dst),
         PreciseEvaluator::Calc(o) => o.extract_one(target, src, dst),
+        PreciseEvaluator::ObjArray(o) => o.extract_one(target, src, dst),
+        PreciseEvaluator::Pipe(o) => o.extract_one(target, src, dst),
+        PreciseEvaluator::AccessDirect(o) => o.extract_one(target, src, dst),
+        PreciseEvaluator::Fmt(o) => o.extract_one(target, src, dst),
+        PreciseEvaluator::Match(o) => o.extract_one(target, src, dst),
         other => {
             warn_data!("array item skip in sync path (async-only evaluator): {other}");
             None

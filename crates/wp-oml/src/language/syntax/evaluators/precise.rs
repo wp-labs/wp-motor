@@ -22,11 +22,19 @@ use wp_model_core::model::{DataField, FieldStorage, Value};
 pub struct SingleEvalExp {
     target: Vec<EvaluationTarget>,
     eval_way: PreciseEvaluator,
+    /// 解析阶段就确定：该求值器是否可走同步路径（无 SQL / 字典查询等真实 I/O）。
+    #[builder(default)]
+    sync: bool,
 }
 
 impl SingleEvalExp {
     pub fn eval_way_mut(&mut self) -> &mut PreciseEvaluator {
         &mut self.eval_way
+    }
+
+    /// 在静态符号重写完成后设置同步能力标志（解析期调用一次）。
+    pub(crate) fn set_sync(&mut self, sync: bool) {
+        self.sync = sync;
     }
 }
 
