@@ -11,6 +11,15 @@ use tokio::time::{sleep, timeout};
 use wp_error::run_error::{RunReason, RunResult};
 use wp_log::{debug_ctrl, info_ctrl, warn_ctrl};
 
+/// Max time to wait for an aborted task to actually unwind. `abort()` only
+/// cancels at the task's next yield point — a task stuck in synchronous CPU
+/// work (e.g. a large parse batch) or an uncancellable blocking syscall may
+/// not yield for a while. Shutdown must not block on that: after this budget
+/// the handle is detached and the runtime's final drop reaps it at process
+/// exit. (Same pitfall wfusion wp-reactor hit on 2026-08-15; see
+/// wp-reactor/docs/design/graceful-shutdown.md.)
+const ABORT_CONFIRM_TIMEOUT: Duration = Duration::from_millis(500);
+
 #[derive(Getters)]
 pub struct TaskGroup {
     name: String,
@@ -145,7 +154,17 @@ impl TaskGroup {
             .with_context(&ctx)?;
 
         let mut index = 0;
+        // Once the grace window expires on one task, all remaining handles are
+        // aborted up-front so their unwinds run concurrently; confirming each
+        // abort is bounded (abort only takes effect at the task's next yield).
+        let mut aborting = false;
         while let Some(mut h) = self.handles.pop() {
+            if aborting {
+                let _ = timeout(ABORT_CONFIRM_TIMEOUT, &mut h).await;
+                debug_ctrl!("{} group routines[{}] finished end", self.name, index);
+                index += 1;
+                continue;
+            }
             if !h.is_finished() {
                 info_ctrl!("{} group routines [{}] wait... ", self.name, index);
                 match timeout(wait_timeout, &mut h).await {
@@ -156,13 +175,22 @@ impl TaskGroup {
                     }
                     Err(_) => {
                         warn_ctrl!(
-                            "{} group routines [{}] wait timeout after {:?}, aborting task",
+                            "{} group routines [{}] wait timeout after {:?}, aborting {} remaining task(s)",
                             self.name,
                             index,
-                            wait_timeout
+                            wait_timeout,
+                            self.handles.len() + 1
                         );
+                        // Abort everything left at once: aborting one-by-one
+                        // would serialize each task's unwind (N x unwind time).
                         h.abort();
-                        let _ = h.await;
+                        for rest in &self.handles {
+                            rest.abort();
+                        }
+                        aborting = true;
+                        // Bounded confirm: never let a task stuck in sync work
+                        // block shutdown — process exit reaps it anyway.
+                        let _ = timeout(ABORT_CONFIRM_TIMEOUT, &mut h).await;
                     }
                 }
             }
