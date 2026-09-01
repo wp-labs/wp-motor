@@ -717,6 +717,53 @@ fn fast_path_like(s: &str) -> Option<(String, HashMap<String, CondAccessor>)> {
     None
 }
 
+/// 提取条件尾部的固定语法：`ORDER BY <列> ASC|DESC LIMIT 1`。
+///
+/// 这里只支持知识库查询当前需要的简单形式；其余 SQL 语法仍按原规则处理。
+fn split_order_by_limit(input: &str) -> Option<(&str, String)> {
+    let trimmed = input.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let limit_pos = lower.rfind("limit")?;
+    let limit_value = trimmed[limit_pos + "limit".len()..].trim();
+    if limit_value != "1" {
+        return None;
+    }
+
+    let before_limit = trimmed[..limit_pos].trim_end();
+    let order_pos = lower[..limit_pos].rfind("order")?;
+    let mut order_parts = before_limit[order_pos + "order".len()..].split_whitespace();
+    if !order_parts.next()?.eq_ignore_ascii_case("by") {
+        return None;
+    }
+
+    let column = order_parts.next()?;
+    let direction = order_parts.next()?;
+    if order_parts.next().is_some() || !is_sql_ident(column) {
+        return None;
+    }
+    let direction = if direction.eq_ignore_ascii_case("asc") {
+        "ASC"
+    } else if direction.eq_ignore_ascii_case("desc") {
+        "DESC"
+    } else {
+        return None;
+    };
+
+    let condition = trimmed[..order_pos].trim_end();
+    if condition.is_empty() {
+        return None;
+    }
+
+    Some((
+        condition,
+        format!(" ORDER BY {} {} LIMIT 1", column, direction),
+    ))
+}
+
+fn build_sql(sql_body: &str, where_sql: &str, sql_suffix: &str) -> String {
+    format!("select {} where {}{}", sql_body, where_sql, sql_suffix)
+}
+
 /// Fast path for `1 = ip4_between(read(x), a, b)` pattern.
 /// Converts to range comparison without going through the generic cond parser.
 fn fast_path_ip4_between_eq_one(s: &str) -> Option<(String, HashMap<String, CondAccessor>)> {
@@ -752,6 +799,10 @@ pub fn oml_sql(data: &mut &str) -> WResult<SqlQuery> {
         .parse_next(data)?;
     kw_sql_where.parse_next(data)?;
     let sql_cond_raw = take_until(0.., ";").parse_next(data)?;
+    let (sql_cond_raw, sql_suffix) = match split_order_by_limit(sql_cond_raw) {
+        Some((condition, suffix)) => (condition, suffix),
+        None => (sql_cond_raw, String::new()),
+    };
 
     // Rewrite `fn(...) = <literal>` to `<literal> = fn(...)` for compatibility
     let sql_cond_buf: String =
@@ -759,21 +810,21 @@ pub fn oml_sql(data: &mut &str) -> WResult<SqlQuery> {
 
     // 优先处理 ip4_between(...)=1 这类 SQL 专用条件，避免落回通用条件解析。
     if let Some((w_sql, vars)) = fast_path_ip4_between_eq_one(&sql_cond_buf) {
-        let sql = format!("select {} where {}", sql_body, w_sql);
+        let sql = build_sql(sql_body, &w_sql, &sql_suffix);
         let route = resolve_sql_route(&sql);
         return Ok(SqlQuery::new_with_route(sql, vars, route));
     }
 
     // 优先处理 field in (...)，支持 @ref 形式的 OML 变量引用。
     if let Some((w_sql, vars)) = fast_path_in_list(&sql_cond_buf) {
-        let sql = format!("select {} where {}", sql_body, w_sql);
+        let sql = build_sql(sql_body, &w_sql, &sql_suffix);
         let route = resolve_sql_route(&sql);
         return Ok(SqlQuery::new_with_route(sql, vars, route));
     }
 
     // 处理 field LIKE <literal|@ref|read(...)|take(...)>，避免 LIKE 落回通用条件解析。
     if let Some((w_sql, vars)) = fast_path_like(&sql_cond_buf) {
-        let sql = format!("select {} where {}", sql_body, w_sql);
+        let sql = build_sql(sql_body, &w_sql, &sql_suffix);
         let route = resolve_sql_route(&sql);
         return Ok(SqlQuery::new_with_route(sql, vars, route));
     }
@@ -798,7 +849,7 @@ pub fn oml_sql(data: &mut &str) -> WResult<SqlQuery> {
         None => sql_body.to_string(),
     };
 
-    let sql = format!("select {} where {}", safe_body, w_sql);
+    let sql = build_sql(&safe_body, &w_sql, &sql_suffix);
     let route = resolve_sql_route(&sql);
     Ok(SqlQuery::new_with_route(sql, vars, route))
 }
@@ -837,6 +888,29 @@ mod tests {
 
         let mut code = r#"select name,pinying from example where pinying = 'xiaolongnu' ;"#;
         assert_oml_parse(&mut code, oml_sql);
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_oml_sql_order_by_limit_one() -> ModalResult<()> {
+        super::set_sql_strict_for_test(Some(true));
+        let mut code = "select zone from ip_geo_city where start_ip_num <= read(ip_num) \
+            and end_ip_num >= read(ip_num)\n  ORDER BY start_ip_num DESC\n  LIMIT 1;";
+        let parsed = oml_sql.parse_next(&mut code)?;
+        assert!(
+            parsed
+                .oml_sql()
+                .ends_with("ORDER BY start_ip_num DESC LIMIT 1")
+        );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_oml_sql_order_by_limit_one_multi_output() -> ModalResult<()> {
+        super::set_sql_strict_for_test(Some(true));
+        let mut code = r#"__attacker_country_code, __attacker_country_name, __attacker_province_name, __attacker_city_name, __attacker_continent_name, __attacker_latitude, __attacker_longitude = select country_iso_code, country_name, province_name, city_name, continent_name, latitude, longitude from geo.ip_geo where start_ip_num <= @__attacker_ip_num and end_ip_num >= @__attacker_ip_num order by start_ip_num desc limit 1;"#;
+        crate::parser::oml_aggregate::oml_aggregate.parse_next(&mut code)?;
+        assert!(code.is_empty());
         Ok(())
     }
 
