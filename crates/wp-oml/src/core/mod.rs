@@ -93,10 +93,8 @@ impl PreciseEvaluator {
                 crate::language::data_field_extract_one(o, target, src, dst)
                     .map(FieldStorage::from_owned)
             }
-            PreciseEvaluator::ObjArc(o) => {
-                crate::language::data_field_extract_one(o.as_ref(), target, src, dst)
-                    .map(FieldStorage::from_owned)
-            }
+            // Static symbol: return Shared variant (zero-copy) instead of cloning
+            PreciseEvaluator::ObjArc(arc) => Some(FieldStorage::from_shared(arc.clone())),
             PreciseEvaluator::Val(o) => crate::language::value_extract_storage(o, target, src, dst),
         }
     }
@@ -153,9 +151,8 @@ impl AsyncFieldExtractor for PreciseEvaluator {
             PreciseEvaluator::Calc(o) => o.extract_storage(target, src, dst),
             PreciseEvaluator::AccessDirect(o) => o.extract_storage(target, src, dst),
             PreciseEvaluator::Fmt(o) => o.extract_storage(target, src, dst),
-            PreciseEvaluator::ObjArc(arc) => {
-                arc.as_ref().extract_storage_async(target, src, dst).await
-            }
+            // Static symbol: return Shared variant (zero-copy) instead of cloning
+            PreciseEvaluator::ObjArc(arc) => Some(FieldStorage::from_shared(arc.clone())),
             PreciseEvaluator::StaticSymbol(sym) => {
                 panic!("unresolved static symbol during execution: {sym}")
             }

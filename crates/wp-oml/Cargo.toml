@@ -59,7 +59,6 @@ jieba-rs = "0.10"
 regex = { workspace = true }
 smallvec = { workspace = true }
 num-bigint = { workspace = true }
-rustc-hash = "2.1"
 
 [dev-dependencies]
 criterion = { workspace = true }

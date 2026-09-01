@@ -5,17 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.25.8 latest]
+## [1.25.9 latest]
+
+### Changed
+- **OML 求值同步快路径**：`PreciseEvaluator` 增加同步求值快路径（`support_sync`/`extract_storage_sync`），纯内存求值器（read/take/object/array/calc/fmt/pipe/match/fun/collect/access_direct/字面量）不再经过 `async_trait` 逐层 boxed future，仅 `select`/`lookup` 保留异步；`SingleEvalExp` 增加静态 `sync` 标志，在静态符号重写完成后于解析阶段一次性确定求值方式。
+- **read 查找键零分配**：`read` 的字段名查找键由 `String::clone()` 改为 `as_deref()` 借用，避免每条记录每次查找的堆分配。
+
+### Fixed
+- **顶层静态符号零拷贝真正接线**：`PreciseEvaluator::ObjArc`（顶层静态符号，如 `host : chars = HOST`）此前走 `data_field_extract_one(...).map(from_owned)` 全量 clone；现改为 `FieldStorage::from_shared(arc.clone())`（Arc clone），同步与异步求值路径统一，与嵌套静态符号（`NestedAccessor::FieldArc`）行为一致。
+- **TaskGroup 关闭超时批量 abort**：`TaskGroup` 关闭时单个任务等待超时后，一次性 abort 所有剩余任务（而非逐个串行 abort），并用 `ABORT_CONFIRM_TIMEOUT`（500ms）限定每次 abort 确认的等待时间，避免任务卡在同步 CPU 工作或不可取消的系统调用时阻塞引擎关闭。
+
+### Tests
+- **wp-oml 零拷贝与基准测试**：`zero_copy_validation` 将顶层静态符号的注释断言替换为真实 `is_shared()` 断言；`oml_nested_object` 基准改为复现 issue #352 的真实 dst 查找场景（`__sip` 等作为输出字段、`read` 读 dst），而非此前的 src 查找场景。
+
+## [1.25.8] - 2026-08-12
 
 ### Added
 - **OML 多 SQL provider 路由**：`select ... from <provider>.<schema>.<table>` 前缀路由到 knowdb.toml 中配置的命名数据库（`[[provider.sqldb]]` + `name`）；无前缀查询走默认库。评估期通过 `route_provider_sql` 识别并剥离前缀后派发到对应 provider。
 - **knowdb probe 识别新版 provider 格式**：`uses_external_provider_only` 支持 `[provider.sqldb]` / `[[provider.sqldb]]` / `[provider.redis]`，外部 provider 专用配置不再误走本地 authority 清理路径。
-
-### Changed
-- **OML 求值性能优化（同步快路径 + 索引查找）**：`DataRecordRef` 增加惰性 `name → position` 索引（`FxHashMap<&str, usize>` + 字段数阈值，`remove` 自动失效），`read()`/`take()` 的源字段查找由线性扫描改为 O(1)，避免嵌套 `object { ... }` 中大量 `read()` 反复扫描输入记录；`PreciseEvaluator` 增加同步求值快路径（`support_sync`/`extract_storage_sync`），纯内存求值器（read/take/object/array/calc/fmt/pipe/match/fun/collect/access_direct/字面量）不再经过 `async_trait` 逐层 boxed future，仅 `select`/`lookup` 保留异步；`SingleEvalExp` 增加静态 `sync` 标志，在静态符号重写完成后于解析阶段一次性确定求值方式。
-
-### Tests
-- **wp-oml 性能与索引测试**：新增 `oml_nested_object` 基准（复现 issue #352 嵌套 `roles_obj`，0/64/256/1024 输入字段档位）；`DataRecordRef` 索引单测（线性一致、remove 后重建、重复名取首）；同步标志在静态符号重写后正确判定的测试。
 
 ## [1.25.7] - 2026-08-11
 

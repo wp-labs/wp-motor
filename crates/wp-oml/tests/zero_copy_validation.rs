@@ -57,9 +57,13 @@ enabled : bool = ENABLED;
     assert!(result.get_field_owned("port").is_some());
     assert!(result.get_field_owned("enabled").is_some());
 
-    // In a real implementation, we would check:
-    // assert!(get_shared_count() > 0, "Expected Shared variants for static fields");
-    // assert_eq!(get_owned_count(), 0, "Static fields should NOT create Owned variants");
+    // 真零拷贝：顶层静态符号应产出 Shared 变体（Arc clone），而非 Owned（全量 clone）
+    assert!(
+        result.field("host").expect("host").is_shared(),
+        "top-level static symbol should be zero-copy Shared"
+    );
+    assert!(result.field("port").expect("port").is_shared());
+    assert!(result.field("enabled").expect("enabled").is_shared());
 
     println!("✓ Static assignment test passed");
 }

@@ -10,12 +10,11 @@ impl FieldRead {
         src: &mut DataRecordRef<'_>,
         dst: &mut DataRecord,
     ) -> Option<DataField> {
-        let key_string = self
+        let key = self
             .get()
-            .clone()
-            .or(target.name().clone())
-            .unwrap_or("_".to_string());
-        let key = key_string.as_str();
+            .as_deref()
+            .or(target.name().as_deref())
+            .unwrap_or("_");
         if let Some(value) = find_tdc_target(target, dst, key, false) {
             return Some(value);
         }
@@ -40,12 +39,11 @@ impl FieldRead {
         src: &mut DataRecordRef<'_>,
         dst: &mut DataRecord,
     ) -> Option<FieldStorage> {
-        let key_string = self
+        let key = self
             .get()
-            .clone()
-            .or(target.name().clone())
-            .unwrap_or("_".to_string());
-        let key = key_string.as_str();
+            .as_deref()
+            .or(target.name().as_deref())
+            .unwrap_or("_");
 
         // Try to find in dst first (with FieldStorage preservation)
         if let Some(storage) = find_tdc_target_storage(dst, key, false) {
@@ -142,28 +140,31 @@ fn find_tdc_target_storage(src: &DataRecord, key: &str, option: bool) -> Option<
 
 fn find_tdr_target(
     _target: &EvaluationTarget,
-    src: &mut DataRecordRef<'_>,
+    src: &DataRecordRef,
     key: &str,
     option: bool,
 ) -> Option<DataField> {
-    let found = src.get_indexed(key)?;
-    if option && found.value.is_empty() {
-        return None;
+    if let Some((_, found)) = src.get_pos(key)
+        && !(option && found.value.is_empty())
+    {
+        let obj = (*found).clone();
+        return Some(obj);
     }
-    Some((*found).clone())
+    None
 }
 
 // Zero-copy version: returns FieldStorage directly
-fn find_tdr_target_storage(
-    src: &mut DataRecordRef<'_>,
-    key: &str,
-    option: bool,
-) -> Option<FieldStorage> {
-    let found = src.get_indexed(key)?;
-    if option && found.value.is_empty() {
-        return None;
+fn find_tdr_target_storage(src: &DataRecordRef, key: &str, option: bool) -> Option<FieldStorage> {
+    // Search in source record with FieldStorage preservation
+    for item in src.iter() {
+        if item.get_name() == key {
+            if option && item.value.is_empty() {
+                return None;
+            }
+            return Some(FieldStorage::from_owned((*item).clone()));
+        }
     }
-    Some(FieldStorage::from_owned((*found).clone()))
+    None
 }
 impl FieldCollector for FieldRead {
     fn collect_item(
