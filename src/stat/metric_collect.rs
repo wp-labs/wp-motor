@@ -434,6 +434,8 @@ impl MetricCollectors {
             item.up_target(target.clone());
         }
     }
+    // SendError 必须携带未发送的 ReportVariant，保留该错误信息比改变现有错误链更重要。
+    #[allow(clippy::result_large_err)]
     pub async fn send_stat(&mut self, mon_send: &MonSend) -> Result<(), SendError<ReportVariant>> {
         let batch_time = fast_now();
         for requ in self.items.iter_mut() {

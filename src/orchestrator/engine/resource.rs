@@ -62,7 +62,7 @@ impl EngineResource {
 
     /// 获取所有数据源
     pub fn get_all_sources(&mut self) -> Vec<SourceHandle> {
-        self.sources.drain(..).collect()
+        std::mem::take(&mut self.sources)
     }
 
     /// 获取所有接受器（来自源的 acceptors 聚合）
