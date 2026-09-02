@@ -741,6 +741,122 @@ fn fast_path_ip4_between_eq_one(s: &str) -> Option<(String, HashMap<String, Cond
     Some((where_sql, params))
 }
 
+/// 校验 order by 子句：仅允许 `ident [asc|desc], ...`，与 select body 白名单一致，避免任意 SQL 透传。
+fn is_supported_order_by_cols(cols: &str) -> bool {
+    let Some(items) = split_top_level_commas(cols) else {
+        return false;
+    };
+    !items.is_empty()
+        && items.iter().all(|item| {
+            let parts: Vec<&str> = item.split_whitespace().collect();
+            match parts.as_slice() {
+                [col] => is_sql_ident(col),
+                [col, dir] => {
+                    is_sql_ident(col)
+                        && (dir.eq_ignore_ascii_case("asc") || dir.eq_ignore_ascii_case("desc"))
+                }
+                _ => false,
+            }
+        })
+}
+
+/// 在 `s` 的顶层（非括号/引号内）查找关键字 `kw`（大小写不敏感，前后需为空白或边界）。
+fn find_top_level_kw(s: &str, kw: &str) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let kw_bytes = kw.as_bytes();
+    let mut idx = 0usize;
+    let mut depth = 0i32;
+    let mut in_single = false;
+    let mut in_double = false;
+
+    while idx < bytes.len() {
+        let ch = bytes[idx] as char;
+        match ch {
+            '\'' if !in_double => {
+                in_single = !in_single;
+                idx += 1;
+            }
+            '"' if !in_single => {
+                in_double = !in_double;
+                idx += 1;
+            }
+            '(' if !in_single && !in_double => {
+                depth += 1;
+                idx += 1;
+            }
+            ')' if !in_single && !in_double => {
+                depth -= 1;
+                if depth < 0 {
+                    return None;
+                }
+                idx += 1;
+            }
+            _ => {
+                if !in_single
+                    && !in_double
+                    && depth == 0
+                    && idx + kw_bytes.len() <= bytes.len()
+                    && bytes[idx..idx + kw_bytes.len()].eq_ignore_ascii_case(kw_bytes)
+                    && (idx == 0 || bytes[idx - 1].is_ascii_whitespace())
+                    && (idx + kw_bytes.len() == bytes.len()
+                        || bytes[idx + kw_bytes.len()].is_ascii_whitespace())
+                {
+                    return Some(idx);
+                }
+                idx += 1;
+            }
+        }
+    }
+    None
+}
+
+/// 从条件串剥离尾部子句 `order by <cols>` 与 `limit <N>`（仅顶层、大小写不敏感）。
+/// 返回 (纯条件, order_by 子句, limit 值)。
+fn split_tail_clauses(cond: &str) -> (String, Option<String>, Option<String>) {
+    let s = cond.trim();
+    if s.is_empty() {
+        return (String::new(), None, None);
+    }
+
+    let mut limit: Option<String> = None;
+    let mut cond_end = s.len();
+
+    // 1) `limit <N>` 在最后（order by 之后）
+    if let Some(pos) = find_top_level_kw(s, "limit") {
+        let after = s[pos + "limit".len()..].trim_start();
+        let digits_end = after
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(after.len());
+        if digits_end > 0 && after[digits_end..].trim().is_empty() {
+            limit = Some(after[..digits_end].to_string());
+            cond_end = pos;
+        }
+    }
+
+    // 2) `order by <cols>` 在 limit 之前
+    let mut order_by: Option<String> = None;
+    let head = &s[..cond_end];
+    if let Some(pos) = find_top_level_kw(head, "order by") {
+        let cols = head[pos + "order by".len()..].trim();
+        if is_supported_order_by_cols(cols) {
+            order_by = Some(cols.to_string());
+            cond_end = pos;
+        }
+    }
+
+    (s[..cond_end].trim().to_string(), order_by, limit)
+}
+
+/// 把剥离出的 order by / limit 子句拼接到 SQL 末尾。
+fn append_tail(base: &str, order_by: &Option<String>, limit: &Option<String>) -> String {
+    match (order_by, limit) {
+        (Some(ob), Some(l)) => format!("{} order by {} limit {}", base, ob, l),
+        (Some(ob), None) => format!("{} order by {}", base, ob),
+        (None, Some(l)) => format!("{} limit {}", base, l),
+        (None, None) => base.to_string(),
+    }
+}
+
 pub fn oml_sql(data: &mut &str) -> WResult<SqlQuery> {
     // Parse `select <body> where <cond>;`
     // We sanitize `<body>` to avoid unsafe identifiers: only [A-Za-z0-9_.] and '*' are allowed
@@ -753,27 +869,42 @@ pub fn oml_sql(data: &mut &str) -> WResult<SqlQuery> {
     kw_sql_where.parse_next(data)?;
     let sql_cond_raw = take_until(0.., ";").parse_next(data)?;
 
+    // 剥离尾部子句（order by / limit），仅对纯条件做 OML 条件解析。
+    let (sql_cond_only, order_by, limit) = split_tail_clauses(sql_cond_raw);
+
     // Rewrite `fn(...) = <literal>` to `<literal> = fn(...)` for compatibility
     let sql_cond_buf: String =
-        rewrite_lhs_fn_eq_literal(sql_cond_raw).unwrap_or_else(|| sql_cond_raw.to_string());
+        rewrite_lhs_fn_eq_literal(&sql_cond_only).unwrap_or_else(|| sql_cond_only.to_string());
 
     // 优先处理 ip4_between(...)=1 这类 SQL 专用条件，避免落回通用条件解析。
     if let Some((w_sql, vars)) = fast_path_ip4_between_eq_one(&sql_cond_buf) {
-        let sql = format!("select {} where {}", sql_body, w_sql);
+        let sql = append_tail(
+            &format!("select {} where {}", sql_body, w_sql),
+            &order_by,
+            &limit,
+        );
         let route = resolve_sql_route(&sql);
         return Ok(SqlQuery::new_with_route(sql, vars, route));
     }
 
     // 优先处理 field in (...)，支持 @ref 形式的 OML 变量引用。
     if let Some((w_sql, vars)) = fast_path_in_list(&sql_cond_buf) {
-        let sql = format!("select {} where {}", sql_body, w_sql);
+        let sql = append_tail(
+            &format!("select {} where {}", sql_body, w_sql),
+            &order_by,
+            &limit,
+        );
         let route = resolve_sql_route(&sql);
         return Ok(SqlQuery::new_with_route(sql, vars, route));
     }
 
     // 处理 field LIKE <literal|@ref|read(...)|take(...)>，避免 LIKE 落回通用条件解析。
     if let Some((w_sql, vars)) = fast_path_like(&sql_cond_buf) {
-        let sql = format!("select {} where {}", sql_body, w_sql);
+        let sql = append_tail(
+            &format!("select {} where {}", sql_body, w_sql),
+            &order_by,
+            &limit,
+        );
         let route = resolve_sql_route(&sql);
         return Ok(SqlQuery::new_with_route(sql, vars, route));
     }
@@ -798,7 +929,11 @@ pub fn oml_sql(data: &mut &str) -> WResult<SqlQuery> {
         None => sql_body.to_string(),
     };
 
-    let sql = format!("select {} where {}", safe_body, w_sql);
+    let sql = append_tail(
+        &format!("select {} where {}", safe_body, w_sql),
+        &order_by,
+        &limit,
+    );
     let route = resolve_sql_route(&sql);
     Ok(SqlQuery::new_with_route(sql, vars, route))
 }
@@ -837,6 +972,88 @@ mod tests {
 
         let mut code = r#"select name,pinying from example where pinying = 'xiaolongnu' ;"#;
         assert_oml_parse(&mut code, oml_sql);
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_oml_sql_limit_requires_where() {
+        super::set_sql_strict_for_test(Some(true));
+        // 无 where 的 limit：take_until("where") 找不到 where → 解析失败（保持现状）
+        let mut code = r#" select a, b from table_1 limit 10 ;"#;
+        let r = oml_sql.parse_next(&mut code);
+        assert!(
+            r.is_err(),
+            "limit without where should be rejected, got {:?}",
+            r
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_oml_sql_limit_order_by() -> ModalResult<()> {
+        super::set_sql_strict_for_test(Some(true));
+
+        // limit 单独
+        let mut code = r#" select a, b from table_1 where x = 1 limit 10 ;"#;
+        let parsed = oml_sql.parse_next(&mut code)?;
+        assert!(
+            parsed.oml_sql().trim_end().ends_with("limit 10"),
+            "limit only, sql: {}",
+            parsed.oml_sql()
+        );
+
+        // order by 单独
+        let mut code = r#" select a, b from table_1 where x = 1 order by a ;"#;
+        let parsed = oml_sql.parse_next(&mut code)?;
+        assert!(
+            parsed.oml_sql().trim_end().ends_with("order by a"),
+            "order by only, sql: {}",
+            parsed.oml_sql()
+        );
+
+        // order by + limit 组合
+        let mut code = r#" select a, b from table_1 where x = 1 order by a desc limit 10 ;"#;
+        let parsed = oml_sql.parse_next(&mut code)?;
+        let sql = parsed.oml_sql();
+        assert!(
+            sql.trim_end().ends_with("order by a desc limit 10"),
+            "order by + limit, sql: {}",
+            sql
+        );
+
+        // 参数注入 + limit：read(p) 参数化，limit 保留在末尾
+        let mut code = r#" select a, b from table_1 where x = read(p) limit 5 ;"#;
+        let parsed = oml_sql.parse_next(&mut code)?;
+        assert!(
+            parsed.oml_sql().trim_end().ends_with("limit 5"),
+            "param + limit, sql: {}",
+            parsed.oml_sql()
+        );
+        assert_eq!(parsed.vars().len(), 1, "read(p) 应被捕获为参数");
+
+        // 字符串字面量里的 limit 不影响解析（值被参数化，limit 关键字不会被误剥离）
+        let mut code = r#" select a from t where x = 'limit 10' ;"#;
+        let parsed = oml_sql.parse_next(&mut code)?;
+        assert_eq!(
+            parsed.vars().len(),
+            1,
+            "字符串字面量应被参数化捕获, sql: {}",
+            parsed.oml_sql()
+        );
+
+        // 括号内 in 列表 + order by + limit：in 内的内容不干扰顶层子句剥离
+        let mut code = r#" select a from t where x in (1, 2) order by a limit 3 ;"#;
+        let parsed = oml_sql.parse_next(&mut code)?;
+        let sql = parsed.oml_sql();
+        assert!(
+            sql.trim_end().ends_with("order by a limit 3"),
+            "in + order by + limit, sql: {}",
+            sql
+        );
+
+        // limit 后非数字 → 解析失败（limit 值必须是数字字面量）
+        let mut code = r#" select a from t where x = 1 limit abc ;"#;
+        let _err = err_of_oml(&mut code, oml_sql);
+
         Ok(())
     }
 
@@ -1209,6 +1426,43 @@ zone : chars = select zone from zone where ip_start_int <= ip4_int(read(src_ip))
             _ => None,
         });
         assert_eq!(zone, Some("A"));
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_sql_limit_exec() -> ModalResult<()> {
+        let db = MemDB::global();
+        db.table_create("CREATE TABLE IF NOT EXISTS asset_limit_data (asset TEXT, ip TEXT)")
+            .assert();
+        db.execute("DELETE FROM asset_limit_data").assert();
+        for asset in ["host-c", "host-a", "host-b"] {
+            db.execute(&format!(
+                "INSERT INTO asset_limit_data (asset, ip) VALUES ('{}', '10.0.0.1')",
+                asset
+            ))
+            .assert();
+        }
+        let _ = kdb::init_mem_provider(db);
+
+        // order by asset 升序 + limit 1 → 应返回 host-a（字典序最小）
+        let mut conf = r#"
+name : test
+---
+first : chars = select asset from asset_limit_data where ip = read(sip) order by asset limit 1 ;
+        "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+
+        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_chars(
+            "sip", "10.0.0.1",
+        ))]);
+        let cache = &mut FieldQueryCache::default();
+        let out = model.transform_async(src, cache).await;
+        use wp_model_core::model::Value;
+        let first = out.get2("first").and_then(|f| match f.get_value() {
+            Value::Chars(s) => Some(s.as_str()),
+            _ => None,
+        });
+        assert_eq!(first, Some("host-a"), "out={out:?}");
         Ok(())
     }
 

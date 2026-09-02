@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.25.9 latest]
+## [1.25.10 latest]
+
+### Added
+- **OML SQL 支持 `limit` / `order by`**：`select ... where <cond> order by <col> [asc|desc] limit <N>`——条件串末尾的 `order by` 与 `limit <数字>` 子句在解析期剥离并拼回最终 SQL；`limit` 值仅允许数字字面量（非数字拒绝），`order by` 列按白名单校验（`ident [asc|desc]`，与 select body 一致，防任意 SQL 透传）；ip4_between / in / like / 通用条件四条求值路径均支持，参数注入（`read()`/`take()`）与字符串/括号内干扰不受影响；无 where 的 `select ... limit N` 仍不支持。
+
+## [1.25.9]
 
 ### Changed
 - **OML 求值同步快路径**：`PreciseEvaluator` 增加同步求值快路径（`support_sync`/`extract_storage_sync`），纯内存求值器（read/take/object/array/calc/fmt/pipe/match/fun/collect/access_direct/字面量）不再经过 `async_trait` 逐层 boxed future，仅 `select`/`lookup` 保留异步；`SingleEvalExp` 增加静态 `sync` 标志，在静态符号重写完成后于解析阶段一次性确定求值方式。
