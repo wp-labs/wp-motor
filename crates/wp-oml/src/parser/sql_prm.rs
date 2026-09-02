@@ -811,11 +811,13 @@ fn find_top_level_kw(s: &str, kw: &str) -> Option<usize> {
 }
 
 /// 从条件串剥离尾部子句 `order by <cols>` 与 `limit <N>`（仅顶层、大小写不敏感）。
-/// 返回 (纯条件, order_by 子句, limit 值)。
-fn split_tail_clauses(cond: &str) -> (String, Option<String>, Option<String>) {
+/// 返回 (纯条件, order_by 子句, limit 值)；写法非法（如 limit 值后有多余内容、order by 列非法）时返回用户可读的提示。
+fn split_tail_clauses(
+    cond: &str,
+) -> Result<(String, Option<String>, Option<String>), &'static str> {
     let s = cond.trim();
     if s.is_empty() {
-        return (String::new(), None, None);
+        return Ok((String::new(), None, None));
     }
 
     let mut limit: Option<String> = None;
@@ -830,7 +832,11 @@ fn split_tail_clauses(cond: &str) -> (String, Option<String>, Option<String>) {
         if digits_end > 0 && after[digits_end..].trim().is_empty() {
             limit = Some(after[..digits_end].to_string());
             cond_end = pos;
+        } else if digits_end > 0 {
+            // limit 后跟数字但还有多余内容：明显是 limit 子句写法错误
+            return Err("limit 子句的值后存在多余内容，如 limit 10");
         }
+        // digits_end == 0：limit 后不是数字（如 `limit = x` 列比较），不剥离，交由条件解析
     }
 
     // 2) `order by <cols>` 在 limit 之前
@@ -841,10 +847,12 @@ fn split_tail_clauses(cond: &str) -> (String, Option<String>, Option<String>) {
         if is_supported_order_by_cols(cols) {
             order_by = Some(cols.to_string());
             cond_end = pos;
+        } else {
+            return Err("order by 子句只允许标识符列与 asc/desc，如 order by col asc");
         }
     }
 
-    (s[..cond_end].trim().to_string(), order_by, limit)
+    Ok((s[..cond_end].trim().to_string(), order_by, limit))
 }
 
 /// 把剥离出的 order by / limit 子句拼接到 SQL 末尾。
@@ -870,7 +878,15 @@ pub fn oml_sql(data: &mut &str) -> WResult<SqlQuery> {
     let sql_cond_raw = take_until(0.., ";").parse_next(data)?;
 
     // 剥离尾部子句（order by / limit），仅对纯条件做 OML 条件解析。
-    let (sql_cond_only, order_by, limit) = split_tail_clauses(sql_cond_raw);
+    let (sql_cond_only, order_by, limit) = match split_tail_clauses(sql_cond_raw) {
+        Ok(v) => v,
+        Err(msg) => {
+            return fail
+                .context(StrContext::Label("sql tail clause"))
+                .context(ctx_desc(msg))
+                .parse_next(data);
+        }
+    };
 
     // Rewrite `fn(...) = <literal>` to `<literal> = fn(...)` for compatibility
     let sql_cond_buf: String =
@@ -1053,6 +1069,34 @@ mod tests {
         // limit 后非数字 → 解析失败（limit 值必须是数字字面量）
         let mut code = r#" select a from t where x = 1 limit abc ;"#;
         let _err = err_of_oml(&mut code, oml_sql);
+
+        // fast_path_like + limit 组合
+        let mut code = r#" select a from t where x like 'a%' limit 5 ;"#;
+        let parsed = oml_sql.parse_next(&mut code)?;
+        assert!(
+            parsed.oml_sql().trim_end().ends_with("limit 5"),
+            "like + limit, sql: {}",
+            parsed.oml_sql()
+        );
+
+        // limit 值后有多余内容 → 明确报错（winnow 错误上下文含提示）
+        let mut code = r#" select a from t where x = 1 limit 10 abc ;"#;
+        let err = oml_sql.parse_next(&mut code).unwrap_err();
+        assert!(err.to_string().contains("limit"), "err: {err}");
+
+        // order by 非法方向（多段非 asc/desc）→ 明确报错
+        let mut code = r#" select a from t where x = 1 order by a b ;"#;
+        let err = oml_sql.parse_next(&mut code).unwrap_err();
+        assert!(err.to_string().contains("order by"), "err: {err}");
+
+        // order by 1（ordinal position）是合法 SQL，应放行
+        let mut code = r#" select a from t where x = 1 order by 1 limit 2 ;"#;
+        let parsed = oml_sql.parse_next(&mut code)?;
+        assert!(
+            parsed.oml_sql().trim_end().ends_with("order by 1 limit 2"),
+            "ordinal order by, sql: {}",
+            parsed.oml_sql()
+        );
 
         Ok(())
     }
