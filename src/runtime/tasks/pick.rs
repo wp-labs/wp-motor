@@ -67,8 +67,11 @@ pub fn start_picker_tasks(
 }
 
 fn default_auto_initial_rate(workers: usize) -> usize {
+    // 初始速率按对端可处理量级起步（10W/s），配合 AutoRateController 探测期指数翻倍，
+    // 短时压测也能快速达到吞吐；能力更低的机器由 pending/RSS/parse 背压在采样窗口内降速。
+    // 保持与 worker 数无关（多 picker 共享同一 limiter）；env WP_SOURCE_AUTO_INITIAL_RPS 可覆盖。
     let _ = workers;
-    10_000
+    100_000
 }
 
 #[cfg(test)]
@@ -76,9 +79,10 @@ mod tests {
     use super::default_auto_initial_rate;
 
     #[test]
-    fn auto_initial_rate_is_conservative_and_worker_independent() {
-        assert_eq!(default_auto_initial_rate(0), 10_000);
-        assert_eq!(default_auto_initial_rate(4), 10_000);
-        assert_eq!(default_auto_initial_rate(10), 10_000);
+    fn auto_initial_rate_defaults_to_high_start_and_worker_independent() {
+        // 初始速率固定 10W/s（不随 worker 数放大）：能力更低的机器由自动降速兜底
+        assert_eq!(default_auto_initial_rate(0), 100_000);
+        assert_eq!(default_auto_initial_rate(4), 100_000);
+        assert_eq!(default_auto_initial_rate(10), 100_000);
     }
 }

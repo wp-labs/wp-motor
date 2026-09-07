@@ -127,7 +127,7 @@ impl MemoryLimits {
                 sink_batch_size: 256,
                 parse_workers: 2,
                 parse_workers_max: usize::MAX,
-                picker_burst_max: 6,
+                picker_burst_max: 24,
                 picker_coalesce_trigger: 24,
                 picker_coalesce_max_events: 96,
                 tcp_recv_bytes: 2 * MIB,
@@ -144,7 +144,7 @@ impl MemoryLimits {
                 sink_pool_unit_max_cap: 2048,
                 sink_pool_unit_init_cap: 32,
                 field_query_cache_cap: 512,
-                picker_pending_max_bytes: MIB,
+                picker_pending_max_bytes: 8 * MIB,
                 debug_view_channel_cap: 1024,
                 debug_view_batch_lines: 100,
                 cmd_channel_cap: 4096,
@@ -155,7 +155,7 @@ impl MemoryLimits {
                 sink_batch_size: 512,
                 parse_workers: 2,
                 parse_workers_max: usize::MAX,
-                picker_burst_max: 6,
+                picker_burst_max: 48,
                 picker_coalesce_trigger: 48,
                 picker_coalesce_max_events: 192,
                 tcp_recv_bytes: 2 * MIB,
@@ -172,7 +172,7 @@ impl MemoryLimits {
                 sink_pool_unit_max_cap: 4096,
                 sink_pool_unit_init_cap: 64,
                 field_query_cache_cap: 1000,
-                picker_pending_max_bytes: 2 * MIB,
+                picker_pending_max_bytes: 16 * MIB,
                 debug_view_channel_cap: 2048,
                 debug_view_batch_lines: 100,
                 cmd_channel_cap: 8192,
@@ -418,15 +418,16 @@ mod tests {
         assert_eq!(standard.tcp_batch_bytes, 256 * KIB);
         assert_eq!(standard.tcp_batch_capacity, 256);
         assert_eq!(standard.sink_batch_size, 256);
-        assert_eq!(
-            standard.picker_pending_max_bytes,
-            low.picker_pending_max_bytes
-        );
+        // 档位单调：picker 突发/待处理容量 Low < Standard < Throughput
+        assert!(low.picker_burst_max < standard.picker_burst_max);
+        assert!(standard.picker_burst_max < throughput.picker_burst_max);
+        assert!(low.picker_pending_max_bytes < standard.picker_pending_max_bytes);
+        assert!(standard.picker_pending_max_bytes < throughput.picker_pending_max_bytes);
         assert_eq!(standard.udp_recv_buffer_bytes, low.udp_recv_buffer_bytes);
         assert_eq!(standard.udp_batch_size, low.udp_batch_size);
         assert_eq!(standard.file_batch_lines, low.file_batch_lines);
         assert_eq!(standard.file_batch_bytes, low.file_batch_bytes);
-        assert_eq!(standard.picker_burst_max, 6);
+        assert_eq!(standard.picker_burst_max, 24);
     }
 
     #[test]
