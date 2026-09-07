@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.25.11 latest]
+## [1.25.12 latest]
+
+### Changed
+- **source auto 限速快速收敛（rate=0 无限速提速）**：`AutoRateController` 初始速率由 1 万/s 提高到 10 万/s（`WP_SOURCE_AUTO_INITIAL_RPS` 可覆盖）；探测期（启动窗口 10s）内速率按指数翻倍（+100%/采样窗），首次触发 Decrease（触及对端能力/pending/RSS 上限）即结束探测转入稳态（回升 +25%，退让 -15%）——修复短时压测/突发流量下 auto 模式吞吐远低于固定限速的问题（parse_to_blackhole 场景约 3W/s → 数十万/s）。自我保护语义保留：pending 字节水位停拉、parse 背压退避与 RSS 增长告警仍会触发降速。
+
+## [1.25.11]
 
 ### Added
 - **OML pipe 新增 `intranet_replace` 内网 IP 脱敏替换**：内网地址替换为同族占位地址（IPv4 → `192.0.2.1`，IPv6 → `2001:db8::1`，可显式 `intranet_replace('1.2.3.4')` 覆盖），公网原样透传，输出统一为 IP 类型；仅支持 `ip` 类型输入（Chars 由模型 `: ip` 声明经 conv 层先转 IP），显式替换值须为合法 IP 字面量（解析期报错），仅对同族输入生效，跨族 → 诊断 + Ignore。判定与 `intranet_ip` 同源（`intranet_nets`），IPv4-mapped IPv6 按 IPv4 处理。

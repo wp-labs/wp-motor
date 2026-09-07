@@ -267,7 +267,10 @@ fn source_rate_limit_mode_off() -> bool {
 }
 
 fn auto_initial_rate_per_sec() -> usize {
-    read_env_usize("WP_SOURCE_AUTO_INITIAL_RPS").unwrap_or(10_000)
+    // 初始速率不宜从极低位“慢爬”：配合 auto_limit 探测期指数翻倍，
+    // 以接近对端可处理量级起步，短时压测/突发放量也能快速达到吞吐；
+    // 能力更低的机器由 pending/RSS 保护在下一采样窗口降速。
+    read_env_usize("WP_SOURCE_AUTO_INITIAL_RPS").unwrap_or(100_000)
 }
 
 pub(crate) fn source_auto_initial_rate_is_overridden() -> bool {

@@ -7,12 +7,14 @@ use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
 
 const DEFAULT_MIN_RPS: usize = 10_000;
 const DEFAULT_MAX_RPS: usize = 10_000_000;
-const DEFAULT_INCREASE_PCT: usize = 5;
-const DEFAULT_STARTUP_INCREASE_PCT: usize = 50;
+/// 稳态回升步长：不再试探“+5% 慢爬”，退让后能以可感速度向能力上限靠拢
+const DEFAULT_INCREASE_PCT: usize = 25;
+/// 探测期（启动窗口）步长：指数式翻倍，几秒内逼近对端真实能力
+const DEFAULT_STARTUP_INCREASE_PCT: usize = 100;
 const DEFAULT_DECREASE_PCT: usize = 85;
 const DEFAULT_MIN_INCREASE_STEP_PER_WORKER: usize = 5_000;
 const DEFAULT_STARTUP_MIN_INCREASE_STEP_PER_WORKER: usize = 1_000;
-const DEFAULT_STARTUP_WINDOW_MS: u64 = 5_000;
+const DEFAULT_STARTUP_WINDOW_MS: u64 = 10_000;
 const DEFAULT_SAMPLE_WINDOW_MS: u64 = 1_000;
 const DEFAULT_LOW_PENDING_BYTES_RATIO: usize = 30;
 const DEFAULT_HIGH_PENDING_BYTES_RATIO: usize = 70;
@@ -45,6 +47,9 @@ pub struct AutoRateController {
     startup_min_increase_step: usize,
     startup_window: Duration,
     sample_window: Duration,
+    /// 探测期是否已结束：首次 Decrease（触及对端能力/内存上限）后停止指数爬升，
+    /// 转入稳态小步调整，避免 overshoot 后反复大幅振荡
+    startup_done: bool,
     low_pending_bytes: usize,
     high_pending_bytes: usize,
     rss_growth_bytes: u64,
@@ -94,6 +99,7 @@ impl AutoRateController {
                 read_env_usize("WP_SOURCE_AUTO_SAMPLE_WINDOW_MS")
                     .unwrap_or(DEFAULT_SAMPLE_WINDOW_MS as usize) as u64,
             ),
+            startup_done: false,
             low_pending_bytes: max_pending_bytes.saturating_mul(DEFAULT_LOW_PENDING_BYTES_RATIO)
                 / 100,
             high_pending_bytes: max_pending_bytes.saturating_mul(DEFAULT_HIGH_PENDING_BYTES_RATIO)
@@ -128,13 +134,14 @@ impl AutoRateController {
         Self {
             min_rps: 100,
             max_rps: 10_000,
-            increase_pct: 5,
-            startup_increase_pct: 50,
+            increase_pct: 25,
+            startup_increase_pct: 100,
             decrease_pct: 85,
             min_increase_step: 100,
             startup_min_increase_step: 1_000,
             startup_window: Duration::from_millis(0),
             sample_window: Duration::from_millis(0),
+            startup_done: false,
             low_pending_bytes: 300,
             high_pending_bytes: 700,
             rss_growth_bytes: mb_to_bytes(32),
@@ -198,11 +205,15 @@ impl AutoRateController {
                     .saturating_add(step)
                     .clamp(self.min_rps, self.max_rps)
             }
-            AutoRateDecision::Decrease => current
-                .saturating_mul(self.decrease_pct)
-                .checked_div(100)
-                .unwrap_or(self.min_rps)
-                .clamp(self.min_rps, self.max_rps),
+            AutoRateDecision::Decrease => {
+                // 首次触及能力/内存上限：结束探测期，避免指数爬升持续 overshoot
+                self.startup_done = true;
+                current
+                    .saturating_mul(self.decrease_pct)
+                    .checked_div(100)
+                    .unwrap_or(self.min_rps)
+                    .clamp(self.min_rps, self.max_rps)
+            }
         };
 
         if next != limiter.current_rate_per_sec() {
@@ -232,7 +243,8 @@ impl AutoRateController {
     }
 
     fn increase_params(&self) -> (usize, usize) {
-        if self.start_tick.elapsed() < self.startup_window {
+        // 探测期：指数式翻倍快速逼近能力上限；首次 Decrease 或超时后转稳态小步
+        if !self.startup_done && self.start_tick.elapsed() < self.startup_window {
             (self.startup_increase_pct, self.startup_min_increase_step)
         } else {
             (self.increase_pct, self.min_increase_step)
@@ -344,7 +356,7 @@ mod tests {
         let decision = ctl.observe(&limiter, sample(0, 0, round));
 
         assert_eq!(decision, AutoRateDecision::Increase);
-        assert_eq!(limiter.current_rate_per_sec(), 1_100);
+        assert_eq!(limiter.current_rate_per_sec(), 1_250);
     }
 
     #[test]
@@ -359,7 +371,32 @@ mod tests {
         let decision = ctl.observe(&limiter, sample(0, 0, round));
 
         assert_eq!(decision, AutoRateDecision::Increase);
+        // 探测期：指数式翻倍（+100%）而非稳态小步
         assert_eq!(limiter.current_rate_per_sec(), 2_000);
+    }
+
+    #[test]
+    fn first_decrease_ends_startup_probe() {
+        // 首次触及能力/内存上限（Decrease）后结束探测期：后续回升用稳态步长而非翻倍
+        let limiter = limiter();
+        limiter.set_rate_per_sec(1_000);
+        let mut ctl = AutoRateController::for_test();
+        ctl.startup_window = Duration::from_secs(60);
+        let mut round = RoundStat::new();
+        round.to_dist_pending();
+
+        // 第一次：高压 → Decrease，且结束探测期
+        let d1 = ctl.observe(&limiter, sample(1, 900, round));
+        assert_eq!(d1, AutoRateDecision::Decrease);
+        assert!(ctl.startup_done);
+        assert_eq!(limiter.current_rate_per_sec(), 850);
+
+        // 第二次：低水位 → Increase，应走稳态步长（+25% → 850+212=1062），而非探测期翻倍(850*2)
+        let mut round2 = RoundStat::new();
+        round2.add_proc(1);
+        let d2 = ctl.observe(&limiter, sample(0, 0, round2));
+        assert_eq!(d2, AutoRateDecision::Increase);
+        assert_eq!(limiter.current_rate_per_sec(), 1_062);
     }
 
     #[test]
