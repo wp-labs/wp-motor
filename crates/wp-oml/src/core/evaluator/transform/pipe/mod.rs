@@ -48,6 +48,7 @@ impl ValueProcessor for PipeFun {
             PipeFun::Ip4ToInt(o) => o.value_cacu(in_val),
             PipeFun::IpToBigUint(o) => o.value_cacu(in_val),
             PipeFun::IntranetIp(o) => o.value_cacu(in_val),
+            PipeFun::IntranetReplace(o) => o.value_cacu(in_val),
             PipeFun::ExtractMainWord(o) => o.value_cacu(in_val),
             PipeFun::ExtractSubjectObject(o) => o.value_cacu(in_val),
         }

@@ -902,6 +902,50 @@ side = pipe read(src_ip) | intranet_ip ;
 
 ---
 
+### intranet_replace
+
+内网 IP 脱敏替换：内网地址替换为占位地址（同族），公网地址原样透传。适合日志脱敏后外发等场景。
+
+**语法**
+```oml
+# 缺省替换：按输入族取文档占位地址
+result = pipe read(ip_field) | intranet_replace ;
+
+# 显式指定替换值（须与输入同族）
+result = pipe read(ip_field) | intranet_replace('10.0.0.1') ;
+result = pipe read(ip_field) | intranet_replace('fd00::2') ;
+```
+
+**输入类型**: `ip` (IPv4/IPv6 地址)
+**输出类型**: `ip`（内网 → 同族占位地址；公网 → IP 原值透传）
+
+**参数**
+- 可选。缺省按输入族使用文档占位地址：
+  - IPv4 → `192.0.2.1`（TEST-NET-1）
+  - IPv6 → `2001:db8::1`（文档前缀）
+- 显式替换值必须是合法 IPv4/IPv6 字面量（非法值在模型解析期报错，不落到运行期）
+
+**示例**
+```oml
+name : example_intranet_replace
+---
+# 需先声明为 ip 类型：Chars 字符串会由引擎自动转为 IP（`src_ip : ip = take()`）
+src_ip : ip = take() ;
+mask_ip = pipe read(src_ip) | intranet_replace ;
+
+# 输入: 10.0.0.1   → 输出: 192.0.2.1（内网 IPv4 → 占位）
+# 输入: 8.8.8.8     → 输出: 8.8.8.8（公网原样透传）
+# 输入: fd00::1     → 输出: 2001:db8::1（内网 IPv6 → 占位）
+```
+
+**注意事项**
+- 仅支持 `ip` 类型输入；`chars`/其它类型原样透传、不做脱敏（需要脱敏请将字段声明为 `: ip`）
+- 支持 IPv4 + IPv6；IPv4-mapped IPv6（`::ffff:a.b.c.d`）按 IPv4 判定与替换
+- 显式替换值仅对同族输入生效；跨族（如 v6 输入 + v4 替换值）输出 `Ignore` 并产生诊断，不做跨族替换
+- 内网网段判定与 `intranet_ip` 一致（RFC1918 + loopback + IPv6 ULA + `[intranet_nets]` 配置）
+
+---
+
 ## NLP 文本处理
 
 ### extract_main_word

@@ -44,6 +44,7 @@ pub enum PipeFun {
     Ip4ToInt(Ip4ToInt),
     IpToBigUint(IpToBigUint),
     IntranetIp(IntranetIp),
+    IntranetReplace(IntranetReplace),
     ExtractMainWord(ExtractMainWord),
     ExtractSubjectObject(ExtractSubjectObject),
 }
@@ -79,6 +80,7 @@ impl Display for PipeFun {
             PipeFun::Ip4ToInt(v) => write!(f, "{}", v),
             PipeFun::IpToBigUint(v) => write!(f, "{}", v),
             PipeFun::IntranetIp(v) => write!(f, "{}", v),
+            PipeFun::IntranetReplace(v) => write!(f, "{}", v),
             PipeFun::ExtractMainWord(v) => write!(f, "{}", v),
             PipeFun::ExtractSubjectObject(v) => write!(f, "{}", v),
         }

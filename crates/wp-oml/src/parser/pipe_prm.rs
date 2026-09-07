@@ -1,15 +1,17 @@
+use std::net::IpAddr;
 use std::str::FromStr;
 
 use crate::language::{
-    Base64Decode, EncodeType, Get, HtmlEscape, HtmlUnescape, Ip4ToInt, IpToBigUint, JsonEscape,
-    JsonUnescape, MapTo, MapValue, Nth, PIPE_BASE64_DECODE, PIPE_GET, PIPE_HTML_ESCAPE,
-    PIPE_HTML_UNESCAPE, PIPE_IP_TO_BIGUINT, PIPE_IP4_TO_INT, PIPE_JSON_ESCAPE, PIPE_JSON_UNESCAPE,
-    PIPE_MAP_TO, PIPE_NTH, PIPE_PATH, PIPE_SKIP_EMPTY, PIPE_STARTS_WITH, PIPE_STR_ESCAPE,
-    PIPE_TIME_FROM_TS, PIPE_TIME_FROM_TS_MS, PIPE_TIME_FROM_TS_US, PIPE_TIME_TO_TS,
-    PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US, PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON, PIPE_URL, PathGet,
-    PathType, PiPeOperation, PipeFun, PipeSource, PreciseEvaluator, SkipEmpty, StartsWith,
-    StrEscape, TimeFromTs, TimeFromTsMs, TimeFromTsUs, TimeStampUnit, TimeToTs, TimeToTsMs,
-    TimeToTsUs, TimeToTsZone, ToJson, UrlGet, UrlType,
+    Base64Decode, EncodeType, Get, HtmlEscape, HtmlUnescape, IntranetReplace, Ip4ToInt,
+    IpToBigUint, JsonEscape, JsonUnescape, MapTo, MapValue, Nth, PIPE_BASE64_DECODE, PIPE_GET,
+    PIPE_HTML_ESCAPE, PIPE_HTML_UNESCAPE, PIPE_INTRANET_REPLACE, PIPE_IP_TO_BIGUINT,
+    PIPE_IP4_TO_INT, PIPE_JSON_ESCAPE, PIPE_JSON_UNESCAPE, PIPE_MAP_TO, PIPE_NTH, PIPE_PATH,
+    PIPE_SKIP_EMPTY, PIPE_STARTS_WITH, PIPE_STR_ESCAPE, PIPE_TIME_FROM_TS, PIPE_TIME_FROM_TS_MS,
+    PIPE_TIME_FROM_TS_US, PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US,
+    PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON, PIPE_URL, PathGet, PathType, PiPeOperation, PipeFun,
+    PipeSource, PreciseEvaluator, SkipEmpty, StartsWith, StrEscape, TimeFromTs, TimeFromTsMs,
+    TimeFromTsUs, TimeStampUnit, TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone, ToJson, UrlGet,
+    UrlType,
 };
 use crate::language::{
     Base64Encode, ExtractMainWord, ExtractSubjectObject, IntranetIp, OnFail, PIPE_BASE64_ENCODE,
@@ -98,6 +100,32 @@ impl Fun2Builder for TimeToTsZone {
         TimeToTsZone {
             zone: args.0,
             unit: args.1,
+        }
+    }
+}
+impl Fun1Builder for IntranetReplace {
+    type ARG1 = IpAddr;
+    fn args1(data: &mut &str) -> WResult<Self::ARG1> {
+        use wpl::parser::utils::quot_str;
+        multispace0.parse_next(data)?;
+        let value = quot_str.parse_next(data)?;
+        match value.parse::<IpAddr>() {
+            Ok(ip) => Ok(ip),
+            // 非法替换值：模型解析期报错（不落到运行期）
+            Err(_) => cut_err(fail.context(ctx_desc(
+                "intranet_replace: 参数须为合法 IPv4/IPv6 字面量, 如 '192.0.2.1' / '2001:db8::1'",
+            )))
+            .parse_next(data),
+        }
+    }
+
+    fn fun_name() -> &'static str {
+        PIPE_INTRANET_REPLACE
+    }
+
+    fn build(args: Self::ARG1) -> Self {
+        IntranetReplace {
+            replace: Some(args),
         }
     }
 }
@@ -452,6 +480,7 @@ fn pipe_fun_with_args(data: &mut &str) -> WResult<PipeFun> {
             parser::call_fun_args1::<Base64Decode>.map(PipeFun::Base64Decode),
             parser::call_fun_args1::<PathGet>.map(PipeFun::PathGet),
             parser::call_fun_args1::<UrlGet>.map(PipeFun::UrlGet),
+            parser::call_fun_args1::<IntranetReplace>.map(PipeFun::IntranetReplace),
         )),
     ))
     .parse_next(data)
@@ -498,6 +527,7 @@ fn pipe_fun_simple_extra(data: &mut &str) -> WResult<PipeFun> {
         PIPE_IP4_TO_INT.map(|_| PipeFun::Ip4ToInt(Ip4ToInt::default())),
         PIPE_IP_TO_BIGUINT.map(|_| PipeFun::IpToBigUint(IpToBigUint::default())),
         PIPE_INTRANET_IP.map(|_| PipeFun::IntranetIp(IntranetIp::default())),
+        PIPE_INTRANET_REPLACE.map(|_| PipeFun::IntranetReplace(IntranetReplace::default())),
         PIPE_EXTRACT_MAIN_WORD.map(|_| PipeFun::ExtractMainWord(ExtractMainWord::default())),
         PIPE_EXTRACT_SUBJECT_OBJECT
             .map(|_| PipeFun::ExtractSubjectObject(ExtractSubjectObject::default())),
@@ -566,6 +596,28 @@ mod tests {
         assert!(
             matches!(e.reason(), OMLCodeReason::Syntax(s) if s.contains("need 'pipe' keyword"))
         );
+    }
+
+    #[test]
+    fn test_pipe_intranet_replace_parse() -> WResult<()> {
+        // 无参形式：缺省占位地址
+        let mut code = r#" pipe take(ip) | intranet_replace"#;
+        assert_oml_parse(&mut code, oml_aga_pipe);
+
+        // 带参形式：引号 IP 字面量（Display 回写统一为单引号）
+        let mut code = r#" pipe take(ip) | intranet_replace('192.0.2.1')"#;
+        assert_oml_parse(&mut code, oml_aga_pipe);
+
+        let mut code = r#" pipe take(ip) | intranet_replace('2001:db8::1')"#;
+        assert_oml_parse(&mut code, oml_aga_pipe);
+
+        // 非法替换值：模型解析期报错（不落到运行期）
+        let mut code = r#" pipe take(ip) | intranet_replace('999.1.2.3')"#;
+        let e = err_of_oml(&mut code, oml_aga_pipe);
+        println!("err:{}, \nwhere:{}", e, code);
+        assert!(matches!(e.reason(), OMLCodeReason::Syntax(s) if s.contains("intranet_replace")));
+
+        Ok(())
     }
 
     #[test]

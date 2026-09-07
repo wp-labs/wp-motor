@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.11 latest]
+
+### Added
+- **OML pipe 新增 `intranet_replace` 内网 IP 脱敏替换**：内网地址替换为同族占位地址（IPv4 → `192.0.2.1`，IPv6 → `2001:db8::1`，可显式 `intranet_replace('1.2.3.4')` 覆盖），公网原样透传，输出统一为 IP 类型；仅支持 `ip` 类型输入（Chars 由模型 `: ip` 声明经 conv 层先转 IP），显式替换值须为合法 IP 字面量（解析期报错），仅对同族输入生效，跨族 → 诊断 + Ignore。判定与 `intranet_ip` 同源（`intranet_nets`），IPv4-mapped IPv6 按 IPv4 处理。
+
+### Fixed
+- **OML 字符串→IP 自动转换支持 IPv6**：`chars` 字段转 IP 时由仅 `Ipv4Addr` 改为 `IpAddr`（压缩/完整/大写/IPv4-mapped 全支持），空/非法输入不再以字符串透传（空 IP / ParseFail 诊断），打通 chars → IPv6 → `ip_to_biguint` 链路（v6 键 = 2^128 + u128）。关联 wp-labs/warp-parse#358。
+
 ## [1.25.10 latest]
 
 ### Added

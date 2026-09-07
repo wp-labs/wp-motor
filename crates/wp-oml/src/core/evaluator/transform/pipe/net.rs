@@ -1,7 +1,7 @@
 use crate::core::diagnostics::{self, OmlIssue, OmlIssueKind};
 use crate::core::prelude::*;
-use crate::language::{IntranetIp, Ip4ToInt, IpToBigUint, ip_to_biguint};
-use std::net::{IpAddr, Ipv4Addr};
+use crate::language::{IntranetIp, IntranetReplace, Ip4ToInt, IpToBigUint, ip_to_biguint};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use wp_model_core::model::{DataField, DataType, Value};
 
 use wp_knowledge::intranet_nets::is_intranet;
@@ -98,6 +98,71 @@ impl ValueProcessor for IntranetIp {
             Value::Null | Value::Ignore(_) => DataField::from_ignore(in_val.get_name().to_string()),
             _ => in_val,
         }
+    }
+}
+
+/// 内网脱敏缺省占位地址：文档保留地址，避免与真实网段混淆
+/// IPv4 → TEST-NET-1 `192.0.2.1`；IPv6 → 文档前缀 `2001:db8::1`
+const MASK_DEFAULT_V4: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
+const MASK_DEFAULT_V6: Ipv6Addr = Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 1);
+
+/// 归一地址族：IPv4-mapped IPv6（`::ffff:a.b.c.d`）按 IPv4 处理
+/// 与 `is_intranet` 判定口径一致，保证内网判定与替换族选择对 mapped 输入行为一致
+fn normalize_family(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map(IpAddr::V4).unwrap_or(ip),
+        v4 => v4,
+    }
+}
+
+/// 内网 IP 脱敏替换：内网 → 同族占位地址（IP 类型），公网原样透传
+/// 仅支持 IP 类型输入：Chars 不在此处解析，由模型 `: ip` 类型声明在 conv 层先转 IP
+/// 显式替换值仅对同族输入生效；跨族 → 运行时诊断 + Ignore（不做跨族替换）
+impl ValueProcessor for IntranetReplace {
+    fn value_cacu(&self, in_val: DataField) -> DataField {
+        match in_val.get_value() {
+            Value::IpAddr(ip) => self.mask(*ip, in_val),
+            // Null/Ignore/Chars 等非 IP 输入：原样透传，不判断、不替换
+            _ => in_val,
+        }
+    }
+}
+
+impl IntranetReplace {
+    /// 内网 → 同族替换 IP；公网 → 原样透传（输入 IpAddr 保证已合法）
+    fn mask(&self, raw: IpAddr, in_val: DataField) -> DataField {
+        let ip = normalize_family(raw);
+        if !is_intranet(&ip) {
+            // 公网：原样透传，不替换
+            return in_val;
+        }
+        let replace = match self.replace {
+            // 显式替换值：与输入同族才替换
+            Some(explicit) => {
+                let explicit = normalize_family(explicit);
+                if explicit.is_ipv4() != ip.is_ipv4() {
+                    let msg = format!(
+                        "intranet_replace: 替换地址与输入族不匹配(同族才替换) input={} replace={} field={}",
+                        ip,
+                        explicit,
+                        in_val.get_name()
+                    );
+                    warn_data!("{}", msg);
+                    diagnostics::push(OmlIssue::new(OmlIssueKind::ParseFail, msg));
+                    return DataField::from_ignore(in_val.get_name().to_string());
+                }
+                explicit
+            }
+            // 缺省：按输入族取文档占位地址
+            None => {
+                if ip.is_ipv4() {
+                    IpAddr::V4(MASK_DEFAULT_V4)
+                } else {
+                    IpAddr::V6(MASK_DEFAULT_V6)
+                }
+            }
+        };
+        DataField::from_ip(in_val.get_name().to_string(), replace)
     }
 }
 
@@ -291,6 +356,221 @@ mod tests {
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
         let expect = DataField::from_chars("X".to_string(), "WAN");
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_intranet_replace_default_private_ipv4() {
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![FieldStorage::from_owned(DataField::from_ip(
+            "src_ip",
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe  read(src_ip) | intranet_replace ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_ip("X".to_string(), IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1)));
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_intranet_replace_default_ipv6_ula() {
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![FieldStorage::from_owned(DataField::from_ip(
+            "src_ip",
+            IpAddr::from_str("fd12:3456::1").unwrap(),
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe  read(src_ip) | intranet_replace ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_ip("X".to_string(), IpAddr::from_str("2001:db8::1").unwrap());
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_intranet_replace_public_passthrough_ipv4() {
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![FieldStorage::from_owned(DataField::from_ip(
+            "src_ip",
+            IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)),
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe  read(src_ip) | intranet_replace ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_ip("X".to_string(), IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)));
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_intranet_replace_public_passthrough_ipv6() {
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![FieldStorage::from_owned(DataField::from_ip(
+            "src_ip",
+            IpAddr::from_str("2001:4860:4860::8888").unwrap(),
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe  read(src_ip) | intranet_replace ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_ip(
+            "X".to_string(),
+            IpAddr::from_str("2001:4860:4860::8888").unwrap(),
+        );
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_intranet_replace_chars_passthrough() {
+        // 仅支持 IP 类型输入：Chars 原样透传（不解析、不替换）；
+        // 需要脱敏的 Chars 字段应由模型 `: ip` 类型声明在 conv 层先转 IP
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "src_ip",
+            "192.168.1.100",
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe  read(src_ip) | intranet_replace ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_chars("X".to_string(), "192.168.1.100");
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_intranet_replace_explicit_same_family_v4() {
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![FieldStorage::from_owned(DataField::from_ip(
+            "src_ip",
+            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 5)),
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe  read(src_ip) | intranet_replace('10.0.0.1') ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_ip("X".to_string(), IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)));
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_intranet_replace_explicit_same_family_ipv6() {
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![FieldStorage::from_owned(DataField::from_ip(
+            "src_ip",
+            IpAddr::from_str("fd00::1").unwrap(),
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe  read(src_ip) | intranet_replace('fe80::abcd') ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_ip("X".to_string(), IpAddr::from_str("fe80::abcd").unwrap());
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_intranet_replace_explicit_family_mismatch_ignore() {
+        // 显式替换值与输入族不匹配：不做跨族替换 → Ignore
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![FieldStorage::from_owned(DataField::from_ip(
+            "src_ip",
+            IpAddr::from_str("fc00::1").unwrap(),
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe  read(src_ip) | intranet_replace('10.0.0.1') ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let out = target.field("X").expect("X field").as_field();
+        assert!(
+            matches!(out.get_value(), Value::Ignore(_)),
+            "跨族替换应输出 Ignore, got {:?}",
+            out.get_value()
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_intranet_replace_explicit_v6_on_v4_input_ignore() {
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![FieldStorage::from_owned(DataField::from_ip(
+            "src_ip",
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe  read(src_ip) | intranet_replace('2001:db8::1') ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let out = target.field("X").expect("X field").as_field();
+        assert!(
+            matches!(out.get_value(), Value::Ignore(_)),
+            "v6 替换值作用于 v4 输入应 Ignore, got {:?}",
+            out.get_value()
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_intranet_replace_ipv4_mapped_ula() {
+        // IPv4-mapped IPv6（::ffff:a.b.c.d）按 IPv4 处理：内网判定 + 替换族均取 v4
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![FieldStorage::from_owned(DataField::from_ip(
+            "src_ip",
+            IpAddr::from_str("::ffff:10.0.0.1").unwrap(),
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe  read(src_ip) | intranet_replace ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_ip("X".to_string(), IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1)));
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 

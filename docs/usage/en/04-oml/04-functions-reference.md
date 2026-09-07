@@ -48,6 +48,7 @@ This document lists only the built-in functions, built-in expressions, and pipe 
 | Conversion | `to_str` | `ip_s = read(ip) | to_str ;` |
 | Conversion | `ip4_to_int` | `ip_i = read(src_ip) | ip4_to_int ;` |
 | Network | `intranet_ip` | `side = read(src_ip) | intranet_ip ;` |
+| Network | `intranet_replace([replace])` | `mask_ip = read(src_ip) | intranet_replace ;` |
 | Control | `on_fail('value')` | `side = read(src_ip) | intranet_ip | on_fail('unknown') ;` |
 | Extraction | `path([name|path])` | `file = read(path) | path(name) ;` |
 | Extraction | `url([domain|host|uri|path|params])` | `host = read(url) | url(host) ;` |

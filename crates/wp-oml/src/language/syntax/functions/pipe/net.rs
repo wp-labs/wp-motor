@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 pub const PIPE_IP4_TO_INT: &str = "ip4_to_int";
 pub const PIPE_IP_TO_BIGUINT: &str = "ip_to_biguint";
 pub const PIPE_INTRANET_IP: &str = "intranet_ip";
+pub const PIPE_INTRANET_REPLACE: &str = "intranet_replace";
 
 /// 2^128，IPv6 统一编码偏移量。
 /// IPv6 网段统一映射到 `[2^128, 2^129)`，与 IPv4 的 `[0, 2^32)` 互不重叠，
@@ -42,6 +43,27 @@ pub struct IntranetIp {}
 impl Display for IntranetIp {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", PIPE_INTRANET_IP)
+    }
+}
+
+/// 内网 IP 脱敏替换：内网 → 替换为占位地址，公网原样透传（脱敏/外发场景）。
+///
+/// 仅支持 IP 类型输入（Chars 由模型 `: ip` 类型声明在 conv 层先转为 IP）。
+/// 参数可选：`intranet_replace` 缺省按输入族使用文档占位地址
+/// （IPv4 → `192.0.2.1`，IPv6 → `2001:db8::1`）；`intranet_replace('1.2.3.4')` 显式指定替换值。
+/// 显式替换值必须是合法 IP 字面量（模型解析期校验）；运行期仅对同族输入生效，跨族输入 → Ignore。
+#[derive(Clone, Debug, Default)]
+pub struct IntranetReplace {
+    /// 显式替换 IP；`None` = 缺省按输入族取文档占位地址
+    pub(crate) replace: Option<IpAddr>,
+}
+
+impl Display for IntranetReplace {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self.replace {
+            Some(ip) => write!(f, "{}('{}')", PIPE_INTRANET_REPLACE, ip),
+            None => write!(f, "{}", PIPE_INTRANET_REPLACE),
+        }
     }
 }
 

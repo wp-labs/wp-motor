@@ -48,6 +48,7 @@
 | 转换 | `to_str` | `ip_s = read(ip) | to_str ;` |
 | 转换 | `ip4_to_int` | `ip_i = read(src_ip) | ip4_to_int ;` |
 | 网络 | `intranet_ip` | `side = read(src_ip) | intranet_ip ;` |
+| 网络 | `intranet_replace([替换值])` | `mask_ip = read(src_ip) | intranet_replace ;` |
 | 控制 | `on_fail('值')` | `side = read(src_ip) | intranet_ip | on_fail('unknown') ;` |
 | 提取 | `path([name|path])` | `file = read(path) | path(name) ;` |
 | 提取 | `url([domain|host|uri|path|params])` | `host = read(url) | url(host) ;` |
