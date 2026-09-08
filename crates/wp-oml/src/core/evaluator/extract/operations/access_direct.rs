@@ -8,19 +8,39 @@ use std::net::IpAddr;
 use wp_knowledge::intranet_nets::is_intranet;
 use wp_model_core::model::{DataField, FieldStorage, Value};
 
-/// 从字段提取 IpAddr（`Value::IpAddr` 或合法 IP 字符串）
-fn ip_of(field: &DataField) -> Option<IpAddr> {
+/// IP 探测结果：区分「正常缺失（静默）」与「非空非法（诊断）」
+#[derive(Clone, Copy)]
+pub(crate) enum IpProbe {
+    /// 合法 IP
+    Ok(IpAddr),
+    /// 正常缺失：字段不存在 / Null / Ignore / 空或纯空白字符串
+    /// —— 属预期数据缺失，通常由 `on_fail` 兜底，不应告警
+    Missing,
+    /// 非空但非法（含类型不匹配）：真实输入错误，保留 WARN + ParseFail 诊断
+    Invalid,
+}
+
+/// 从字段提取 IpAddr（`Value::IpAddr` 或合法 IP 字符串），
+/// 并区分「正常缺失（静默 Ignore）」与「非空非法输入（诊断）」
+pub(crate) fn probe_ip(field: Option<&DataField>) -> IpProbe {
+    let Some(field) = field else {
+        return IpProbe::Missing;
+    };
     match field.get_value() {
-        Value::IpAddr(ip) => Some(*ip),
+        Value::IpAddr(ip) => IpProbe::Ok(*ip),
         Value::Chars(s) => {
             let s = s.trim();
             if s.is_empty() {
-                None
+                IpProbe::Missing
             } else {
-                s.parse::<IpAddr>().ok()
+                match s.parse::<IpAddr>() {
+                    Ok(ip) => IpProbe::Ok(ip),
+                    Err(_) => IpProbe::Invalid,
+                }
             }
         }
-        _ => None,
+        Value::Null | Value::Ignore(_) => IpProbe::Missing,
+        _ => IpProbe::Invalid,
     }
 }
 
@@ -41,26 +61,32 @@ impl AccessDirectOperation {
         src: &mut DataRecordRef<'_>,
         dst: &mut DataRecord,
     ) -> Option<DataField> {
-        let src_ip = self
-            .src()
-            .extract_one(&operand_target(self.src(), target), src, dst)
-            .as_ref()
-            .and_then(ip_of);
-        let dst_ip = self
-            .dst()
-            .extract_one(&operand_target(self.dst(), target), src, dst)
-            .as_ref()
-            .and_then(ip_of);
+        let src_probe = probe_ip(
+            self.src()
+                .extract_one(&operand_target(self.src(), target), src, dst)
+                .as_ref(),
+        );
+        let dst_probe = probe_ip(
+            self.dst()
+                .extract_one(&operand_target(self.dst(), target), src, dst)
+                .as_ref(),
+        );
 
-        match (src_ip, dst_ip) {
-            (Some(s), Some(d)) => Some(DataField::from_chars(
+        match (src_probe, dst_probe) {
+            (IpProbe::Ok(s), IpProbe::Ok(d)) => Some(DataField::from_chars(
                 target.safe_name(),
                 access_direction_str(&s, &d),
             )),
             _ => {
-                let detail = "access_direct: src/dst ip missing or invalid";
-                warn_data!("{} target={}", detail, target.safe_name());
-                diagnostics::push(OmlIssue::new(OmlIssueKind::ParseFail, detail.to_string()));
+                // 仅「非空非法输入」才告警/诊断；正常缺失（字段缺失/Null/Ignore/空串）
+                // 属预期场景，静默返回 Ignore 交由 on_fail 兜底，避免批量日志噪声
+                let invalid =
+                    matches!(src_probe, IpProbe::Invalid) || matches!(dst_probe, IpProbe::Invalid);
+                if invalid {
+                    let detail = "access_direct: src/dst ip invalid (non-empty non-ip input)";
+                    warn_data!("{}", detail);
+                    diagnostics::push(OmlIssue::new(OmlIssueKind::ParseFail, detail.to_string()));
+                }
                 Some(DataField::from_ignore(target.safe_name()))
             }
         }
@@ -274,6 +300,163 @@ mod tests {
         let target = model.transform_async(src, cache).await;
         let expect = DataField::from_chars("X".to_string(), "L2W");
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
+    }
+
+    // ---- issue #360：正常缺失（空串/Null/Ignore/字段缺失）静默返回 Ignore，不告警不诊断 ----
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_access_direct_empty_string_src_becomes_ignore() {
+        // 空串/纯空白属于正常缺失：结果 Ignore（由 on_fail 兜底），不产生诊断
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![
+            FieldStorage::from_owned(DataField::from_chars("sip", "   ")),
+            FieldStorage::from_owned(DataField::from_ip("dip", v4(PUBLIC))),
+        ];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  access_direct(read(sip), read(dip)) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let out = target.field("X").expect("X field").as_field();
+        assert!(
+            matches!(out.get_value(), wp_model_core::model::Value::Ignore(_)),
+            "空串应输出 Ignore, got {:?}",
+            out.get_value()
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_access_direct_empty_string_src_on_fail_unknown() {
+        // 空串 → Ignore → on_fail('unknown') 返回 unknown，无副作用
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![
+            FieldStorage::from_owned(DataField::from_chars("sip", "")),
+            FieldStorage::from_owned(DataField::from_ip("dip", v4(PUBLIC))),
+        ];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  access_direct(read(sip), read(dip)) | on_fail('unknown') ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let expect = DataField::from_chars("X".to_string(), "unknown");
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_access_direct_null_ip_becomes_ignore() {
+        // IP 类型空值（conv 层对空串转换产物 Value::Null）同样静默 Ignore
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![
+            FieldStorage::from_owned(DataField::new(
+                wp_model_core::model::DataType::IP,
+                "sip".to_string(),
+                wp_model_core::model::Value::Null,
+            )),
+            FieldStorage::from_owned(DataField::from_ip("dip", v4(PUBLIC))),
+        ];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  access_direct(read(sip), read(dip)) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let out = target.field("X").expect("X field").as_field();
+        assert!(
+            matches!(out.get_value(), wp_model_core::model::Value::Ignore(_)),
+            "Null IP 应输出 Ignore, got {:?}",
+            out.get_value()
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_access_direct_ignore_field_becomes_ignore() {
+        // Ignore 字段属正常缺失，静默透传为 Ignore
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![
+            FieldStorage::from_owned(DataField::from_ignore("sip")),
+            FieldStorage::from_owned(DataField::from_ip("dip", v4(PUBLIC))),
+        ];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  access_direct(read(sip), read(dip)) ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        let out = target.field("X").expect("X field").as_field();
+        assert!(
+            matches!(out.get_value(), wp_model_core::model::Value::Ignore(_)),
+            "Ignore 字段应输出 Ignore, got {:?}",
+            out.get_value()
+        );
+    }
+
+    #[cfg(feature = "oml-diag")]
+    mod diag_tests {
+        use super::*;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn test_access_direct_missing_is_silent_no_issue() {
+            // 正常缺失（缺 dip 字段）→ 无 ParseFail 诊断
+            crate::core::diagnostics::reset();
+            let cache = &mut FieldQueryCache::default();
+            let data = vec![FieldStorage::from_owned(DataField::from_ip(
+                "sip",
+                v4(PRIVATE),
+            ))];
+            let src = DataRecord::from(data);
+
+            let mut conf = r#"
+            name : test
+            ---
+            X  =  access_direct(read(sip), read(dip)) | on_fail('unknown') ;
+             "#;
+            let model = oml_parse_raw(&mut conf).await.assert();
+            let _ = model.transform_async(src, cache).await;
+            let issues = crate::core::diagnostics::take();
+            assert!(issues.is_empty(), "正常缺失不应产生诊断, got {:?}", issues);
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn test_access_direct_invalid_input_emits_issue() {
+            // 非空非法字符串：真实输入错误，保留 ParseFail 诊断
+            crate::core::diagnostics::reset();
+            let cache = &mut FieldQueryCache::default();
+            let data = vec![
+                FieldStorage::from_owned(DataField::from_chars("sip", "not-an-ip")),
+                FieldStorage::from_owned(DataField::from_ip("dip", v4(PUBLIC))),
+            ];
+            let src = DataRecord::from(data);
+
+            let mut conf = r#"
+            name : test
+            ---
+            X  =  access_direct(read(sip), read(dip)) | on_fail('unknown') ;
+             "#;
+            let model = oml_parse_raw(&mut conf).await.assert();
+            let _ = model.transform_async(src, cache).await;
+            let issues = crate::core::diagnostics::take();
+            assert!(
+                issues
+                    .iter()
+                    .any(|i| i.kind == crate::core::diagnostics::OmlIssueKind::ParseFail),
+                "非法输入应产生 ParseFail 诊断, got {:?}",
+                issues
+            );
+        }
     }
 
     use std::str::FromStr;

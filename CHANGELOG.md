@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.25.12 latest]
+## [1.25.13 latest]
+
+### Fixed
+- **OML `access_direct` 正常缺失不再刷 WARN/ParseFail**：src/dst 为字段缺失、`Null`、`Ignore` 或空/纯空白字符串时属预期数据缺失（通常经 `on_fail` 兑底），现静默返回 `Ignore`，不再输出 `access_direct: src/dst ip missing or invalid` WARN 与 ParseFail 诊断；非空非法字符串/类型不匹配仍保留诊断（区分“缺失”与“非法”）。关联 wp-labs/warp-parse#360。
+
+## [1.25.12]
 
 ### Changed
 - **source auto 限速快速收敛（rate=0 无限速提速）**：`AutoRateController` 探测期内速率按指数翻倍（+100%/采样窗，启动窗 10s），首次触发 Decrease（触及对端能力/pending/RSS 上限）即结束探测转入稳态（回升 +25%，退让 -15%）；auto 初始速率由 1 万/s 提高到 10 万/s（`tasks/pick.rs default_auto_initial_rate`，`WP_SOURCE_AUTO_INITIAL_RPS` 可覆盖）——修复短时压测/突发流量下 auto 模式吞吐远低于固定限速的问题（parse_to_blackhole 场景 30 万行由 ~5.5s 降至 ~1.5s，Sink 3W/s → 约 20W/s）。自我保护语义保留：pending 字节水位停拉、parse 背压退避与 RSS 增长告警仍会触发降速。

@@ -2,7 +2,7 @@
 //! - 默认无操作（零开销）；开启 `oml-diag` feature 时启用收集。
 //! - 使用线程局部缓冲，避免在 API 上到处传参。
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum OmlIssueKind {
     MissingField,       // 读取/格式化变量缺失
     FmtVarMissing,      // fmt 中的变量缺失
