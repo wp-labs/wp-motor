@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **OML `access_direct` 正常缺失不再刷 WARN/ParseFail**：src/dst 为字段缺失、`Null`、`Ignore` 或空/纯空白字符串时属预期数据缺失（通常经 `on_fail` 兑底），现静默返回 `Ignore`，不再输出 `access_direct: src/dst ip missing or invalid` WARN 与 ParseFail 诊断；非空非法字符串/类型不匹配仍保留诊断（区分“缺失”与“非法”）。关联 wp-labs/warp-parse#360。
+- **同类日志噪声修复（缺失/空值静默化）**：`calc(...)` 操作数为字段缺失/`Null`/`Ignore`/空串时静默返回 `Ignore`（不再刷 `math_missing_operand` WARN 与 MathEvalFail 诊断；除零/溢出/非空非数字仍保留诊断）；`ip_to_biguint` 对空/纯空白字符串静默返回空（非空非 IP 仍报错）；`conv.rs` 空/纯空白字符串转 `bool/digit/float` 等目标类型时静默返回该类型空值（不再 ParseFail 透传，与 #358 的 IP 口径一致）。
 
 ## [1.25.12]
 

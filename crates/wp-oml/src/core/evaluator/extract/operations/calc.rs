@@ -12,7 +12,8 @@ enum CalcEvalError {
     ModByZero,
     Overflow(&'static str),
     NonFinite(&'static str),
-    MissingOperand(String),
+    /// 操作数为正常缺失（字段不存在 / Ignore / Null / 空串）—— 静默，不告警/不诊断，交由 on_fail 兜底
+    SilentMissing(String),
     NonNumericOperand(String),
     InvalidModOperand,
     InvalidArgument(String),
@@ -25,7 +26,7 @@ impl CalcEvalError {
             CalcEvalError::ModByZero => "math_mod_by_zero".to_string(),
             CalcEvalError::Overflow(op) => format!("math_overflow: {}", op),
             CalcEvalError::NonFinite(op) => format!("math_non_finite: {}", op),
-            CalcEvalError::MissingOperand(name) => format!("math_missing_operand: {}", name),
+            CalcEvalError::SilentMissing(name) => format!("math_missing_operand(silent): {}", name),
             CalcEvalError::NonNumericOperand(detail) => {
                 format!("math_non_numeric_operand: {}", detail)
             }
@@ -67,7 +68,14 @@ fn field_to_number(field: DataField) -> Result<CalcNumber, CalcEvalError> {
     match field.get_value() {
         Value::Digit(v) => Ok(CalcNumber::Digit(*v)),
         Value::Float(v) => CalcNumber::Float(*v).ensure_finite("operand"),
-        Value::Ignore(_) => Err(CalcEvalError::MissingOperand(field.get_name().to_string())),
+        // Ignore/Null：上游缺失判定产物（read 缺失/空 IP 等）→ 正常缺失，静默
+        Value::Ignore(_) | Value::Null => {
+            Err(CalcEvalError::SilentMissing(field.get_name().to_string()))
+        }
+        // 空/纯空白字符串：正常数据缺失，静默
+        Value::Chars(value) if value.trim().is_empty() => {
+            Err(CalcEvalError::SilentMissing(field.get_name().to_string()))
+        }
         _ => Err(CalcEvalError::NonNumericOperand(format!(
             "field={} type={}",
             field.get_name(),
@@ -192,9 +200,10 @@ fn eval_expr(
         CalcExpr::Const(v) => Ok(v.clone()),
         CalcExpr::Accessor(accessor) => {
             let tmp_target = operand_target(accessor, target);
-            let field = accessor
-                .extract_one(&tmp_target, src, dst)
-                .ok_or_else(|| CalcEvalError::MissingOperand(tmp_target.safe_name()))?;
+            let Some(field) = accessor.extract_one(&tmp_target, src, dst) else {
+                // 字段不存在：正常缺失（数据稀疏或可选字段），静默交由 on_fail/下游
+                return Err(CalcEvalError::SilentMissing(tmp_target.safe_name()));
+            };
             field_to_number(field)
         }
         CalcExpr::UnaryNeg(inner) => eval_expr(inner, target, src, dst)?.negate(),
@@ -219,6 +228,12 @@ impl CalcOperation {
     ) -> Option<DataField> {
         match eval_expr(self.expr(), target, src, dst) {
             Ok(number) => Some(number.into_field(target.safe_name())),
+            // 正常缺失（字段缺失/Null/Ignore/空串）：静默返回 Ignore，交由 on_fail 兜底，
+            // 不输出 WARN/诊断（避免稀疏数据批量噪声，见 wp-labs/warp-parse#360 同类口径）
+            Err(CalcEvalError::SilentMissing(_)) => {
+                Some(DataField::from_ignore(target.safe_name()))
+            }
+            // 真实计算/输入错误：保留 WARN + 诊断
             Err(err) => {
                 warn_data!("calc {} failed: {}", self.expr(), err.detail());
                 diagnostics::push(OmlIssue::new(OmlIssueKind::MathEvalFail, err.detail()));
@@ -571,5 +586,126 @@ risk_score : float = calc(read(cpu) * 0.7 + read(mem) * 0.3);
             .as_field();
         assert_eq!(out.get_meta(), &DataType::Float);
         assert_eq!(out.get_value(), &Value::Float(13.0));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_calc_missing_operand_returns_ignore() {
+        // 字段缺失 → 静默 Ignore（不产生告警/诊断，见 calc diag_tests 断言）
+        let mut conf = r#"
+name : test
+---
+missing_case = calc(read(a) + read(b));
+"#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let cache = &mut FieldQueryCache::default();
+        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_digit(
+            "a", 10,
+        ))]);
+        let target = model.transform_async(src, cache).await;
+        assert_eq!(
+            target
+                .field("missing_case")
+                .map(|s| s.as_field().get_meta()),
+            Some(&DataType::Ignore)
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_calc_empty_string_operand_returns_ignore() {
+        // 空串操作数（稀疏源字段）→ 正常缺失 → 静默 Ignore
+        let mut conf = r#"
+name : test
+---
+missing_case = calc(read(a) + read(b));
+"#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let cache = &mut FieldQueryCache::default();
+        let src = DataRecord::from(vec![
+            FieldStorage::from_owned(DataField::from_digit("a", 10)),
+            FieldStorage::from_owned(DataField::from_chars("b", "  ")),
+        ]);
+        let target = model.transform_async(src, cache).await;
+        assert_eq!(
+            target
+                .field("missing_case")
+                .map(|s| s.as_field().get_meta()),
+            Some(&DataType::Ignore)
+        );
+    }
+
+    #[cfg(feature = "oml-diag")]
+    mod diag_tests {
+        use super::*;
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn test_calc_missing_operand_is_silent_no_issue() {
+            // 缺失/空串操作数 → 无 MathEvalFail 诊断
+            crate::core::diagnostics::reset();
+            let mut conf = r#"
+name : test
+---
+missing_case = calc(read(a) + read(b));
+"#;
+            let model = oml_parse_raw(&mut conf).await.assert();
+            let cache = &mut FieldQueryCache::default();
+            let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_digit(
+                "a", 10,
+            ))]);
+            let _ = model.transform_async(src, cache).await;
+            let issues = crate::core::diagnostics::take();
+            assert!(issues.is_empty(), "正常缺失不应有诊断, got {:?}", issues);
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn test_calc_divide_by_zero_still_emits_issue() {
+            // 除零是真实计算错误：保留 MathEvalFail 诊断
+            crate::core::diagnostics::reset();
+            let mut conf = r#"
+name : test
+---
+ratio = calc(read(a) / read(b));
+"#;
+            let model = oml_parse_raw(&mut conf).await.assert();
+            let cache = &mut FieldQueryCache::default();
+            let src = DataRecord::from(vec![
+                FieldStorage::from_owned(DataField::from_digit("a", 10)),
+                FieldStorage::from_owned(DataField::from_digit("b", 0)),
+            ]);
+            let _ = model.transform_async(src, cache).await;
+            let issues = crate::core::diagnostics::take();
+            assert!(
+                issues
+                    .iter()
+                    .any(|i| i.kind == crate::core::diagnostics::OmlIssueKind::MathEvalFail),
+                "除零应保留诊断, got {:?}",
+                issues
+            );
+        }
+
+        #[tokio::test(flavor = "current_thread")]
+        async fn test_calc_non_numeric_text_still_emits_issue() {
+            // 非空非数字操作数：真实输入错误，保留诊断
+            crate::core::diagnostics::reset();
+            let mut conf = r#"
+name : test
+---
+bad_case = calc(read(a) + read(status));
+"#;
+            let model = oml_parse_raw(&mut conf).await.assert();
+            let cache = &mut FieldQueryCache::default();
+            let src = DataRecord::from(vec![
+                FieldStorage::from_owned(DataField::from_digit("a", 10)),
+                FieldStorage::from_owned(DataField::from_chars("status", "ok")),
+            ]);
+            let _ = model.transform_async(src, cache).await;
+            let issues = crate::core::diagnostics::take();
+            assert!(
+                issues
+                    .iter()
+                    .any(|i| i.kind == crate::core::diagnostics::OmlIssueKind::MathEvalFail),
+                "非数字文本应保留诊断, got {:?}",
+                issues
+            );
+        }
     }
 }

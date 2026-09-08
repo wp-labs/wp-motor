@@ -40,6 +40,11 @@ fn null_ip_field(name: String) -> DataField {
 }
 
 fn chars_to_omlobj(target: &EvaluationTarget, value: &str) -> DataField {
+    // 空/纯空白字符串：正常数据缺失，返回目标类型空值，不刷 ParseFail 诊断
+    // （与 #358 对 IP 的口径一致，推广到全部目标类型：空字符串不再视为解析错误）
+    if value.trim().is_empty() {
+        return DataField::new(target.data_type().clone(), target.safe_name(), Value::Null);
+    }
     match *target.data_type() {
         DataType::Bool => {
             if let Ok(v) = value.parse::<bool>() {
@@ -70,10 +75,6 @@ fn chars_to_omlobj(target: &EvaluationTarget, value: &str) -> DataField {
         }
         DataType::IP => {
             let trimmed = value.trim();
-            if trimmed.is_empty() {
-                // 空字符串 → 判空返回空 IP，不刷解析报错。
-                return null_ip_field(target.safe_name());
-            }
             match trimmed.parse::<IpAddr>() {
                 // 字符串 → IP 同时支持 IPv4 与 IPv6（压缩/完整/大写十六进制）。
                 Ok(ip) => return DataField::from_ip(target.safe_name(), ip),
@@ -200,5 +201,58 @@ mod tests {
         assert_null_ip(&field);
         // 不得以字符串原样透传当作 IP。
         assert!(!matches!(field.get_value(), Value::Chars(_)));
+    }
+
+    fn conv_str_to_digit(value: &str) -> DataField {
+        let field = DataField::from_chars("cnt", value.to_string());
+        omlobj_meta_conv(field, &EvaluationTarget::new("cnt".into(), DataType::Digit))
+    }
+
+    #[test]
+    fn chars_empty_to_digit_is_null_without_parse_fail() {
+        // 空/纯空白字符串 → 数字目标类型空值（不刷 ParseFail），与 IP 口径一致
+        for value in ["", "   "] {
+            let field = conv_str_to_digit(value);
+            assert_eq!(field.get_meta(), &DataType::Digit);
+            assert!(
+                matches!(field.get_value(), Value::Null),
+                "empty {value:?} should become null digit, got {:?}",
+                field.get_value()
+            );
+        }
+    }
+
+    #[test]
+    fn chars_invalid_digit_passthrough() {
+        // 非空非法 → 保留 ParseFail 诊断并透传原串（非 IP 类型维持透传语义）
+        let field = conv_str_to_digit("abc");
+        assert!(matches!(field.get_value(), Value::Chars(_)));
+    }
+
+    #[cfg(feature = "oml-diag")]
+    mod diag_tests {
+        use super::*;
+
+        #[test]
+        fn empty_chars_to_digit_is_silent_no_issue() {
+            crate::core::diagnostics::reset();
+            let _ = conv_str_to_digit("");
+            let issues = crate::core::diagnostics::take();
+            assert!(issues.is_empty(), "空串不应产生诊断, got {:?}", issues);
+        }
+
+        #[test]
+        fn invalid_chars_to_digit_emits_issue() {
+            crate::core::diagnostics::reset();
+            let _ = conv_str_to_digit("abc");
+            let issues = crate::core::diagnostics::take();
+            assert!(
+                issues
+                    .iter()
+                    .any(|i| i.kind == crate::core::diagnostics::OmlIssueKind::ParseFail),
+                "非空非法应产生 ParseFail, got {:?}",
+                issues
+            );
+        }
     }
 }

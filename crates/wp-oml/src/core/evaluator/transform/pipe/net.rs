@@ -41,6 +41,8 @@ impl ValueProcessor for IpToBigUint {
             Value::IpAddr(ip) => ip_biguint_field(in_val.get_name(), *ip),
             // 无输入（缺失/空）：保持 null，不报错、不查询
             Value::Null | Value::Ignore(_) => null_field_like(&in_val),
+            // 空/纯空白字符串属正常数据缺失（如未声明 `: ip` 的稀疏源字段），静默返回空，不刷诊断
+            Value::Chars(value) if value.trim().is_empty() => null_field_like(&in_val),
             _ => ip_type_error(
                 &in_val,
                 format!("expect ip input, got {}", in_val.get_value().tag()),
@@ -713,6 +715,25 @@ mod tests {
         let data = vec![FieldStorage::from_owned(DataField::from_chars(
             "src_ip",
             "not-an-ip",
+        ))];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X  =  pipe  read(src_ip) | ip_to_biguint ;
+         "#;
+        let model = oml_parse_raw(&mut conf).await.assert();
+        let target = model.transform_async(src, cache).await;
+        assert!(target.field("X").is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_ip_to_biguint_empty_string_silent_null() {
+        // 空/纯空白字符串属正常数据缺失：静默返回空（不刷 ParseFail 诊断/告警）
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![FieldStorage::from_owned(DataField::from_chars(
+            "src_ip", "   ",
         ))];
         let src = DataRecord::from(data);
 
