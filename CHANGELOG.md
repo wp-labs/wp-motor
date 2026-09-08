@@ -5,17 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.25.13 latest]
-
-### Fixed
-- **OML `access_direct` 正常缺失不再刷 WARN/ParseFail**：src/dst 为字段缺失、`Null`、`Ignore` 或空/纯空白字符串时属预期数据缺失（通常经 `on_fail` 兑底），现静默返回 `Ignore`，不再输出 `access_direct: src/dst ip missing or invalid` WARN 与 ParseFail 诊断；非空非法字符串/类型不匹配仍保留诊断（区分“缺失”与“非法”）。关联 wp-labs/warp-parse#360。
-- **同类日志噪声修复（缺失/空值静默化）**：`calc(...)` 操作数为字段缺失/`Null`/`Ignore`/空串时静默返回 `Ignore`（不再刷 `math_missing_operand` WARN 与 MathEvalFail 诊断；除零/溢出/非空非数字仍保留诊断）；`ip_to_biguint` 对空/纯空白字符串静默返回空（非空非 IP 仍报错）；`conv.rs` 空/纯空白字符串转 `bool/digit/float` 等目标类型时静默返回该类型空值（不再 ParseFail 透传，与 #358 的 IP 口径一致）。
-
-## [1.25.12]
+## [1.25.14 latest]
 
 ### Changed
-- **source auto 限速快速收敛（rate=0 无限速提速）**：`AutoRateController` 探测期内速率按指数翻倍（+100%/采样窗，启动窗 10s），首次触发 Decrease（触及对端能力/pending/RSS 上限）即结束探测转入稳态（回升 +25%，退让 -15%）；auto 初始速率由 1 万/s 提高到 10 万/s（`tasks/pick.rs default_auto_initial_rate`，`WP_SOURCE_AUTO_INITIAL_RPS` 可覆盖）——修复短时压测/突发流量下 auto 模式吞吐远低于固定限速的问题（parse_to_blackhole 场景 30 万行由 ~5.5s 降至 ~1.5s，Sink 3W/s → 约 20W/s）。自我保护语义保留：pending 字节水位停拉、parse 背压退避与 RSS 增长告警仍会触发降速。
-- **picker 容量档位放大**：`MemoryLimits` Standard `picker_burst_max` 6→24、`picker_pending_max_bytes` 1MiB→8MiB；Throughput 6→48、2MiB→16MiB（Low 不变）——突发直读路径不再被过小的批水位/字节水位频繁打断（此前该路径仅约 6W/s）。
+- **source auto 限速快速收敛（rate=0 提速）**：初始速率 1 万→10 万/s，探测期指数翻倍、首次遇压即退出探测转稳态；parse_to_blackhole 短压（30 万行）由 ~5.5s 降至 ~1.5s。自我保护（pending 水位/背压/RSS 降速）保留。
+- **picker 容量档位放大**：Standard `picker_burst_max` 6→24、pending 1MiB→8MiB；Throughput 6→48、2MiB→16MiB（Low 不变），突发直读不再被过小水位频繁打断。
+
+### Fixed
+- **OML 正常缺失不再刷告警/诊断**：`access_direct`/`calc`/`ip_to_biguint`/`conv` 对字段缺失、`Null`、`Ignore`、空/纯空白字符串等正常缺失统一静默（返回 `Ignore`/空值，可 `on_fail` 兑底）；非空非法输入（非法 IP/数字文本/除零等）仍保留诊断。关联 wp-labs/warp-parse#360。
 
 ## [1.25.11]
 
@@ -25,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **OML 字符串→IP 自动转换支持 IPv6**：`chars` 字段转 IP 时由仅 `Ipv4Addr` 改为 `IpAddr`（压缩/完整/大写/IPv4-mapped 全支持），空/非法输入不再以字符串透传（空 IP / ParseFail 诊断），打通 chars → IPv6 → `ip_to_biguint` 链路（v6 键 = 2^128 + u128）。关联 wp-labs/warp-parse#358。
 
-## [1.25.10 latest]
+## [1.25.10]
 
 ### Added
 - **OML SQL 支持 `limit` / `order by`**：`select ... where <cond> order by <col> [asc|desc] limit <N>`——条件串末尾的 `order by` 与 `limit <数字>` 子句在解析期剥离并拼回最终 SQL；`limit` 值仅允许数字字面量（非数字拒绝），`order by` 列按白名单校验（`ident [asc|desc]`，与 select body 一致，防任意 SQL 透传）；ip4_between / in / like / 通用条件四条求值路径均支持，参数注入（`read()`/`take()`）与字符串/括号内干扰不受影响；无 where 的 `select ... limit N` 仍不支持。
