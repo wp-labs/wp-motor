@@ -434,6 +434,8 @@ impl MetricCollectors {
             item.up_target(target.clone());
         }
     }
+    // 仅失败路径携带被拒消息；SendError<ReportVariant> 体积大但极少构造，豁免大 Err 告警
+    #[allow(clippy::result_large_err)]
     pub async fn send_stat(&mut self, mon_send: &MonSend) -> Result<(), SendError<ReportVariant>> {
         let batch_time = fast_now();
         for requ in self.items.iter_mut() {
