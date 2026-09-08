@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.26.0]（稳定版，收敛自 1.25.0–1.25.14 系列）
+## [1.26.0] latest
 
 ### Added
 - **OML 内网 IP 富化**：`intranet_ip`（内/外判定）、`access_direct`（访问方向 L2L/L2W/W2L/W2W）、`intranet_replace`（内网 IP 脱敏：同族占位或显式替换值）、`on_fail`（缺失兜底）；网段由 `knowdb.toml [intranet_nets]` 知识化配置。
