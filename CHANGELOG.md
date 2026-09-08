@@ -5,117 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.25.14 latest]
+## [1.26.0]（稳定版，收敛自 1.25.0–1.25.14 系列）
+
+### Added
+- **OML 内网 IP 富化**：`intranet_ip`（内/外判定）、`access_direct`（访问方向 L2L/L2W/W2L/W2W）、`intranet_replace`（内网 IP 脱敏：同族占位或显式替换值）、`on_fail`（缺失兜底）；网段由 `knowdb.toml [intranet_nets]` 知识化配置。
+- **OML IP 编码**：`ip_to_biguint`（IPv4/IPv6 → 任意精度整数，支持压缩/完整/大写/IPv4-mapped）与 `ip4_to_int`。
+- **OML 时间函数**：`Time::to_ts`/`to_ts_ms`/`to_ts_us` 与逆操作 `from_ts`/`from_ts_ms`/`from_ts_us`（秒/毫秒/微秒，`zone` 可选）。
+- **OML 数据组织**：嵌套 `object {}`、对象数组 `array {}` 聚合表达式、`static` 块支持嵌套对象/数组。
+- **OML SQL**：`select` 支持 `order by`/`limit` 子句；`from <provider>.<schema>.<table>` 多 SQL provider 路由。
 
 ### Changed
-- **source auto 限速快速收敛（rate=0 提速）**：初始速率 1 万→10 万/s，探测期指数翻倍、首次遇压即退出探测转稳态；parse_to_blackhole 短压（30 万行）由 ~5.5s 降至 ~1.5s。自我保护（pending 水位/背压/RSS 降速）保留。
-- **picker 容量档位放大**：Standard `picker_burst_max` 6→24、pending 1MiB→8MiB；Throughput 6→48、2MiB→16MiB（Low 不变），突发直读不再被过小水位频繁打断。
+- **解析与求值提速**：纯内存求值（read/take/calc/pipe/…）改走同步快路径、`read` 查找零分配；`rate=0`（不限速）自动限速快速收敛并放大接收容量档位——突发/短压吞吐显著提升（parse_to_blackhole 30 万行 ~5.5s → ~1.5s），自我保护仍生效。
+- **错误提示结构化**：OML 解析错误与引擎加载错误定位到具体文件/位置/原因，不再输出整段原始文本。
+- 内网富化输出统一为 `LAN/WAN`、`L2L/L2W/W2L/W2W` 英文简写。
 
 ### Fixed
-- **OML 正常缺失不再刷告警/诊断**：`access_direct`/`calc`/`ip_to_biguint`/`conv` 对字段缺失、`Null`、`Ignore`、空/纯空白字符串等正常缺失统一静默（返回 `Ignore`/空值，可 `on_fail` 兑底）；非空非法输入（非法 IP/数字文本/除零等）仍保留诊断。关联 wp-labs/warp-parse#360。
+- 字符串→IP 自动转换支持 IPv6，空/非法输入不再以字符串透传（wp-labs/warp-parse#358）。
+- OML 嵌套 object / `read` / `take` 非法参数不再静默丢弃，加载即整体报错（wp-labs/warp-parse#348）。
+- 字段缺失/空值等正常缺失不再刷告警与解析诊断，可放心用 `on_fail` 兜底（wp-labs/warp-parse#360）；时间戳 `zone` 溢出不再触发 panic。
+- 静态符号真正零拷贝、引擎关闭时任务批量 abort，不再卡在不可取消的工作上。
 
-## [1.25.11]
+### Dependencies
+- 升级 `wp-knowledge`、`wp-model-core 0.9`、`wp-lang 0.5`、`wp-error 0.11` 等。
 
-### Added
-- **OML pipe 新增 `intranet_replace` 内网 IP 脱敏替换**：内网地址替换为同族占位地址（IPv4 → `192.0.2.1`，IPv6 → `2001:db8::1`，可显式 `intranet_replace('1.2.3.4')` 覆盖），公网原样透传，输出统一为 IP 类型；仅支持 `ip` 类型输入（Chars 由模型 `: ip` 声明经 conv 层先转 IP），显式替换值须为合法 IP 字面量（解析期报错），仅对同族输入生效，跨族 → 诊断 + Ignore。判定与 `intranet_ip` 同源（`intranet_nets`），IPv4-mapped IPv6 按 IPv4 处理。
-
-### Fixed
-- **OML 字符串→IP 自动转换支持 IPv6**：`chars` 字段转 IP 时由仅 `Ipv4Addr` 改为 `IpAddr`（压缩/完整/大写/IPv4-mapped 全支持），空/非法输入不再以字符串透传（空 IP / ParseFail 诊断），打通 chars → IPv6 → `ip_to_biguint` 链路（v6 键 = 2^128 + u128）。关联 wp-labs/warp-parse#358。
-
-## [1.25.10]
-
-### Added
-- **OML SQL 支持 `limit` / `order by`**：`select ... where <cond> order by <col> [asc|desc] limit <N>`——条件串末尾的 `order by` 与 `limit <数字>` 子句在解析期剥离并拼回最终 SQL；`limit` 值仅允许数字字面量（非数字拒绝），`order by` 列按白名单校验（`ident [asc|desc]`，与 select body 一致，防任意 SQL 透传）；ip4_between / in / like / 通用条件四条求值路径均支持，参数注入（`read()`/`take()`）与字符串/括号内干扰不受影响；无 where 的 `select ... limit N` 仍不支持。
-
-## [1.25.9]
-
-### Changed
-- **OML 求值同步快路径**：`PreciseEvaluator` 增加同步求值快路径（`support_sync`/`extract_storage_sync`），纯内存求值器（read/take/object/array/calc/fmt/pipe/match/fun/collect/access_direct/字面量）不再经过 `async_trait` 逐层 boxed future，仅 `select`/`lookup` 保留异步；`SingleEvalExp` 增加静态 `sync` 标志，在静态符号重写完成后于解析阶段一次性确定求值方式。
-- **read 查找键零分配**：`read` 的字段名查找键由 `String::clone()` 改为 `as_deref()` 借用，避免每条记录每次查找的堆分配。
-
-### Fixed
-- **顶层静态符号零拷贝真正接线**：`PreciseEvaluator::ObjArc`（顶层静态符号，如 `host : chars = HOST`）此前走 `data_field_extract_one(...).map(from_owned)` 全量 clone；现改为 `FieldStorage::from_shared(arc.clone())`（Arc clone），同步与异步求值路径统一，与嵌套静态符号（`NestedAccessor::FieldArc`）行为一致。
-- **TaskGroup 关闭超时批量 abort**：`TaskGroup` 关闭时单个任务等待超时后，一次性 abort 所有剩余任务（而非逐个串行 abort），并用 `ABORT_CONFIRM_TIMEOUT`（500ms）限定每次 abort 确认的等待时间，避免任务卡在同步 CPU 工作或不可取消的系统调用时阻塞引擎关闭。
-
-### Tests
-- **wp-oml 零拷贝与基准测试**：`zero_copy_validation` 将顶层静态符号的注释断言替换为真实 `is_shared()` 断言；`oml_nested_object` 基准改为复现 issue #352 的真实 dst 查找场景（`__sip` 等作为输出字段、`read` 读 dst），而非此前的 src 查找场景。
-
-## [1.25.8] - 2026-08-12
-
-### Added
-- **OML 多 SQL provider 路由**：`select ... from <provider>.<schema>.<table>` 前缀路由到 knowdb.toml 中配置的命名数据库（`[[provider.sqldb]]` + `name`）；无前缀查询走默认库。评估期通过 `route_provider_sql` 识别并剥离前缀后派发到对应 provider。
-- **knowdb probe 识别新版 provider 格式**：`uses_external_provider_only` 支持 `[provider.sqldb]` / `[[provider.sqldb]]` / `[provider.redis]`，外部 provider 专用配置不再误走本地 authority 清理路径。
-
-## [1.25.7] - 2026-08-11
-
-### Changed
-- **OML 解析错误结构化展示**：`print_diagnostic` 对 OML 解析错误渲染为 `file:`/`error:`/`at:`——解析 `from_syntax` 的 `[path]/[where]/[error]` 结构，去掉整段原始 detail 文本与误导性的 `location`（操作名）/`cause`（syntax）
-
-## [1.25.6] - 2026-08-11
-
-### Fixed
-- **加载错误提示过泛**：修复引擎启动（`load-engine-res`）阶段 OML/配置解析失败时控制台仅显示 "配置错误"、无具体原因的问题——`conv_err()` 仅按 reason 转换（`From<XReason> for RunReason`），把 `Syntax/NotFound/Other` 内层详情压缩为无 detail 的配置错误。新增 `wp-error` 的 `IntoRunError` 转换（`OMLCodeError`/`ConfError`/`OrionConfError`），提取内层消息为 detail 并保留 source；OML 加载（`loading.rs`）与配置加载（`warp_helpers.rs`）改用该机制，错误提示现定位到具体文件、解析位置与 toml 语法错误
-
-## [1.25.5] - 2026-08-10
-
-### Fixed
-- **OML 嵌套 object 成员静默丢弃**：修复嵌套 `object { ... }` 的成员解析失败时，该成员及其后的兄弟字段被静默丢弃、但模型加载仍报成功的问题。`oml_map()` 解析后不再假设 `repeat` 已消费全部 body，剩余未解析内容将作为明确语法错误返回（非法成员使整个 OML 校验失败，不再静默加载部分对象）；`oml_sub_acq` 新增 `pipe`（含省略前缀）分支，`NestedAccessor` 新增 `Pipe` 变体，嵌套 object 成员支持 `pipe read(...) | fun`；目标列表解析容忍逗号前后空白
-- **OML read/take 参数静默丢弃**：同类问题——`read(...)`/`take(...)` 括号内非法参数（如 `read(option : [x] @@garbage@@)`）此前被 `repeat(0.., oml_args)` 静默忽略、加载仍成功；现确认括号内已被完整消费，存在剩余内容时整体 OML 校验失败
-
-### Tests
-- **wp-oml issue #348 回归**：新增 28 个用例——真实报告结构（`category` 后的 `rule` 不丢弃 `behavior/confidence/attacker`）、pipe 成员任意位置（首/中/末）、省略前缀 `read(x) | fun`、`take` 源 pipe、同对象多 pipe 成员、数组元素内嵌套 object 的 pipe、深层混合嵌套、`get` 管道取前序对象输出、非法成员在首/中/末位置均整体失败、static 块拒绝 pipe、多目标逗号前后空白、`read()`/`take()` 非法参数整体失败（垃圾参数在开头/中间/末尾、pipe 源内、全部垃圾、object 成员内；合法边界形式尾逗号/尾空白/多参数/json path 不受影响）、Display 往返
-
-## [1.25.4] - 2026-08-08
-
-### Added
-- **OML/Time 时间戳函数**：新增 `Time::from_ts`/`Time::from_ts_ms`/`Time::from_ts_us`（秒/毫秒/微秒时间戳 → 时间），与 `Time::to_ts`/`to_ts_ms`/`to_ts_us` 互为逆操作；六个函数的 `zone` 参数可选、默认东8区（正东负西，0 = UTC），超 i32 范围或 `|zone| > 23`（超出 `FixedOffset` 上限）在解析期报错，zone 值非法（超范围/溢出）时原样透传
-
-### Fixed
-- **OML/Time 时间戳 zone 溢出**：`|zone|` 极大（> 596523）时 `zone * 3600` 溢出 i32，debug 构建（`cargo test`/引擎 debug）直接 panic；改用 `saturating_mul` 饱和后由 `FixedOffset::east_opt` 返回 `None` → 无效 zone 透传，避免用户 OML 源码触发崩溃
-
-### Docs
-- **OML/Time 时间戳函数文档**：函数参考（zh/en）与 pipe_functions 补充六个时间戳函数的 `zone` 语法与示例；`to_ts_zone` 标注与 `to_ts(zone)`/`to_ts_ms(zone)`/`to_ts_us(zone)` 等价；说明「互逆需使用相同 zone」
-
-### Tests
-- **wp-oml Time 时间戳函数测试**：新增 33 个用例（六函数求值、无参/正/负 zone、边界 ±23、越界/溢出拒绝、同 zone 往返互逆、跨 zone 不对称、负时间戳、非匹配类型/越界时间戳透传、Display 往返、错误消息含具体原因）
-
-## [1.25.3] - 2026-08-05
-
-### Added
-- **OML 嵌套对象**：`object { ... }` 子项值支持嵌套 `object { ... }` 字面量，可将平铺字段组织成多层 JSON；嵌套对象可任意深度，并与 `array` 互相嵌套
-- **OML 对象数组**：新增 `array { ... }` 聚合表达式，直接构造对象/值字面量数组（元素支持 `object { ... }`、嵌套 `array`、`read/take`、值、函数等表达式）；元素缺失或为 null 自动跳过，全部缺失不输出该字段
-- **static 块**：静态块支持嵌套对象/数组字面量（`ensure_static_*` 校验与静态符号重写覆盖 `NestedAccessor::Map`/`ObjArray`）
-
-### Fixed
-- **引擎启动加载失败（exit 300）**：修复嵌套 object 在 `load-engine-res` 阶段解析失败的问题——`wpadm check --what oml` 只校验文件非空，真实解析发生在引擎启动时；此前 `oml_sub_acq` 不接受 `object` 作为子项值，且 `array` 关键字未注册
-
-### Docs
-- **OML 文档**：语法参考（zh/en）补充 `array_expr` 与嵌套 `object_value`；核心概念、实战指南、完整示例新增对象数组与嵌套对象示例
-
-### Tests
-- **wp-oml 集成测试**：新增 15 个嵌套对象/数组用例（解析、求值形状、JSON 端到端输出、深层混合嵌套、缺失元素跳过、数组套数组、类型声明、get 管道、static 块、Display 往返、空数组、省略分号、文档示例）
-
-## [1.25.2] - 2026-08-05
-
-### Changed
-- **OML 内网富化输出**：`intranet_ip` 输出改为英文简写 `LAN`/`WAN`，`access_direct` 方向改为 `L2L`/`L2W`/`W2L`/`W2W`（L=LAN、W=WAN、2=to）
-- **Docs**：富化函数与内网网段配置文档（zh/en）同步输出值
-
-## [1.25.1] - 2026-08-05
-
-### Added
-- **OML 内网富化**：新增 `intranet_ip`（判内/外）、`access_direct`（访问方向）、`on_fail`（失败兜底）函数；管道源扩展（`PipeSource`）支持 `access_direct(a,b) | on_fail('x')`
-- **内网网段知识管理**：内网网段作为知识统一由 wp-knowledge 管理（`knowdb.toml [intranet_nets]` 节，随 knowdb 加载注入）；默认 RFC1918 + IPv4/IPv6 loopback + IPv6 ULA，可配置扩展；项目初始化自动生成该节；`wproj check` 增加校验项；`is_intranet` 按 IPv4/IPv6 地址族分桶优化
-
-## [1.25.0] - 2026-08-04
-
-### Added
-- **OML IP 编码**：新增 `ip_to_biguint`（IPv4/IPv6 统一编码为任意精度整数），`FieldQueryCache`/`compare_datafield` 支持 `BigUint`
-- **Docs**：OML 语法参考补充 `//` 注释说明；IP 地理位置查询示例改用 `ip_to_biguint`
-
-### Changed
-- **Dependencies**：升级 `wp-knowledge` 0.14→0.15、`wp-model-core` 0.8→0.9、`wp-lang` 0.4→0.5、`wp-error` 0.10→0.11 等一批依赖
-
+> 演进过程见 1.25.0–1.25.14 各版本 tag。
 
 ## [1.23.8] - 2026-07-31
 
