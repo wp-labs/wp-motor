@@ -297,7 +297,7 @@ smallvec = "1.15"
 derive_more = "2.1"
 derive_builder = "0.20"
 getset = "0.1"
-educe = { version = "0.6", default-features = false }
+educe = { version = "0.7", default-features = false }
 enum_dispatch = "0.3"
 contracts = "0.6"
 lazy_static = "1.5"
