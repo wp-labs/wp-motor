@@ -6,6 +6,8 @@
 
 [![CI](https://github.com/wp-labs/wp-motor/workflows/CI/badge.svg)](https://github.com/wp-labs/wp-motor/actions)
 [![codecov](https://codecov.io/gh/wp-labs/wp-motor/graph/badge.svg?token=6SVCXBHB6B)](https://codecov.io/gh/wp-labs/wp-motor)
+[![stars](https://img.shields.io/github/stars/wp-labs/wp-motor?style=flat&logo=github)](https://github.com/wp-labs/wp-motor/stargazers)
+[![rust](https://img.shields.io/badge/rust-edition%202024-orange?logo=rust)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Docs (zh)](https://img.shields.io/badge/docs-中文-blue)](docs/usage/zh/README.md)
 [![Docs (en)](https://img.shields.io/badge/docs-English-blue)](docs/usage/en/README.md)
