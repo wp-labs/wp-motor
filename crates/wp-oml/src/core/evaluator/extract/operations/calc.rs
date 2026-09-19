@@ -598,9 +598,7 @@ missing_case = calc(read(a) + read(b));
 "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let cache = &mut FieldQueryCache::default();
-        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_int(
-            "a", 10,
-        ))]);
+        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_int("a", 10))]);
         let target = model.transform_async(src, cache).await;
         assert_eq!(
             target
@@ -648,9 +646,8 @@ missing_case = calc(read(a) + read(b));
 "#;
             let model = oml_parse_raw(&mut conf).await.assert();
             let cache = &mut FieldQueryCache::default();
-            let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_int(
-                "a", 10,
-            ))]);
+            let src =
+                DataRecord::from(vec![FieldStorage::from_owned(DataField::from_int("a", 10))]);
             let _ = model.transform_async(src, cache).await;
             let issues = crate::core::diagnostics::take();
             assert!(issues.is_empty(), "正常缺失不应有诊断, got {:?}", issues);
