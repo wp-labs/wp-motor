@@ -100,8 +100,8 @@ mod tests {
     fn test_oml_map() -> WResult<()> {
         let mut code = r#"
     object {
-        cpu_free : digit  = take() ;
-        process : digit  = take()  ;
+        cpu_free : int  = take() ;
+        process : int  = take()  ;
     }
      "#;
         assert_oml_parse(&mut code, oml_map);

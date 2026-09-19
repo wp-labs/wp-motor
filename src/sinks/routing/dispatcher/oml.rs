@@ -143,8 +143,8 @@ impl SinkDispatcher {
         if !mdl_name.is_empty() {
             rec.append(DataField::from_chars("__oml_model", mdl_name));
         }
-        rec.append(DataField::from_digit("__src_field_count", src_cnt as i64));
-        rec.append(DataField::from_digit("__out_field_count", out_cnt as i64));
+        rec.append(DataField::from_int("__src_field_count", src_cnt as i64));
+        rec.append(DataField::from_int("__out_field_count", out_cnt as i64));
         // 诊断详情（如已启用）
         if let Some(diag) = oml::core::diagnostics::take_summary() {
             rec.append(DataField::from_chars("__diag".to_string(), diag));

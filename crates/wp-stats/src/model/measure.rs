@@ -184,8 +184,8 @@ impl MeasureUnit {
     }
     pub fn to_tdc(&self) -> Vec<DataField> {
         vec![
-            DataField::from_digit("total", self.total as i64),
-            DataField::from_digit("success", self.success as i64),
+            DataField::from_int("total", self.total as i64),
+            DataField::from_int("success", self.success as i64),
             DataField::from_float("suc_rate", self.suc_rate()),
             DataField::from_float("speed", self.speed() / 10000.0),
             DataField::from_time("beg_time", self.timer.beg),

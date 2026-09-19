@@ -25,8 +25,8 @@ pub fn test_tdo_crate() -> DataRecord {
         DataField::from_ip("src_ip", IpAddr::from_str("172.0.0.1").unwrap()),
         DataField::from_chars("src_city", "beijing"),
         DataField::from_chars("requ_uri", "http://baidu.com"),
-        DataField::from_digit("resp_len", 1024),
-        DataField::from_digit("resp_status", 200),
+        DataField::from_int("resp_len", 1024),
+        DataField::from_int("resp_status", 200),
     ];
     DataRecord::from(items)
 }

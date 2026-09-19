@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.26.0] latest
+## [1.27.0] latest
+
+### ⚠️ BREAKING CHANGES
+- **依赖 `wp-model-core` 0.9 → 0.10**：上游整数类型改名——`Value::Digit` → `Value::Int`、`DataType::Digit` → `DataType::Int`（serde 标签 `"digit"` → `"int"`）、`Field::from_digit` → `from_int`、类型别名 `DigitValue` → `IntValue`；`Value`/`DataType` 的 wire 名随之改变（`{"Digit":…}` → `{"Int":…}`、`"digit"` → `"int"`）。穷尽 `match Value` / `match DataType` 的调用方需改名。
+- **OML / 条件表达式的类型渲染改为 `int`**：类型渲染沿用 `DataType`/`DataField` 的 `Display`，随上游改为 `int`（OML `cpu_free : digit` → `cpu_free : int`；条件 `$len == digit(10)` → `int(10)`）。OML / 条件**解析仍接受 `digit`**（wp-lang 保留别名），**WPL 规则仍以 `digit` 呈现**（wp-lang 有独立 `meta_name`）。
+
+### Dependencies
+- 升级 `wp-model-core` 0.9 → 0.10、`wp-lang` 0.5 → 0.6、`wp-knowledge` 0.16 → 0.18、`wp-core-connectors` 0.8 → 0.9、`wp-connector-api` 0.12 → 0.13、`wp-parse-api` 0.11 → 0.12、`wp-data-fmt` 0.9 → 0.10、`wp-error` 0.11 → 0.12、`wp-specs` 0.11 → 0.12、`wp-source-types` 0.2 → 0.3、`wp-conf-base` 0.5 → 0.6、`wp-arrow` 0.3 → 0.4、`serial_test` 3 → 4。
+
+## [1.26.0] - 2026-09-08
 
 ### Added
 - **OML 内网 IP 富化**：`intranet_ip`（内/外判定）、`access_direct`（访问方向 L2L/L2W/W2L/W2W）、`intranet_replace`（内网 IP 脱敏：同族占位或显式替换值）、`on_fail`（缺失兜底）；网段由 `knowdb.toml [intranet_nets]` 知识化配置。

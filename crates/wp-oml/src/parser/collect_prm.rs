@@ -65,8 +65,8 @@ mod tests {
         let expect = DataField::from_arr(
             "port_list".to_string(),
             vec![
-                DataField::from_digit("sport", 514),
-                DataField::from_digit("dport", 22),
+                DataField::from_int("sport", 514),
+                DataField::from_int("dport", 22),
             ],
         );
         assert_eq!(

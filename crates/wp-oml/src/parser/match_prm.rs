@@ -671,7 +671,7 @@ Level = match read(count) {
 "#;
         let model6 = oml_parse_raw(&mut conf6).await.expect("Failed to parse gt");
         let cache6 = &mut FieldQueryCache::default();
-        let data6 = vec![FieldStorage::from_owned(DataField::from_digit(
+        let data6 = vec![FieldStorage::from_owned(DataField::from_int(
             "count", 150,
         ))];
         let src6 = DataRecord::from(data6);
@@ -689,7 +689,7 @@ Grade = match read(score) {
 "#;
         let model7 = oml_parse_raw(&mut conf7).await.expect("Failed to parse lt");
         let cache7 = &mut FieldQueryCache::default();
-        let data7 = vec![FieldStorage::from_owned(DataField::from_digit("score", 45))];
+        let data7 = vec![FieldStorage::from_owned(DataField::from_int("score", 45))];
         let src7 = DataRecord::from(data7);
         let target7 = model7.transform_async(src7, cache7).await;
         let expect7 = DataField::from_chars("Grade".to_string(), "fail".to_string());
@@ -705,7 +705,7 @@ Status = match read(level) {
 "#;
         let model8 = oml_parse_raw(&mut conf8).await.expect("Failed to parse eq");
         let cache8 = &mut FieldQueryCache::default();
-        let data8 = vec![FieldStorage::from_owned(DataField::from_digit("level", 5))];
+        let data8 = vec![FieldStorage::from_owned(DataField::from_int("level", 5))];
         let src8 = DataRecord::from(data8);
         let target8 = model8.transform_async(src8, cache8).await;
         let expect8 = DataField::from_chars("Status".to_string(), "max".to_string());
@@ -726,7 +726,7 @@ TempZone = match read(temperature) {
             .await
             .expect("Failed to parse in_range");
         let cache9 = &mut FieldQueryCache::default();
-        let data9 = vec![FieldStorage::from_owned(DataField::from_digit(
+        let data9 = vec![FieldStorage::from_owned(DataField::from_int(
             "temperature",
             25,
         ))];

@@ -292,9 +292,9 @@ fn build_record(template: &NginxTemplate, idx: usize) -> DataRecord {
     append_chars(&mut record, "path", variant_path(&template.path, idx));
     append_chars(&mut record, "protocol", template.protocol.clone());
     let status = variant_status(idx, template.status);
-    record.append(DataField::from_digit("status", status));
+    record.append(DataField::from_int("status", status));
     let bytes = variant_bytes(idx, template.bytes);
-    record.append(DataField::from_digit("bytes", bytes));
+    record.append(DataField::from_int("bytes", bytes));
     append_chars(
         &mut record,
         "referer",
@@ -359,7 +359,7 @@ fn value_as_string(record: &DataRecord, key: &str) -> Option<String> {
 
 fn value_as_digit(record: &DataRecord, key: &str) -> Option<i64> {
     match record.get_value(key)? {
-        Value::Digit(d) => Some(*d),
+        Value::Int(d) => Some(*d),
         other => other.to_string().parse().ok(),
     }
 }

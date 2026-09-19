@@ -17,7 +17,7 @@ pub fn compare_datafield(left: &DataField, right: &DataField, op: CmpOperator) -
         (Value::Symbol(v1), Value::Symbol(v2)) => default_compare(v1, v2, op),
         (Value::Time(v1), Value::Time(v2)) => default_compare(v1, v2, op),
         (Value::Bool(v1), Value::Bool(v2)) => default_compare(v1, v2, op),
-        (Value::Digit(v1), Value::Digit(v2)) => default_compare(v1, v2, op),
+        (Value::Int(v1), Value::Int(v2)) => default_compare(v1, v2, op),
         // 任意精度整数：BigUint 不支持通配符（default_compare 要求 WildcardMatcher），手动比较
         (Value::BigUint(v1), Value::BigUint(v2)) => match op {
             CmpOperator::Eq => v1 == v2,
@@ -82,7 +82,7 @@ mod tests {
     fn test_compare_biguint_type_mismatch_is_false() {
         // 类型不一致（BigUint vs Digit）不匹配
         let left = biguint_field("134744072");
-        let right = Field::from_digit("x", 134744072);
+        let right = Field::from_int("x", 134744072);
         assert!(!compare_datafield(&left, &right, CmpOperator::Eq));
     }
 }

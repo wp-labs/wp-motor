@@ -93,7 +93,7 @@ mod tests {
 
         let mut data = r#"digit(10) "#;
         let x = datatype::take_field.parse_next(&mut data)?;
-        let expect = DataField::from_digit("".to_string(), 10);
+        let expect = DataField::from_int("".to_string(), 10);
         assert_eq!(x, expect);
 
         let mut data = r#"chars(xyz) "#;
@@ -128,7 +128,7 @@ mod tests {
         let expect = Comparison::new(
             CmpOperator::Eq,
             "len".to_string(),
-            DataField::from_digit("", 10),
+            DataField::from_int("", 10),
         );
         assert_eq!(x, expect);
 
@@ -137,7 +137,7 @@ mod tests {
         let expect = Comparison::new(
             CmpOperator::We,
             "len".to_string(),
-            DataField::from_digit("", 10),
+            DataField::from_int("", 10),
         );
         assert_eq!(x, expect);
 
@@ -215,13 +215,13 @@ mod tests {
     #[test]
     pub fn test_express_x1() -> ModalResult<()> {
         let mut data =
-            r#" $len == digit(10) &&  (! $IP == ip (192.168.0.1)  || $IP == ip(127.0.0.1)) "#;
+            r#" $len == int(10) &&  (! $IP == ip (192.168.0.1)  || $IP == ip(127.0.0.1)) "#;
         let expect = data;
         let obj = WarpConditionParser::exp(&mut data)?;
         assert_eq_exp_str(obj, expect);
 
         let mut data =
-            " $len == digit(10)  \n && (! $IP == ip (192.168.0.1)  \n || $IP == ip(127.0.0.1)) ";
+            " $len == int(10)  \n && (! $IP == ip (192.168.0.1)  \n || $IP == ip(127.0.0.1)) ";
         let expect = data;
         let obj = WarpConditionParser::exp(&mut data)?;
         assert_eq_exp_str(obj, expect);

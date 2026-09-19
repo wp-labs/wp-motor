@@ -37,7 +37,7 @@ fn time_to_ts_value(
     };
     let tz = zone_offset(zone.unwrap_or(8), fun)?;
     let local = x.and_local_timezone(tz).single()?;
-    Some(DataField::from_digit(
+    Some(DataField::from_int(
         in_val.get_name().to_string(),
         conv(&local),
     ))
@@ -50,7 +50,7 @@ fn ts_to_time_value(
     fun: &str,
     conv: impl Fn(i64) -> Option<DateTime<Utc>>,
 ) -> Option<DataField> {
-    let Value::Digit(x) = in_val.get_value() else {
+    let Value::Int(x) = in_val.get_value() else {
         return None;
     };
     let dt = match conv(*x) {
@@ -150,13 +150,13 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        //let expect = TDOEnum::from_digit("X".to_string(), 971136000);
-        let expect = DataField::from_digit("X".to_string(), 971107200);
+        //let expect = TDOEnum::from_int("X".to_string(), 971136000);
+        let expect = DataField::from_int("X".to_string(), 971107200);
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
-        let expect = DataField::from_digit("Z".to_string(), 971107200000);
+        let expect = DataField::from_int("Z".to_string(), 971107200000);
         assert_eq!(target.field("Z").map(|s| s.as_field()), Some(&expect));
 
-        let expect = DataField::from_digit("U".to_string(), 971107200000000);
+        let expect = DataField::from_int("U".to_string(), 971107200000000);
         assert_eq!(target.field("U").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -164,7 +164,7 @@ mod tests {
     async fn test_time_from_ts_ms_utc() {
         let cache = &mut FieldQueryCache::default();
         // 1739000000000 ms = 2025-02-07 18:13:20 UTC
-        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+        let data = vec![FieldStorage::from_owned(DataField::from_int(
             "ts_ms",
             1739000000000,
         ))];
@@ -188,7 +188,7 @@ mod tests {
     async fn test_time_from_ts_ms_with_zone() {
         let cache = &mut FieldQueryCache::default();
         // 东 8 区：0 ms → 1970-01-01 08:00:00
-        let data = vec![FieldStorage::from_owned(DataField::from_digit("ts_ms", 0))];
+        let data = vec![FieldStorage::from_owned(DataField::from_int("ts_ms", 0))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -221,7 +221,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_digit("Z".to_string(), 971136000000);
+        let expect = DataField::from_int("Z".to_string(), 971136000000);
         assert_eq!(target.field("Z").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -229,7 +229,7 @@ mod tests {
     async fn test_time_ts_ms_roundtrip_default_zone() {
         let cache = &mut FieldQueryCache::default();
         // 默认东 8 区往返互逆：from_ts_ms → to_ts_ms 复原原时间戳
-        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+        let data = vec![FieldStorage::from_owned(DataField::from_int(
             "ts_ms",
             1739000000000,
         ))];
@@ -243,7 +243,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_digit("Y".to_string(), 1739000000000);
+        let expect = DataField::from_int("Y".to_string(), 1739000000000);
         assert_eq!(target.field("Y").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -251,7 +251,7 @@ mod tests {
     async fn test_time_ts_ms_roundtrip_utc_zone() {
         let cache = &mut FieldQueryCache::default();
         // 显式 UTC 往返互逆：from_ts_ms(0) → to_ts_ms(0) 复原原时间戳
-        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+        let data = vec![FieldStorage::from_owned(DataField::from_int(
             "ts_ms",
             1739000000000,
         ))];
@@ -265,7 +265,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_digit("Y".to_string(), 1739000000000);
+        let expect = DataField::from_int("Y".to_string(), 1739000000000);
         assert_eq!(target.field("Y").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -273,7 +273,7 @@ mod tests {
     async fn test_time_from_ts_ms_default_zone() {
         let cache = &mut FieldQueryCache::default();
         // 无参 from_ts_ms 默认东8区：0 ms → 1970-01-01 08:00:00
-        let data = vec![FieldStorage::from_owned(DataField::from_digit("ts_ms", 0))];
+        let data = vec![FieldStorage::from_owned(DataField::from_int("ts_ms", 0))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -295,7 +295,7 @@ mod tests {
     async fn test_time_from_ts_ms_negative_zone() {
         let cache = &mut FieldQueryCache::default();
         // 西5区：0 ms → 1969-12-31 19:00:00
-        let data = vec![FieldStorage::from_owned(DataField::from_digit("ts_ms", 0))];
+        let data = vec![FieldStorage::from_owned(DataField::from_int("ts_ms", 0))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -328,7 +328,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_digit("Z".to_string(), 971154000000);
+        let expect = DataField::from_int("Z".to_string(), 971154000000);
         assert_eq!(target.field("Z").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -354,7 +354,7 @@ mod tests {
     async fn test_time_to_ts_ms_pass_through_non_time() {
         let cache = &mut FieldQueryCache::default();
         // 非 time 输入原样透传
-        let data = vec![FieldStorage::from_owned(DataField::from_digit("x", 123))];
+        let data = vec![FieldStorage::from_owned(DataField::from_int("x", 123))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -364,7 +364,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_digit("X", 123);
+        let expect = DataField::from_int("X", 123);
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -372,7 +372,7 @@ mod tests {
     async fn test_time_from_ts_ms_invalid_timestamp_pass_through() {
         let cache = &mut FieldQueryCache::default();
         // 超出 chrono 可表示范围的时间戳原样透传
-        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+        let data = vec![FieldStorage::from_owned(DataField::from_int(
             "ts_ms",
             i64::MAX,
         ))];
@@ -385,7 +385,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_digit("X", i64::MAX);
+        let expect = DataField::from_int("X", i64::MAX);
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -405,7 +405,7 @@ mod tests {
     async fn test_time_from_ts_utc() {
         let cache = &mut FieldQueryCache::default();
         // from_ts(0)：971136000 秒 → 2000-10-10 00:00:00 UTC
-        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+        let data = vec![FieldStorage::from_owned(DataField::from_int(
             "ts", 971136000,
         ))];
         let src = DataRecord::from(data);
@@ -428,7 +428,7 @@ mod tests {
     async fn test_time_from_ts_us_utc() {
         let cache = &mut FieldQueryCache::default();
         // from_ts_us(0)：971136000000000 微秒 → 2000-10-10 00:00:00 UTC
-        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+        let data = vec![FieldStorage::from_owned(DataField::from_int(
             "ts_us",
             971136000000000,
         ))];
@@ -452,7 +452,7 @@ mod tests {
     async fn test_time_ts_roundtrip_default_zone() {
         let cache = &mut FieldQueryCache::default();
         // from_ts → to_ts 默认东8往返互逆，复原原秒时间戳
-        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+        let data = vec![FieldStorage::from_owned(DataField::from_int(
             "ts", 1739000000,
         ))];
         let src = DataRecord::from(data);
@@ -465,7 +465,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_digit("Y".to_string(), 1739000000);
+        let expect = DataField::from_int("Y".to_string(), 1739000000);
         assert_eq!(target.field("Y").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -473,7 +473,7 @@ mod tests {
     async fn test_time_ts_us_roundtrip_utc_zone() {
         let cache = &mut FieldQueryCache::default();
         // from_ts_us(0) → to_ts_us(0) 显式 UTC 往返互逆，复原原微秒时间戳
-        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+        let data = vec![FieldStorage::from_owned(DataField::from_int(
             "ts_us",
             1739000000000000,
         ))];
@@ -487,7 +487,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_digit("Y".to_string(), 1739000000000000);
+        let expect = DataField::from_int("Y".to_string(), 1739000000000000);
         assert_eq!(target.field("Y").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -513,7 +513,7 @@ mod tests {
     async fn test_time_from_ts_us_invalid_timestamp_pass_through() {
         let cache = &mut FieldQueryCache::default();
         // 超出 chrono 可表示范围的微秒时间戳原样透传
-        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+        let data = vec![FieldStorage::from_owned(DataField::from_int(
             "ts_us",
             i64::MAX,
         ))];
@@ -526,7 +526,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_digit("X", i64::MAX);
+        let expect = DataField::from_int("X", i64::MAX);
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -545,7 +545,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_digit("Z".to_string(), 971136000);
+        let expect = DataField::from_int("Z".to_string(), 971136000);
         assert_eq!(target.field("Z").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -564,7 +564,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_digit("Z".to_string(), 971136000000000);
+        let expect = DataField::from_int("Z".to_string(), 971136000000000);
         assert_eq!(target.field("Z").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -583,7 +583,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_digit("Z".to_string(), 971154000);
+        let expect = DataField::from_int("Z".to_string(), 971154000);
         assert_eq!(target.field("Z").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -603,7 +603,7 @@ mod tests {
     async fn test_time_from_ts_ms_negative() {
         let cache = &mut FieldQueryCache::default();
         // 负毫秒时间戳（1970 前）：-1000 ms → 1969-12-31 23:59:59.000 UTC
-        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+        let data = vec![FieldStorage::from_owned(DataField::from_int(
             "ts_ms", -1000,
         ))];
         let src = DataRecord::from(data);
@@ -626,7 +626,7 @@ mod tests {
     async fn test_time_from_ts_negative() {
         let cache = &mut FieldQueryCache::default();
         // 负秒时间戳（1970 前）：-1 s → 1969-12-31 23:59:59 UTC
-        let data = vec![FieldStorage::from_owned(DataField::from_digit("ts", -1))];
+        let data = vec![FieldStorage::from_owned(DataField::from_int("ts", -1))];
         let src = DataRecord::from(data);
 
         let mut conf = r#"
@@ -647,7 +647,7 @@ mod tests {
     async fn test_time_from_ts_us_negative() {
         let cache = &mut FieldQueryCache::default();
         // 负微秒时间戳（1970 前）：-1000000 us → 1969-12-31 23:59:59.000000 UTC
-        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+        let data = vec![FieldStorage::from_owned(DataField::from_int(
             "ts_us", -1000000,
         ))];
         let src = DataRecord::from(data);
@@ -670,7 +670,7 @@ mod tests {
     async fn test_time_ts_ms_roundtrip_negative() {
         let cache = &mut FieldQueryCache::default();
         // 负时间戳（1970 前）默认东8往返互逆
-        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+        let data = vec![FieldStorage::from_owned(DataField::from_int(
             "ts_ms", -1000,
         ))];
         let src = DataRecord::from(data);
@@ -683,7 +683,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_digit("Y".to_string(), -1000);
+        let expect = DataField::from_int("Y".to_string(), -1000);
         assert_eq!(target.field("Y").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -691,7 +691,7 @@ mod tests {
     async fn test_time_ts_cross_zone_not_inverse() {
         let cache = &mut FieldQueryCache::default();
         // 文档「互逆需使用相同 zone」：from_ts_ms(8) 后接 to_ts_ms(0) 得原值 + 8h
-        let data = vec![FieldStorage::from_owned(DataField::from_digit(
+        let data = vec![FieldStorage::from_owned(DataField::from_int(
             "ts_ms",
             1739000000000,
         ))];
@@ -706,7 +706,7 @@ mod tests {
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
         // 东8墙钟再按 UTC 解释 → 原值 + 8h = 1739028800000
-        let expect = DataField::from_digit("Y".to_string(), 1739028800000);
+        let expect = DataField::from_int("Y".to_string(), 1739028800000);
         assert_eq!(target.field("Y").map(|s| s.as_field()), Some(&expect));
     }
 }

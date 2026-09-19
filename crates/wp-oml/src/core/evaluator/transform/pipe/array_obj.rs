@@ -26,7 +26,7 @@ impl ValueProcessor for SkipEmpty {
             Value::Array(x) if x.is_empty() => {
                 return DataField::from_ignore(in_val.get_name());
             }
-            Value::Digit(x) if x.eq(&0) => {
+            Value::Int(x) if x.eq(&0) => {
                 return DataField::from_ignore(in_val.get_name());
             }
             Value::Float(x) if x.eq(&0.0) => {
@@ -110,7 +110,7 @@ mod tests {
     async fn test_pipe_skip() {
         let cache = &mut FieldQueryCache::default();
         let data = vec![
-            DataField::from_digit("A1", 0),
+            DataField::from_int("A1", 0),
             DataField::from_arr("A2", vec![]),
         ];
         let src = DataRecord::from(data.clone());
@@ -138,7 +138,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_pipe_obj_get() {
-        let val = r#"{"id":0,"items":[{"meta":{"array":"obj"},"name":"current_process","value":{"Array":[{"meta":"obj","name":"obj","value":{"Obj":{"ctime":{"meta":"digit","name":"ctime","value":{"Digit":1676340214}},"desc":{"meta":"chars","name":"desc","value":{"Chars":""}},"md5":{"meta":"chars","name":"md5","value":{"Chars":"d4ed19a8acd9df02123f655fa1e8a8e7"}},"path":{"meta":"chars","name":"path","value":{"Chars":"c:\\\\users\\\\administrator\\\\desktop\\\\domaintool\\\\x64\\\\childproc\\\\test_le9mwv.exe"}},"sign":{"meta":"chars","name":"sign","value":{"Chars":""}},"size":{"meta":"digit","name":"size","value":{"Digit":189446}},"state":{"meta":"digit","name":"state","value":{"Digit":0}},"type":{"meta":"digit","name":"type","value":{"Digit":1}}}}}]}}]}"#;
+        let val = r#"{"id":0,"items":[{"meta":{"array":"obj"},"name":"current_process","value":{"Array":[{"meta":"obj","name":"obj","value":{"Obj":{"ctime":{"meta":"int","name":"ctime","value":{"Int":1676340214}},"desc":{"meta":"chars","name":"desc","value":{"Chars":""}},"md5":{"meta":"chars","name":"md5","value":{"Chars":"d4ed19a8acd9df02123f655fa1e8a8e7"}},"path":{"meta":"chars","name":"path","value":{"Chars":"c:\\\\users\\\\administrator\\\\desktop\\\\domaintool\\\\x64\\\\childproc\\\\test_le9mwv.exe"}},"sign":{"meta":"chars","name":"sign","value":{"Chars":""}},"size":{"meta":"int","name":"size","value":{"Int":189446}},"state":{"meta":"int","name":"state","value":{"Int":0}},"type":{"meta":"int","name":"type","value":{"Int":1}}}}}]}}]}"#;
         let src: DataRecord = serde_json::from_str(val).unwrap();
         let cache = &mut FieldQueryCache::default();
 

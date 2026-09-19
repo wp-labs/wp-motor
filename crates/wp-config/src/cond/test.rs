@@ -52,7 +52,7 @@ fn test_crate() -> DataRecord {
     let tdo = vec![
         DataField::from_ip("IP", std::net::IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
         DataField::from_chars("city", "changsha"),
-        DataField::from_digit("score", 90),
+        DataField::from_int("score", 90),
     ];
     DataRecord::from(tdo)
 }

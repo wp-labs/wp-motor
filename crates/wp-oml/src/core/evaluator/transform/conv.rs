@@ -55,9 +55,9 @@ fn chars_to_omlobj(target: &EvaluationTarget, value: &str) -> DataField {
                 format!("var={}, expect=bool, val={}", target.safe_name(), value),
             ));
         }
-        DataType::Digit => {
+        DataType::Int => {
             if let Ok(v) = value.parse::<i64>() {
-                return DataField::from_digit(target.safe_name(), v);
+                return DataField::from_int(target.safe_name(), v);
             }
             diagnostics::push(OmlIssue::new(
                 OmlIssueKind::ParseFail,
@@ -205,7 +205,7 @@ mod tests {
 
     fn conv_str_to_digit(value: &str) -> DataField {
         let field = DataField::from_chars("cnt", value.to_string());
-        omlobj_meta_conv(field, &EvaluationTarget::new("cnt".into(), DataType::Digit))
+        omlobj_meta_conv(field, &EvaluationTarget::new("cnt".into(), DataType::Int))
     }
 
     #[test]
@@ -213,7 +213,7 @@ mod tests {
         // 空/纯空白字符串 → 数字目标类型空值（不刷 ParseFail），与 IP 口径一致
         for value in ["", "   "] {
             let field = conv_str_to_digit(value);
-            assert_eq!(field.get_meta(), &DataType::Digit);
+            assert_eq!(field.get_meta(), &DataType::Int);
             assert!(
                 matches!(field.get_value(), Value::Null),
                 "empty {value:?} should become null digit, got {:?}",

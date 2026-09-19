@@ -581,7 +581,7 @@ impl SqlFnExpr {
 
 fn render_sql_literal(v: &Value) -> String {
     match v {
-        Value::Digit(d) => d.to_string(),
+        Value::Int(d) => d.to_string(),
         Value::Float(f) => {
             // avoid scientific for simple cases
             if f.fract() == 0.0 {

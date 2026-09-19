@@ -276,7 +276,7 @@ impl MatchAble<&DataField> for MatchCond {
 fn extract_numeric(value: &DataField) -> Option<f64> {
     use wp_model_core::model::Value;
     match value.get_value() {
-        Value::Digit(n) => Some(*n as f64),
+        Value::Int(n) => Some(*n as f64),
         Value::Float(f) => Some(*f),
         Value::Chars(s) => s.parse::<f64>().ok(),
         _ => None,

@@ -90,21 +90,21 @@ result : digit = match read(status) {
     let mut cache = FieldQueryCache::default();
 
     // Test success path
-    let input = DataRecord::from(vec![DataField::from_digit("status", 200)]);
+    let input = DataRecord::from(vec![DataField::from_int("status", 200)]);
     reset_counters();
     let result = model.transform_async(input, &mut cache).await;
     assert_eq!(
         result.get_field_owned("result"),
-        Some(DataField::from_digit("result", 200))
+        Some(DataField::from_int("result", 200))
     );
 
     // Test error path
-    let input = DataRecord::from(vec![DataField::from_digit("status", 500)]);
+    let input = DataRecord::from(vec![DataField::from_int("status", 500)]);
     reset_counters();
     let result = model.transform_async(input, &mut cache).await;
     assert_eq!(
         result.get_field_owned("result"),
-        Some(DataField::from_digit("result", 500))
+        Some(DataField::from_int("result", 500))
     );
 
     println!("✓ Static in match test passed");
@@ -235,7 +235,7 @@ is_enabled : bool = match read(status) {
 
     // Test case 1: Normal execution
     let input = DataRecord::from(vec![
-        DataField::from_digit("code", 500),
+        DataField::from_int("code", 500),
         DataField::from_chars("status", "active"),
     ]);
 

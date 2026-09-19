@@ -197,7 +197,7 @@ impl FieldQueryCache {
     fn get_idx(&self, param: &DataField) -> Option<usize> {
         match param.get_value() {
             Value::Chars(v) => self.str_idx.get(v).copied(),
-            Value::Digit(v) => self.i64_idx.get(v).copied(),
+            Value::Int(v) => self.i64_idx.get(v).copied(),
             Value::IpAddr(v) => self.ip_idx.get(v).copied(),
             Value::BigUint(v) => self.biguint_idx.get(&v.to_string()).copied(),
             _ => None,
@@ -216,7 +216,7 @@ impl FieldQueryCache {
                     Some(self.idx_num)
                 }
             }
-            Value::Digit(v) => {
+            Value::Int(v) => {
                 if let Some(idx_val) = self.i64_idx.get(v) {
                     Some(*idx_val)
                 } else {

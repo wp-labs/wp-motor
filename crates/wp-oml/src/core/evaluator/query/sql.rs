@@ -717,7 +717,7 @@ mod tests {
 
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].get_name(), "id");
-        assert_eq!(result[0].get_value(), &Value::Digit(1));
+        assert_eq!(result[0].get_value(), &Value::Int(1));
     }
 
     #[test]
@@ -725,7 +725,7 @@ mod tests {
         ensure_provider();
         let cache = &mut FieldQueryCache::default();
 
-        let param = DataField::from_digit("id".to_string(), 1);
+        let param = DataField::from_int("id".to_string(), 1);
         let query = create_test_query("SELECT * FROM test WHERE id = :id", vec![("id", param)]);
 
         let result = query.extract_more(
@@ -736,7 +736,7 @@ mod tests {
 
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].get_name(), "id");
-        assert_eq!(result[0].get_value(), &Value::Digit(1));
+        assert_eq!(result[0].get_value(), &Value::Int(1));
     }
 
     #[test]
@@ -744,7 +744,7 @@ mod tests {
         ensure_provider();
         let cache = &mut FieldQueryCache::default();
 
-        let id_param = DataField::from_digit("id".to_string(), 1);
+        let id_param = DataField::from_int("id".to_string(), 1);
         let name_param = DataField::from_chars("name".to_string(), "test1".to_string());
 
         let query = create_test_query(
@@ -769,11 +769,11 @@ mod tests {
         let cache = &mut FieldQueryCache::default();
 
         let params = vec![
-            ("p1", DataField::from_digit("p1".to_string(), 1)),
-            ("p2", DataField::from_digit("p2".to_string(), 2)),
-            ("p3", DataField::from_digit("p3".to_string(), 3)),
-            ("p4", DataField::from_digit("p4".to_string(), 4)),
-            ("p5", DataField::from_digit("p5".to_string(), 5)),
+            ("p1", DataField::from_int("p1".to_string(), 1)),
+            ("p2", DataField::from_int("p2".to_string(), 2)),
+            ("p3", DataField::from_int("p3".to_string(), 3)),
+            ("p4", DataField::from_int("p4".to_string(), 4)),
+            ("p5", DataField::from_int("p5".to_string(), 5)),
         ];
 
         let query = create_test_query(
@@ -796,12 +796,12 @@ mod tests {
         let cache = &mut FieldQueryCache::default();
 
         let params = vec![
-            ("p1", DataField::from_digit("p1".to_string(), 1)),
-            ("p2", DataField::from_digit("p2".to_string(), 2)),
-            ("p3", DataField::from_digit("p3".to_string(), 3)),
-            ("p4", DataField::from_digit("p4".to_string(), 4)),
-            ("p5", DataField::from_digit("p5".to_string(), 5)),
-            ("p6", DataField::from_digit("p6".to_string(), 6)),
+            ("p1", DataField::from_int("p1".to_string(), 1)),
+            ("p2", DataField::from_int("p2".to_string(), 2)),
+            ("p3", DataField::from_int("p3".to_string(), 3)),
+            ("p4", DataField::from_int("p4".to_string(), 4)),
+            ("p5", DataField::from_int("p5".to_string(), 5)),
+            ("p6", DataField::from_int("p6".to_string(), 6)),
         ];
 
         let query = create_test_query(
@@ -851,7 +851,7 @@ mod tests {
         ensure_provider();
         let cache = &mut FieldQueryCache::default();
 
-        let param = DataField::from_digit("id".to_string(), 1);
+        let param = DataField::from_int("id".to_string(), 1);
         let query = create_test_query("SELECT * FROM test WHERE id = :id", vec![("id", param)]);
         let mut dst = DataRecord::default();
 
@@ -865,7 +865,7 @@ mod tests {
 
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].get_name(), "id");
-        assert_eq!(result[0].get_value(), &Value::Digit(1));
+        assert_eq!(result[0].get_value(), &Value::Int(1));
     }
 
     // 命名 provider 路由测试用的桩 executor。
@@ -925,7 +925,7 @@ mod tests {
         let cache = &mut FieldQueryCache::default();
         let query = create_test_query(
             "select country_name from geo.public.ip_geo_city where ip_num = :ip",
-            vec![("ip", DataField::from_digit("ip".to_string(), 1))],
+            vec![("ip", DataField::from_int("ip".to_string(), 1))],
         );
         let result = query.extract_more(
             &mut DataRecordRef::from(&DataRecord::default()),
@@ -945,7 +945,7 @@ mod tests {
         let cache = &mut FieldQueryCache::default();
         let query = create_test_query(
             "select * from test where id = :id",
-            vec![("id", DataField::from_digit("id".to_string(), 1))],
+            vec![("id", DataField::from_int("id".to_string(), 1))],
         );
         let result = query.extract_more(
             &mut DataRecordRef::from(&DataRecord::default()),
@@ -953,7 +953,7 @@ mod tests {
             cache,
         );
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0].get_value(), &Value::Digit(1));
+        assert_eq!(result[0].get_value(), &Value::Int(1));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -978,7 +978,7 @@ mod tests {
         let cache = &mut FieldQueryCache::default();
         let query = create_test_query(
             "select country_name from geo.public.ip_geo_city where ip_num = :ip",
-            vec![("ip", DataField::from_digit("ip".to_string(), 1))],
+            vec![("ip", DataField::from_int("ip".to_string(), 1))],
         );
         let mut dst = DataRecord::default();
         let result = query
@@ -1016,7 +1016,7 @@ mod tests {
         let query = create_test_query(
             "select name from asset.public.t where id = :id and kind = :kind",
             vec![
-                ("id", DataField::from_digit("id".to_string(), 1)),
+                ("id", DataField::from_int("id".to_string(), 1)),
                 (
                     "kind",
                     DataField::from_chars("kind".to_string(), "k1".to_string()),
@@ -1038,7 +1038,7 @@ mod tests {
         let query = create_test_query(
             "select x from t where ip = :ip",
             vec![
-                ("ip", DataField::from_digit("ip".to_string(), 1)),
+                ("ip", DataField::from_int("ip".to_string(), 1)),
                 (
                     "name",
                     DataField::from_chars("name".to_string(), "x".to_string()),

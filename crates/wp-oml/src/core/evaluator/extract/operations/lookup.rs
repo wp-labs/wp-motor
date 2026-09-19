@@ -101,7 +101,7 @@ risk_score : float = lookup_nocase(status_score, read(code), 40.0);
 "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let cache = &mut FieldQueryCache::default();
-        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_digit(
+        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_int(
             "code", 500,
         ))]);
 

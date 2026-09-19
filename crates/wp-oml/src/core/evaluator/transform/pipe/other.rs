@@ -46,7 +46,7 @@ impl ValueProcessor for crate::language::MapTo {
             let name = in_val.get_name().to_string();
             match &self.value {
                 MapValue::Chars(s) => DataField::from_chars(name, s.clone()),
-                MapValue::Digit(d) => DataField::from_digit(name, *d),
+                MapValue::Digit(d) => DataField::from_int(name, *d),
                 MapValue::Float(f) => DataField::from_float(name, *f),
                 MapValue::Bool(b) => DataField::from_bool(name, *b),
             }
@@ -246,13 +246,13 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        //let expect = TDOEnum::from_digit("X".to_string(), 971136000);
-        let expect = DataField::from_digit("X".to_string(), 971107200);
+        //let expect = TDOEnum::from_int("X".to_string(), 971136000);
+        let expect = DataField::from_int("X".to_string(), 971107200);
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
-        let expect = DataField::from_digit("Z".to_string(), 971107200000);
+        let expect = DataField::from_int("Z".to_string(), 971107200000);
         assert_eq!(target.field("Z").map(|s| s.as_field()), Some(&expect));
 
-        let expect = DataField::from_digit("U".to_string(), 971107200000000);
+        let expect = DataField::from_int("U".to_string(), 971107200000000);
         assert_eq!(target.field("U").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -260,7 +260,7 @@ mod tests {
     async fn test_pipe_skip() {
         let cache = &mut FieldQueryCache::default();
         let data = vec![
-            FieldStorage::from_owned(DataField::from_digit("A1", 0)),
+            FieldStorage::from_owned(DataField::from_int("A1", 0)),
             FieldStorage::from_owned(DataField::from_arr("A2", vec![])),
         ];
         let src = DataRecord::from(data.clone());
@@ -277,7 +277,7 @@ mod tests {
         let expect = DataField::from_arr(
             "X".to_string(),
             vec![
-                DataField::from_digit("A1", 0),
+                DataField::from_int("A1", 0),
                 DataField::from_arr("A2", vec![]),
             ],
         );
@@ -294,7 +294,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_pipe_obj_get() {
-        let val = r#"{"id":0,"items":[{"meta":{"array":"obj"},"name":"current_process","value":{"Array":[{"meta":"obj","name":"obj","value":{"Obj":{"ctime":{"meta":"digit","name":"ctime","value":{"Digit":1676340214}},"desc":{"meta":"chars","name":"desc","value":{"Chars":""}},"md5":{"meta":"chars","name":"md5","value":{"Chars":"d4ed19a8acd9df02123f655fa1e8a8e7"}},"path":{"meta":"chars","name":"path","value":{"Chars":"c:\\\\users\\\\administrator\\\\desktop\\\\domaintool\\\\x64\\\\childproc\\\\test_le9mwv.exe"}},"sign":{"meta":"chars","name":"sign","value":{"Chars":""}},"size":{"meta":"digit","name":"size","value":{"Digit":189446}},"state":{"meta":"digit","name":"state","value":{"Digit":0}},"type":{"meta":"digit","name":"type","value":{"Digit":1}}}}}]}}]}"#;
+        let val = r#"{"id":0,"items":[{"meta":{"array":"obj"},"name":"current_process","value":{"Array":[{"meta":"obj","name":"obj","value":{"Obj":{"ctime":{"meta":"int","name":"ctime","value":{"Int":1676340214}},"desc":{"meta":"chars","name":"desc","value":{"Chars":""}},"md5":{"meta":"chars","name":"md5","value":{"Chars":"d4ed19a8acd9df02123f655fa1e8a8e7"}},"path":{"meta":"chars","name":"path","value":{"Chars":"c:\\\\users\\\\administrator\\\\desktop\\\\domaintool\\\\x64\\\\childproc\\\\test_le9mwv.exe"}},"sign":{"meta":"chars","name":"sign","value":{"Chars":""}},"size":{"meta":"int","name":"size","value":{"Int":189446}},"state":{"meta":"int","name":"state","value":{"Int":0}},"type":{"meta":"int","name":"type","value":{"Int":1}}}}}]}}]}"#;
         let src: DataRecord = serde_json::from_str(val).unwrap();
         let cache = &mut FieldQueryCache::default();
 
@@ -392,7 +392,7 @@ mod tests {
         let model2 = oml_parse_raw(&mut conf2).await.assert();
         let target2 = model2.transform_async(src2, cache2).await;
 
-        let expect2 = DataField::from_digit("B".to_string(), 1);
+        let expect2 = DataField::from_int("B".to_string(), 1);
         assert_eq!(target2.field("B").map(|s| s.as_field()), Some(&expect2));
 
         // 测试映射到浮点数

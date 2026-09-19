@@ -87,7 +87,7 @@ impl AlertRule {
         if self.cases.contains(&case) && evaluate_expression(&self.condition, tdc) {
             debug_mtrc!("alarm {:?} proc: {:?}", self.severity, tdc);
             tdc.remove_field(NOTIFY_KEY);
-            tdc.append(DataField::from_digit(NOTIFY_KEY, self.severity as i64));
+            tdc.append(DataField::from_int(NOTIFY_KEY, self.severity as i64));
             tdc.remove_field(PROMPT_KEY);
             tdc.append(DataField::from_chars(PROMPT_KEY, self.message.as_str()));
             return AlertEvent::new(self.severity, self.message.clone());

@@ -85,7 +85,7 @@ fn build_workload(ops: usize, hotset: usize) -> Vec<DataRecord> {
     (0..ops)
         .map(|idx| {
             let id = ((idx * 17) % hotset + 1) as i64;
-            DataRecord::from(vec![FieldStorage::from_owned(DataField::from_digit(
+            DataRecord::from(vec![FieldStorage::from_owned(DataField::from_int(
                 "id", id,
             ))])
         })

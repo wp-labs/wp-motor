@@ -196,7 +196,7 @@ impl NowDate {
         let now = Local::now().naive_local();
         let name = target.safe_name();
 
-        Some(DataField::from_digit(
+        Some(DataField::from_int(
             name,
             now.year() as i64 * 10000 + now.month() as i64 * 100 + now.day() as i64,
         ))
@@ -258,7 +258,7 @@ impl NowHour {
         let now = Local::now().naive_local();
         let name = target.safe_name();
 
-        Some(DataField::from_digit(
+        Some(DataField::from_int(
             name,
             now.year() as i64 * 1000000
                 + now.month() as i64 * 10000

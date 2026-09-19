@@ -122,11 +122,11 @@ mod tests {
             let rec = parse_line(rule, line.as_str());
             use wp_model_core::model::types::value::Value;
             match rec.get_value("x") {
-                Some(Value::Digit(v)) => assert!(*v >= 100 && *v < 200, "x out of range: {}", v),
+                Some(Value::Int(v)) => assert!(*v >= 100 && *v < 200, "x out of range: {}", v),
                 other => panic!("x not digit: {:?}", other),
             }
             match rec.get_value("y") {
-                Some(Value::Digit(v)) => assert!(*v >= 10 && *v < 19, "y out of range: {}", v),
+                Some(Value::Int(v)) => assert!(*v >= 10 && *v < 19, "y out of range: {}", v),
                 other => panic!("y not digit: {:?}", other),
             }
         }
@@ -173,11 +173,11 @@ package t {
                 "sip not ip"
             );
             assert!(
-                matches!(rec.get_value("status"), Some(Value::Digit(_))),
+                matches!(rec.get_value("status"), Some(Value::Int(_))),
                 "status not digit"
             );
             assert!(
-                matches!(rec.get_value("bytes"), Some(Value::Digit(_))),
+                matches!(rec.get_value("bytes"), Some(Value::Int(_))),
                 "bytes not digit"
             );
             assert!(

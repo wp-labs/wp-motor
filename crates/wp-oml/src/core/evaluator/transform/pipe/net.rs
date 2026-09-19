@@ -15,7 +15,7 @@ fn null_field_like(field: &DataField) -> DataField {
 }
 
 fn ipv4_to_field(name: &str, ip: Ipv4Addr) -> DataField {
-    DataField::from_digit(name.to_string(), u32::from(ip) as i64)
+    DataField::from_int(name.to_string(), u32::from(ip) as i64)
 }
 
 /// 统一 IP 编码：IPv4/IPv6 → 任意精度 BigUint，字段类型为 BigInt
@@ -592,7 +592,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_digit("X".to_string(), 2130706433);
+        let expect = DataField::from_int("X".to_string(), 2130706433);
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 
@@ -612,7 +612,7 @@ mod tests {
          "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let target = model.transform_async(src, cache).await;
-        let expect = DataField::from_digit("X".to_string(), 169000475);
+        let expect = DataField::from_int("X".to_string(), 169000475);
         assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
     }
 

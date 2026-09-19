@@ -57,8 +57,8 @@ result = read(res);
         DataField::from_chars("ts", "2024-01-01 10:00:00"),
         DataField::from_chars("uid", "user123"),
         DataField::from_chars("act", "login"),
-        DataField::from_digit("dur", 150),
-        DataField::from_digit("size", 1024),
+        DataField::from_int("dur", 150),
+        DataField::from_int("size", 1024),
         DataField::from_chars("res", "ok"),
     ]);
 

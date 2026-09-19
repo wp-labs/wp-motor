@@ -9,7 +9,7 @@ use wp_model_core::model::{DataField, DataRecord, FieldStorage};
 /// ```
 /// let record = test_record(vec![
 ///     DataField::from_chars("name", "value"),
-///     DataField::from_digit("count", 42),
+///     DataField::from_int("count", 42),
 /// ]);
 /// ```
 #[cfg(test)]

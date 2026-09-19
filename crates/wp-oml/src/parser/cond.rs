@@ -90,7 +90,7 @@ fn flip_op(co: CmpOperator) -> CmpOperator {
 fn render_sql_literal_for_value(v: &wp_model_core::model::Value) -> String {
     use wp_model_core::model::Value as V;
     match v {
-        V::Digit(d) => d.to_string(),
+        V::Int(d) => d.to_string(),
         V::Float(f) => {
             if f.fract() == 0.0 {
                 format!("{:.0}", f)

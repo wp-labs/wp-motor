@@ -236,7 +236,7 @@ mix = array {
 "#;
     let model = oml_parse_raw(&mut code).await.expect("parse oml");
     let cache = &mut FieldQueryCache::default();
-    let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_digit(
+    let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_int(
         "code", 42,
     ))]);
     let out = model.transform_async(src, cache).await;
@@ -249,7 +249,7 @@ mix = array {
         items[0].get_value(),
         Value::Chars(v) if v == "alpha"
     ));
-    assert!(matches!(items[1].get_value(), Value::Digit(v) if *v == 42));
+    assert!(matches!(items[1].get_value(), Value::Int(v) if *v == 42));
     assert!(matches!(
         items[2].get_value(),
         Value::Chars(v) if v == "omega"

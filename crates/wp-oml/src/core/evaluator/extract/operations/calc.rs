@@ -58,7 +58,7 @@ impl CalcNumber {
     fn into_field(self, name: impl Into<String>) -> DataField {
         let name = name.into();
         match self {
-            CalcNumber::Digit(v) => DataField::from_digit(name, v),
+            CalcNumber::Digit(v) => DataField::from_int(name, v),
             CalcNumber::Float(v) => DataField::from_float(name, v),
         }
     }
@@ -66,7 +66,7 @@ impl CalcNumber {
 
 fn field_to_number(field: DataField) -> Result<CalcNumber, CalcEvalError> {
     match field.get_value() {
-        Value::Digit(v) => Ok(CalcNumber::Digit(*v)),
+        Value::Int(v) => Ok(CalcNumber::Digit(*v)),
         Value::Float(v) => CalcNumber::Float(*v).ensure_finite("operand"),
         // Ignore/Null：上游缺失判定产物（read 缺失/空 IP 等）→ 正常缺失，静默
         Value::Ignore(_) | Value::Null => {
@@ -305,8 +305,8 @@ risk_score : float = calc(read(cpu) * 0.7 + read(mem) * 0.3);
         let model = oml_parse_raw(&mut conf).await.assert();
         let cache = &mut FieldQueryCache::default();
         let src = DataRecord::from(vec![
-            FieldStorage::from_owned(DataField::from_digit("cpu", 10)),
-            FieldStorage::from_owned(DataField::from_digit("mem", 20)),
+            FieldStorage::from_owned(DataField::from_int("cpu", 10)),
+            FieldStorage::from_owned(DataField::from_int("mem", 20)),
         ]);
         let target = model.transform_async(src, cache).await;
 
@@ -330,7 +330,7 @@ result : digit = calc(1 + 2 * 3);
         let target = model.transform_async(DataRecord::default(), cache).await;
 
         let out = target.field("result").expect("result field").as_field();
-        assert_eq!(out.get_value(), &Value::Digit(7));
+        assert_eq!(out.get_value(), &Value::Int(7));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -346,7 +346,7 @@ d : digit = calc(ceil(read(w)));
         let model = oml_parse_raw(&mut conf).await.assert();
         let cache = &mut FieldQueryCache::default();
         let src = DataRecord::from(vec![
-            FieldStorage::from_owned(DataField::from_digit("x", -3)),
+            FieldStorage::from_owned(DataField::from_int("x", -3)),
             FieldStorage::from_owned(DataField::from_float("y", 1.6)),
             FieldStorage::from_owned(DataField::from_float("z", 1.8)),
             FieldStorage::from_owned(DataField::from_float("w", 1.2)),
@@ -355,19 +355,19 @@ d : digit = calc(ceil(read(w)));
 
         assert_eq!(
             target.field("a").map(|s| s.as_field().get_value()),
-            Some(&Value::Digit(3))
+            Some(&Value::Int(3))
         );
         assert_eq!(
             target.field("b").map(|s| s.as_field().get_value()),
-            Some(&Value::Digit(2))
+            Some(&Value::Int(2))
         );
         assert_eq!(
             target.field("c").map(|s| s.as_field().get_value()),
-            Some(&Value::Digit(1))
+            Some(&Value::Int(1))
         );
         assert_eq!(
             target.field("d").map(|s| s.as_field().get_value()),
-            Some(&Value::Digit(2))
+            Some(&Value::Int(2))
         );
     }
 
@@ -381,8 +381,8 @@ ratio : float = calc(read(a) / read(b));
         let model = oml_parse_raw(&mut conf).await.assert();
         let cache = &mut FieldQueryCache::default();
         let src = DataRecord::from(vec![
-            FieldStorage::from_owned(DataField::from_digit("a", 10)),
-            FieldStorage::from_owned(DataField::from_digit("b", 0)),
+            FieldStorage::from_owned(DataField::from_int("a", 10)),
+            FieldStorage::from_owned(DataField::from_int("b", 0)),
         ]);
         let target = model.transform_async(src, cache).await;
 
@@ -401,7 +401,7 @@ bad_case = calc(read(status) + 1);
         let model = oml_parse_raw(&mut conf).await.assert();
         let cache = &mut FieldQueryCache::default();
         let src = DataRecord::from(vec![
-            FieldStorage::from_owned(DataField::from_digit("a", 10)),
+            FieldStorage::from_owned(DataField::from_int("a", 10)),
             FieldStorage::from_owned(DataField::from_chars("status", "ok")),
         ]);
         let target = model.transform_async(src, cache).await;
@@ -429,14 +429,14 @@ bad_mod = calc(read(rate) % 2);
         let model = oml_parse_raw(&mut conf).await.assert();
         let cache = &mut FieldQueryCache::default();
         let src = DataRecord::from(vec![
-            FieldStorage::from_owned(DataField::from_digit("uid", 35)),
+            FieldStorage::from_owned(DataField::from_int("uid", 35)),
             FieldStorage::from_owned(DataField::from_float("rate", 3.5)),
         ]);
         let target = model.transform_async(src, cache).await;
 
         assert_eq!(
             target.field("bucket").map(|s| s.as_field().get_value()),
-            Some(&Value::Digit(3))
+            Some(&Value::Int(3))
         );
         assert_eq!(
             target.field("bad_mod").map(|s| s.as_field().get_meta()),
@@ -482,8 +482,8 @@ mod_case : digit = calc(read(min_v) % read(neg_one));
         let model = oml_parse_raw(&mut conf).await.assert();
         let cache = &mut FieldQueryCache::default();
         let src = DataRecord::from(vec![
-            FieldStorage::from_owned(DataField::from_digit("min_v", i64::MIN)),
-            FieldStorage::from_owned(DataField::from_digit("neg_one", -1)),
+            FieldStorage::from_owned(DataField::from_int("min_v", i64::MIN)),
+            FieldStorage::from_owned(DataField::from_int("neg_one", -1)),
         ]);
         let target = model.transform_async(src, cache).await;
 
@@ -512,7 +512,7 @@ ceil_case : digit = calc(ceil(read(big)));
 "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let cache = &mut FieldQueryCache::default();
-        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_digit(
+        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_int(
             "big",
             9_007_199_254_740_993,
         ))]);
@@ -520,15 +520,15 @@ ceil_case : digit = calc(ceil(read(big)));
 
         assert_eq!(
             target.field("round_case").map(|s| s.as_field().get_value()),
-            Some(&Value::Digit(9_007_199_254_740_993))
+            Some(&Value::Int(9_007_199_254_740_993))
         );
         assert_eq!(
             target.field("floor_case").map(|s| s.as_field().get_value()),
-            Some(&Value::Digit(9_007_199_254_740_993))
+            Some(&Value::Int(9_007_199_254_740_993))
         );
         assert_eq!(
             target.field("ceil_case").map(|s| s.as_field().get_value()),
-            Some(&Value::Digit(9_007_199_254_740_993))
+            Some(&Value::Int(9_007_199_254_740_993))
         );
     }
 
@@ -575,8 +575,8 @@ risk_score : float = calc(read(cpu) * 0.7 + read(mem) * 0.3);
         let model = oml_parse_raw(&mut conf).await.assert();
         let cache = &mut FieldQueryCache::default();
         let src = DataRecord::from(vec![
-            FieldStorage::from_owned(DataField::from_digit("cpu", 10)),
-            FieldStorage::from_owned(DataField::from_digit("mem", 20)),
+            FieldStorage::from_owned(DataField::from_int("cpu", 10)),
+            FieldStorage::from_owned(DataField::from_int("mem", 20)),
         ]);
         let target = model.transform_async(src, cache).await;
 
@@ -598,7 +598,7 @@ missing_case = calc(read(a) + read(b));
 "#;
         let model = oml_parse_raw(&mut conf).await.assert();
         let cache = &mut FieldQueryCache::default();
-        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_digit(
+        let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_int(
             "a", 10,
         ))]);
         let target = model.transform_async(src, cache).await;
@@ -621,7 +621,7 @@ missing_case = calc(read(a) + read(b));
         let model = oml_parse_raw(&mut conf).await.assert();
         let cache = &mut FieldQueryCache::default();
         let src = DataRecord::from(vec![
-            FieldStorage::from_owned(DataField::from_digit("a", 10)),
+            FieldStorage::from_owned(DataField::from_int("a", 10)),
             FieldStorage::from_owned(DataField::from_chars("b", "  ")),
         ]);
         let target = model.transform_async(src, cache).await;
@@ -648,7 +648,7 @@ missing_case = calc(read(a) + read(b));
 "#;
             let model = oml_parse_raw(&mut conf).await.assert();
             let cache = &mut FieldQueryCache::default();
-            let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_digit(
+            let src = DataRecord::from(vec![FieldStorage::from_owned(DataField::from_int(
                 "a", 10,
             ))]);
             let _ = model.transform_async(src, cache).await;
@@ -668,8 +668,8 @@ ratio = calc(read(a) / read(b));
             let model = oml_parse_raw(&mut conf).await.assert();
             let cache = &mut FieldQueryCache::default();
             let src = DataRecord::from(vec![
-                FieldStorage::from_owned(DataField::from_digit("a", 10)),
-                FieldStorage::from_owned(DataField::from_digit("b", 0)),
+                FieldStorage::from_owned(DataField::from_int("a", 10)),
+                FieldStorage::from_owned(DataField::from_int("b", 0)),
             ]);
             let _ = model.transform_async(src, cache).await;
             let issues = crate::core::diagnostics::take();
@@ -694,7 +694,7 @@ bad_case = calc(read(a) + read(status));
             let model = oml_parse_raw(&mut conf).await.assert();
             let cache = &mut FieldQueryCache::default();
             let src = DataRecord::from(vec![
-                FieldStorage::from_owned(DataField::from_digit("a", 10)),
+                FieldStorage::from_owned(DataField::from_int("a", 10)),
                 FieldStorage::from_owned(DataField::from_chars("status", "ok")),
             ]);
             let _ = model.transform_async(src, cache).await;
