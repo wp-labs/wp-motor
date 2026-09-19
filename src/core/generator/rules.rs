@@ -17,10 +17,10 @@ use wp_error::{
     config_error::{ConfError, ConfReason, ConfResult},
     parse_error::{OMLCodeReason, OMLCodeResult},
 };
-use wp_model_core::model::DataType;
 use wpl::{
     ParserFactory, WplCode, WplPackage, WplRule, WplSep, WplStatementType,
     generator::{FieldsGenRule, FmtFieldVec, GenChannel, NamedFieldGF},
+    parser::wpl_field::wpl_meta_from_name,
 };
 
 use crate::{resources::OmlRepository, stat::MonSend};
@@ -74,7 +74,9 @@ impl GenRuleUnit {
                         .as_ref()
                         .and_then(|name| self.get_fields().get(name));
                     let mut ch = GenChannel::new();
-                    let meta = DataType::from(f_conf.meta_name.as_str()).map_err(|e| {
+                    // `meta_name` 是 WPL 呈现名（如 `digit`），须走 wp-lang 的别名入口，
+                    // 不能直接用 `DataType::from`（0.10 起 `digit` 已不在规范名表中）。
+                    let meta = wpl_meta_from_name(f_conf.meta_name.as_str()).map_err(|e| {
                         ConfError::from(ConfReason::Syntax(format!(
                             "invalid field meta '{}': {}",
                             f_conf.meta_name, e

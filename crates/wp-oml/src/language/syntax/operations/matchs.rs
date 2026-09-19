@@ -6,8 +6,9 @@ use smallvec::SmallVec;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use wp_data_model::compare::compare_datafield;
-use wp_model_core::model::{DataField, DataType};
+use wp_model_core::model::DataField;
 use wpl::DataTypeParser;
+use wpl::parser::wpl_field::wpl_meta_from_name;
 
 /// Match function wrapper for pattern matching with pipe functions
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -569,7 +570,9 @@ impl MatchCase {
         &mut self.result
     }
     pub fn eq_const<S: Into<String>>(meta_str: &str, m_val: S, t_val: S) -> anyhow::Result<Self> {
-        let meta = DataType::from(meta_str)?;
+        // `meta_str` 可能来自 WPL 关键字（如 `digit`），须走 wp-lang 的别名入口，
+        // 不能直接用 `DataType::from`（0.10 起 `digit` 已不在规范名表中）。
+        let meta = wpl_meta_from_name(meta_str)?;
         let m_obj = DataField::from_str(meta.clone(), "".to_string(), m_val.into())?;
         let target = DataField::from_str(meta, "".to_string(), t_val.into())?;
         Ok(Self::new(
@@ -590,7 +593,7 @@ impl MatchCase {
         m_end: S,
         t_val: S,
     ) -> anyhow::Result<Self> {
-        let meta = DataType::from(meta_str)?;
+        let meta = wpl_meta_from_name(meta_str)?;
         let beg_obj = DataField::from_str(meta.clone(), "".to_string(), m_beg.into())?;
         let end_obj = DataField::from_str(meta.clone(), "".to_string(), m_end.into())?;
         let target = DataField::from_str(meta, "".to_string(), t_val.into())?;
@@ -605,7 +608,7 @@ impl MatchCase {
         m_end: S,
         t_val: S,
     ) -> anyhow::Result<Self> {
-        let meta = DataType::from(meta_str)?;
+        let meta = wpl_meta_from_name(meta_str)?;
         let beg_obj = DataField::from_str(meta.clone(), "".to_string(), m_beg.into())?;
         let end_obj = DataField::from_str(meta.clone(), "".to_string(), m_end.into())?;
         let target = DataField::from_str(meta, "".to_string(), t_val.into())?;

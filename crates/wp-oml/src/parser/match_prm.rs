@@ -371,6 +371,28 @@ mod tests {
         Ok(())
     }
 
+    /// 回归：`meta_str` 可能来自 WPL 关键字（`digit`）。
+    ///
+    /// wp-model-core 0.10 把整数类型正名为 `int` 并**拒收** `digit`；别名只活在
+    /// wp-lang（`wpl_meta_from_name`）。这三个构造器若退回 `DataType::from`，
+    /// 传 `digit` 会直接硬失败。断言 `digit` 与规范名 `int` 解析为同一结果。
+    #[test]
+    fn test_match_case_const_accepts_wpl_digit_alias() -> anyhow::Result<()> {
+        assert_eq!(
+            MatchCase::eq_const("digit", "10", "20")?,
+            MatchCase::eq_const("int", "10", "20")?
+        );
+        assert_eq!(
+            MatchCase::in_const("digit", "10", "20", "30")?,
+            MatchCase::in_const("int", "10", "20", "30")?
+        );
+        assert_eq!(
+            MatchCase::eq2_const("digit", "10", "20", "30")?,
+            MatchCase::eq2_const("int", "10", "20", "30")?
+        );
+        Ok(())
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn test_match_err() -> anyhow::Result<()> {
         let mut code = r#"chas(A) => chars(5),"#;
@@ -671,9 +693,7 @@ Level = match read(count) {
 "#;
         let model6 = oml_parse_raw(&mut conf6).await.expect("Failed to parse gt");
         let cache6 = &mut FieldQueryCache::default();
-        let data6 = vec![FieldStorage::from_owned(DataField::from_int(
-            "count", 150,
-        ))];
+        let data6 = vec![FieldStorage::from_owned(DataField::from_int("count", 150))];
         let src6 = DataRecord::from(data6);
         let target6 = model6.transform_async(src6, cache6).await;
         let expect6 = DataField::from_chars("Level".to_string(), "high".to_string());
