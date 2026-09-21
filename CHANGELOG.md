@@ -8,11 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.27.0] latest
 
 ### ⚠️ BREAKING CHANGES
-- **依赖 `wp-model-core` 0.9 → 0.10**：上游整数类型改名——`Value::Digit` → `Value::Int`、`DataType::Digit` → `DataType::Int`（serde 标签 `"digit"` → `"int"`）、`Field::from_digit` → `from_int`、类型别名 `DigitValue` → `IntValue`；`Value`/`DataType` 的 wire 名随之改变（`{"Digit":…}` → `{"Int":…}`、`"digit"` → `"int"`）。穷尽 `match Value` / `match DataType` 的调用方需改名。
-- **OML / 条件表达式的类型渲染改为 `int`**：类型渲染沿用 `DataType`/`DataField` 的 `Display`，随上游改为 `int`（OML `cpu_free : digit` → `cpu_free : int`；条件 `$len == digit(10)` → `int(10)`）。OML / 条件**解析仍接受 `digit`**（wp-lang 保留别名），**WPL 规则仍以 `digit` 呈现**（wp-lang 有独立 `meta_name`）。
+- **依赖 `wp-model-core` 0.9 → 0.10**：整数类型改名 `Value::Digit`→`Value::Int`、`DataType::Digit`→`DataType::Int`（serde 标签 `"digit"`→`"int"`）、`Field::from_digit`→`from_int`、`DigitValue`→`IntValue`；穷尽 `match` 的调用方需改名。
+- **OML/条件类型渲染改为 `int`**：随上游 `Display` 变化（`cpu_free : digit`→`int`）；解析仍接受 `digit`，WPL 规则仍以 `digit` 呈现。
 
 ### Fixed
-- **两处类型名解析绕过 WPL 别名入口**：`GenRuleUnit::generat()`（`src/core/generator/rules.rs`）与 `MatchCase::eq_const` / `in_const` / `eq2_const`（`crates/wp-oml/src/language/syntax/operations/matchs.rs`）此前用 `DataType::from(name)` 解析字段类型名，而 WPL 关键字 `digit` 在 `wp-model-core 0.10` 已不在规范名表中——一旦传入 `digit` 会直接硬失败。现统一改走 wp-lang 的别名入口 `wpl::parser::wpl_meta_from_name`（与 OML / 条件解析同一入口），并补回归用例断言 `digit` 与 `int` 解析等价。两处当前均无生产调用（生成链路的实盘实现走 `wpl_compile_rule`），故属消除隐患，行为不变。
+- **两处类型名解析绕过 WPL 别名入口**：`GenRuleUnit::generat()` 与 `MatchCase` 常量比较改用 `wpl::parser::wpl_meta_from_name`（与 OML/条件同入口），避免 `digit` 硬失败；当前无生产调用，消除隐患。
+- **`wparse daemon` 单实例保护**：启动对 `<work-root>/.run/.lock` 取 `flock`，同 work-root 第二实例拒绝启动（wp-labs/warp-parse#365）。
 
 ### Dependencies
 - 升级 `wp-model-core` 0.9 → 0.10、`wp-lang` 0.5 → 0.6、`wp-knowledge` 0.16 → 0.18、`wp-core-connectors` 0.8 → 0.9、`wp-connector-api` 0.12 → 0.13、`wp-parse-api` 0.11 → 0.12、`wp-data-fmt` 0.9 → 0.10、`wp-error` 0.11 → 0.12、`wp-specs` 0.11 → 0.12、`wp-source-types` 0.2 → 0.3、`wp-conf-base` 0.5 → 0.6、`wp-arrow` 0.3 → 0.4、`serial_test` 3 → 4。

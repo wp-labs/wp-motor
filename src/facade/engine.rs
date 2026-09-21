@@ -47,7 +47,7 @@ use crate::runtime::actor::{self, ExitPolicyKind};
 use crate::runtime::sink::act_sink::SinkService;
 use crate::runtime::sink::infrastructure::InfraSinkService;
 use crate::sources::SourceConfigParser;
-use crate::utils::process::PidRec;
+use crate::utils::process::{PidRec, RunLock};
 use wp_conf::constants;
 use wp_conf::engine::EngineConfig;
 
@@ -79,6 +79,7 @@ pub struct WpApp {
     control_handle: RuntimeControlHandle,
     cmd_recv: Receiver<RuntimeCommandReq>,
     pid_guard: Option<PidRec>,
+    run_lock: Option<RunLock>,
     env_dict: EnvDict,
 }
 
@@ -108,6 +109,7 @@ impl WpApp {
             control_handle,
             cmd_recv,
             pid_guard: None,
+            run_lock: None,
             env_dict,
         })
     }
@@ -155,6 +157,10 @@ impl WpApp {
         run_mode: RunMode,
         env_dict: &EnvDict,
     ) -> RunResult<EngineRuntime> {
+        // 单实例保护：对 <work-root>/.run/.lock 取 flock，阻止同一 work-root 并发跑多个引擎
+        let work_root = self.conf_manager.work_root_path();
+        let lock_path = self.conf_manager.runtime_path(".lock");
+        self.run_lock = Some(RunLock::acquire(&work_root, &lock_path)?);
         // 保持 PID 文件在进程生命周期内存在
         self.pid_guard = Some(PidRec::current(
             self.conf_manager.runtime_path("wparse.pid").as_str(),
