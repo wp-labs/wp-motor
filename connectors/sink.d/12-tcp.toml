@@ -4,7 +4,8 @@ type = "tcp"
 allow_override = [
   "addr", "port", "framing",
   # send-queue aware backoff (optional)
-  "max_backoff"
+  "max_backoff",
+  "tls"
 ]
 
 [connectors.params]
