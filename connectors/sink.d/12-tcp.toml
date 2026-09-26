@@ -5,7 +5,8 @@ allow_override = [
   "addr", "port", "framing",
   # send-queue aware backoff (optional)
   "max_backoff",
-  "tls"
+  "tls",
+  "compression", "encryption"
 ]
 
 [connectors.params]

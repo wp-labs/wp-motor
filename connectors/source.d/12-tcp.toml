@@ -2,7 +2,7 @@
 id = "tcp_src"
 type = "tcp"
 # 允许覆写的键，兼容 syslog 的常见命名
-allow_override = ["addr", "port", "framing", "tcp_recv_bytes", "prefer_newline", "instances", "tls"]
+allow_override = ["addr", "port", "framing", "tcp_recv_bytes", "prefer_newline", "instances", "tls", "compression", "encryption"]
 
 [connectors.params]
 addr = "0.0.0.0"

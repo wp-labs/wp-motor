@@ -1,7 +1,7 @@
 [[connectors]]
 id = "file_json_sink"
 type = "file"
-allow_override = ["base","file"]
+allow_override = ["base","file","compression","encryption"]
 [connectors.params]
 fmt  = "json"
 base = "./data/out_dat"

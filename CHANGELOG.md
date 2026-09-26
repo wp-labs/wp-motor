@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **依赖 `wp-model-core` 0.9 → 0.10**：整数类型改名 `Value::Digit`→`Value::Int`、`DataType::Digit`→`DataType::Int`（serde 标签 `"digit"`→`"int"`）、`Field::from_digit`→`from_int`、`DigitValue`→`IntValue`；穷尽 `match` 的调用方需改名。
 - **OML/条件类型渲染改为 `int`**：随上游 `Display` 变化（`cpu_free : digit`→`int`）；解析仍接受 `digit`，WPL 规则仍以 `digit` 呈现。
 
+### Added
+- **TCP 连接器 TLS**：`tcp_src`/`tcp_sink` 支持 `tls = { … }`（rustls，双向认证 / 跳过校验 / 公网回落系统信任库）。
+- **TCP/file 连接器压缩与加密**：`compression`（gzip/zstd）+ `encryption`（aes-256-gcm/sm4-gcm，含国密 SM4-GCM），先压缩后加密、自描述帧头、GCM 认证；connector 定义放行 `tls`/`compression`/`encryption` 覆盖。
+
 ### Fixed
 - **两处类型名解析绕过 WPL 别名入口**：`GenRuleUnit::generat()` 与 `MatchCase` 常量比较改用 `wpl::parser::wpl_meta_from_name`（与 OML/条件同入口），避免 `digit` 硬失败；当前无生产调用，消除隐患。
 - **`wparse daemon` 单实例保护**：启动对 `<work-root>/.run/.lock` 取 `flock`，同 work-root 第二实例拒绝启动（wp-labs/warp-parse#365）。
