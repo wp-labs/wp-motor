@@ -347,7 +347,7 @@ orion-variate = "0.13"
 
 # --- Testing ---
 criterion = "0.8"
-mockall = "0.14"
+mockall = "0.15"
 tempfile = "3.23"
 collection_literals = "1.0"
 arbitrary = { version = "1.4", features = ["derive"] }
