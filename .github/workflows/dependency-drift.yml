@@ -1,0 +1,38 @@
+name: Dependency Drift
+
+# 定时用「最新兼容依赖」跑一遍测试，专门捕捉上游浮动依赖在补丁/次版本里
+# 做的破坏性改动导致的下游编译或行为破坏。
+#
+# 背景：常规 CI（ci.yml）是事件驱动（push / pull_request），上游依赖发新版
+# 不会触发它。依赖又是 caret 浮动（例如 wp-core-connectors = "0.9"），
+# 一旦上游在 0.9.x 补丁版里改了公共 API，本仓在「下次被迫重新解析」之前
+# 完全无感。本任务每天强制 cargo update 后重跑测试，把这类漂移尽早暴露。
+
+on:
+  schedule:
+    # 每天 02:00 UTC（北京时间 10:00）
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  latest-deps:
+    name: Test against latest compatible deps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Force re-resolve to latest compatible deps
+        run: cargo update
+
+      - name: Clippy on latest deps
+        run: |
+          rustup component add clippy
+          cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run tests on latest deps
+        run: cargo test --all-features -- --test-threads=1

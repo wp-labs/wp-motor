@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 comfy-table = { workspace = true }
+futures-lite = { workspace = true }
 glob = { workspace = true }
 oml = { package = "wp-oml", path = "../wp-oml" }
 orion-error = { workspace = true }

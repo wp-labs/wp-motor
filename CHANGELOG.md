@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.27.0] latest
+## [1.28.0] - 2026-10-12
+
+### Changed
+- **升级到 orion-error 0.9 世代**：`orion-error` 0.8 → 0.9、`orion_conf` 0.7 → 0.8、`orion-sec` 0.6 → 0.7、`orion-variate` 0.13 → 0.14。
+- **依赖升级**：`wp-log` 0.4 → 0.5、`wp-connector-api` 0.13 → 0.14、`wp-parse-api` 0.12 → 0.13、`wp-conf-base` 0.6 → 0.7、`wp-error` 0.12 → 0.13、`wp-knowledge` 0.18 → 0.19、`wp-lang` 0.6 → 0.7、`wp-core-connectors` 0.9 → 0.10。
+
+### Fixed
+- **`wproj check` 的 OML 校验改为整文件严格解析**：不再按片段/head 校验，改为对整份 OML 文件走官方解析器（先屏蔽注释）并做完整消费检查，跨行语法错误、缺失 `name`、以及多余的尾随内容（如文件末尾的 `def ...`）都会被报出，并定位到 `文件:行:列`；同时把「模型重名」「未声明 rule」由硬失败降级为告警，与真正的语法错误区分（wp-labs/warp-parse#366）。
+
+## [1.27.0] - 2026-09-21
 
 ### ⚠️ BREAKING CHANGES
 - **依赖 `wp-model-core` 0.9 → 0.10**：整数类型改名 `Value::Digit`→`Value::Int`、`DataType::Digit`→`DataType::Int`（serde 标签 `"digit"`→`"int"`）、`Field::from_digit`→`from_int`、`DigitValue`→`IntValue`；穷尽 `match` 的调用方需改名。
