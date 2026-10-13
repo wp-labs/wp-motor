@@ -67,6 +67,7 @@ async fn create_tcp_source(key: &str) -> (TcpSyslogSource, tokio::sync::broadcas
         wp_engine::sources::tcp::FramingMode::Line,
         registry,
         rx,
+        wp_core_connectors::net::CodecConfig::default(),
     )
     .unwrap();
     let source = TcpSyslogSource::new(

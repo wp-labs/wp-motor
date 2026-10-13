@@ -247,6 +247,7 @@ mod tests {
             crate::sources::tcp::FramingMode::Line,
             pool,
             rx,
+            wp_core_connectors::net::CodecConfig::default(),
         )
         .unwrap();
         let result =

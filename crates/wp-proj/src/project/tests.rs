@@ -171,7 +171,8 @@ fn create_basic_wpl_file(work_root: &str) {
 fn create_basic_oml_file(work_root: &str) {
     let oml_content = r#"name : test_oml
 rule : /test/*
-description : "Test OML model"
+---
+* : auto = take() ;
 "#;
     // 创建字面意义上的 "*.oml" 文件，因为 WPARSE_OML_FILE = "*.oml"
     let oml_path = format!("{}/models/oml/*.oml", work_root);
