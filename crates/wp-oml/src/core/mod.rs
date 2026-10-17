@@ -58,12 +58,16 @@ pub trait AsyncFieldExtractor {
 impl PreciseEvaluator {
     /// 是否可用同步路径求值。只有 SQL / 字典查找等真实异步 I/O 才返回 false。
     pub(crate) fn support_sync(&self) -> bool {
-        !matches!(
-            self,
+        match self {
             PreciseEvaluator::Sql(_)
-                | PreciseEvaluator::Lookup(_)
-                | PreciseEvaluator::StaticSymbol(_)
-        )
+            | PreciseEvaluator::Lookup(_)
+            | PreciseEvaluator::StaticSymbol(_) => false,
+            PreciseEvaluator::Pipe(pipe) => match pipe.from() {
+                crate::language::PipeSource::Precise(op) => op.support_sync(),
+                _ => true,
+            },
+            _ => true,
+        }
     }
 
     /// 同步求值存储字段；仅对 `support_sync() == true` 的求值器调用。

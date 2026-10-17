@@ -15,6 +15,7 @@ mod oml_aggregate;
 mod oml_conf;
 mod oml_err;
 mod pipe_prm;
+mod privacy_prm;
 //mod shm_prm;
 mod sql_prm;
 mod static_ctx;

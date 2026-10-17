@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 use crate::language::MapOperation;
 use wp_model_core::model::types::value::ObjectValue;
-use wp_model_core::model::{DataField, DataRecord, DataType, FieldStorage};
+use wp_model_core::model::{DataField, DataRecord, DataType, FieldStorage, Value};
 
 use crate::core::AsyncFieldExtractor;
 
@@ -24,6 +24,12 @@ impl MapOperation {
             let sub_name = sub.target().safe_name();
 
             if let Some(mut storage) = storage_opt {
+                if storage.get_meta() == &DataType::Ignore
+                    && matches!(storage.as_field().get_value(), Value::Null)
+                {
+                    obj.remove(sub_name.as_str());
+                    continue;
+                }
                 let needs_conversion = sub.target().data_type() != storage.get_meta()
                     && sub.target().data_type() != &DataType::Auto;
 
@@ -89,6 +95,12 @@ impl AsyncFieldExtractor for MapOperation {
             let sub_name = sub.target().safe_name();
 
             if let Some(mut storage) = storage_opt {
+                if storage.get_meta() == &DataType::Ignore
+                    && matches!(storage.as_field().get_value(), Value::Null)
+                {
+                    obj.remove(sub_name.as_str());
+                    continue;
+                }
                 let needs_conversion = sub.target().data_type() != storage.get_meta()
                     && sub.target().data_type() != &DataType::Auto;
 

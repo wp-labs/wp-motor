@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.30.0] - 2026-10-17
+
+### Added
+- **OML 内联脱敏**：`mask` / `hash` / `tokenize` / `remove` 可直接写在赋值 pipe 中，sink 侧看到的就是脱敏后的数据。
+  - `mask(kind)` 支持 `ip`、`mobile`、`id_card`、`mail`、`domain`、`name`、`address`、`company`、`keymsg`、`text`；`mask(ip)` 用 HMAC-SHA256 映射到保留地址池，输出仍是合法 IP，可继续 join / group by。
+  - `hash([algo])` 支持 HMAC-SHA256/SHA1/MD5、`hex` / `base64url` 与截断，同值同结果。
+  - `tokenize()` 生成 AES-256-GCM 可逆令牌 `tok:v1:<base64url>`；`remove` 删除字段。
+  - 支持 `object { ... }` 内部与批量目标（如 `*_mail = read() | mask(mail)`），`fmt` / `match` / `select` 等表达式也可直接接 pipe。
+- **零配置密钥**：`mask` / `hash` 固定使用 `pii_salt`，`tokenize` 固定使用 `pii_key`，由 `SEC_XXX` 机制从 `.warp_parse/sec_key.toml` 的 `sec_pii_salt` / `sec_pii_key` 加载；OML 与 `wparse.toml` 均无需密钥配置。
+
+### Changed
+- 脱敏全程 fail-closed：密钥缺失或为空、类型不匹配时不输出原值；`mask(ip)` 无密钥时只有显式 `allow_unsalted:true` 才允许开发期降级。
+- 批量目标按通配符 + 声明类型共同匹配；批量 `remove` 会清除已写入的同名目标。
+
 ## [1.29.0] - 2026-10-12
 
 ### Changed

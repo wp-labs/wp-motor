@@ -9,6 +9,16 @@ use wp_knowledge::cache::FieldQueryCache;
 use wp_model_core::model::{DataField, DataRecord, DataType, FieldStorage, Value};
 
 fn emit_single_storage(mut storage: FieldStorage, target: &EvaluationTarget, dst: &mut DataRecord) {
+    // `remove` marks the result as Ignore + Null: drop any previously emitted
+    // target with the same name and do not append a new field.
+    if storage.get_meta() == &DataType::Ignore
+        && matches!(storage.as_field().get_value(), Value::Null)
+    {
+        dst.items
+            .retain(|item| item.as_field().get_name() != target.safe_name());
+        return;
+    }
+
     let needs_conversion =
         target.data_type() != storage.get_meta() && target.data_type() != &DataType::Auto;
 
@@ -27,6 +37,11 @@ fn emit_single_storage(mut storage: FieldStorage, target: &EvaluationTarget, dst
 
         if needs_conversion {
             field = omlobj_meta_conv(field, target);
+        }
+        // Conversion may fail and produce Null (e.g. a text placeholder for an
+        // `ip` target). Treat it as missing rather than emitting a NULL field.
+        if matches!(field.get_value(), Value::Null) {
+            return;
         }
 
         dst.items.push(FieldStorage::from_owned(field));

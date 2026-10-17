@@ -10,6 +10,8 @@ mod net;
 mod other;
 mod path_url;
 mod pipe_operation;
+mod privacy;
+pub use privacy::detokenize;
 pub mod semantic_dict_loader; // 公开 semantic_dict_loader 模块
 mod time;
 
@@ -51,6 +53,10 @@ impl ValueProcessor for PipeFun {
             PipeFun::IntranetReplace(o) => o.value_cacu(in_val),
             PipeFun::ExtractMainWord(o) => o.value_cacu(in_val),
             PipeFun::ExtractSubjectObject(o) => o.value_cacu(in_val),
+            PipeFun::Mask(o) => o.value_cacu(in_val),
+            PipeFun::Hash(o) => o.value_cacu(in_val),
+            PipeFun::Tokenize(o) => o.value_cacu(in_val),
+            PipeFun::Remove(o) => o.value_cacu(in_val),
         }
     }
 }

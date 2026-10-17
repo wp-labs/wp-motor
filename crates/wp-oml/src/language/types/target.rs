@@ -32,13 +32,12 @@ impl BatchEvalTarget {
     }
     pub fn match_it(&self, tdo: &DataField) -> bool {
         let key = tdo.get_name().trim();
-        //let k2 = key.trim();
-        if self.wild().matches(key) && self.origin().data_type() == &DataType::Auto
-            || tdo.get_meta() == self.origin().data_type()
-        {
-            return true;
-        }
-        false
+        // A batch target is selected by both the wildcard pattern and the
+        // declared type. `auto` accepts any type; an explicit type narrows the
+        // match (e.g. `*_mail : chars` must not capture every chars field).
+        self.wild().matches(key)
+            && (self.origin().data_type() == &DataType::Auto
+                || tdo.get_meta() == self.origin().data_type())
     }
 }
 

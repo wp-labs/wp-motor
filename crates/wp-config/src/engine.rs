@@ -740,6 +740,20 @@ mod tests {
     }
 
     #[test]
+    fn test_engine_config_rejects_removed_privacy_section() {
+        let err = toml::from_str::<EngineConfig>(
+            r#"
+            [privacy]
+            default_salt = "pii_salt"
+            "#,
+        )
+        .expect_err("[privacy] should no longer be accepted")
+        .to_string();
+        assert!(err.contains("unknown field"));
+        assert!(err.contains("privacy"));
+    }
+
+    #[test]
     fn test_engine_config_rejects_unknown_top_level_field() {
         let err = toml::from_str::<EngineConfig>(
             r#"

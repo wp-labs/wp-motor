@@ -117,16 +117,16 @@ pub fn oml_aggregate(data: &mut &str) -> WResult<EvalExp> {
     let first_target = target_vec.first().expect("no target define");
     let unit = if first_target.safe_name().contains('*') {
         let gw = match key {
-            "take" => oml_batch_gw_get
+            "take" => alt((pipe_prm::oml_batch_pipe, oml_batch_gw_get))
                 .context(ctx_label("take"))
                 .parse_next(data)?,
-            "read" => oml_batch_gw_get
+            "read" => alt((pipe_prm::oml_batch_pipe, oml_batch_gw_get))
                 .context(ctx_label("read"))
                 .parse_next(data)?,
             _ => fail
                 .context(ctx_label("method"))
-                .context(ctx_literal("take ()"))
-                .context(ctx_literal("only support take"))
+                .context(ctx_literal("read()/take()"))
+                .context(ctx_literal("only support read/take with an optional pipe"))
                 .parse_next(data)?,
         };
         let mut builder = BatchEvalExpBuilder::default();
@@ -135,22 +135,29 @@ pub fn oml_aggregate(data: &mut &str) -> WResult<EvalExp> {
         EvalExp::Batch(err_convert(builder.build(), "BatchEvalExp Build failed")?)
     } else {
         let gw = match key {
-            "calc" => oml_aga_calc.parse_next(data)?,
+            "calc" => alt((pipe_prm::oml_aga_pipe_noprefix, oml_aga_calc)).parse_next(data)?,
             "access_direct" => {
                 alt((oml_aga_access_direct_pipe, oml_aga_access_direct)).parse_next(data)?
             }
-            "match" => oml_aga_match.parse_next(data)?,
-            "lookup_nocase" => oml_aga_lookup_nocase.parse_next(data)?,
-            "object" => oml_aga_map.parse_next(data)?,
-            "array" => oml_aga_obj_array.parse_next(data)?,
+            "match" => alt((pipe_prm::oml_aga_pipe_noprefix, oml_aga_match)).parse_next(data)?,
+            "lookup_nocase" => {
+                alt((pipe_prm::oml_aga_pipe_noprefix, oml_aga_lookup_nocase)).parse_next(data)?
+            }
+            "object" => alt((pipe_prm::oml_aga_pipe_noprefix, oml_aga_map)).parse_next(data)?,
+            "array" => {
+                alt((pipe_prm::oml_aga_pipe_noprefix, oml_aga_obj_array)).parse_next(data)?
+            }
             "pipe" => oml_aga_pipe.parse_next(data)?,
-            "collect" => oml_aga_collect.parse_next(data)?,
+            "collect" => {
+                alt((pipe_prm::oml_aga_pipe_noprefix, oml_aga_collect)).parse_next(data)?
+            }
             //"query" => oml_aga_shmlib.parse_next(data)?,
-            "select" => oml_aga_sql.parse_next(data)?,
-            "fmt" => oml_aga_fmt.parse_next(data)?,
+            "select" => alt((pipe_prm::oml_aga_pipe_noprefix, oml_aga_sql)).parse_next(data)?,
+            "fmt" => alt((pipe_prm::oml_aga_pipe_noprefix, oml_aga_fmt)).parse_next(data)?,
             "take" => alt((pipe_prm::oml_aga_pipe_noprefix, oml_aga_tdc)).parse_next(data)?,
             "read" => alt((pipe_prm::oml_aga_pipe_noprefix, oml_aga_tdc)).parse_next(data)?,
             _ => alt((
+                pipe_prm::oml_aga_pipe_noprefix,
                 trace("get value:", oml_aga_value),
                 trace("fun  struct:", oml_gw_fun),
                 trace("static value:", parse_static_value),

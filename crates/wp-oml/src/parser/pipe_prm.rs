@@ -2,9 +2,9 @@ use std::net::IpAddr;
 use std::str::FromStr;
 
 use crate::language::{
-    Base64Decode, EncodeType, Get, HtmlEscape, HtmlUnescape, IntranetReplace, Ip4ToInt,
-    IpToBigUint, JsonEscape, JsonUnescape, MapTo, MapValue, Nth, PIPE_BASE64_DECODE, PIPE_GET,
-    PIPE_HTML_ESCAPE, PIPE_HTML_UNESCAPE, PIPE_INTRANET_REPLACE, PIPE_IP_TO_BIGUINT,
+    Base64Decode, BatchEvaluation, EncodeType, Get, HtmlEscape, HtmlUnescape, IntranetReplace,
+    Ip4ToInt, IpToBigUint, JsonEscape, JsonUnescape, MapTo, MapValue, Nth, PIPE_BASE64_DECODE,
+    PIPE_GET, PIPE_HTML_ESCAPE, PIPE_HTML_UNESCAPE, PIPE_INTRANET_REPLACE, PIPE_IP_TO_BIGUINT,
     PIPE_IP4_TO_INT, PIPE_JSON_ESCAPE, PIPE_JSON_UNESCAPE, PIPE_MAP_TO, PIPE_NTH, PIPE_PATH,
     PIPE_SKIP_EMPTY, PIPE_STARTS_WITH, PIPE_STR_ESCAPE, PIPE_TIME_FROM_TS, PIPE_TIME_FROM_TS_MS,
     PIPE_TIME_FROM_TS_US, PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US,
@@ -18,12 +18,22 @@ use crate::language::{
     PIPE_EXTRACT_MAIN_WORD, PIPE_EXTRACT_SUBJECT_OBJECT, PIPE_INTRANET_IP, PIPE_ON_FAIL,
     PIPE_TO_STR, ToStr,
 };
+use crate::parser::calc_prm::oml_aga_calc;
+use crate::parser::collect_prm::oml_aga_collect;
+use crate::parser::fmt_prm::oml_aga_fmt;
+use crate::parser::fun_prm::oml_gw_fun;
 use crate::parser::keyword::kw_gw_pipe;
-use crate::parser::oml_aggregate::oml_var_get;
+use crate::parser::lookup_prm::oml_aga_lookup_nocase;
+use crate::parser::map_prm::{oml_aga_map, oml_aga_obj_array};
+use crate::parser::match_prm::oml_aga_match;
+use crate::parser::oml_aggregate::{oml_tdo_get, oml_var_get};
+use crate::parser::sql_prm::oml_aga_sql;
+use crate::parser::static_ctx::parse_static_value;
+use crate::parser::tdc_prm::{oml_aga_tdc, oml_aga_value};
 use crate::winnow::error::ParserError;
 use winnow::ascii::{alphanumeric0, digit1, multispace0};
 use winnow::combinator::{alt, cut_err, fail, opt, repeat};
-use winnow::error::{ContextError, ErrMode, StrContext};
+use winnow::error::{ContextError, ErrMode, StrContext, StrContextValue};
 use winnow::stream::Stream; // for checkpoint/reset on &str
 use winnow::token::take;
 use wp_primitives::Parser;
@@ -421,27 +431,122 @@ impl Fun1Builder for UrlGet {
         UrlGet { key: args }
     }
 }
+/// Pipe 左侧的求值原子：除 read/take 外的 fmt/match/select/object 等。
+fn oml_eval_atom(data: &mut &str) -> WResult<PreciseEvaluator> {
+    alt((
+        alt((
+            oml_aga_map,
+            oml_aga_obj_array,
+            oml_aga_match,
+            oml_aga_sql,
+            oml_aga_fmt,
+            oml_aga_collect,
+            oml_aga_calc,
+        )),
+        alt((
+            crate::parser::access_direct_prm::oml_aga_access_direct,
+            oml_aga_lookup_nocase,
+            oml_aga_tdc,
+            oml_gw_fun,
+            oml_aga_value,
+            parse_static_value,
+        )),
+    ))
+    .parse_next(data)
+}
+
+fn parse_pipe_items(data: &mut &str) -> WResult<Vec<PipeFun>> {
+    let items: Vec<PipeFun> = repeat(1.., oml_pipe).parse_next(data)?;
+    Ok(items)
+}
+
 pub fn oml_aga_pipe(data: &mut &str) -> WResult<PreciseEvaluator> {
     kw_gw_pipe.parse_next(data)?;
+
+    // Fast path: read/take/@ref accessor.
+    let cp = data.checkpoint();
+    if let Ok(accessor) = oml_var_get.parse_next(data)
+        && let Ok(items) = parse_pipe_items(data)
+    {
+        ensure_remove_terminal(&items)?;
+        return Ok(PreciseEvaluator::Pipe(PiPeOperation::new(
+            PipeSource::Accessor(accessor),
+            items,
+        )));
+    }
+    data.reset(&cp);
+
+    // Generalized atom; also covers read/take with a default body.
     let from = alt((
-        oml_var_get.map(PipeSource::Accessor),
         crate::parser::access_direct_prm::oml_access_direct.map(PipeSource::AccessDirect),
+        oml_eval_atom.map(|eval| PipeSource::Precise(Box::new(eval))),
     ))
     .parse_next(data)?;
-    let items = repeat(1.., oml_pipe).parse_next(data)?;
+    let items = parse_pipe_items(data)?;
+    ensure_remove_terminal(&items)?;
     Ok(PreciseEvaluator::Pipe(PiPeOperation::new(from, items)))
 }
 
 // 支持省略前缀 `pipe` 的管道表达式：read(...) | func | func ...
 pub fn oml_aga_pipe_noprefix(data: &mut &str) -> WResult<PreciseEvaluator> {
     let cp = data.checkpoint();
-    let from = oml_var_get.parse_next(data)?;
-    match repeat(1.., oml_pipe).parse_next(data) {
-        Ok(items) => Ok(PreciseEvaluator::Pipe(PiPeOperation::new(
-            PipeSource::Accessor(from),
+
+    // Fast path: read/take/@ref accessor.
+    if let Ok(accessor) = oml_var_get.parse_next(data)
+        && let Ok(items) = parse_pipe_items(data)
+    {
+        ensure_remove_terminal(&items)?;
+        return Ok(PreciseEvaluator::Pipe(PiPeOperation::new(
+            PipeSource::Accessor(accessor),
             items,
-        ))),
-        Err(_e) => {
+        )));
+    }
+    data.reset(&cp);
+
+    // Generalized atom; also covers read/take with a default body.
+    let Ok(eval) = oml_eval_atom.parse_next(data) else {
+        data.reset(&cp);
+        return Err(ErrMode::Backtrack(ContextError::new()));
+    };
+    let items = match parse_pipe_items(data) {
+        Ok(items) => items,
+        Err(_) => {
+            data.reset(&cp);
+            return Err(ErrMode::Backtrack(ContextError::new()));
+        }
+    };
+    ensure_remove_terminal(&items)?;
+    Ok(PreciseEvaluator::Pipe(PiPeOperation::new(
+        PipeSource::Precise(Box::new(eval)),
+        items,
+    )))
+}
+
+fn ensure_remove_terminal(items: &[PipeFun]) -> WResult<()> {
+    if let Some(pos) = items.iter().position(|f| matches!(f, PipeFun::Remove(_)))
+        && pos + 1 != items.len()
+    {
+        let mut err = ContextError::new();
+        err.push(StrContext::Label("pipe"));
+        err.push(StrContext::Expected(StrContextValue::Description(
+            "remove must be the last operator",
+        )));
+        return Err(ErrMode::Cut(err));
+    }
+    Ok(())
+}
+
+/// Batch target with a pipe: `*_mail = read() | mask(mail) ;`
+pub fn oml_batch_pipe(data: &mut &str) -> WResult<BatchEvaluation> {
+    let cp = data.checkpoint();
+    let op = oml_tdo_get.parse_next(data)?;
+    match repeat(1.., oml_pipe).parse_next(data) {
+        Ok(items) => {
+            let items: Vec<PipeFun> = items;
+            ensure_remove_terminal(&items)?;
+            Ok(BatchEvaluation::Pipe(op, items))
+        }
+        Err(_) => {
             data.reset(&cp);
             fail.parse_next(data)
         }
@@ -451,11 +556,21 @@ pub fn oml_aga_pipe_noprefix(data: &mut &str) -> WResult<PreciseEvaluator> {
 pub fn oml_pipe(data: &mut &str) -> WResult<PipeFun> {
     symbol_pipe.parse_next(data)?;
     multispace0.parse_next(data)?;
-    let fun = alt((pipe_fun_with_args, pipe_fun_simple))
+    let fun = alt((pipe_fun_privacy, pipe_fun_with_args, pipe_fun_simple))
         .context(StrContext::Label("pipe fun"))
         .context(ctx_desc("fun not found!"))
         .parse_next(data)?;
     Ok(fun)
+}
+
+fn pipe_fun_privacy(data: &mut &str) -> WResult<PipeFun> {
+    alt((
+        crate::parser::privacy_prm::oml_mask,
+        crate::parser::privacy_prm::oml_hash,
+        crate::parser::privacy_prm::oml_tokenize,
+        crate::parser::privacy_prm::oml_remove,
+    ))
+    .parse_next(data)
 }
 
 fn pipe_fun_with_args(data: &mut &str) -> WResult<PipeFun> {

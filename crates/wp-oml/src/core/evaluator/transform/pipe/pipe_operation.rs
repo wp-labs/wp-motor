@@ -1,11 +1,19 @@
 use crate::core::prelude::*;
-use crate::language::{PiPeOperation, PipeSource};
+use crate::language::{PiPeOperation, PipeFun, PipeSource};
 use async_trait::async_trait;
-use wp_model_core::model::{DataField, DataRecord, FieldStorage};
+use wp_model_core::model::{DataField, DataRecord, DataType, FieldStorage, Value};
 
 use crate::core::AsyncFieldExtractor;
 
 /// 从管道源取起始字段（同步）
+fn has_remove(items: &[PipeFun]) -> bool {
+    items.iter().any(|fun| matches!(fun, PipeFun::Remove(_)))
+}
+
+fn remove_marker(target: &EvaluationTarget) -> DataField {
+    DataField::new(DataType::Ignore, target.safe_name(), Value::Null)
+}
+
 fn source_extract_one(
     source: &PipeSource,
     target: &EvaluationTarget,
@@ -15,6 +23,9 @@ fn source_extract_one(
     match source {
         PipeSource::Accessor(a) => a.extract_one(target, src, dst),
         PipeSource::AccessDirect(op) => op.extract_one(target, src, dst),
+        PipeSource::Precise(op) => op
+            .extract_storage_sync(target, src, dst)
+            .map(|storage| storage.into_owned()),
     }
 }
 
@@ -28,6 +39,7 @@ fn source_extract_storage(
     match source {
         PipeSource::Accessor(a) => a.extract_storage(target, src, dst),
         PipeSource::AccessDirect(op) => op.extract_storage(target, src, dst),
+        PipeSource::Precise(op) => op.extract_storage_sync(target, src, dst),
     }
 }
 
@@ -41,6 +53,7 @@ async fn source_extract_one_async(
     match source {
         PipeSource::Accessor(a) => a.extract_one_async(target, src, dst).await,
         PipeSource::AccessDirect(op) => op.extract_one_async(target, src, dst).await,
+        PipeSource::Precise(op) => op.extract_one_async(target, src, dst).await,
     }
 }
 
@@ -54,6 +67,7 @@ async fn source_extract_storage_async(
     match source {
         PipeSource::Accessor(a) => a.extract_storage_async(target, src, dst).await,
         PipeSource::AccessDirect(op) => op.extract_storage_async(target, src, dst).await,
+        PipeSource::Precise(op) => op.extract_storage_async(target, src, dst).await,
     }
 }
 
@@ -74,6 +88,9 @@ impl PiPeOperation {
             }
             return Some(from);
         }
+        if has_remove(self.items()) {
+            return Some(remove_marker(target));
+        }
         None
     }
 
@@ -89,6 +106,9 @@ impl PiPeOperation {
                 from_storage = pipe.value_cacu_storage(from_storage);
             }
             return Some(from_storage);
+        }
+        if has_remove(self.items()) {
+            return Some(FieldStorage::from_owned(remove_marker(target)));
         }
         None
     }
@@ -121,6 +141,9 @@ impl AsyncFieldExtractor for PiPeOperation {
             }
             return Some(from);
         }
+        if has_remove(self.items()) {
+            return Some(remove_marker(target));
+        }
         None
     }
 
@@ -137,6 +160,9 @@ impl AsyncFieldExtractor for PiPeOperation {
                 from_storage = pipe.value_cacu_storage(from_storage);
             }
             return Some(from_storage);
+        }
+        if has_remove(self.items()) {
+            return Some(FieldStorage::from_owned(remove_marker(target)));
         }
         None
     }

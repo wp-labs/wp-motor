@@ -89,6 +89,12 @@ impl WpApp {
         //let mut args = args;
         let (conf_manager, mut main_conf) =
             load_warp_engine_confs(resolve_run_work_root(&args.work_root)?.as_str(), &env_dict)?;
+
+        // Make `SEC_XXX` values available to OML privacy operators under their
+        // fixed default names (`pii_salt` / `pii_key`). No `[privacy]` config is
+        // needed; operators that need an extra key reference it by name and the
+        // corresponding `sec_*` entry is loaded from the same dictionary.
+        oml::set_secrets_from_env_dict(&env_dict);
         crate::knowledge::ensure_stats_telemetry_bridge_installed();
         // CLI 覆盖：当提供 --wpl-dir 时，优先于 wparse.toml 的 [models].wpl
         if let Some(dir) = &args.wpl_dir {

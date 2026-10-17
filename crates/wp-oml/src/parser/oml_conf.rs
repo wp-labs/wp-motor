@@ -516,6 +516,8 @@ fn rewrite_pipe_operation(
         crate::language::PipeSource::Accessor(a) => rewrite_direct_accessor(a, const_fields),
         // access_direct 作管道源：static 块不支持（已由 ensure_static_precise_supported 拦截）
         crate::language::PipeSource::AccessDirect(_) => Ok(()),
+        // 泛化求值原子作管道源：继续重写其内部静态符号
+        crate::language::PipeSource::Precise(eval) => rewrite_precise_evaluator(eval, const_fields),
     }
 }
 

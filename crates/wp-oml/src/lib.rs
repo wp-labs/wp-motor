@@ -17,6 +17,7 @@ extern crate wp_knowledge as wp_know;
 pub mod core;
 pub mod language;
 pub mod parser;
+pub mod privacy;
 
 #[cfg(test)]
 pub(crate) mod test_helpers;
@@ -24,8 +25,13 @@ pub(crate) mod test_helpers;
 mod test_utils;
 pub mod types;
 
+pub use core::evaluator::transform::pipe::detokenize;
 pub use core::{AsyncDataTransformer, AsyncExpEvaluator, AsyncFieldExtractor, DataRecordRef};
 pub use parser::oml_parse_raw;
+pub use privacy::{
+    clear_secrets, get_secret, normalize_secret_name, set_secret, set_secret_str,
+    set_secrets_from_env_dict, set_secrets_from_pairs,
+};
 
 // 导出语义词典相关的公开 API
 pub use core::evaluator::transform::pipe::semantic_dict_loader::{

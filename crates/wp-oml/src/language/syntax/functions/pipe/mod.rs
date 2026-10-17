@@ -5,12 +5,14 @@ pub mod escape;
 pub mod fmt;
 pub mod net;
 pub mod other;
+pub mod privacy;
 pub mod time;
 pub use base64::*;
 pub use escape::*;
 pub use fmt::*;
 pub use net::*;
 pub use other::*;
+pub use privacy::*;
 pub use time::*;
 
 #[allow(clippy::large_enum_variant)]
@@ -47,6 +49,10 @@ pub enum PipeFun {
     IntranetReplace(IntranetReplace),
     ExtractMainWord(ExtractMainWord),
     ExtractSubjectObject(ExtractSubjectObject),
+    Mask(Mask),
+    Hash(Hash),
+    Tokenize(Tokenize),
+    Remove(Remove),
 }
 
 impl Display for PipeFun {
@@ -83,6 +89,10 @@ impl Display for PipeFun {
             PipeFun::IntranetReplace(v) => write!(f, "{}", v),
             PipeFun::ExtractMainWord(v) => write!(f, "{}", v),
             PipeFun::ExtractSubjectObject(v) => write!(f, "{}", v),
+            PipeFun::Mask(v) => write!(f, "{}", v),
+            PipeFun::Hash(v) => write!(f, "{}", v),
+            PipeFun::Tokenize(v) => write!(f, "{}", v),
+            PipeFun::Remove(v) => write!(f, "{}", v),
         }
     }
 }

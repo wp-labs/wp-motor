@@ -1,4 +1,5 @@
 use crate::language::BatchEvalTarget;
+use crate::language::PipeFun;
 use crate::language::prelude::*;
 use crate::language::syntax::operations::record::RecordOperation;
 
@@ -11,6 +12,7 @@ pub struct BatchEvalExp {
 #[derive(Debug, Clone)]
 pub enum BatchEvaluation {
     Get(RecordOperation),
+    Pipe(RecordOperation, Vec<PipeFun>),
 }
 
 impl BatchEvalExp {
@@ -31,6 +33,13 @@ impl Display for BatchEvaluation {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             BatchEvaluation::Get(x) => Display::fmt(x, f),
+            BatchEvaluation::Pipe(x, funs) => {
+                Display::fmt(x, f)?;
+                for fun in funs {
+                    write!(f, " | {fun}")?;
+                }
+                Ok(())
+            }
         }
     }
 }

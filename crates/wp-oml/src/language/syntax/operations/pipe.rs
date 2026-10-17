@@ -1,10 +1,12 @@
-use crate::language::{AccessDirectOperation, PipeFun, prelude::*};
+use crate::language::{AccessDirectOperation, PipeFun, PreciseEvaluator, prelude::*};
 
-/// 管道源：访问器（read/take）或 `access_direct` 操作结果
-#[derive(Clone, Debug, PartialEq)]
+/// 管道源：访问器（read/take）、`access_direct`，或任意求值原子
+/// （`fmt`/`match`/`select`/`object` 等）。
+#[derive(Clone, Debug)]
 pub enum PipeSource {
     Accessor(DirectAccessor),
     AccessDirect(AccessDirectOperation),
+    Precise(Box<PreciseEvaluator>),
 }
 
 impl Display for PipeSource {
@@ -12,6 +14,7 @@ impl Display for PipeSource {
         match self {
             PipeSource::Accessor(a) => write!(f, "{}", a),
             PipeSource::AccessDirect(op) => write!(f, "{}", op),
+            PipeSource::Precise(op) => write!(f, "{}", op),
         }
     }
 }
