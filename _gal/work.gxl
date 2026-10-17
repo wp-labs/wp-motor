@@ -60,9 +60,7 @@ mod main  {
         gx.read_file ( "../wp-scaffold/rls.ini")
     }
   #[task(name="${ENV_PRJ_KEY}@build")]
-  flow ver.use | conf | rust_flow.build | @build | _pub_local {
-      gx.echo(  "${MAIN_HOME_BIN}" );
-      //os.path (  "${MAIN_HOME_BIN}" );
+  flow ver.use | conf | rust_flow.build | @build {
   }
   #[usage(desp="lint code")]
   flow lint | rust_flow.lint {} ;
@@ -70,15 +68,5 @@ mod main  {
   #[task(name="test")]
   flow build  |   @test  {
     gx.cmd ( "cargo test --all ${ENV_BUILD_FLAG}", log : "1" , out:"true"  );
-  }
-
-  #[task(name="pub to local")]
-  flow _pub_local   {
-
-    gx.cmd (  "mkdir -p ${MAIN_HOME_BIN}" );
-    gx.cmd (  "cp ${MAIN_BLD_BINS}/wparse ${MAIN_HOME_BIN}/"  );
-    gx.cmd (  "cp ${MAIN_BLD_BINS}/wpgen ${MAIN_HOME_BIN}/"  );
-    gx.cmd (  "cp ${MAIN_BLD_BINS}/wproj ${MAIN_HOME_BIN}/"  );
-    gx.cmd (  "cp ${MAIN_BLD_BINS}/wprescue ${MAIN_HOME_BIN}/"  );
   }
 }
