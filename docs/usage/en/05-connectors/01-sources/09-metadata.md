@@ -35,6 +35,18 @@ When parsing data, the Warp Parse system automatically appends mechanism data fi
 - **Purpose**: Content fingerprint for deduplication, comparison, and idempotency checks
 - **Toggle**: Controlled by the config flag `gen_event_md5 = true` (default off); only takes effect when `gen_msg_id` (the event-meta master switch, on by default) is enabled
 
+### 5. Global tags (WP_GLOBAL_TAGS)
+
+- **Field names**: Defined per instance, e.g. `owner_id`; names must not start with `wp_` (reserved for system meta such as `wp_event_id`)
+- **Description**: Per-instance global fields stamped on every successfully parsed record (including `Partial`), and on `copy_event_parse` side records
+- **Source**: The instance environment variable `WP_GLOBAL_TAGS`, or a `.env` file under the instance work root
+- **Format**:
+  - `WP_GLOBAL_TAGS="owner_id=team-a,env=prod"`
+  - Use JSON when values contain `,` or `=`: `WP_GLOBAL_TAGS='{"owner_id":"team-a","note":"a,b=c"}'`
+- **Override**: A same-name field produced by the rule is replaced by the global tag (exactly one field remains)
+
+`.env` lookup order: `<work_root>/.env` → `<work_root>/.warp_parse/.env`. Existing process environment variables win; `.env` never overrides them.
+
 ## Configuration Control
 
 These mechanism fields are controlled by the engine config (`wparse.toml`):

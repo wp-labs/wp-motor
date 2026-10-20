@@ -16,6 +16,7 @@ pub mod test_helpers;
 pub mod usecases;
 
 // 常用导出，便于应用端按需使用
+pub use crate::core::parser::global_tags::{GLOBAL_TAGS_ENV, GlobalTags};
 pub use engine::WpApp;
 pub use rescue::WpRescueApp;
 pub use runtime_ctrl::{

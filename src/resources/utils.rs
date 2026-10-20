@@ -316,6 +316,42 @@ mod tests {
         assert_chars(&record, "wp_src_key", "test-src");
     }
 
+    #[test]
+    fn global_tags_stamped_on_main_and_side_records() {
+        let pkg = pkg_with_copy_event_parse("raw_event");
+        let mut idx = ResourceIndexer::default();
+        let parser_map = build_global_parser_map(std::slice::from_ref(&pkg)).expect("global map");
+        let pipelines =
+            multi_code_ins_parse_units(&NullAlloc, &pkg, &mut idx, Vec::new(), &parser_map)
+                .expect("build pipelines");
+        let mut parser = MultiParser::new(pipelines);
+
+        let payload = r#"{ "data": "main-data", "raw": "raw-content" }"#;
+        let event = SourceEvent::new(
+            1,
+            "test-src",
+            RawData::String(payload.to_string()),
+            Arc::new(Tags::new()),
+        );
+        let tags = Arc::new(crate::core::parser::global_tags::GlobalTags::from_pairs(
+            vec![("owner_id".into(), "team-a".into())],
+        ));
+        let setting = ParseOption::new(true, false, Vec::new()).with_global_tags(tags);
+
+        let (record, side_records) = match parser.parse_event(&event, &setting) {
+            ProcessResult::Success {
+                record,
+                side_records,
+                ..
+            } => (record, side_records),
+            other => panic!("expected Success, got {:?}", other),
+        };
+
+        assert_chars(&record, "owner_id", "team-a");
+        assert_eq!(side_records.len(), 1);
+        assert_chars(&side_records[0].1, "owner_id", "team-a");
+    }
+
     /// 构造一个含 copy_event_parse 引用的双规则包：
     ///   main 挂 #[copy_event_parse(rule:"raw_event")]，raw_event 是目标 rule。
     ///   raw_event 显式声明 #[no_match]：不参与自动匹配，仅作 copy_event_parse 目标。

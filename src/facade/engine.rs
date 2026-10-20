@@ -12,6 +12,7 @@ use tokio::time::timeout;
 use wp_knowledge::facade::init_thread_cloned_from_knowdb;
 use wp_knowledge::loader::build_authority_from_knowdb;
 
+use orion_conf::ToStructError;
 use orion_error::{
     OperationContext,
     conversion::{ConvErr, ErrorWith},
@@ -23,6 +24,7 @@ use wp_log::conf::log_init;
 use wp_log::{info_ctrl, warn_ctrl};
 use wp_stat::{StatRequires, StatStage};
 
+use crate::core::parser::global_tags::GlobalTags;
 use crate::facade::args::ParseArgs;
 use crate::facade::args::resolve_run_work_root;
 use crate::facade::runtime_ctrl::{
@@ -77,6 +79,7 @@ pub struct WpApp {
     stat_reqs: StatRequires,
     run_args: RunArgs,
     control_handle: RuntimeControlHandle,
+    global_tags: std::sync::Arc<GlobalTags>,
     cmd_recv: Receiver<RuntimeCommandReq>,
     pid_guard: Option<PidRec>,
     run_lock: Option<RunLock>,
@@ -106,6 +109,12 @@ impl WpApp {
         info_ctrl!("log conf: {} ", main_conf.log_conf());
         // 初始化引擎侧注册表：注册内置工厂 + 导入 API 已注册工厂 + 打印注册清单
         crate::connectors::startup::init_runtime_registries();
+        // 全局 tag 来自实例自己的环境变量（WP_GLOBAL_TAGS），不写入共享的 wparse.toml。
+        let global_tags = std::sync::Arc::new(GlobalTags::from_env().map_err(|err| {
+            RunReason::core_conf()
+                .to_err()
+                .with_detail(format!("invalid WP_GLOBAL_TAGS: {err}"))
+        })?);
         let (control_handle, cmd_recv) = default_runtime_command_bus();
         Ok(Self {
             main_conf,
@@ -113,6 +122,7 @@ impl WpApp {
             stat_reqs,
             run_args,
             control_handle,
+            global_tags,
             cmd_recv,
             pid_guard: None,
             run_lock: None,
@@ -206,6 +216,7 @@ impl WpApp {
             run_mode,
             self.run_args.clone(),
             self.stat_reqs.clone(),
+            self.global_tags.clone(),
         )
         .await?;
         Ok(task_manager)
@@ -235,6 +246,7 @@ impl WpApp {
             runtime.monitor_sender(),
             &self.stat_reqs,
             runtime.next_processing_epoch(),
+            self.global_tags.clone(),
         )
         .await?;
         let mut pending_processing = Some(processing);

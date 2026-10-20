@@ -5,10 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.31.0] - 2026-10-20
 
 ### Changed
-- **依赖 `wp-lang` 0.8.1**：`#[late]` 依赖 `wp-lang` 新增的 `AnnFun.late` 字段。`Cargo.toml` 的 `wp-lang = "0.8"` 语义上已兼容，发布 `wp-lang 0.8.1` 后需执行 `cargo update -p wp-lang` 让锁文件切到 0.8.1，否则仍会解析到 0.8.0 并在编译期报缺少 `late` 字段。
+- **依赖 `wp-lang` 0.8.1**：`#[late]` 依赖 `wp-lang` 新增的 `AnnFun.late` 字段；本版本按 `wp-lang = "0.8"` 解析到 0.8.1。
 
 ### Added
 - **`#[late]` 分层排序**：`#[late]` 规则仍参与 `parse_event` 自动匹配，但固定排在普通规则之后。命中率排序改为分层比较键 `(late, hit_cnt desc, index asc)`——`late` 层内部仍按命中次数降序，但不能跨层提升。
@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 新增 `WplPipeline.late` 与 `WplPipeline::match_order_key()`；移除未使用且语义不一致的 `Ord` / `PartialOrd` / `Eq` 实现。
   - 典型用法：兜底规则（如 `(chars\0)`）标 `#[late]`，避免因命中面广、命中次数高而被提升到具体规则之前抢占事件。
   - 与 `#[no_match]` 同时声明时，`no_match` 优先（规则完全不自动匹配）。
+- **全局 tag（`WP_GLOBAL_TAGS`）**：每个 wparse 实例可通过环境变量注入自己的全局字段（如 `owner_id`），不写入共享的 `wparse.toml`。
+  - 格式：`owner_id=team-a,env=prod`，或 JSON（值内含 `,`/`=` 时）。
+  - 盖到所有 `Success` / `Partial` record，包括 `copy_event_parse` 旁路 record；同名规则字段会被全局值覆盖。
+  - 新增不可变 `GlobalTags` 与 `ParseOption::with_global_tags`；启动后只读，修改需重启实例。
+  - 装配函数 `start_warp_service` / `start_processing_tasks` / `start_parser_tasks_frames` 新增 `Arc<GlobalTags>` 参数。
 
 ## [1.30.0] - 2026-10-17
 

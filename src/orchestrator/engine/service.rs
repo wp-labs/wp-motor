@@ -1,5 +1,8 @@
 use crate::compat::LegacyOwe;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use crate::core::parser::global_tags::GlobalTags;
 
 use crate::runtime::actor::TaskRole;
 use crate::runtime::actor::command::ActorCtrlCmd;
@@ -278,11 +281,18 @@ pub async fn start_processing_tasks(
     moni_send: MonSend,
     stat_reqs: &StatRequires,
     reload_epoch: u64,
+    global_tags: Arc<GlobalTags>,
 ) -> RunResult<ProcessingTaskSet> {
     let (drain_bus, drain_rx) = ReloadDrainBus::new(reload_epoch);
-    let (subsc_channel, parser_group) =
-        start_parser_tasks_frames(args, &resource, moni_send.clone(), stat_reqs, &drain_bus)
-            .await?;
+    let (subsc_channel, parser_group) = start_parser_tasks_frames(
+        args,
+        &resource,
+        moni_send.clone(),
+        stat_reqs,
+        &drain_bus,
+        global_tags,
+    )
+    .await?;
 
     let mut maint_group = TaskGroup::new("amt", ShutdownCmd::Timeout(200));
     let mut infra_group = TaskGroup::new("infra", ShutdownCmd::Timeout(200));
@@ -352,6 +362,7 @@ pub async fn start_warp_service(
     run_mode: RunMode,
     args: RunArgs,
     stat_reqs: StatRequires,
+    global_tags: Arc<GlobalTags>,
 ) -> RunResult<EngineRuntime> {
     let mode_s = match run_mode {
         RunMode::Daemon => "daemon",
@@ -404,8 +415,15 @@ pub async fn start_warp_service(
         info_ctrl!("run-mode=batch: 跳过启动接受器任务");
     }
     task_manager.append_group_with_role(TaskRole::Monitor, moni_group);
-    let processing =
-        start_processing_tasks(&args, resource, moni_send.clone(), &stat_reqs, 1).await?;
+    let processing = start_processing_tasks(
+        &args,
+        resource,
+        moni_send.clone(),
+        &stat_reqs,
+        1,
+        global_tags,
+    )
+    .await?;
     let parse_router = ParseDispatchRouter::new(processing.parser_senders());
     let active_processing = processing.install(&mut task_manager);
 

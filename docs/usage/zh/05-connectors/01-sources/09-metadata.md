@@ -35,6 +35,18 @@ Warp Parse 系统在解析数据时，会自动向 DataRecord 追加一些机制
 - **用途**: 事件内容指纹，用于去重、比对、幂等校验
 - **开关**: 由配置项 `gen_event_md5 = true` 控制（默认关闭）；且仅在 `gen_msg_id`（事件 meta 总开关，默认开启）开启时生效
 
+### 5. 全局 tag（WP_GLOBAL_TAGS）
+
+- **字段名**: 由实例自行定义，例如 `owner_id`；不能以 `wp_` 开头（保留给系统 meta，如 `wp_event_id`）
+- **描述**: 每个 wparse 实例独立的全局字段，会盖到所有解析成功（含 `Partial`）的 record 上，包括 `copy_event_parse` 旁路 record
+- **来源**: 实例自己的环境变量 `WP_GLOBAL_TAGS`，或实例 work root 下的 `.env`
+- **格式**:
+  - `WP_GLOBAL_TAGS="owner_id=team-a,env=prod"`
+  - 值中包含 `,` 或 `=` 时使用 JSON：`WP_GLOBAL_TAGS='{"owner_id":"team-a","note":"a,b=c"}'`
+- **覆盖语义**: 规则已产生同名字段时，全局 tag 会覆盖它（最终只保留一个字段）
+
+`.env` 查找顺序：`<work_root>/.env` → `<work_root>/.warp_parse/.env`。已存在的进程环境变量优先，`.env` 不会覆盖它们。
+
 ## 配置控制
 
 上述机制字段由引擎配置（`wparse.toml`）控制：

@@ -1,3 +1,4 @@
+use crate::core::parser::global_tags::GlobalTags;
 use crate::core::parser::{ParseOption, WplPipeline};
 use crate::orchestrator::config::build_sinks::dat_channel_max;
 use crate::orchestrator::engine::resource::EngineResource;
@@ -26,6 +27,7 @@ pub async fn start_parser_tasks_frames(
     mon_send: MonSend,
     stat_reqs: &StatRequires,
     drain_bus: &ReloadDrainBus,
+    global_tags: Arc<GlobalTags>,
 ) -> RunResult<(Vec<ParseWorkerSender>, TaskGroup)> {
     let mut parser_group = TaskGroup::new("wpl-parse", ShutdownCmd::Timeout(200));
     let (infra, resc, sinks) = match (&resource.infra, &resource.resc, &resource.sinks) {
@@ -68,7 +70,8 @@ pub async fn start_parser_tasks_frames(
             drain_bus.reporter(TaskRole::Parser, format!("wparse-parse-{idx}")),
         );
         let reqs = stat_reqs.get_requ_items(StatStage::Parse);
-        let setting = ParseOption::new(true, args.gen_event_md5, reqs);
+        let setting =
+            ParseOption::new(true, args.gen_event_md5, reqs).with_global_tags(global_tags.clone());
         parser_group.append(tokio::spawn(async move {
             if let Err(e) = worker.proc(setting).await {
                 error_ctrl!("parse routine error: {}", e);

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use wp_connector_api::SourceEvent;
 use wp_model_core::model::DataRecord;
 use wp_model_core::model::data::Field;
-use wpl::{WparseError, WparseReason, WparseResult};
+use wpl::{SideRecords, WparseError, WparseReason, WparseResult};
 
 /// 数据包解析器
 #[derive(Clone, getset::Getters)]
@@ -45,21 +45,13 @@ impl MultiParser {
             // 调用 WPL 处理
             match wpl_line.proc(event, max_depth) {
                 Ok((mut tdo_crate, un_parsed, side_records)) => {
-                    stamp_event_meta(&mut tdo_crate, event, setting);
-                    // 旁路 record 也盖事件 meta，并按 ProcessResult 需要 String 化 key
-                    let side_records: Vec<(String, DataRecord)> = side_records
-                        .into_iter()
-                        .map(|(k, mut r)| {
-                            stamp_event_meta(&mut r, event, setting);
-                            (k.to_string(), r)
-                        })
-                        .collect();
                     wpl_line.hit_cnt += 1;
-
                     let wpl_key = wpl_line.wpl_key().to_string();
 
                     // 根据是否有残留数据返回不同的结果
                     if un_parsed.is_empty() {
+                        let side_records =
+                            stamp_record_and_sides(&mut tdo_crate, side_records, event, setting);
                         let record = Arc::new(tdo_crate);
                         info_edata!(event.event_id, "wpl parse suc! wpl:{} ", wpl_key,);
                         return ProcessResult::Success {
@@ -70,6 +62,7 @@ impl MultiParser {
                     } else {
                         let parsed_len = event.payload.len() - un_parsed.len();
                         if un_parsed.len() * 5 > event.payload.len() {
+                            // 解析不足、整条丢弃：不盖戳，避免无谓的 meta/MD5 计算
                             info_edata!(event.event_id, "wpl parse not complete: {}", wpl_key,);
                             if parsed_len > max_depth {
                                 max_depth = parsed_len;
@@ -77,6 +70,12 @@ impl MultiParser {
                                 best_error = Some(WparseReason::data_error().to_err());
                             }
                         } else {
+                            let side_records = stamp_record_and_sides(
+                                &mut tdo_crate,
+                                side_records,
+                                event,
+                                setting,
+                            );
                             let record = Arc::new(tdo_crate);
                             return ProcessResult::Partial {
                                 wpl_key,
@@ -155,7 +154,27 @@ impl MultiParser {
     }
 }
 
-/// 给 record 盖事件级 meta：wp_event_id / wp_src_key / wp_src_ip / wp_event_md5。
+/// 对最终要输出的主 record 与旁路 record 统一盖戳。
+///
+/// 解析不足、会被丢弃的中间结果不调用此函数。
+fn stamp_record_and_sides(
+    record: &mut DataRecord,
+    side_records: SideRecords,
+    event: &SourceEvent,
+    setting: &ParseOption,
+) -> Vec<(String, DataRecord)> {
+    stamp_event_meta(record, event, setting);
+    side_records
+        .into_iter()
+        .map(|(key, mut side)| {
+            stamp_event_meta(&mut side, event, setting);
+            (key.to_string(), side)
+        })
+        .collect()
+}
+
+/// 给 record 盖事件级 meta：wp_event_id / wp_src_key / wp_src_ip / wp_event_md5，
+/// 以及进程级全局 tag（`WP_GLOBAL_TAGS`）。
 /// 由 gen_msg_id 总开关 + gen_event_md5 子开关控制；主 record 与旁路 record 都走此路径。
 fn stamp_event_meta(record: &mut DataRecord, event: &SourceEvent, setting: &ParseOption) {
     if *setting.gen_msg_id() {
@@ -169,12 +188,17 @@ fn stamp_event_meta(record: &mut DataRecord, event: &SourceEvent, setting: &Pars
             record.append(Field::from_chars("wp_event_md5", digest));
         }
     }
+    // 全局 tag 独立于 gen_msg_id：只要实例配置了 WP_GLOBAL_TAGS 就盖戳。
+    if let Some(global_tags) = setting.global_tags() {
+        crate::core::parser::global_tags::apply_global_tags(record, global_tags);
+    }
 }
 
 #[cfg(test)]
 mod tests {
 
     use super::*;
+    use crate::core::parser::global_tags::GlobalTags;
     use crate::sinks::SinkGroupAgent;
     use wpl::WplEvaluator;
 
@@ -386,6 +410,121 @@ mod tests {
         let mut parser = MultiParser::new(Vec::new());
         parser.optimized(0);
         assert!(order(&parser).is_empty());
+    }
+
+    #[test]
+    fn global_tags_stamped_on_success() {
+        let pipelines = vec![pipeline_with(0, "rule a { (chars\\0) }", false)];
+        let mut parser = MultiParser::new(pipelines);
+        let tags = std::sync::Arc::new(GlobalTags::from_pairs(vec![(
+            "owner_id".into(),
+            "team-a".into(),
+        )]));
+        let setting = ParseOption::new(false, false, Vec::new()).with_global_tags(tags);
+
+        match parser.parse_event(&event("abc"), &setting) {
+            ProcessResult::Success { record, .. } => {
+                assert_eq!(
+                    record.field("owner_id").unwrap().get_value().as_str(),
+                    Some("team-a")
+                );
+            }
+            other => panic!("expected success, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn global_tags_override_rule_field() {
+        let pipelines = vec![pipeline_with(0, "rule a { (chars:owner_id) }", false)];
+        let mut parser = MultiParser::new(pipelines);
+        let tags = std::sync::Arc::new(GlobalTags::from_pairs(vec![(
+            "owner_id".into(),
+            "team-a".into(),
+        )]));
+        let setting = ParseOption::new(false, false, Vec::new()).with_global_tags(tags);
+
+        match parser.parse_event(&event("from-rule"), &setting) {
+            ProcessResult::Success { record, .. } => {
+                assert_eq!(
+                    record.field("owner_id").unwrap().get_value().as_str(),
+                    Some("team-a")
+                );
+                assert_eq!(
+                    record
+                        .items
+                        .iter()
+                        .filter(|f| f.get_name() == "owner_id")
+                        .count(),
+                    1
+                );
+            }
+            other => panic!("expected success, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn global_tags_absent_when_tags_are_empty() {
+        let pipelines = vec![pipeline_with(0, "rule a { (chars\\0) }", false)];
+        let mut parser = MultiParser::new(pipelines);
+        let setting = ParseOption::new(false, false, Vec::new())
+            .with_global_tags(std::sync::Arc::new(GlobalTags::default()));
+
+        match parser.parse_event(&event("abc"), &setting) {
+            ProcessResult::Success { record, .. } => {
+                assert!(record.field("owner_id").is_none());
+            }
+            other => panic!("expected success, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn global_tags_coexist_with_event_meta() {
+        let pipelines = vec![pipeline_with(0, "rule a { (chars\\0) }", false)];
+        let mut parser = MultiParser::new(pipelines);
+        let tags = std::sync::Arc::new(GlobalTags::from_pairs(vec![(
+            "owner_id".into(),
+            "team-a".into(),
+        )]));
+        let setting = ParseOption::new(true, true, Vec::new()).with_global_tags(tags);
+
+        match parser.parse_event(&event("abc"), &setting) {
+            ProcessResult::Success { record, .. } => {
+                assert!(record.field("wp_event_id").is_some());
+                assert!(record.field("wp_src_key").is_some());
+                assert!(record.field("wp_event_md5").is_some());
+                assert_eq!(
+                    record.field("owner_id").unwrap().get_value().as_str(),
+                    Some("team-a")
+                );
+            }
+            other => panic!("expected success, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn global_tags_stamped_on_partial() {
+        // 解析 `{...}` 后只剩 `!`，residue 远小于 20%，走 Partial 分支
+        let payload = "{aaaaaaaaaaaaaaaaaaaa}!";
+        let pipelines = vec![pipeline_with(0, "rule partial { (chars:a<{,}>) }", false)];
+        let mut parser = MultiParser::new(pipelines);
+        let tags = std::sync::Arc::new(GlobalTags::from_pairs(vec![(
+            "owner_id".into(),
+            "team-a".into(),
+        )]));
+        let setting = ParseOption::new(false, false, Vec::new()).with_global_tags(tags);
+
+        match parser.parse_event(&event(payload), &setting) {
+            ProcessResult::Partial {
+                record, residue, ..
+            } => {
+                assert_eq!(residue, "!");
+                assert_eq!(
+                    record.field("owner_id").unwrap().get_value().as_str(),
+                    Some("team-a")
+                );
+            }
+            other => panic!("expected partial, got {:?}", other),
+        }
     }
 }
 

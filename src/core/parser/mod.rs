@@ -1,3 +1,4 @@
+pub(crate) mod global_tags;
 pub(crate) mod indexing;
 pub(crate) mod setting;
 //pub(crate) mod plg_pipes;
