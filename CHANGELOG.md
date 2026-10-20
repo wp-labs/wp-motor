@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **依赖 `wp-lang` 0.8.1**：`#[late]` 依赖 `wp-lang` 新增的 `AnnFun.late` 字段。`Cargo.toml` 的 `wp-lang = "0.8"` 语义上已兼容，发布 `wp-lang 0.8.1` 后需执行 `cargo update -p wp-lang` 让锁文件切到 0.8.1，否则仍会解析到 0.8.0 并在编译期报缺少 `late` 字段。
+
+### Added
+- **`#[late]` 分层排序**：`#[late]` 规则仍参与 `parse_event` 自动匹配，但固定排在普通规则之后。命中率排序改为分层比较键 `(late, hit_cnt desc, index asc)`——`late` 层内部仍按命中次数降序，但不能跨层提升。
+  - 装配期（`MultiParser::new`）先做一次固定分层，避免首个 `OPTIMIZE_TIMES` 窗口前被文件声明顺序影响。
+  - 新增 `WplPipeline.late` 与 `WplPipeline::match_order_key()`；移除未使用且语义不一致的 `Ord` / `PartialOrd` / `Eq` 实现。
+  - 典型用法：兜底规则（如 `(chars\0)`）标 `#[late]`，避免因命中面广、命中次数高而被提升到具体规则之前抢占事件。
+  - 与 `#[no_match]` 同时声明时，`no_match` 优先（规则完全不自动匹配）。
+
 ## [1.30.0] - 2026-10-17
 
 ### Added

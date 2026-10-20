@@ -50,7 +50,7 @@ raw data ──▶ WPL parse ──▶ OML enrich / SQL enrich ──▶ output 
 
 | Area | What you get |
 |------|--------------|
-| WPL parsing | `package/rule` grammar, typed fields (`ip`, `time`, `chars`, `digit`, …), separators, `@field` references, `copy_event_parse`, `#[no_match]` |
+| WPL parsing | `package/rule` grammar, typed fields (`ip`, `time`, `chars`, `digit`, …), separators, `@field` references, `copy_event_parse`, `#[no_match]`, `#[late]` |
 | OML transformation | `read`/`take`, `calc(...)`, pipe functions (`nth`, `map_to`, `on_fail`, time/IP/base64/URL …), nested `object {}` / `array {}`, conditions, static dictionaries, `access_direct`/`intranet_ip` network enrichment |
 | SQL enrichment | `select` with `where`/`order by`/`limit`, multi-provider routing via `from <provider>.<schema>.<table>`, result caching |
 | Runtime | async multi-worker pipeline, adaptive batching, back-pressure, rescue/residue outputs, graceful shutdown |
@@ -178,7 +178,7 @@ WP-Motor 是 [Warp Parse](https://github.com/wp-labs/warp-parse) 的引擎内核
 ## 核心能力
 
 - **WPL 解析**：`package/rule` 文法、类型化字段（`ip`/`time`/`chars`/`digit`…）、分隔符、`@field` 引用、
-  `copy_event_parse`、`#[no_match]`；
+  `copy_event_parse`、`#[no_match]`、`#[late]`；
 - **OML 转换**：`read`/`take`、`calc(...)`、管道函数（时间/IP/base64/URL/`map_to`/`on_fail`…）、嵌套
   `object {}`/`array {}`、条件/映射、静态字典、`access_direct`/`intranet_ip`/`intranet_replace` 网络富化；
 - **SQL 富化**：`select` + `where/order by/limit`、`from <provider>.<schema>.<table>` 多库路由、查询结果

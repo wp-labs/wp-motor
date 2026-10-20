@@ -21,10 +21,6 @@ pub struct WplEngine {
 
 impl WplEngine {
     pub(crate) fn from(pipe_lines: Vec<WplPipeline>, infra: InfraSinkAgent) -> RunResult<Self> {
-        // 规则命中排序
-        //let mut pipelines = pipe_lines;
-        //pipelines.sort_by(|a, b| b.hit_cnt.cmp(&a.hit_cnt));
-
         Ok(Self {
             pipelines: MultiParser::new(pipe_lines),
             infra_agent: infra,

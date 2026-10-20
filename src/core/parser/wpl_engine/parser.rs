@@ -19,7 +19,11 @@ pub struct MultiParser {
 }
 
 impl MultiParser {
-    pub fn new(pipelines: Vec<WplPipeline>) -> Self {
+    /// 装配期固定分层：普通规则在前、`#[late]` 规则在后，层内保持声明序。
+    pub fn new(mut pipelines: Vec<WplPipeline>) -> Self {
+        // 装配期只做固定分层：`#[late]` 规则排在最后，层内保持声明序。
+        // 否则首个优化窗口（OPTIMIZE_TIMES 条事件）之前，顺序仍由文件声明顺序决定。
+        pipelines.sort_by_key(WplPipeline::initial_order_key);
         Self { pipelines }
     }
 
@@ -120,16 +124,16 @@ impl MultiParser {
         self.pipelines.iter_mut().for_each(|i| i.stop());
     }
 
+    /// 按命中次数重排自动匹配顺序。
+    ///
+    /// 排序键为 `(late, hit_cnt desc, index asc)`：普通规则永远在 `#[late]` 规则之前，
+    /// 命中次数只在同一层内生效。排序后清空本窗口的命中计数。
     pub fn optimized(&mut self, _count: usize) {
         if self.pipelines.is_empty() {
             return;
         }
 
-        self.pipelines.sort_by(|a, b| {
-            b.hit_cnt
-                .cmp(&a.hit_cnt)
-                .then_with(|| a.index().cmp(b.index()))
-        });
+        self.pipelines.sort_by_key(WplPipeline::match_order_key);
 
         // 下一窗口重新记录命中情况
         for pipeline in &mut self.pipelines {
@@ -191,6 +195,38 @@ mod tests {
         pipeline
     }
 
+    fn pipeline_with(idx: usize, code: &str, late: bool) -> WplPipeline {
+        let mut pipeline = WplPipeline::new(
+            idx,
+            format!("rule-{}", idx),
+            "pkg".to_string(),
+            format!("rule-{}", idx),
+            Vec::new(),
+            WplEvaluator::from_code(code).expect("build wpl"),
+            vec![SinkGroupAgent::null()],
+            Vec::new(),
+        );
+        pipeline.late = late;
+        pipeline
+    }
+
+    fn order(parser: &MultiParser) -> Vec<String> {
+        parser
+            .pipelines
+            .iter()
+            .map(|p| p.wpl_key().to_string())
+            .collect()
+    }
+
+    fn event(payload: &str) -> SourceEvent {
+        SourceEvent::new(
+            1,
+            "test-src",
+            wp_model_core::raw::RawData::String(payload.to_string()),
+            std::sync::Arc::new(wp_connector_api::Tags::new()),
+        )
+    }
+
     #[test]
     fn optimized_reorders_by_hit_count() {
         let pipelines = vec![
@@ -202,13 +238,154 @@ mod tests {
         let mut parser = MultiParser::new(pipelines);
         parser.optimized(0);
 
-        let order: Vec<_> = parser
-            .pipelines
-            .iter()
-            .map(|p| p.wpl_key().to_string())
-            .collect();
-        assert_eq!(order, vec!["rule-1", "rule-2", "rule-0"]);
+        assert_eq!(order(&parser), vec!["rule-1", "rule-2", "rule-0"]);
         assert!(parser.pipelines.iter().all(|p| p.hit_cnt == 0));
+    }
+
+    #[test]
+    fn late_rule_sorted_last_at_construction() {
+        let pipelines = vec![
+            pipeline_with(0, "rule a { (chars) }", true),
+            pipeline_with(1, "rule b { (chars) }", false),
+            pipeline_with(2, "rule c { (chars) }", false),
+        ];
+
+        // 装配期就完成分层，不依赖首个优化窗口
+        let parser = MultiParser::new(pipelines);
+        assert_eq!(order(&parser), vec!["rule-1", "rule-2", "rule-0"]);
+    }
+
+    #[test]
+    fn optimized_never_promotes_late_rule_above_normal() {
+        let mut late = pipeline_with(0, "rule late { (chars) }", true);
+        late.hit_cnt = 10_000;
+        let pipelines = vec![
+            late,
+            pipeline_with(1, "rule a { (chars) }", false),
+            pipeline_with(2, "rule b { (chars) }", false),
+        ];
+
+        let mut parser = MultiParser::new(pipelines);
+        parser.optimized(0);
+
+        // 命中次数再高也不能跨层提升
+        assert_eq!(order(&parser), vec!["rule-1", "rule-2", "rule-0"]);
+    }
+
+    #[test]
+    fn late_rules_sorted_by_hit_count_within_tier() {
+        let mut a = pipeline_with(0, "rule a { (chars) }", true);
+        a.hit_cnt = 1;
+        let mut b = pipeline_with(1, "rule b { (chars) }", true);
+        b.hit_cnt = 5;
+        let pipelines = vec![a, b, pipeline_with(2, "rule c { (chars) }", false)];
+
+        let mut parser = MultiParser::new(pipelines);
+        parser.optimized(0);
+
+        // 普通规则在前；late 层内仍按命中次数降序
+        assert_eq!(order(&parser), vec!["rule-2", "rule-1", "rule-0"]);
+    }
+
+    #[test]
+    fn late_rule_matches_when_normal_rules_miss() {
+        let pipelines = vec![
+            pipeline_with(0, "rule strict { (digit) }", false),
+            pipeline_with(1, "rule catch_all { (chars\\0) }", true),
+        ];
+        let mut parser = MultiParser::new(pipelines);
+        let setting = ParseOption::new(false, false, Vec::new());
+
+        match parser.parse_event(&event("abc"), &setting) {
+            ProcessResult::Success { wpl_key, .. } => assert_eq!(wpl_key, "rule-1"),
+            other => panic!("expected deferred rule to match, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn no_match_takes_precedence_over_late() {
+        // #[no_match] 优先：即使命中能力最强也不会参与自动匹配
+        let mut catch_all = pipeline_with(1, "rule catch_all { (chars\\0) }", true);
+        catch_all.auto_match = false;
+        let pipelines = vec![
+            pipeline_with(0, "rule strict { (digit) }", false),
+            catch_all,
+        ];
+        let mut parser = MultiParser::new(pipelines);
+        let setting = ParseOption::new(false, false, Vec::new());
+
+        match parser.parse_event(&event("abc"), &setting) {
+            ProcessResult::Miss(_) => {}
+            other => panic!("no_match rule must be skipped, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn normal_rule_wins_over_late_when_both_match() {
+        // late 规则声明在前，但装配期分层后必须让普通规则先尝试
+        let pipelines = vec![
+            pipeline_with(0, "rule catch_all { (chars\\0) }", true),
+            pipeline_with(1, "rule normal { (chars\\0) }", false),
+        ];
+        let mut parser = MultiParser::new(pipelines);
+        assert_eq!(order(&parser), vec!["rule-1", "rule-0"]);
+
+        let setting = ParseOption::new(false, false, Vec::new());
+        match parser.parse_event(&event("abc"), &setting) {
+            ProcessResult::Success { wpl_key, .. } => assert_eq!(wpl_key, "rule-1"),
+            other => panic!("normal rule should win, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn construction_ignores_hit_counts() {
+        // 装配期只做分层 + 声明序，hit_cnt 不应参与（此时还没有命中数据）
+        let mut a = pipeline_with(0, "rule a { (chars) }", false);
+        a.hit_cnt = 1;
+        let mut b = pipeline_with(1, "rule b { (chars) }", false);
+        b.hit_cnt = 5;
+
+        let parser = MultiParser::new(vec![a, b]);
+        assert_eq!(order(&parser), vec!["rule-0", "rule-1"]);
+    }
+
+    #[test]
+    fn late_rules_with_equal_hits_keep_declaration_order() {
+        let pipelines = vec![
+            pipeline_with(0, "rule a { (chars) }", true),
+            pipeline_with(1, "rule b { (chars) }", true),
+        ];
+        let mut parser = MultiParser::new(pipelines);
+        parser.optimized(0);
+
+        assert_eq!(order(&parser), vec!["rule-0", "rule-1"]);
+    }
+
+    #[test]
+    fn optimized_is_idempotent_for_late_tier() {
+        let mut late = pipeline_with(0, "rule late { (chars) }", true);
+        late.hit_cnt = 3;
+        let pipelines = vec![
+            late,
+            pipeline_with(1, "rule a { (chars) }", false),
+            pipeline_with(2, "rule b { (chars) }", false),
+        ];
+        let mut parser = MultiParser::new(pipelines);
+
+        parser.optimized(0);
+        let first = order(&parser);
+        parser.optimized(0);
+        let second = order(&parser);
+
+        assert_eq!(first, second);
+        assert_eq!(first, vec!["rule-1", "rule-2", "rule-0"]);
+    }
+
+    #[test]
+    fn optimized_on_empty_parser_is_noop() {
+        let mut parser = MultiParser::new(Vec::new());
+        parser.optimized(0);
+        assert!(order(&parser).is_empty());
     }
 }
 

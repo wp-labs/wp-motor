@@ -51,6 +51,31 @@ fn is_no_match(rule: &WplRule) -> bool {
         .unwrap_or(false)
 }
 
+/// 判断 rule 是否显式声明为延迟匹配（`#[late]`）。
+///
+/// `#[late]` rule 仍参与 `parse_event` 自动匹配，但在装配与命中次数排序时
+/// 固定排在普通 rule 之后，避免兜底规则因命中次数高而被提升到具体规则之前抢占事件。
+fn is_late(rule: &WplRule) -> bool {
+    rule.statement
+        .tags()
+        .as_ref()
+        .map(|t| t.late)
+        .unwrap_or(false)
+}
+
+/// 将 rule 级元数据注解（`no_match` / `late`）同步到 pipeline。
+///
+/// `no_match` 优先：置 `auto_match=false` 后，`parse_event` 会直接跳过该 rule，
+/// 此时 `late` 仅保留为元数据，不影响实际匹配。
+fn apply_rule_flags(rule: &WplRule, ppu: &mut WplPipeline) {
+    if is_no_match(rule) {
+        ppu.auto_match = false;
+    }
+    if is_late(rule) {
+        ppu.late = true;
+    }
+}
+
 pub fn multi_code_ins_parse_units(
     alloc: &impl ParserResAlloc,
     lang_pkg: &WplPackage,
@@ -77,11 +102,9 @@ pub fn multi_code_ins_parse_units(
             agent,
             stat_reqs.clone(),
         );
-        // #[no_match]：不参与 parse_event 自动匹配，但仍建 pipeline 以提供 sink 路由
-        // （copy_event_parse 旁路 record 经其 wpl_key 路由到对应 sink）
-        if is_no_match(rule) {
-            ppu.auto_match = false;
-        }
+        // #[no_match] 不参与自动匹配；#[late] 排在普通规则之后。
+        // 两条装配路径共用同一套 flag 映射，避免语义分叉。
+        apply_rule_flags(rule, &mut ppu);
         items.push(ppu);
     }
     Ok(items)
@@ -113,9 +136,7 @@ pub fn code_ins_parse_units(
             agent,
             Vec::new(),
         );
-        if is_no_match(rule) {
-            ppu.auto_match = false;
-        }
+        apply_rule_flags(rule, &mut ppu);
         items.push(ppu);
     }
     Ok(items)
@@ -317,6 +338,89 @@ package demo {{
         // key 为 pkg/rule 全路径
         assert!(map.contains_key("demo/main"));
         assert!(map.contains_key("demo/raw_event"));
+    }
+
+    fn pkg_with_late() -> WplPackage {
+        let code = r#"
+package demo {
+  #[late] rule catch_all { (chars\0) }
+  rule main { (json(chars@data)) }
+}"#;
+        wpl_package.parse(code).expect("parse package")
+    }
+
+    #[test]
+    fn package_level_late_propagates_to_all_rules() {
+        let code = r#"
+#[late]
+package demo {
+  rule a { (chars) }
+  rule b { (chars) }
+}"#;
+        let pkg = wpl_package.parse(code).expect("parse package");
+        let mut idx = ResourceIndexer::default();
+        let parser_map = build_global_parser_map(std::slice::from_ref(&pkg)).expect("global map");
+        let pipelines =
+            multi_code_ins_parse_units(&NullAlloc, &pkg, &mut idx, Vec::new(), &parser_map)
+                .expect("build pipelines");
+        assert_eq!(pipelines.len(), 2);
+        assert!(pipelines.iter().all(|p| p.late && p.auto_match));
+    }
+
+    #[test]
+    fn late_rule_marked_but_still_auto_match() {
+        // #[late] rule 仍参与自动匹配，但被标记为分层排序的延迟层
+        let pkg = pkg_with_late();
+        let mut idx = ResourceIndexer::default();
+        let parser_map = build_global_parser_map(std::slice::from_ref(&pkg)).expect("global map");
+        let pipelines =
+            multi_code_ins_parse_units(&NullAlloc, &pkg, &mut idx, Vec::new(), &parser_map)
+                .expect("build pipelines");
+        let by_name: std::collections::HashMap<&str, &WplPipeline> = pipelines
+            .iter()
+            .map(|p| (p.rule_name().as_str(), p))
+            .collect();
+        assert!(!by_name["main"].late);
+        assert!(by_name["catch_all"].late, "catch_all is #[late]");
+        assert!(
+            by_name["catch_all"].auto_match,
+            "late rule still participates in auto-match"
+        );
+    }
+
+    #[test]
+    fn code_ins_parse_units_marks_late() {
+        // 第二条装配路径（WplEngine::from_code）也必须应用同一套 flag
+        let pkg = pkg_with_late();
+        let mut idx = ResourceIndexer::default();
+        let parser_map = build_global_parser_map(std::slice::from_ref(&pkg)).expect("global map");
+        let pipelines =
+            code_ins_parse_units(NullAlloc, &pkg, &mut idx, &parser_map).expect("build pipelines");
+        let by_name: std::collections::HashMap<&str, &WplPipeline> = pipelines
+            .iter()
+            .map(|p| (p.rule_name().as_str(), p))
+            .collect();
+        assert!(!by_name["main"].late);
+        assert!(by_name["catch_all"].late);
+        assert!(by_name["catch_all"].auto_match);
+    }
+
+    #[test]
+    fn no_match_and_late_apply_together() {
+        let code = r#"
+package demo {
+  #[no_match, late]
+  rule tool { (chars\0) }
+}"#;
+        let pkg = wpl_package.parse(code).expect("parse package");
+        let mut idx = ResourceIndexer::default();
+        let parser_map = build_global_parser_map(std::slice::from_ref(&pkg)).expect("global map");
+        let pipelines =
+            multi_code_ins_parse_units(&NullAlloc, &pkg, &mut idx, Vec::new(), &parser_map)
+                .expect("build pipelines");
+        let p = &pipelines[0];
+        assert!(!p.auto_match, "no_match must win over late");
+        assert!(p.late, "late metadata is still retained");
     }
 
     #[test]

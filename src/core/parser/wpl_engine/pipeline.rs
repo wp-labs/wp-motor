@@ -6,7 +6,6 @@ use crate::sinks::SinkGroupAgent;
 use crate::stat::MonSend;
 use crate::stat::metric_collect::MetricCollectors;
 use orion_error::UnifiedReason;
-use std::cmp::Ordering as CmpOrdering;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use wp_model_core::model::{DataField, DataRecord};
@@ -15,8 +14,8 @@ use wp_stat::StatRecorder;
 use wp_stat::StatReq;
 use wpl::WparseReason;
 use wpl::WparseResult;
+use wpl::WplEvaluator;
 use wpl::{AnnotationFunc, AnnotationType, SideRecords, WparseError};
-use wpl::{OPTIMIZE_TIMES, WplEvaluator};
 
 #[derive(Getters, Clone)]
 pub struct WplPipeline {
@@ -39,6 +38,9 @@ pub struct WplPipeline {
     /// `#[no_match]` rule 置 false：不自动匹配事件，但仍建 pipeline 以提供 sink 路由
     /// （供 copy_event_parse 旁路 record 经其 wpl_key 路由到对应 sink）。
     pub auto_match: bool,
+    /// `#[late]` rule 置 true：仍参与自动匹配，但固定排在普通规则之后。
+    /// 命中次数排序只在层内生效，不会把 late rule 提升到普通规则之前。
+    pub late: bool,
 }
 
 impl WplPipeline {
@@ -78,7 +80,26 @@ impl WplPipeline {
             stat_need_pkg_rule,
             stat_ext,
             auto_match: true,
+            late: false,
         }
+    }
+
+    /// 自动匹配排序键：先分层（普通 0 / late 1），层内命中次数降序，再按声明序。
+    ///
+    /// `#[late]` 规则永远排在普通规则之后，命中率排序不能跨层提升它们。
+    pub fn match_order_key(&self) -> (u8, std::cmp::Reverse<usize>, usize) {
+        (
+            u8::from(self.late),
+            std::cmp::Reverse(self.hit_cnt),
+            self.index,
+        )
+    }
+
+    /// 装配期排序键：只做固定分层，层内保持声明序。
+    ///
+    /// 装配阶段还没有命中数据，`hit_cnt` 不参与排序；命中率排序只在 `optimized()` 中发生。
+    pub fn initial_order_key(&self) -> (u8, usize) {
+        (u8::from(self.late), self.index)
     }
 
     pub fn short_name(&self) -> &str {
@@ -180,28 +201,6 @@ impl WplPipeline {
 }
 
 //#[derive(Clone)]
-
-impl Eq for WplPipeline {}
-
-impl PartialEq<Self> for WplPipeline {
-    fn eq(&self, _other: &Self) -> bool {
-        todo!()
-    }
-}
-
-impl PartialOrd<Self> for WplPipeline {
-    fn partial_cmp(&self, other: &Self) -> Option<CmpOrdering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for WplPipeline {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        let self_hit = OPTIMIZE_TIMES - self.hit_cnt;
-        let other_hit = OPTIMIZE_TIMES - other.hit_cnt;
-        self_hit.cmp(&other_hit)
-    }
-}
 
 fn to_wp_source_types_event(data: &SourceEvent) -> wp_source_types::SourceEvent {
     let mut tags = wp_source_types::Tags::new();
