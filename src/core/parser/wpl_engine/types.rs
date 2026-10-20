@@ -14,7 +14,10 @@ pub struct ParseFailInfo {
     pub best_wpl: String,
     /// 解析失败的具体错误
     pub best_error: WparseError,
-    /// 解析深度（字符位置）
+    /// 解析深度：归因规则在**自己那次解析的输入**中已消费的字节数。
+    ///
+    /// 注意不是原始 payload 的偏移：规则若带 preorder pipe（如 `|decode/base64|`），
+    /// 这里的刻度是 pipe 处理后的输入。跨规则比较请看 `wpl::ParseProgress`。
     pub depth: usize,
     /// 发生时间
     pub timestamp: DateTime<Utc>,

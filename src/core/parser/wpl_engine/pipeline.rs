@@ -15,14 +15,13 @@ use wp_stat::StatReq;
 use wpl::WparseReason;
 use wpl::WparseResult;
 use wpl::WplEvaluator;
-use wpl::{AnnotationFunc, AnnotationType, SideRecords, WparseError};
+use wpl::{AnnotationFunc, AnnotationType, ParseProgress, SideRecords, WparseError};
 
 #[derive(Getters, Clone)]
 pub struct WplPipeline {
     parser: WplEvaluator,
     fun_vec: Vec<AnnotationType>,
     pub hit_cnt: usize,
-    pub access_cnt: usize,
     pub index: usize,
     output: Vec<SinkGroupAgent>,
     send_rr: Arc<AtomicUsize>,
@@ -73,7 +72,6 @@ impl WplPipeline {
             output,
             send_rr: Arc::new(AtomicUsize::new(0)),
             hit_cnt: 0,
-            access_cnt: 0,
             s_name,
             package_name,
             rule_name,
@@ -114,65 +112,81 @@ impl WplPipeline {
         let idx = self.next_output_index();
         self.output[idx].end_point()
     }
+    /// 尝试用本规则解析事件。
+    ///
+    /// 返回 `(解析结果, 解析进度)`。进度里的已消费字节数在失败时表示失败前的深度，
+    /// 配合总长度可以跨规则比较「谁走得最远」（不同规则的 preorder pipe 会改变输入长度）。
     pub fn proc(
         &mut self,
         data: &SourceEvent,
-        oth_suc_len: usize,
-    ) -> Result<(DataRecord, RawData, SideRecords), WparseError> {
-        self.access_cnt += 1;
-        match self
+    ) -> (
+        Result<(DataRecord, RawData, SideRecords), WparseError>,
+        ParseProgress,
+    ) {
+        // 传 0，不让本规则被其他规则的绝对深度提前降级成 NotMatch：
+        // 归因交给 `MultiParser` 按比例统一决定。
+        let (parsed, progress) = self
             .parser
-            .proc(data.event_id, data.payload.clone(), oth_suc_len)
-        {
-            Ok((mut record, left)) => {
-                if self.stat_need_pkg_rule {
-                    // begin 阶段使用稳定维度，避免因 record 尚未填充导致分组漂移。
-                    let stat_begin = DataRecord::from(vec![
-                        DataField::from_chars("wp_package_name", self.package_name.as_str()),
-                        DataField::from_chars("wp_rule_name", self.rule_name.as_str()),
-                    ]);
-                    self.stat_ext
-                        .record_begin(self.wpl_key.as_str(), Some(&stat_begin));
-                } else {
-                    self.stat_ext.record_begin(self.wpl_key.as_str(), None);
-                }
-                let compat_event = if self.fun_vec.is_empty() {
-                    None
-                } else {
-                    Some(to_wp_source_types_event(data))
-                };
-                let mut side_records: SideRecords = Vec::new();
-                for func in self.fun_vec.iter() {
-                    let compat_event = compat_event
-                        .as_ref()
-                        .expect("compat source event should exist for annotations");
-                    side_records.extend(func.proc(compat_event, &mut record)?);
-                }
-                if self.stat_need_pkg_rule {
-                    // end 阶段优先保留 record 中已有字段；缺失时再回填默认值。
-                    let mut stat_end = record.clone();
-                    if stat_end.field("wp_package_name").is_none() {
-                        stat_end.append(DataField::from_chars(
-                            "wp_package_name",
-                            self.package_name.as_str(),
-                        ));
-                    }
-                    if stat_end.field("wp_rule_name").is_none() {
-                        stat_end.append(DataField::from_chars(
-                            "wp_rule_name",
-                            self.rule_name.as_str(),
-                        ));
-                    }
-                    self.stat_ext
-                        .record_end(self.wpl_key.as_str(), Some(&stat_end));
-                } else {
-                    self.stat_ext
-                        .record_end(self.wpl_key.as_str(), Some(&record));
-                }
-                Ok((record, RawData::from_string(left), side_records))
-            }
+            .proc_ref_progress(data.event_id, &data.payload, 0);
+        let result = match parsed {
+            Ok((record, left)) => self.finish_success(record, left, data),
             Err(e) => Err(e),
+        };
+        (result, progress)
+    }
+
+    /// 补齐 stat / 注解旁路记录，把成功解析的结果装箱。
+    fn finish_success(
+        &mut self,
+        mut record: DataRecord,
+        left: String,
+        data: &SourceEvent,
+    ) -> Result<(DataRecord, RawData, SideRecords), WparseError> {
+        if self.stat_need_pkg_rule {
+            // begin 阶段使用稳定维度，避免因 record 尚未填充导致分组漂移。
+            let stat_begin = DataRecord::from(vec![
+                DataField::from_chars("wp_package_name", self.package_name.as_str()),
+                DataField::from_chars("wp_rule_name", self.rule_name.as_str()),
+            ]);
+            self.stat_ext
+                .record_begin(self.wpl_key.as_str(), Some(&stat_begin));
+        } else {
+            self.stat_ext.record_begin(self.wpl_key.as_str(), None);
         }
+        let compat_event = if self.fun_vec.is_empty() {
+            None
+        } else {
+            Some(to_wp_source_types_event(data))
+        };
+        let mut side_records: SideRecords = Vec::new();
+        for func in self.fun_vec.iter() {
+            let compat_event = compat_event
+                .as_ref()
+                .expect("compat source event should exist for annotations");
+            side_records.extend(func.proc(compat_event, &mut record)?);
+        }
+        if self.stat_need_pkg_rule {
+            // end 阶段优先保留 record 中已有字段；缺失时再回填默认值。
+            let mut stat_end = record.clone();
+            if stat_end.field("wp_package_name").is_none() {
+                stat_end.append(DataField::from_chars(
+                    "wp_package_name",
+                    self.package_name.as_str(),
+                ));
+            }
+            if stat_end.field("wp_rule_name").is_none() {
+                stat_end.append(DataField::from_chars(
+                    "wp_rule_name",
+                    self.rule_name.as_str(),
+                ));
+            }
+            self.stat_ext
+                .record_end(self.wpl_key.as_str(), Some(&stat_end));
+        } else {
+            self.stat_ext
+                .record_end(self.wpl_key.as_str(), Some(&record));
+        }
+        Ok((record, RawData::from_string(left), side_records))
     }
     pub async fn send_stat(&mut self, mon_send: &MonSend) -> WparseResult<()> {
         if !self.stat_ext.has_pending_data() {

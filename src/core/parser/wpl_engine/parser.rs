@@ -9,7 +9,7 @@ use std::sync::Arc;
 use wp_connector_api::SourceEvent;
 use wp_model_core::model::DataRecord;
 use wp_model_core::model::data::Field;
-use wpl::{SideRecords, WparseError, WparseReason, WparseResult};
+use wpl::{ParseProgress, SideRecords, WparseError, WparseReason, WparseResult};
 
 /// 数据包解析器
 #[derive(Clone, getset::Getters)]
@@ -29,8 +29,8 @@ impl MultiParser {
 
     /// 处理单个事件
     pub fn parse_event(&mut self, event: &SourceEvent, setting: &ParseOption) -> ProcessResult {
-        let mut max_depth = 0;
         let mut best_idx: Option<usize> = None;
+        let mut best_progress = ParseProgress::default();
         let mut best_error = None;
         let rule_cnt = self.pipelines.len();
 
@@ -42,13 +42,20 @@ impl MultiParser {
             }
             let is_last = idx == rule_cnt - 1;
 
-            // 调用 WPL 处理
-            match wpl_line.proc(event, max_depth) {
+            // 调用 WPL 处理；`progress` 是本次尝试走到了输入的哪个位置。
+            let (parsed, progress) = wpl_line.proc(event);
+
+            // Miss 归因只接受「严格更靠后」的尝试：同进度保留先到的候选。
+            // 规则按命中率排序、`#[late]` 排在最后，如果同进度也覆盖归因，
+            // 一次全部失败的事件就会被归到最末尾那条兜底规则上。
+            let is_candidate = best_idx.is_none() || progress.is_deeper_than(&best_progress);
+
+            // 根据是否有残留数据返回不同的结果
+            match parsed {
                 Ok((mut tdo_crate, un_parsed, side_records)) => {
                     wpl_line.hit_cnt += 1;
                     let wpl_key = wpl_line.wpl_key().to_string();
 
-                    // 根据是否有残留数据返回不同的结果
                     if un_parsed.is_empty() {
                         let side_records =
                             stamp_record_and_sides(&mut tdo_crate, side_records, event, setting);
@@ -59,46 +66,39 @@ impl MultiParser {
                             record,
                             side_records,
                         };
-                    } else {
-                        let parsed_len = event.payload.len() - un_parsed.len();
-                        if un_parsed.len() * 5 > event.payload.len() {
-                            // 解析不足、整条丢弃：不盖戳，避免无谓的 meta/MD5 计算
-                            info_edata!(event.event_id, "wpl parse not complete: {}", wpl_key,);
-                            if parsed_len > max_depth {
-                                max_depth = parsed_len;
-                                best_idx = Some(idx);
-                                best_error = Some(WparseReason::data_error().to_err());
-                            }
-                        } else {
-                            let side_records = stamp_record_and_sides(
-                                &mut tdo_crate,
-                                side_records,
-                                event,
-                                setting,
-                            );
-                            let record = Arc::new(tdo_crate);
-                            return ProcessResult::Partial {
-                                wpl_key,
-                                record,
-                                residue: un_parsed.to_string(),
-                                side_records,
-                            };
+                    } else if un_parsed.len() * 5 > event.payload.len() {
+                        // 解析不足、整条丢弃：不盖戳，避免无谓的 meta/MD5 计算
+                        info_edata!(event.event_id, "wpl parse not complete: {}", wpl_key,);
+                        if is_candidate {
+                            best_progress = progress;
+                            best_idx = Some(idx);
+                            best_error = Some(WparseReason::data_error().to_err());
                         }
+                    } else {
+                        let side_records =
+                            stamp_record_and_sides(&mut tdo_crate, side_records, event, setting);
+                        let record = Arc::new(tdo_crate);
+                        return ProcessResult::Partial {
+                            wpl_key,
+                            record,
+                            residue: un_parsed.to_string(),
+                            side_records,
+                        };
                     }
                 }
                 Err(e) => {
-                    // 记录解析深度最高的错误
+                    // 记录解析进度最靠后的错误
                     if matches!(e.reason(), WparseReason::Uvs(UnifiedReason::DataError)) {
-                        best_idx = Some(idx);
-                        best_error = Some(e);
-                        if max_depth == 0 {
-                            // 当底层解析器未返回显式消费深度时，至少记录"已进入规则尝试"。
-                            max_depth = 1;
+                        if is_candidate {
+                            best_progress = progress;
+                            best_idx = Some(idx);
+                            best_error = Some(e);
                         }
                         debug_edata!(event.event_id, "wpl parse fail: {}", wpl_line.wpl_key());
                     } else if best_error.is_none() {
                         // 如果不是 DataError，作为备选记录第一个错误
                         best_idx = Some(idx);
+                        best_progress = progress;
                         best_error = Some(e);
                         break;
                     }
@@ -110,12 +110,14 @@ impl MultiParser {
             }
         }
 
-        // 所有规则都失败，返回深度最高的失败信息
+        // 所有规则都失败，返回进度最靠后的失败信息
         let best_wpl = best_idx.map_or(String::new(), |i| self.pipelines[i].wpl_key().to_string());
         let best_error = best_error
             .unwrap_or_else(|| WparseError::from(WparseReason::Uvs(UnifiedReason::system_error())));
         ProcessResult::Miss(super::types::ParseFailInfo::new(
-            best_wpl, best_error, max_depth,
+            best_wpl,
+            best_error,
+            best_progress.consumed,
         ))
     }
 
@@ -140,12 +142,6 @@ impl MultiParser {
         }
     }
 
-    /// 更新规则命中计数并排序
-    pub fn hit_count_sort(&mut self) {
-        for x in &mut self.pipelines {
-            x.access_cnt = 0;
-        }
-    }
     pub async fn send_stat(&mut self, mon_send: &MonSend) -> WparseResult<()> {
         for i in self.pipelines.iter_mut() {
             i.send_stat(mon_send).await?;
@@ -525,6 +521,222 @@ mod tests {
             }
             other => panic!("expected partial, got {:?}", other),
         }
+    }
+
+    fn miss_info(
+        parser: &mut MultiParser,
+        payload: &str,
+    ) -> crate::core::parser::wpl_engine::types::ParseFailInfo {
+        let setting = ParseOption::new(false, false, Vec::new());
+        match parser.parse_event(&event(payload), &setting) {
+            ProcessResult::Miss(info) => info,
+            other => panic!("expected miss, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn miss_keeps_first_rule_on_equal_depth() {
+        // 两条规则都只解析到第 2 个字节就失败：`#[late]` 排在最后，不能靠“后到”抢走归因。
+        let pipelines = vec![
+            pipeline_with(0, "rule normal { (digit:a, digit:b) }", false),
+            pipeline_with(1, "rule fallback { (digit:x, digit:y) }", true),
+        ];
+        let mut parser = MultiParser::new(pipelines);
+
+        let info = miss_info(&mut parser, "12ab");
+        assert_eq!(info.best_wpl, "rule-0");
+        assert_eq!(info.depth, 2);
+    }
+
+    #[test]
+    fn miss_prefers_rule_that_parsed_deepest() {
+        // 兜底规则真的走得更远时，仍应成为归因目标：判定依据是深度，不是分层。
+        let pipelines = vec![
+            pipeline_with(0, "rule normal { (digit:a, digit:b) }", false),
+            pipeline_with(1, "rule fallback { (digit:x, chars\\0, digit:y) }", true),
+        ];
+        let mut parser = MultiParser::new(pipelines);
+
+        let info = miss_info(&mut parser, "12ab");
+        assert_eq!(info.best_wpl, "rule-1");
+        assert_eq!(info.depth, 4);
+    }
+
+    #[test]
+    fn miss_does_not_regress_to_shallower_rule() {
+        // 先深后浅：后面的浅层失败不能覆盖已记录的深度归因。
+        let pipelines = vec![
+            pipeline_with(0, "rule deep { (digit:a, chars\\0, digit:b) }", false),
+            pipeline_with(1, "rule shallow { (digit:x, digit:y, digit:z) }", true),
+        ];
+        let mut parser = MultiParser::new(pipelines);
+
+        let info = miss_info(&mut parser, "12ab");
+        assert_eq!(info.best_wpl, "rule-0");
+        assert_eq!(info.depth, 4);
+    }
+
+    #[test]
+    fn miss_never_attributes_to_no_match_rule() {
+        // `#[no_match]` 规则即使能走得更远，也不参与自动匹配与归因。
+        let mut deep = pipeline_with(1, "rule deep { (digit:a, chars\\0, digit:b) }", false);
+        deep.auto_match = false;
+        let pipelines = vec![
+            pipeline_with(0, "rule normal { (digit:a, digit:b) }", false),
+            deep,
+        ];
+        let mut parser = MultiParser::new(pipelines);
+
+        let info = miss_info(&mut parser, "12ab");
+        assert_eq!(info.best_wpl, "rule-0");
+        assert_eq!(info.depth, 2);
+    }
+
+    #[test]
+    fn miss_reports_zero_depth_when_nothing_is_consumed() {
+        // 所有规则都在第一个字段就失败：仍要给出具体归因，且深度如实为 0。
+        let pipelines = vec![pipeline_with(0, "rule only { (digit:a) }", false)];
+        let mut parser = MultiParser::new(pipelines);
+
+        let info = miss_info(&mut parser, "abc");
+        assert_eq!(info.best_wpl, "rule-0");
+        assert_eq!(info.depth, 0);
+    }
+
+    #[test]
+    fn miss_without_rules_falls_back_to_system_error() {
+        let mut parser = MultiParser::new(Vec::new());
+
+        let info = miss_info(&mut parser, "abc");
+        assert!(info.best_wpl.is_empty());
+        assert_eq!(info.depth, 0);
+    }
+
+    #[test]
+    fn miss_ranks_by_ratio_across_different_pipe_lengths() {
+        // base64("1234") = "MTIzNA=="
+        //   无 pipe 规则: 输入 8 字节，消费 6 → 75%
+        //   带 decode/base64 规则: 解出 "1234"，输入 4 字节，消费 4 → 100%
+        //
+        // 这条同时守住两件事：
+        // 1. 按比例而非绝对字节排名（6 > 4 会把归因给错的规则）；
+        // 2. 不能把前一条规则的绝对深度回灌成后一条的 `oth_suc_len`，
+        //    否则 4 < 6 会让 piped 规则整条降级成 NotMatch、直接失去归因资格。
+        let pipelines = vec![
+            pipeline_with(0, "rule plain { (symbol(MTIzNA), digit:x) }", false),
+            pipeline_with(
+                1,
+                "rule piped { |decode/base64| (digit:a, digit:b) }",
+                false,
+            ),
+        ];
+        let mut parser = MultiParser::new(pipelines);
+
+        let info = miss_info(&mut parser, "MTIzNA==");
+        assert_eq!(info.best_wpl, "rule-1");
+        assert_eq!(info.depth, 4, "depth 是 pipe 后输入中的位置");
+    }
+
+    #[test]
+    fn miss_ratio_baseline_plain_rule_consumes_six_of_eight() {
+        // 上一条用例的前提：无 pipe 规则在 "MTIzNA==" 上确实只消费 6 字节。
+        let pipelines = vec![pipeline_with(
+            0,
+            "rule plain { (symbol(MTIzNA), digit:x) }",
+            false,
+        )];
+        let mut parser = MultiParser::new(pipelines);
+
+        let info = miss_info(&mut parser, "MTIzNA==");
+        assert_eq!(info.best_wpl, "rule-0");
+        assert_eq!(info.depth, 6);
+    }
+
+    #[test]
+    fn miss_does_not_count_rules_skipped_by_no_match() {
+        // 只有 #[no_match] 规则时无人参与自动匹配，仍应回落 system_error。
+        let mut only = pipeline_with(0, "rule only { (chars\\0) }", false);
+        only.auto_match = false;
+        let mut parser = MultiParser::new(vec![only]);
+
+        let info = miss_info(&mut parser, "abc");
+        assert!(info.best_wpl.is_empty());
+        assert_eq!(info.depth, 0);
+    }
+
+    #[test]
+    fn partial_result_is_returned_even_after_a_deeper_miss() {
+        // 深度归因只用于 Miss；一旦有规则给出 Partial，它就应当胜出。
+        let payload = "{aaaaaaaaaaaaaaaaaaaa}!";
+        let pipelines = vec![
+            pipeline_with(0, "rule deep_fail { (digit:a, chars\\0, digit:b) }", false),
+            pipeline_with(1, "rule partial { (chars:a<{,}>) }", false),
+        ];
+        let mut parser = MultiParser::new(pipelines);
+        let setting = ParseOption::new(false, false, Vec::new());
+
+        match parser.parse_event(&event(payload), &setting) {
+            ProcessResult::Partial {
+                wpl_key, residue, ..
+            } => {
+                assert_eq!(wpl_key, "rule-1");
+                assert_eq!(residue, "!");
+            }
+            other => panic!("expected partial, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn success_is_returned_even_after_a_deeper_miss() {
+        let pipelines = vec![
+            pipeline_with(0, "rule deep_fail { (digit:a, digit:b) }", false),
+            pipeline_with(1, "rule wins { (chars\\0) }", false),
+        ];
+        let mut parser = MultiParser::new(pipelines);
+        let setting = ParseOption::new(false, false, Vec::new());
+
+        match parser.parse_event(&event("12ab"), &setting) {
+            ProcessResult::Success { wpl_key, .. } => assert_eq!(wpl_key, "rule-1"),
+            other => panic!("expected success, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn miss_does_not_touch_hit_counts() {
+        // 失败不得计入命中，否则命中率排序会被失败次数污染。
+        let pipelines = vec![
+            pipeline_with(0, "rule a { (digit:x) }", false),
+            pipeline_with(1, "rule b { (digit:y) }", false),
+        ];
+        let mut parser = MultiParser::new(pipelines);
+
+        let _ = miss_info(&mut parser, "abc");
+        assert!(parser.pipelines.iter().all(|p| p.hit_cnt == 0));
+    }
+
+    #[test]
+    fn miss_tie_prefers_higher_hit_rate_after_optimized() {
+        // 同进度时的归属跟随当前匹配顺序（= 命中率高的先到），而不是声明序。
+        let mut a = pipeline_with(0, "rule a { (digit:x, digit:y) }", false);
+        a.hit_cnt = 0;
+        let mut b = pipeline_with(1, "rule b { (digit:x, digit:y) }", false);
+        b.hit_cnt = 7;
+        let mut parser = MultiParser::new(vec![a, b]);
+        parser.optimized(0);
+        assert_eq!(order(&parser), vec!["rule-1", "rule-0"]);
+
+        let info = miss_info(&mut parser, "12ab");
+        assert_eq!(info.best_wpl, "rule-1");
+    }
+
+    #[test]
+    fn miss_on_empty_payload_reports_zero_depth() {
+        let pipelines = vec![pipeline_with(0, "rule a { (digit:x) }", false)];
+        let mut parser = MultiParser::new(pipelines);
+
+        let info = miss_info(&mut parser, "");
+        assert_eq!(info.best_wpl, "rule-0");
+        assert_eq!(info.depth, 0);
     }
 }
 

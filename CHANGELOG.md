@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.32.0] - 2026-10-21
+
+### Fixed
+- **`Miss` 归因会指向兜底规则**：`parse_event` 在 `Err` 分支上每条 `DataError` 都无条件覆盖候选，而 `max_depth` 从不推进，于是每条后续规则都被判定为「至少一样深」。配合 `#[late]`（兜底规则排在最后），一次全失败的事件几乎总被归到末尾那条 catch-all 上，`ParseFailInfo.depth` 也退化成 `1`。
+  - 现在每条规则的尝试都返回精确的 `wpl::ParseProgress`，归因只接受**严格更靠后**的候选，同进度保留先到的规则（命中率更高的那条）。
+  - 进度按**比例**而不是绝对字节数比较：不同规则可以带不同的 preorder pipe（`|decode/base64|` 会改变输入长度），绝对位置不可比。
+  - `WplPipeline::proc` 不再把其他规则的深度当 `oth_suc_len` 回灌，否则输入更短的规则会被整条降级成 `NotMatch`、直接失去归因资格。
+  - 归因目标与 `depth` 因此如实反映「哪条规则走得最远」，`#[late]` 兜底规则只有在真的走得更远时才会成为归因目标。
+  - `#[no_match]` 规则依旧不参与自动匹配与归因。
+
+### Changed
+- **`WplPipeline::proc` 返回 `(Result<..>, wpl::ParseProgress)`**（去掉 `oth_suc_len` 参数）：由调用方按进度排名。同时改用 `WplEvaluator::proc_ref_progress`，避免每次规则尝试都 clone 一份 payload。
+- **依赖 `wp-lang` 0.8.2**：进度归因依赖新增的 `WplEvaluator::proc_ref_progress` 与 `ParseProgress`。
+
+### Removed
+- **`MultiParser::hit_count_sort()`**：无调用方的死代码（只把 `access_cnt` 清零，并不排序）。
+- **`WplPipeline.access_cnt`**：随上一项一起失去全部读者；`WplPipeline::proc` 也不再维护它。
+
 ## [1.31.0] - 2026-10-20
 
 ### Changed
