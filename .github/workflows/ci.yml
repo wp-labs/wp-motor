@@ -55,6 +55,13 @@ jobs:
   security:
     name: Security Audit
     runs-on: ubuntu-latest
+    # audit-check 会把结果写成一个 check run；未显式声明时
+    # GITHUB_TOKEN 只有默认权限，创建 check run 会被拒：
+    # "Resource not accessible by integration"。
+    # 声明 permissions 还会把本 job 其余权限降为 none。
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v7
       - run: cargo generate-lockfile
