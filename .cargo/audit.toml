@@ -15,9 +15,20 @@
 # 经 crates.io 已发布 wp-knowledge 0.16.0（其 Cargo.toml 锁定 lru ^0.16）间接引入；
 # 本地 wp-knowledge 已升级 lru 0.18，下次发布 wp-knowledge 0.16.x 后本告警自动消除，届时移除。
 # 另 mysql 28.0.0 亦传递锁定 lru ^0.16（wp-knowledge 正常依赖），mysql 升级前该条保持。
+# RUSTSEC-2026-0381: webpki-roots <1.0.10 内置根证书包含已被吊销的
+# emSign ECC Root CA - G3（CVE-2026-111943），可能信任经过该中间证书的证书链。
+# 仅经 wp-knowledge 0.19.0 → sqlx 0.8.6（runtime-tokio-rustls）→ sqlx-core 0.8.6
+# 间接引入；sqlx-core 0.8.6 已是 0.8.x 最新版，仍锁定 webpki-roots ^0.26，该分支
+# 没有补丁版本 —— 只有 sqlx-core 0.9.0 起改为 ^1（可解析到 1.0.10+）。
+# wp-knowledge 0.19.0 目前要求 sqlx ^0.8.6，本仓无法自行升到 0.9。
+# 影响面：TLS 由 knowdb 的 connection_uri 决定（例如 sslmode=require），默认不启用；
+# 且只有服务端证书链经过 emSign 中间证书时才会被误导。
+# 待 wp-knowledge 升级到 sqlx 0.9 后移除。
+# Next review: 2027-01-21
 ignore = [
     "RUSTSEC-2023-0071",
     "RUSTSEC-2026-0183",
     "RUSTSEC-2026-0184",
     "RUSTSEC-2026-0253",
+    "RUSTSEC-2026-0381",
 ]
