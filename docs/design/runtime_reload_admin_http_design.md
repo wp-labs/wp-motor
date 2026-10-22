@@ -371,7 +371,7 @@ admin API 应遵循以下约束：
 
 HTTP 配置属于 `warp-parse`，不属于 `wp-motor`。
 
-建议配置段：
+建议放在项目根目录的 `wparse.local.toml`（本地覆盖层，不参与 `project_remote` 同步）：
 
 ```toml
 [admin_api]

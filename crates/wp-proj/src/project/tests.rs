@@ -939,6 +939,7 @@ token_file = "${HOME}/.warp_parse/admin_api.token"
 
     #[test]
     fn warp_project_static_init_and_load_conf() {
+        let _guard = admin_api_home_lock().lock().expect("lock HOME override");
         let work = uniq_tmp_dir();
         WarpProject::init(&work, PrjScope::Conf, &EnvDict::test_default())
             .expect("init conf project");

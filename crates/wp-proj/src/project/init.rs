@@ -24,31 +24,9 @@ const MODELS_KNOWLEDGE_EXAMPLE_DIR: &str = "models/knowledge/example";
 const SEMANTIC_DICT_FILE: &str = "models/knowledge/semantic_dict.toml";
 const TOPOLOGY_SOURCES_DIR: &str = "topology/sources";
 const TOPOLOGY_SINKS_DIR: &str = "topology/sinks";
-const ADMIN_API_TOKEN_ENV_REF: &str = "${HOME}/.warp_parse/admin_api.token";
 const ADMIN_API_TOKEN_FALLBACK_FILE: &str = "runtime/admin_api.token";
 const ADMIN_API_TOKEN_HOME_DIR: &str = ".warp_parse";
 const ADMIN_API_TOKEN_NAME: &str = "admin_api.token";
-
-fn default_admin_api_block() -> String {
-    format!(
-        r#"
-[admin_api]
-enabled = false
-bind = "127.0.0.1:19090"
-request_timeout_ms = 15000
-max_body_bytes = 4096
-
-[admin_api.tls]
-enabled = false
-cert_file = ""
-key_file = ""
-
-[admin_api.auth]
-mode = "bearer_token"
-token_file = "{ADMIN_API_TOKEN_ENV_REF}"
-"#
-    )
-}
 
 fn resolve_admin_api_token_path(work_root: &Path) -> PathBuf {
     std::env::var_os("HOME")
@@ -285,28 +263,13 @@ impl WarpProject {
             conf.save_toml(&engine_config_path)
                 .owe(RunReason::from_conf())?;
         }
-        // `WarpProject::build()` may have already materialized wparse.toml via
-        // `EngineConfig::load_or_init`, so the admin block must be enforced
-        // regardless of whether the file pre-existed.
-        Self::ensure_admin_api_config_block(&engine_config_path)?;
+        // Admin API settings are site-local and live outside `conf/` (in
+        // `wparse.local.toml`), so the generated wparse.toml stays free of
+        // `[admin_api]` and cannot be reset by project_remote sync.
         let conf = EngineConfig::env_load_toml(&engine_config_path, dict)
             .owe(RunReason::from_conf())?
             .conf_absolutize(&abs_root);
         Ok(conf)
-    }
-
-    fn ensure_admin_api_config_block(config_path: &Path) -> RunResult<()> {
-        let mut conf = std::fs::read_to_string(config_path).owe(RunReason::from_conf())?;
-        if conf.contains("[admin_api]") {
-            return Ok(());
-        }
-
-        if !conf.ends_with('\n') {
-            conf.push('\n');
-        }
-        conf.push_str(&default_admin_api_block());
-        std::fs::write(config_path, conf).owe(RunReason::from_conf())?;
-        Ok(())
     }
 
     fn load_engine_config_only<P: AsRef<Path>>(
@@ -538,9 +501,10 @@ mod tests {
         );
         let wparse_conf =
             std::fs::read_to_string(work_root.join(CONF_WPARSE_FILE)).expect("read wparse.toml");
-        assert!(wparse_conf.contains("[admin_api]"));
-        assert!(wparse_conf.contains("enabled = false"));
-        assert!(wparse_conf.contains(&format!("token_file = \"{}\"", ADMIN_API_TOKEN_ENV_REF)));
+        assert!(
+            !wparse_conf.contains("[admin_api]"),
+            "admin API config must live in wparse.local.toml, not conf/wparse.toml"
+        );
         let token_path = resolve_admin_api_token_path(work_root);
         assert!(token_path.exists(), "admin API token file should exist");
         let token = std::fs::read_to_string(&token_path).expect("read admin API token");
@@ -647,6 +611,7 @@ mod tests {
     fn test_warp_project_init_normal_mode() {
         use tempfile::TempDir;
 
+        let _guard = admin_api_home_lock().lock().expect("lock HOME override");
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let work_root = temp_dir.path();
 
@@ -726,6 +691,7 @@ mod tests {
     fn test_warp_project_init_conf_mode() {
         use tempfile::TempDir;
 
+        let _guard = admin_api_home_lock().lock().expect("lock HOME override");
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let work_root = temp_dir.path();
 
@@ -844,30 +810,10 @@ mod tests {
     }
 
     #[test]
-    fn test_init_engine_config_adds_admin_api_block_once() {
-        use tempfile::TempDir;
-
-        let temp_dir = TempDir::new().expect("Failed to create temp directory");
-        let work_root = temp_dir.path();
-        let conf_dir = work_root.join(CONF_DIR);
-        std::fs::create_dir_all(&conf_dir).expect("create conf dir");
-        let conf_path = work_root.join(CONF_WPARSE_FILE);
-        std::fs::write(&conf_path, "version = \"1.0\"\n").expect("write wparse.toml");
-
-        WarpProject::ensure_admin_api_config_block(&conf_path).expect("append admin_api block");
-        WarpProject::ensure_admin_api_config_block(&conf_path)
-            .expect("skip duplicate admin_api block");
-
-        let conf = std::fs::read_to_string(conf_path).expect("read wparse.toml");
-        assert_eq!(conf.matches("[admin_api]").count(), 1);
-        assert!(conf.contains("bind = \"127.0.0.1:19090\""));
-        assert!(conf.contains(&format!("token_file = \"{}\"", ADMIN_API_TOKEN_ENV_REF)));
-    }
-
-    #[test]
     fn test_warp_project_init_basic() {
         use tempfile::TempDir;
 
+        let _guard = admin_api_home_lock().lock().expect("lock HOME override");
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let work_root = temp_dir.path();
 

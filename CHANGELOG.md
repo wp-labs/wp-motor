@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.0] - 2026-10-22
+
+### Changed
+- **`wproj init` 不再向 `conf/wparse.toml` 写入 `[admin_api]`**：管理面配置属于站点本地配置，改由 `warp-parse` 写入项目根目录的 `wparse.local.toml`。`conf/` 会被 `project_remote` 的 infra 同步整体替换，旧写法会在每次远程发布后重置控制端口。
+  - `EngineConfig` 序列化时跳过默认的 `admin_api` 段，生成的 `wparse.toml` 不再包含 `[admin_api]`。
+  - `wproj init` 仍会创建 admin API token 文件。
+
 ## [1.32.0] - 2026-10-21
 
 ### Fixed

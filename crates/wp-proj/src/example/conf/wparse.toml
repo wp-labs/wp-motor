@@ -24,20 +24,6 @@ enabled = false
 repo = ""
 init_version = ""
 
-[admin_api]
-enabled = false
-bind = "127.0.0.1:19090"
-request_timeout_ms = 15000
-max_body_bytes = 4096
-
-[admin_api.tls]
-enabled = false
-cert_file = ""
-key_file = ""
-
-[admin_api.auth]
-mode = "bearer_token"
-token_file = "${HOME}/.warp_parse/admin_api.token"
 
 [semantic]
 enabled = false

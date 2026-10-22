@@ -266,7 +266,10 @@ pub struct EngineConfig {
     /// 远程规则版本更新配置（默认关闭）
     #[serde(default)]
     project_remote: ProjectRemoteConf,
-    #[serde(default)]
+    /// Site-local admin API settings live in `wparse.local.toml`; the default
+    /// block is omitted from generated `wparse.toml` files so a remote publish
+    /// cannot reset the control port.
+    #[serde(default, skip_serializing_if = "admin_api_is_default")]
     admin_api: AdminApiConf,
     /// Legacy sections accepted for compatibility with older project files.
     /// They are intentionally ignored by the current runtime schema.
@@ -350,6 +353,10 @@ pub fn default_admin_api_request_timeout_ms() -> u64 {
 
 pub fn default_admin_api_max_body_bytes() -> usize {
     4096
+}
+
+fn admin_api_is_default(conf: &AdminApiConf) -> bool {
+    *conf == AdminApiConf::default()
 }
 
 pub fn default_admin_api_auth_mode() -> String {
@@ -899,6 +906,24 @@ mod tests {
             !toml.contains("[project-remote]"),
             "serialized config should not use kebab-case section name"
         );
+    }
+
+    #[test]
+    fn test_engine_config_omits_default_admin_api() {
+        let toml = toml::to_string(&EngineConfig::default()).expect("serialize engine config");
+        assert!(
+            !toml.contains("[admin_api]"),
+            "default admin API config must stay out of generated wparse.toml"
+        );
+    }
+
+    #[test]
+    fn test_engine_config_serializes_custom_admin_api() {
+        let mut conf = EngineConfig::default();
+        conf.admin_api.enabled = true;
+        let toml = toml::to_string(&conf).expect("serialize engine config");
+        assert!(toml.contains("[admin_api]"));
+        assert!(toml.contains("enabled = true"));
     }
 
     #[test]
