@@ -4,6 +4,8 @@ use crate::utils::error_handler::ErrorHandler;
 use orion_conf::{EnvTomlLoad, TomlIO};
 use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
+use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use wp_conf::paths::{OUT_FILE_PATH, RESCURE_FILE_PATH, SRC_FILE_PATH};
@@ -36,6 +38,166 @@ fn resolve_admin_api_token_path(work_root: &Path) -> PathBuf {
                 .join(ADMIN_API_TOKEN_NAME)
         })
         .unwrap_or_else(|| work_root.join(ADMIN_API_TOKEN_FALLBACK_FILE))
+}
+
+/// 32-byte CSPRNG token encoded as 64 hex characters.
+fn generate_admin_token() -> String {
+    use rand::RngExt;
+
+    let bytes: [u8; 32] = rand::rng().random();
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push_str(&format!("{byte:02x}"));
+    }
+    out
+}
+
+/// Accept exactly one non-empty line (trailing newlines are normal).
+fn parse_single_line_token(body: &str) -> Result<&str, String> {
+    let mut lines = body.lines().map(str::trim).filter(|line| !line.is_empty());
+    let Some(first) = lines.next() else {
+        return Err("token file is empty".to_string());
+    };
+    if lines.next().is_some() {
+        return Err("token file contains multiple non-empty lines".to_string());
+    }
+    Ok(first)
+}
+
+fn token_conf_err(detail: String) -> RunError {
+    RunReason::from_conf().to_err().with_detail(detail)
+}
+
+/// Validate an existing token file instead of silently keeping it.
+///
+/// `wprj init` must not overwrite a token that a host controller may already
+/// rely on, but it also must not report success for an unusable file.
+fn ensure_existing_admin_token(path: &Path) -> RunResult<()> {
+    let meta = fs::metadata(path).map_err(|err| {
+        RunReason::from_conf()
+            .to_err()
+            .with_source(err)
+            .with_detail(format!(
+                "stat existing token file {} failed",
+                path.display()
+            ))
+    })?;
+    if !meta.is_file() {
+        return Err(token_conf_err(format!(
+            "existing token path {} is not a regular file",
+            path.display()
+        )));
+    }
+
+    let body = fs::read_to_string(path).map_err(|err| {
+        RunReason::from_conf()
+            .to_err()
+            .with_source(err)
+            .with_detail(format!(
+                "read existing token file {} failed",
+                path.display()
+            ))
+    })?;
+    parse_single_line_token(&body).map_err(|reason| {
+        token_conf_err(format!(
+            "existing token file {} is unusable: {}; remove it or run `wpadm token generate --force`",
+            path.display(),
+            reason
+        ))
+    })?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mode = meta.permissions().mode() & 0o777;
+        if mode & 0o077 != 0 {
+            wp_log::warn_ctrl!(
+                "existing token file {} mode {:o} is readable by group/other; prefer 0600",
+                path.display(),
+                mode
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Write a single-line token atomically with owner-only permissions.
+///
+/// The temporary file is created with its final permissions (`create_new` +
+/// `mode`), so the token is never readable by others, and `rename` makes the
+/// replacement atomic. Symlinks and pre-existing files are refused.
+fn write_private_token(path: &Path, token: &str) -> RunResult<()> {
+    match fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            return Err(token_conf_err(format!(
+                "refusing to write {}: path is a symlink",
+                path.display()
+            )));
+        }
+        Ok(_) => {
+            return Err(token_conf_err(format!(
+                "refusing to overwrite existing token file {}",
+                path.display()
+            )));
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => {
+            return Err(RunReason::from_conf()
+                .to_err()
+                .with_source(err)
+                .with_detail(format!("stat token path {} failed", path.display())));
+        }
+    }
+
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| token_conf_err(format!("invalid token path {}", path.display())))?;
+    let tmp = parent.join(format!(".{file_name}.tmp-{}", std::process::id()));
+    let _ = fs::remove_file(&tmp);
+
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+
+    let mut file = options.open(&tmp).map_err(|err| {
+        RunReason::from_conf()
+            .to_err()
+            .with_source(err)
+            .with_detail(format!("create {} failed", tmp.display()))
+    })?;
+    file.write_all(token.as_bytes())
+        .and_then(|_| file.write_all(b"\n"))
+        .and_then(|_| file.sync_all())
+        .map_err(|err| {
+            let _ = fs::remove_file(&tmp);
+            RunReason::from_conf()
+                .to_err()
+                .with_source(err)
+                .with_detail(format!("write {} failed", tmp.display()))
+        })?;
+    drop(file);
+
+    fs::rename(&tmp, path).map_err(|err| {
+        let _ = fs::remove_file(&tmp);
+        RunReason::from_conf()
+            .to_err()
+            .with_source(err)
+            .with_detail(format!(
+                "rename {} -> {} failed",
+                tmp.display(),
+                path.display()
+            ))
+    })
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -191,39 +353,20 @@ impl WarpProject {
     }
 
     fn init_admin_api_token<P: AsRef<Path>>(work_root: P) -> RunResult<()> {
-        use std::fs;
-
         let work_root = work_root.as_ref();
         let token_path = resolve_admin_api_token_path(work_root);
+
         if token_path.exists() {
+            // Never overwrite an existing token: it may already be injected by a
+            // controller. But do not silently accept an unusable file either.
+            ensure_existing_admin_token(&token_path)?;
             return Ok(());
         }
+
         if let Some(parent) = token_path.parent() {
             ErrorHandler::safe_create_dir(parent)?;
         }
-
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default();
-        let token = format!(
-            "wp-admin-{}-{}-{}\n",
-            std::process::id(),
-            now.as_secs(),
-            now.subsec_nanos()
-        );
-        fs::write(&token_path, token).owe(RunReason::from_conf())?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-
-            let mut perms = fs::metadata(&token_path)
-                .owe(RunReason::from_conf())?
-                .permissions();
-            perms.set_mode(0o600);
-            fs::set_permissions(&token_path, perms).owe(RunReason::from_conf())?;
-        }
-
+        write_private_token(&token_path, &generate_admin_token())?;
         println!("✓ 管理面 token 文件已创建: {}", token_path.display());
         Ok(())
     }
@@ -339,8 +482,12 @@ impl WarpProject {
 mod tests {
     use super::*;
     use std::path::Path;
-    use std::sync::{Mutex, OnceLock};
     use wp_conf::test_support::ForTest;
+
+    // Share the HOME override lock with `project::tests`. Two independent
+    // mutexes would let tests in the two modules race on the process-wide HOME
+    // variable and fail non-deterministically.
+    use super::super::tests::{HomeOverride, admin_api_home_lock};
     const CONNECTORS_DIR: &str = "connectors";
     const CONNECTORS_SOURCE_DIR: &str = "connectors/source.d";
     const CONNECTORS_SINK_DIR: &str = "connectors/sink.d";
@@ -352,38 +499,6 @@ mod tests {
     const MODELS_OML_EXAMPLE_FILE: &str = "models/oml/example.oml";
     const MODELS_KNOWLEDGE_KNOWDB_FILE: &str = "models/knowledge/knowdb.toml";
     const TOPOLOGY_WPSRC_FILE: &str = "topology/sources/wpsrc.toml";
-
-    fn admin_api_home_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
-
-    struct HomeOverride {
-        original: Option<std::ffi::OsString>,
-    }
-
-    impl HomeOverride {
-        fn new(home: &Path) -> Self {
-            let original = std::env::var_os("HOME");
-            unsafe {
-                std::env::set_var("HOME", home);
-            }
-            Self { original }
-        }
-    }
-
-    impl Drop for HomeOverride {
-        fn drop(&mut self) {
-            match &self.original {
-                Some(home) => unsafe {
-                    std::env::set_var("HOME", home);
-                },
-                None => unsafe {
-                    std::env::remove_var("HOME");
-                },
-            }
-        }
-    }
 
     fn connector_template_exists<P: AsRef<std::path::Path>>(dir: P, id: &str) -> bool {
         let suffix = format!("-{}.toml", id);
@@ -773,7 +888,14 @@ mod tests {
         let token_path = resolve_admin_api_token_path(work_root);
         assert!(token_path.exists());
         let token = std::fs::read_to_string(&token_path).expect("read admin API token");
-        assert!(!token.trim().is_empty());
+        let token = token.trim();
+        assert!(!token.is_empty());
+        assert_eq!(token.len(), 64, "token must be 32 hex-encoded random bytes");
+        assert!(token.chars().all(|c| c.is_ascii_hexdigit()), "{token}");
+        assert!(
+            !token.starts_with("wp-admin-"),
+            "token must not be derived from pid/timestamp"
+        );
 
         #[cfg(unix)]
         {
@@ -807,6 +929,117 @@ mod tests {
 
         let token = std::fs::read_to_string(&token_path).expect("read admin API token");
         assert_eq!(token, "existing-token\n");
+    }
+
+    #[test]
+    fn generated_admin_token_is_high_entropy_hex() {
+        let a = generate_admin_token();
+        let b = generate_admin_token();
+
+        assert_eq!(a.len(), 64, "32 random bytes must hex-encode to 64 chars");
+        assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(a, b, "consecutive tokens must differ");
+    }
+
+    #[test]
+    fn test_init_admin_api_token_refuses_empty_existing_file() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let work_root = temp_dir.path();
+        let _guard = admin_api_home_lock().lock().expect("lock HOME override");
+        let _home = HomeOverride::new(work_root);
+
+        let token_path = resolve_admin_api_token_path(work_root);
+        std::fs::create_dir_all(token_path.parent().expect("token parent")).expect("create parent");
+        std::fs::write(&token_path, "").expect("seed empty token");
+
+        let err = WarpProject::init_admin_api_token(work_root)
+            .expect_err("empty existing token must be rejected");
+        assert!(err.to_string().contains("unusable"), "{err}");
+    }
+
+    #[test]
+    fn test_init_admin_api_token_refuses_multiline_existing_file() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let work_root = temp_dir.path();
+        let _guard = admin_api_home_lock().lock().expect("lock HOME override");
+        let _home = HomeOverride::new(work_root);
+
+        let token_path = resolve_admin_api_token_path(work_root);
+        std::fs::create_dir_all(token_path.parent().expect("token parent")).expect("create parent");
+        std::fs::write(&token_path, "first\nsecond\n").expect("seed multiline token");
+
+        let err = WarpProject::init_admin_api_token(work_root)
+            .expect_err("multiline existing token must be rejected");
+        assert!(err.to_string().contains("unusable"), "{err}");
+    }
+
+    #[test]
+    fn test_init_admin_api_token_refuses_directory_path() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let work_root = temp_dir.path();
+        let _guard = admin_api_home_lock().lock().expect("lock HOME override");
+        let _home = HomeOverride::new(work_root);
+
+        let token_path = resolve_admin_api_token_path(work_root);
+        std::fs::create_dir_all(&token_path).expect("create dir at token path");
+
+        let err = WarpProject::init_admin_api_token(work_root)
+            .expect_err("directory token path must be rejected");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    #[test]
+    fn test_init_admin_api_token_leaves_no_temp_files() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let work_root = temp_dir.path();
+        let _guard = admin_api_home_lock().lock().expect("lock HOME override");
+        let _home = HomeOverride::new(work_root);
+
+        WarpProject::init_admin_api_token(work_root).expect("create admin API token");
+
+        let token_path = resolve_admin_api_token_path(work_root);
+        let entries: Vec<_> = std::fs::read_dir(token_path.parent().expect("token parent"))
+            .expect("read token parent")
+            .map(|entry| entry.expect("entry").file_name())
+            .collect();
+        assert_eq!(entries.len(), 1, "unexpected leftover files: {entries:?}");
+        assert_eq!(entries[0], ADMIN_API_TOKEN_NAME);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_init_admin_api_token_keeps_symlinked_secret() {
+        use std::os::unix::fs::symlink;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let work_root = temp_dir.path();
+        let _guard = admin_api_home_lock().lock().expect("lock HOME override");
+        let _home = HomeOverride::new(work_root);
+
+        let token_path = resolve_admin_api_token_path(work_root);
+        std::fs::create_dir_all(token_path.parent().expect("token parent")).expect("create parent");
+        let target = token_path
+            .parent()
+            .expect("token parent")
+            .join("real.token");
+        std::fs::write(&target, "injected-secret\n").expect("seed target");
+        symlink(&target, &token_path).expect("create symlink");
+
+        WarpProject::init_admin_api_token(work_root).expect("keep symlinked secret");
+
+        assert_eq!(
+            std::fs::read_to_string(&target).expect("read target"),
+            "injected-secret\n"
+        );
     }
 
     #[test]

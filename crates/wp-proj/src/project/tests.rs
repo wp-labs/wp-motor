@@ -223,19 +223,19 @@ fn cleanup_test_dir(work_root: &str) {
 }
 
 #[cfg(test)]
-fn admin_api_home_lock() -> &'static Mutex<()> {
+pub(crate) fn admin_api_home_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
 #[cfg(test)]
-struct HomeOverride {
+pub(crate) struct HomeOverride {
     original: Option<std::ffi::OsString>,
 }
 
 #[cfg(test)]
 impl HomeOverride {
-    fn new(home: &std::path::Path) -> Self {
+    pub(crate) fn new(home: &std::path::Path) -> Self {
         let original = std::env::var_os("HOME");
         unsafe {
             std::env::set_var("HOME", home);
