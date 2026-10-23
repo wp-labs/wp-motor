@@ -1,6 +1,7 @@
 use crate::compat::UvsFrom;
 use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
+use wp_conf::state::StateDir;
 
 use crate::utils::LogHandler;
 
@@ -31,16 +32,20 @@ impl WParseManager {
         let mut did_clean_any = false;
         let mut failures = Vec::new();
 
-        // 1. 清理 .run 目录
-        let run_dir = self.work_root.join(".run");
-        if run_dir.exists() {
-            match std::fs::remove_dir_all(&run_dir) {
+        // 1. 清理状态目录（[runtime].state_dir，默认 <work_root>/.run）
+        let state_dir = StateDir::resolve_for_work_root(&self.work_root, dict);
+        if state_dir.path().exists() {
+            match state_dir.clear() {
                 Ok(_) => {
-                    println!("✓ Cleaned .run directory");
+                    println!("✓ Cleaned state dir '{}'", state_dir.path().display());
                     did_clean_any = true;
                 }
                 Err(e) => {
-                    failures.push(format!("remove .run directory: {}", e));
+                    failures.push(format!(
+                        "clean state dir '{}': {}",
+                        state_dir.path().display(),
+                        e
+                    ));
                 }
             }
         }
@@ -68,13 +73,16 @@ impl WParseManager {
 
     /// 检查是否有 WParse 数据需要清理
     pub fn has_pending_cleanup(&self) -> bool {
-        // 1. 检查 .run 目录
-        let run_dir = self.work_root.join(".run");
-        if run_dir.exists() {
+        // 1. 检查状态目录
+        //
+        // 以“目录是否存在”判定（保持既有语义）。挂载点状态目录在清理后会保留为空目录，
+        // 因此会继续报告为待清理；这是可接受的，因为清理本身是幂等的。
+        let state_dir = StateDir::resolve_for_work_root(&self.work_root, &EnvDict::default());
+        if state_dir.path().exists() {
             return true;
         }
 
-        // 2. 简化：只检查 .run 目录，日志清理操作会自动处理
+        // 2. 简化：只检查状态目录，日志清理操作会自动处理
         false
     }
 
@@ -118,6 +126,67 @@ mod tests {
         assert!(!manager.has_pending_cleanup());
         std::fs::create_dir_all(temp.path().join(".run")).unwrap();
         assert!(manager.has_pending_cleanup());
+    }
+
+    #[test]
+    fn clean_data_honors_configured_state_dir() {
+        let temp = temp_workdir();
+        write_basic_wparse_config(temp.path());
+        let config = temp.path().join("conf/wparse.toml");
+        let mut body = std::fs::read_to_string(&config).expect("read config");
+        body.push_str("\n[runtime]\nstate_dir = \"state\"\n");
+        std::fs::write(&config, body).expect("write config");
+
+        let manager = WParseManager::new(temp.path());
+        let state_dir = temp.path().join("state");
+        std::fs::create_dir_all(&state_dir).unwrap();
+        std::fs::write(state_dir.join("authority.sqlite"), "state").unwrap();
+        let legacy_run = temp.path().join(".run");
+        std::fs::create_dir_all(&legacy_run).unwrap();
+        std::fs::write(legacy_run.join("keep"), "legacy").unwrap();
+        let dict = EnvDict::test_default();
+
+        assert!(manager.has_pending_cleanup());
+        let cleaned = manager.clean_data(&dict).expect("clean data");
+
+        assert!(cleaned);
+        assert!(
+            !state_dir.exists(),
+            "configured state dir should be cleaned"
+        );
+        assert!(
+            legacy_run.join("keep").exists(),
+            "legacy .run must not be touched when state_dir is configured"
+        );
+        assert!(!manager.has_pending_cleanup());
+    }
+
+    #[test]
+    fn clean_data_honors_absolute_state_dir() {
+        let temp = temp_workdir();
+        write_basic_wparse_config(temp.path());
+        let abs_state = temp.path().join("absolute-state");
+        let config = temp.path().join("conf/wparse.toml");
+        let mut body = std::fs::read_to_string(&config).expect("read config");
+        body.push_str(&format!(
+            "\n[runtime]\nstate_dir = \"{}\"\n",
+            abs_state.display()
+        ));
+        std::fs::write(&config, body).expect("write config");
+
+        let manager = WParseManager::new(temp.path());
+        std::fs::create_dir_all(&abs_state).unwrap();
+        std::fs::write(abs_state.join("rule_mapping.dat"), "mapping").unwrap();
+        let dict = EnvDict::test_default();
+
+        let cleaned = manager.clean_data(&dict).expect("clean data");
+
+        assert!(cleaned);
+        assert!(!abs_state.exists(), "absolute state dir should be cleaned");
+        assert!(
+            !temp.path().join(".run").exists(),
+            "default .run must not be created when state_dir is configured"
+        );
     }
 
     #[test]

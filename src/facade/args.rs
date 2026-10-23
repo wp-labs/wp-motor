@@ -105,6 +105,12 @@ pub struct ParseArgs {
     /// 覆盖 WPL 模型目录；优先于 wparse.toml 内 [models].wpl 配置
     #[clap(long = "wpl")]
     pub wpl_dir: Option<String>,
+    /// Override the engine state directory (pid/lock/rule mapping/authority DB).
+    /// Takes precedence over [runtime].state_dir; relative values resolve against
+    /// the work root.
+    /// 覆盖引擎状态目录（pid/锁/规则映射/权威库）；优先于 [runtime].state_dir
+    #[clap(long = "state-dir")]
+    pub state_dir: Option<String>,
 }
 
 impl ParseArgs {

@@ -5,9 +5,11 @@ use crate::{
 use orion_conf::ErrorWith;
 use orion_error::{conversion::ConvErr, conversion::ToStructError};
 use orion_variate::{EnvDict, EnvEvaluable};
-use std::{env, path::PathBuf};
+use std::env;
+use std::path::{Path, PathBuf};
 use wp_conf::engine::EngineConfig;
 use wp_conf::stat::StatConf;
+use wp_conf::state::StateDir;
 use wp_error::{
     RunReason,
     run_error::{IntoRunError, RunResult},
@@ -20,6 +22,20 @@ use wp_stat::{StatReq, StatRequires, StatStage, StatTarget};
 pub fn load_warp_engine_confs(
     work_root: &str,
     dict: &EnvDict,
+) -> RunResult<(WarpConf, EngineConfig)> {
+    load_warp_engine_confs_with_state(work_root, dict, None)
+}
+
+/// Load configuration with an explicit state-directory override.
+///
+/// `state_dir_override` (CLI `--state-dir`) takes precedence over
+/// `[runtime].state_dir`; an empty value is treated as "not provided".
+/// The resolved [`StateDir`] is attached to the returned [`WarpConf`] so every
+/// runtime path goes through the same directory.
+pub fn load_warp_engine_confs_with_state(
+    work_root: &str,
+    dict: &EnvDict,
+    state_dir_override: Option<&str>,
 ) -> RunResult<(WarpConf, EngineConfig)> {
     let conf_manager = WarpConf::new(work_root);
     let abs_root = conf_manager.work_root().to_path_buf();
@@ -40,7 +56,31 @@ pub fn load_warp_engine_confs(
         .doing("load engine config failed")?
         .env_eval(dict)
         .conf_absolutize(&abs_root);
-    Ok((conf_manager, main_conf))
+
+    let state_dir = resolve_state_dir(&abs_root, &main_conf, state_dir_override)?;
+    Ok((conf_manager.with_state_dir(state_dir), main_conf))
+}
+
+/// Resolve the effective runtime state directory.
+///
+/// Precedence: explicit override (CLI `--state-dir`) > `[runtime].state_dir` >
+/// `<work_root>/.run`. An empty override is ignored so a blank CLI value cannot
+/// silently reset a configured directory.
+pub fn resolve_state_dir(
+    work_root: &Path,
+    main_conf: &EngineConfig,
+    state_dir_override: Option<&str>,
+) -> RunResult<StateDir> {
+    let raw = state_dir_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| main_conf.runtime_state_dir().to_string());
+    StateDir::resolve(work_root, &raw).map_err(|err| {
+        RunReason::core_conf().to_err().with_detail(format!(
+            "[runtime].state_dir (or --state-dir) is invalid: {err}"
+        ))
+    })
 }
 
 const TOP_N: usize = 20;
@@ -121,4 +161,58 @@ pub fn stat_reqs_from(conf: &StatConf) -> StatRequires {
         // sink 监控长期依赖 wp_sink_group/wp_sink_name 维度：即使用户显式配置 fields，也强制补齐。
     );
     StatRequires::from(requs)
+}
+
+#[cfg(test)]
+mod state_dir_tests {
+    use super::*;
+
+    fn conf_with_state_dir(value: &str) -> EngineConfig {
+        let body = format!("version = \"1.0\"\n\n[runtime]\nstate_dir = \"{value}\"\n");
+        toml::from_str::<EngineConfig>(&body).expect("parse engine config")
+    }
+
+    #[test]
+    fn resolve_state_dir_prefers_cli_override() {
+        let work = Path::new("/work");
+        let conf = conf_with_state_dir("from-conf").conf_absolutize(work);
+        let dir = resolve_state_dir(work, &conf, Some("from-cli")).expect("resolve state dir");
+        assert_eq!(dir.path(), Path::new("/work/from-cli"));
+    }
+
+    #[test]
+    fn resolve_state_dir_uses_config_when_override_missing() {
+        let work = Path::new("/work");
+        let conf = conf_with_state_dir("from-conf").conf_absolutize(work);
+        let dir = resolve_state_dir(work, &conf, None).expect("resolve state dir");
+        assert_eq!(dir.path(), Path::new("/work/from-conf"));
+    }
+
+    #[test]
+    fn resolve_state_dir_ignores_blank_override() {
+        let work = Path::new("/work");
+        let conf = conf_with_state_dir("from-conf").conf_absolutize(work);
+        let dir = resolve_state_dir(work, &conf, Some("   ")).expect("resolve state dir");
+        assert_eq!(
+            dir.path(),
+            Path::new("/work/from-conf"),
+            "a blank CLI value must not reset the configured state dir"
+        );
+    }
+
+    #[test]
+    fn resolve_state_dir_rejects_work_root_value() {
+        let work = Path::new("/work");
+        let conf = conf_with_state_dir(".").conf_absolutize(work);
+        let err = resolve_state_dir(work, &conf, None).unwrap_err();
+        assert!(err.to_string().contains("state_dir"), "{err}");
+    }
+
+    #[test]
+    fn resolve_state_dir_rejects_invalid_override() {
+        let work = Path::new("/work");
+        let conf = conf_with_state_dir("state").conf_absolutize(work);
+        let err = resolve_state_dir(work, &conf, Some("..")).unwrap_err();
+        assert!(err.to_string().contains("state_dir"), "{err}");
+    }
 }

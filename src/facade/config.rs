@@ -1,7 +1,9 @@
 //! Facade: 配置/模型对外入口（稳定 re-export）。
 
 pub use crate::orchestrator::config::loader::WarpConf;
-pub use crate::orchestrator::config::models::{load_warp_engine_confs, stat_reqs_from};
+pub use crate::orchestrator::config::models::{
+    load_warp_engine_confs, load_warp_engine_confs_with_state, resolve_state_dir, stat_reqs_from,
+};
 pub use wp_conf::constants::{
     ENGINE_CONF_FILE, KNOWDB_TOML, SINK_FWK_TOML, SOURCE_WPL, WPARSE_CONF, WPARSE_LOG_PATH,
     WPARSE_OML_FILE, WPARSE_RULE_FILE, WPGEN_TOML, WPSRC_TOML,

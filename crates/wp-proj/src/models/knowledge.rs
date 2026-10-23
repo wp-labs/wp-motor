@@ -67,7 +67,7 @@ impl Knowledge {
 
     /// 清理知识库数据
     ///
-    /// 删除 models/knowledge/ 目录和 .run/authority.sqlite 缓存文件。
+    /// 删除 models/knowledge/ 目录和状态目录下的 authority.sqlite 缓存文件。
     ///
     /// # 参数
     /// - `work_root`: 项目根目录

@@ -16,7 +16,7 @@ use crate::knowledge::{
     load_local_table_names, load_provider_table_names, uses_external_provider_only,
 };
 use crate::orchestrator::config::loader::WarpConf;
-use crate::orchestrator::config::models::{load_warp_engine_confs, stat_reqs_from};
+use crate::orchestrator::config::models::{load_warp_engine_confs_with_state, stat_reqs_from};
 use crate::orchestrator::engine::recovery::recover_main;
 use crate::resources::core::manager::ResManager;
 use crate::runtime::sink::act_sink::SinkService;
@@ -46,12 +46,19 @@ pub struct WpRescueApp {
 impl WpRescueApp {
     /// 从 CLI 参数构建应用上下文
     pub fn try_from(args: ParseArgs, val_dict: EnvDict) -> Result<Self, wp_error::RunError> {
-        let (conf_manager, main_conf) =
-            load_warp_engine_confs(resolve_run_work_root(&args.work_root)?.as_str(), &val_dict)?;
+        let (conf_manager, main_conf) = load_warp_engine_confs_with_state(
+            resolve_run_work_root(&args.work_root)?.as_str(),
+            &val_dict,
+            args.state_dir.as_deref(),
+        )?;
         crate::knowledge::ensure_stats_telemetry_bridge_installed();
         let run_args = args.completion_from(&main_conf)?;
         let stat_reqs = stat_reqs_from(main_conf.stat_conf());
         log_init(main_conf.log_conf()).conv_err()?;
+        info_ctrl!(
+            "runtime state_dir: {}",
+            conf_manager.state_dir_path().display()
+        );
         Ok(Self {
             main_conf,
             conf_manager,

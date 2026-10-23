@@ -39,7 +39,8 @@ impl Drop for PidRec {
     }
 }
 
-/// 单实例锁：对 `<work-root>/.run/.lock` 取 `flock(LOCK_EX | LOCK_NB)`，由进程生命周期持有。
+/// 单实例锁：对 `<state_dir>/.lock` 取 `flock(LOCK_EX | LOCK_NB)`，由进程生命周期持有。
+/// 状态目录由 `[runtime].state_dir` 决定，默认 `<work-root>/.run`。
 /// 进程退出/崩溃时内核自动释放，因此无需依赖 pidfile 判断是否已有实例在跑；
 /// 同一 work-root 的第二个实例会在此处被拒绝并返回非 0 退出码。
 ///

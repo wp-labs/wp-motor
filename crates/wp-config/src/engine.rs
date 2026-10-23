@@ -58,6 +58,35 @@ impl EnvEvaluable<RepoGroupConf> for RepoGroupConf {
     }
 }
 
+/// Runtime state layout.
+///
+/// State (pid file, single-instance lock, rule mapping, authority DB and the
+/// `project_remote` cache) used to live under a hard-coded `<work_root>/.run`.
+/// `state_dir` keeps that layout as the default while letting containerized
+/// deployments mount a dedicated state volume, or keep the work root read-only.
+#[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct RuntimeConf {
+    /// State directory; absolute, or relative to the work root.
+    #[serde(default = "default_state_dir")]
+    pub state_dir: String,
+}
+
+impl Default for RuntimeConf {
+    fn default() -> Self {
+        Self {
+            state_dir: default_state_dir(),
+        }
+    }
+}
+
+impl EnvEvaluable<RuntimeConf> for RuntimeConf {
+    fn env_eval(mut self, dict: &EnvDict) -> RuntimeConf {
+        self.state_dir = self.state_dir.env_eval(dict);
+        self
+    }
+}
+
 #[derive(Debug, Default, PartialEq, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct AdminApiTlsConf {
@@ -266,6 +295,10 @@ pub struct EngineConfig {
     /// 远程规则版本更新配置（默认关闭）
     #[serde(default)]
     project_remote: ProjectRemoteConf,
+    /// 运行时状态目录（pid/锁/rule_mapping/authority/project_remote 缓存）。
+    /// 默认 `.run`（相对 work_root）；默认值不序列化，保证旧引擎仍能加载生成的配置。
+    #[serde(default, skip_serializing_if = "runtime_is_default")]
+    runtime: RuntimeConf,
     /// Site-local admin API settings live in `wparse.local.toml`; the default
     /// block is omitted from generated `wparse.toml` files so a remote publish
     /// cannot reset the control port.
@@ -293,6 +326,7 @@ impl EnvEvaluable<EngineConfig> for EngineConfig {
         self.topology = self.topology.env_eval(dict);
         self.rescue = self.rescue.env_eval(dict);
         self.project_remote = self.project_remote.env_eval(dict);
+        self.runtime = self.runtime.env_eval(dict);
         self.admin_api = self.admin_api.env_eval(dict);
         self
     }
@@ -359,6 +393,14 @@ fn admin_api_is_default(conf: &AdminApiConf) -> bool {
     *conf == AdminApiConf::default()
 }
 
+fn runtime_is_default(conf: &RuntimeConf) -> bool {
+    *conf == RuntimeConf::default()
+}
+
+pub fn default_state_dir() -> String {
+    crate::state::DEFAULT_STATE_DIR.to_string()
+}
+
 pub fn default_admin_api_auth_mode() -> String {
     "bearer_token".to_string()
 }
@@ -398,6 +440,7 @@ impl Default for EngineConfig {
             semantic: SemanticConf::default(),
             gen_event_md5: false,
             project_remote: ProjectRemoteConf::default(),
+            runtime: RuntimeConf::default(),
             admin_api: AdminApiConf::default(),
             general: None,
             log: None,
@@ -435,6 +478,7 @@ impl EngineConfig {
             semantic: SemanticConf::default(),
             gen_event_md5: false,
             project_remote: ProjectRemoteConf::default(),
+            runtime: RuntimeConf::default(),
             admin_api: AdminApiConf::default(),
             general: None,
             log: None,
@@ -527,6 +571,16 @@ impl EngineConfig {
         &self.project_remote
     }
 
+    pub fn runtime(&self) -> &RuntimeConf {
+        &self.runtime
+    }
+
+    /// Configured state directory (may still be relative before
+    /// `conf_absolutize`).
+    pub fn runtime_state_dir(&self) -> &str {
+        self.runtime.state_dir.as_str()
+    }
+
     pub fn admin_api(&self) -> &AdminApiConf {
         &self.admin_api
     }
@@ -554,6 +608,10 @@ impl EngineConfig {
         if !self.admin_api.auth.token_file.is_empty() {
             self.admin_api.auth.token_file =
                 resolve_engine_path(self.admin_api.auth.token_file.as_str(), abs_work_root);
+        }
+        if !self.runtime.state_dir.trim().is_empty() {
+            self.runtime.state_dir =
+                resolve_engine_path(self.runtime.state_dir.as_str(), abs_work_root);
         }
         self
     }
@@ -893,6 +951,99 @@ mod tests {
         )
         .expect("parse config with project_remote.enable");
         assert!(conf.project_remote().enabled);
+    }
+
+    #[test]
+    fn test_runtime_state_dir_defaults_to_dot_run() {
+        let conf: EngineConfig = toml::from_str("version = \"1.0\"").expect("parse minimal config");
+        assert_eq!(conf.runtime_state_dir(), ".run");
+        assert_eq!(conf.runtime(), &RuntimeConf::default());
+    }
+
+    #[test]
+    fn test_runtime_conf_rejects_unknown_fields() {
+        let err = toml::from_str::<EngineConfig>("[runtime]\nfoo = 1\n").unwrap_err();
+        assert!(
+            err.to_string().contains("foo"),
+            "unknown runtime keys must be rejected: {err}"
+        );
+    }
+
+    #[test]
+    fn test_runtime_state_dir_is_absolutized_against_work_root() {
+        let conf = toml::from_str::<EngineConfig>(
+            r#"
+            [runtime]
+            state_dir = "state"
+            "#,
+        )
+        .expect("parse runtime conf")
+        .conf_absolutize("/work");
+        assert_eq!(conf.runtime_state_dir(), "/work/state");
+    }
+
+    #[test]
+    fn test_runtime_state_dir_keeps_absolute_path() {
+        let conf = toml::from_str::<EngineConfig>(
+            r#"
+            [runtime]
+            state_dir = "/var/lib/wparse-state"
+            "#,
+        )
+        .expect("parse runtime conf")
+        .conf_absolutize("/work");
+        assert_eq!(conf.runtime_state_dir(), "/var/lib/wparse-state");
+    }
+
+    #[test]
+    fn test_runtime_state_dir_expands_env() {
+        let conf: EngineConfig = toml::from_str(
+            r#"
+            [runtime]
+            state_dir = "${WPARSE_STATE_DIR}"
+            "#,
+        )
+        .expect("parse runtime conf");
+        let mut dict = EnvDict::new();
+        dict.insert("WPARSE_STATE_DIR", orion_variate::ValueType::from("/state"));
+        let conf = conf.env_eval(&dict).conf_absolutize("/work");
+        assert_eq!(conf.runtime_state_dir(), "/state");
+    }
+
+    #[test]
+    fn test_default_runtime_section_is_not_serialized() {
+        let body = toml::to_string(&EngineConfig::default()).expect("serialize default config");
+        assert!(!body.contains("[runtime]"), "got: {body}");
+        assert!(!body.contains("state_dir"), "got: {body}");
+
+        let conf: EngineConfig = toml::from_str(
+            r#"
+            [runtime]
+            state_dir = "/state"
+            "#,
+        )
+        .expect("parse runtime conf");
+        let body = toml::to_string(&conf).expect("serialize runtime config");
+        assert!(body.contains("[runtime]"), "got: {body}");
+        assert!(body.contains("state_dir = \"/state\""), "got: {body}");
+    }
+
+    #[test]
+    fn test_runtime_state_dir_resolves_through_state_dir_type() {
+        let conf = toml::from_str::<EngineConfig>(
+            r#"
+            [runtime]
+            state_dir = "state"
+            "#,
+        )
+        .expect("parse runtime conf")
+        .conf_absolutize("/work");
+        let dir = crate::state::StateDir::resolve(Path::new("/work"), conf.runtime_state_dir())
+            .expect("resolve state dir");
+        assert_eq!(
+            dir.file("authority.sqlite"),
+            Path::new("/work/state/authority.sqlite")
+        );
     }
 
     #[test]

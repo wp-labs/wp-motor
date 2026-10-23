@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use tokio::fs::create_dir_all;
 use wp_conf::engine::EngineConfig;
 use wp_conf::paths::OUT_FILE_PATH;
+use wp_conf::state::StateDir;
 use wp_conf::structure::ConfStdOperation;
 use wp_conf::utils::{backup_clean, save_conf, save_data};
 use wp_error::config_error::ConfResult;
@@ -24,6 +25,10 @@ use wp_error::run_error::{RunReason, RunResult};
 pub struct WarpConf {
     original_root: PathBuf,
     work_root: OnceCell<PathBuf>,
+    /// Resolved runtime state directory. `None` keeps the legacy
+    /// `<work_root>/.run` layout. Set via the [`WarpConf::with_state_dir`]
+    /// builder so clones can never disagree about the state location.
+    state_dir: Option<StateDir>,
 }
 
 impl WarpConf {
@@ -31,7 +36,29 @@ impl WarpConf {
         Self {
             original_root: PathBuf::from(original_root.as_ref()),
             work_root: OnceCell::new(),
+            state_dir: None,
         }
+    }
+
+    /// Use an explicitly resolved state directory.
+    ///
+    /// This is a builder (consuming `self`) on purpose: a setter would let two
+    /// clones of the same `WarpConf` write state to different directories.
+    pub fn with_state_dir(mut self, state_dir: StateDir) -> Self {
+        self.state_dir = Some(state_dir);
+        self
+    }
+
+    /// Resolved state directory (defaults to `<work_root>/.run`).
+    pub fn state_dir(&self) -> StateDir {
+        match &self.state_dir {
+            Some(dir) => dir.clone(),
+            None => StateDir::default_for(self.work_root()),
+        }
+    }
+
+    pub fn state_dir_path(&self) -> PathBuf {
+        self.state_dir().to_path_buf()
     }
 
     pub fn work_root(&self) -> &Path {
@@ -94,10 +121,16 @@ impl WarpConf {
         self.work_root().join(file_name)
     }
     /// 构建运行时目录中文件的完整路径字符串
+    ///
+    /// 运行时目录由 `[runtime].state_dir` 决定，默认 `<work_root>/.run`。
     pub fn runtime_path(&self, file_name: &str) -> String {
-        let run_dir = self.work_root().join(".run");
-        std::fs::create_dir_all(&run_dir).ok();
-        run_dir.join(file_name).to_string_lossy().to_string()
+        let state_dir = self.state_dir();
+        if let Err(err) = state_dir.ensure() {
+            // Do not fail here: callers only need a path, and the actual
+            // open/create that follows reports a more actionable error.
+            warn_ctrl!("{}; returning path anyway", err);
+        }
+        state_dir.file(file_name).to_string_lossy().to_string()
     }
     /// 获取工作根目录的路径字符串
     pub fn work_root_path(&self) -> String {
@@ -225,6 +258,50 @@ mod tests {
                 },
             }
         }
+    }
+
+    #[test]
+    fn runtime_path_defaults_to_dot_run() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let conf = WarpConf::new(temp.path());
+
+        assert_eq!(
+            conf.runtime_path("wparse.pid"),
+            temp.path()
+                .join(".run/wparse.pid")
+                .to_string_lossy()
+                .to_string()
+        );
+        assert!(temp.path().join(".run").is_dir());
+    }
+
+    #[test]
+    fn runtime_path_uses_configured_state_dir() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let state = StateDir::resolve(temp.path(), "state").expect("resolve state dir");
+        let conf = WarpConf::new(temp.path()).with_state_dir(state.clone());
+
+        assert_eq!(
+            conf.runtime_path("authority.sqlite"),
+            state.file("authority.sqlite").to_string_lossy().to_string()
+        );
+        assert_eq!(conf.state_dir_path(), state.path());
+        assert!(state.path().is_dir());
+        assert!(
+            !temp.path().join(".run").exists(),
+            "configured state dir must not create the legacy .run directory"
+        );
+    }
+
+    #[test]
+    fn state_dir_survives_clone() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let state = StateDir::resolve(temp.path(), "state").expect("resolve state dir");
+        let conf = WarpConf::new(temp.path())
+            .with_state_dir(state.clone())
+            .clone();
+
+        assert_eq!(conf.state_dir(), state);
     }
 
     #[test]

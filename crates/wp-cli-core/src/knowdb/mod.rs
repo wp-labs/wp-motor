@@ -7,6 +7,7 @@ use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use wp_conf::constants::KNOWDB_TOML;
+use wp_conf::state::StateDir;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TableCheck {
@@ -260,6 +261,19 @@ pub fn check(work_root: &str, dict: &EnvDict) -> OrionConfResult<CheckReport> {
 }
 
 pub fn clean(work_root: &str) -> OrionConfResult<CleanReport> {
+    // Only the process environment is visible here; values defined in
+    // `.warp_parse/sec_key.toml` require the caller-supplied dict. Prefer
+    // [`clean_with_state`] when a resolved state directory is available.
+    let state_dir = StateDir::resolve_for_work_root(Path::new(work_root), &EnvDict::default());
+    clean_with_state(work_root, &state_dir)
+}
+
+/// Clean KnowDB data with an explicitly resolved state directory.
+///
+/// Callers that already resolved `[runtime].state_dir` (including site-local
+/// overrides) should use this variant so the authority cache is removed from
+/// the same directory the engine writes it to.
+pub fn clean_with_state(work_root: &str, state_dir: &StateDir) -> OrionConfResult<CleanReport> {
     let wr = PathBuf::from(work_root);
     let models_dir = wr.join("models").join("knowledge");
     let mut rep = CleanReport::default();
@@ -277,7 +291,7 @@ pub fn clean(work_root: &str) -> OrionConfResult<CleanReport> {
             }
         }
     }
-    let auth = wr.join(".run").join("authority.sqlite");
+    let auth = state_dir.file("authority.sqlite");
     if auth.exists() {
         std::fs::remove_file(&auth)
             .source_err(ConfIOReason::system_error(), "remove authority cache")
@@ -292,6 +306,46 @@ pub fn clean(work_root: &str) -> OrionConfResult<CleanReport> {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn clean_removes_legacy_run_authority_cache() {
+        let temp = tempdir().expect("create tempdir");
+        let work_root = temp.path();
+        fs::create_dir_all(work_root.join("models/knowledge")).expect("create models dir");
+        fs::create_dir_all(work_root.join(".run")).expect("create legacy run dir");
+        fs::write(work_root.join(".run/authority.sqlite"), "legacy")
+            .expect("write legacy authority");
+
+        let rep = clean(work_root.to_str().expect("utf8 work root")).expect("clean knowdb");
+
+        assert!(rep.removed_models_dir);
+        assert!(rep.removed_authority_cache);
+        assert!(!work_root.join(".run/authority.sqlite").exists());
+    }
+
+    #[test]
+    fn clean_with_state_removes_authority_from_configured_dir() {
+        let temp = tempdir().expect("create tempdir");
+        let work_root = temp.path();
+        fs::create_dir_all(work_root.join("models/knowledge")).expect("create models dir");
+        fs::create_dir_all(work_root.join(".run")).expect("create legacy run dir");
+        fs::write(work_root.join(".run/authority.sqlite"), "legacy")
+            .expect("write legacy authority");
+        let state = StateDir::resolve(work_root, "state").expect("resolve state dir");
+        state.ensure().expect("ensure state dir");
+        fs::write(state.file("authority.sqlite"), "state").expect("write authority");
+
+        let rep = clean_with_state(work_root.to_str().expect("utf8 work root"), &state)
+            .expect("clean knowdb");
+
+        assert!(rep.removed_models_dir);
+        assert!(rep.removed_authority_cache);
+        assert!(!state.file("authority.sqlite").exists());
+        assert!(
+            work_root.join(".run/authority.sqlite").exists(),
+            "legacy .run must not be touched when a state dir is given"
+        );
+    }
 
     #[test]
     fn init_writes_postgres_provider_example() {

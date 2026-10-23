@@ -23,6 +23,7 @@ pub mod loader;
 pub mod engine;
 pub mod generator;
 pub mod run_args;
+pub mod state;
 
 // 向后兼容性：重新导出旧的类型名称
 #[deprecated(note = "Use RuntimeMode instead")]

@@ -35,7 +35,7 @@ use crate::knowledge::{
     load_local_table_names, load_provider_table_names, uses_external_provider_only,
 };
 use crate::orchestrator::config::loader::WarpConf;
-use crate::orchestrator::config::models::{load_warp_engine_confs, stat_reqs_from};
+use crate::orchestrator::config::models::{load_warp_engine_confs_with_state, stat_reqs_from};
 use crate::orchestrator::engine::resource::EngineResource;
 use crate::orchestrator::engine::resource::WarpResourceBuilder;
 use crate::orchestrator::engine::service::{
@@ -90,8 +90,11 @@ impl WpApp {
     /// 从 CLI 参数构建应用上下文：加载主配置、完成运行参数、初始化日志/统计
     pub fn try_from(args: ParseArgs, env_dict: EnvDict) -> Result<Self, wp_error::RunError> {
         //let mut args = args;
-        let (conf_manager, mut main_conf) =
-            load_warp_engine_confs(resolve_run_work_root(&args.work_root)?.as_str(), &env_dict)?;
+        let (conf_manager, mut main_conf) = load_warp_engine_confs_with_state(
+            resolve_run_work_root(&args.work_root)?.as_str(),
+            &env_dict,
+            args.state_dir.as_deref(),
+        )?;
 
         // Make `SEC_XXX` values available to OML privacy operators under their
         // fixed default names (`pii_salt` / `pii_key`). No `[privacy]` config is
@@ -107,6 +110,12 @@ impl WpApp {
         let stat_reqs = stat_reqs_from(main_conf.stat_conf());
         log_init(main_conf.log_conf()).conv_err()?;
         info_ctrl!("log conf: {} ", main_conf.log_conf());
+        // Log after `log_init`: anything logged earlier is dropped because the
+        // global logger is not installed yet.
+        info_ctrl!(
+            "runtime state_dir: {}",
+            conf_manager.state_dir_path().display()
+        );
         // 初始化引擎侧注册表：注册内置工厂 + 导入 API 已注册工厂 + 打印注册清单
         crate::connectors::startup::init_runtime_registries();
         // 全局 tag 来自实例自己的环境变量（WP_GLOBAL_TAGS），不写入共享的 wparse.toml。
@@ -173,7 +182,7 @@ impl WpApp {
         run_mode: RunMode,
         env_dict: &EnvDict,
     ) -> RunResult<EngineRuntime> {
-        // 单实例保护：对 <work-root>/.run/.lock 取 flock，阻止同一 work-root 并发跑多个引擎
+        // 单实例保护：对 <state_dir>/.lock 取 flock，阻止同一 work-root 并发跑多个引擎
         let work_root = self.conf_manager.work_root_path();
         let lock_path = self.conf_manager.runtime_path(".lock");
         self.run_lock = Some(RunLock::acquire(&work_root, &lock_path)?);
@@ -528,7 +537,7 @@ async fn load_engine_res(
         stat_reqs.get_requ_items(StatStage::Parse),
     )?;
 
-    // 输出 rule_mapping.dat 至工作目录 .run/rule_mapping.dat
+    // 输出 rule_mapping.dat 至状态目录（[runtime].state_dir，默认 .run）
     let res_path = conf_manager.runtime_path("rule_mapping.dat");
     if Path::new(&res_path).exists() {
         std::fs::remove_file(&res_path).owe(RunReason::resource_error())?;
