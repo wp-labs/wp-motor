@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.0] - 2026-10-23
+
+### Added
+- **运行状态目录可配置（`[runtime].state_dir`）**：pid 文件、单实例锁、`rule_mapping.dat`、`authority.sqlite` 与 `project_remote` 缓存不再固定写在 `<work_root>/.run`。
+  - 默认值仍是 `.run`，现有工程无需改动；容器部署可以把状态放到独立卷上，work root 也可以挂成只读。
+  - 新增 `--state-dir` 参数（优先于配置），启动日志会打印实际生效的目录。
+  - 新增校验：状态目录不能是 work root 本身、它的上级目录，或 `project_remote` 托管目录（`conf`/`models`/`topology`/`connectors`）内部，避免清理时误删工程。
+- **`data clean` / `knowdb clean` 按状态目录清理**：挂载点只清内容、保留目录；符号链接状态目录保留链接、清理目标。
+
+### Changed
+- **`wproj init` 生成的 admin API token 改为 32 字节随机数**（64 位 hex），原子写入并以 `0600` 创建；不再使用可预测的 pid + 时间戳。
+- **`wproj init` 不再静默接受不可用的 token 文件**：已存在的 token 为空、多行或不是普通文件时会报错并提示处理方式；合法的已有 token 不会被覆盖。
+
+### Fixed
+- 修复 `wproj` 测试中 HOME 覆盖锁不互斥导致的并行随机失败。
+
 ## [1.33.0] - 2026-10-22
 
 ### Changed
