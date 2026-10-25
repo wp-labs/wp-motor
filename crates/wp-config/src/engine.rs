@@ -109,8 +109,6 @@ impl EnvEvaluable<AdminApiTlsConf> for AdminApiTlsConf {
 #[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct AdminApiAuthConf {
-    #[serde(default = "default_admin_api_auth_mode")]
-    pub mode: String,
     #[serde(default = "default_admin_api_token_file")]
     pub token_file: String,
 }
@@ -118,7 +116,6 @@ pub struct AdminApiAuthConf {
 impl Default for AdminApiAuthConf {
     fn default() -> Self {
         Self {
-            mode: default_admin_api_auth_mode(),
             token_file: default_admin_api_token_file(),
         }
     }
@@ -126,7 +123,6 @@ impl Default for AdminApiAuthConf {
 
 impl EnvEvaluable<AdminApiAuthConf> for AdminApiAuthConf {
     fn env_eval(mut self, dict: &EnvDict) -> AdminApiAuthConf {
-        self.mode = self.mode.env_eval(dict);
         self.token_file = self.token_file.env_eval(dict);
         self
     }
@@ -399,10 +395,6 @@ fn runtime_is_default(conf: &RuntimeConf) -> bool {
 
 pub fn default_state_dir() -> String {
     crate::state::DEFAULT_STATE_DIR.to_string()
-}
-
-pub fn default_admin_api_auth_mode() -> String {
-    "bearer_token".to_string()
 }
 
 pub fn default_admin_api_token_file() -> String {
@@ -1078,6 +1070,34 @@ mod tests {
     }
 
     #[test]
+    fn test_admin_api_auth_omits_mode_field() {
+        let mut conf = EngineConfig::default();
+        conf.admin_api.enabled = true;
+
+        let toml = toml::to_string(&conf).expect("serialize engine config");
+        assert!(toml.contains("[admin_api.auth]"), "{toml}");
+        assert!(
+            !toml.contains("mode = "),
+            "auth mode is implicit (bearer token) and must not be serialized: {toml}"
+        );
+    }
+
+    #[test]
+    fn test_admin_api_auth_rejects_removed_mode_field() {
+        let err = toml::from_str::<EngineConfig>(
+            r#"
+            [admin_api.auth]
+            mode = "bearer_token"
+            token_file = "runtime/admin_api.token"
+            "#,
+        )
+        .expect_err("admin_api.auth.mode should no longer be accepted")
+        .to_string();
+        assert!(err.contains("unknown field"), "{err}");
+        assert!(err.contains("mode"), "{err}");
+    }
+
+    #[test]
     fn test_admin_api_token_file_env_eval_uses_home() {
         let _guard = home_lock().lock().expect("lock HOME override");
         let temp = tempfile::tempdir().expect("create temp home");
@@ -1111,7 +1131,6 @@ mod tests {
                     key_file: "./tls/server.key".to_string(),
                 },
                 auth: AdminApiAuthConf {
-                    mode: default_admin_api_auth_mode(),
                     token_file: "runtime/admin_api.token".to_string(),
                 },
             },

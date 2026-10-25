@@ -322,7 +322,6 @@ mod tests {
 enabled = false
 
 [admin_api.auth]
-mode = "bearer_token"
 token_file = "${HOME}/.warp_parse/admin_api.token"
 "#,
         )

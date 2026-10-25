@@ -386,7 +386,6 @@ cert_file = ""
 key_file = ""
 
 [admin_api.auth]
-mode = "bearer_token"
 token_file = "${HOME}/.warp_parse/admin_api.token"
 ```
 
@@ -394,7 +393,7 @@ token_file = "${HOME}/.warp_parse/admin_api.token"
 
 1. `enabled=false` 时不启动 admin HTTP
 2. 非 loopback 地址必须 `tls.enabled=true`
-3. `auth.mode` 当前只能是 `bearer_token`
+3. 鉴权固定为 Bearer Token，没有可配置的 auth mode
 4. `token_file` 不存在或权限不安全时启动失败
 
 ## `wproj engine reload` 的角色
