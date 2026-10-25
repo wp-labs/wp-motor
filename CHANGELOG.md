@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.35.0] - 2026-10-25
+
+### Changed
+- **移除 `[admin_api.auth].mode` 配置项**：鉴权方式只有 Bearer Token 一种，该字段没有实际作用，`[admin_api.auth]` 现在只剩 `token_file`。
+  - 生成的配置不再包含 `mode`；手工写了 `mode = "bearer_token"` 的旧配置会在加载时报 `unknown field`，删掉该行即可。
+
 ## [1.34.0] - 2026-10-23
 
 ### Added
