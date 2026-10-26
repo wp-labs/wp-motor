@@ -32,7 +32,9 @@ impl SinkFactory for TestRescueFactory {
         let f = build_file_sink(&dummy, &path)
             .await
             .owe(SinkReason::Uvs(UnifiedReason::resource_error()))?;
-        let stg = HealthController::new();
+        // 阶段表可由 WP_TEST_RESCUE_STAGES / WP_TEST_RESCUE_REPEAT 覆盖，
+        // 便于 e2e 用例构造确定性的故障窗口。
+        let stg = HealthController::from_env()?;
         let proxy = ASinkTestProxy::new(f, stg);
         Ok(wp_connector_api::SinkHandle::new(Box::new(proxy)))
     }

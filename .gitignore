@@ -46,3 +46,6 @@ docs/node_modules/
 =======
 .claude/settings.local.json
 >>>>>>> hotfix/1.20
+
+# 单元测试会写 rescue/recover.lock（CheckPoint 默认路径）
+/rescue/

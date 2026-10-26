@@ -101,6 +101,8 @@ struct OutageTracker {
     dropped_in_outage: u64,
     dropped_since_warn: u64,
     last_warn_at: Option<Instant>,
+    /// 本次故障期是否已输出过“熔断打开”的 WARN。
+    breaker_warned: bool,
 }
 
 impl OutageTracker {
@@ -112,6 +114,7 @@ impl OutageTracker {
             self.dropped_in_outage = 0;
             self.dropped_since_warn = 0;
             self.last_warn_at = None;
+            self.breaker_warned = false;
         }
         self.dropped_in_outage = self.dropped_in_outage.saturating_add(count);
         self.dropped_since_warn = self.dropped_since_warn.saturating_add(count);
@@ -127,6 +130,15 @@ impl OutageTracker {
             return Some(since_warn);
         }
         None
+    }
+
+    /// 本次故障期的“熔断打开”WARN 只输出一次；返回 `true` 表示本次应该输出。
+    fn should_warn_breaker_open(&mut self) -> bool {
+        if !self.outage || self.breaker_warned {
+            return false;
+        }
+        self.breaker_warned = true;
+        true
     }
 
     /// 记录一次成功发送；若刚结束一段故障期，返回 `(丢弃数, 故障开始时间)`。
@@ -341,14 +353,17 @@ impl SinkRuntime {
             return;
         }
         let total = sink_error_stats::record_drop(&self.name, count);
-        if let Some(since_warn) = self.outage.record_drop(count) {
+        // 用 record_drop 维护故障期状态，但 WARN 只在本故障期第一次跳闸时输出，
+        // 避免被 60s 限流吞掉（第一条 WARN 总是被首次真实失败占用）。
+        self.outage.record_drop(count);
+        if self.outage.should_warn_breaker_open() {
             let last_error = sink_error_stats::snapshot_for(&self.name)
                 .and_then(|snap| snap.last_error)
                 .unwrap_or_default();
             warn_data!(
                 "sink '{}' drop_when_error: breaker open, skipped {} record(s), total {}, last_error={}",
                 self.name,
-                since_warn,
+                count,
                 total,
                 last_error
             );
@@ -364,7 +379,7 @@ impl SinkRuntime {
             self.rescue_records = 0;
             self.last_rescue_log_at = None;
             match retired.stop().await {
-                Ok(()) => info_data!(
+                Ok(()) => warn_data!(
                     "sink '{}' rescue file finalized: path={} records={}",
                     self.name,
                     file,
@@ -379,7 +394,7 @@ impl SinkRuntime {
             }
         }
         if let Some((dropped, started_at)) = self.outage.record_success() {
-            info_data!(
+            warn_data!(
                 "sink '{}' recovered from send failures (drop_when_error): dropped {} record(s) since {}",
                 self.name,
                 dropped,
@@ -1240,6 +1255,43 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tempfile::tempdir;
     use wp_model_core::model::{DataField, DataRecord};
+
+    #[test]
+    fn breaker_warn_is_once_per_outage_and_resets() {
+        let mut tracker = OutageTracker::default();
+        assert!(
+            !tracker.should_warn_breaker_open(),
+            "no outage yet -> nothing to warn about"
+        );
+
+        // 故障开始：首次丢弃立刻 WARN
+        assert_eq!(tracker.record_drop(1), Some(1));
+        assert!(
+            tracker.should_warn_breaker_open(),
+            "first skip of the outage warns"
+        );
+        assert!(
+            !tracker.should_warn_breaker_open(),
+            "breaker warn must be emitted only once per outage"
+        );
+        // 同一故障期内，真实失败 WARN 仍受 60s 限流
+        assert_eq!(tracker.record_drop(1), None);
+
+        // 恢复：故障期结束，汇总丢弃数
+        let (dropped, _) = tracker.record_success().expect("outage summary");
+        assert_eq!(dropped, 2);
+        assert!(
+            !tracker.should_warn_breaker_open(),
+            "outage over -> no breaker warn"
+        );
+
+        // 新一轮故障：开关重新可用
+        assert_eq!(tracker.record_drop(5), Some(5));
+        assert!(
+            tracker.should_warn_breaker_open(),
+            "a new outage may warn again"
+        );
+    }
 
     struct FailingSink;
 

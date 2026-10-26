@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.0] - 2026-10-26
+
+### Added
+- **`test_rescue` 的故障时序可配置**：内置测试后端的健康阶段表改为环境变量驱动，便于 e2e 用例构造确定性的故障窗口。
+  - `WP_TEST_RESCUE_STAGES="up:2,down:3,up:3"`：逗号分隔的 `状态:秒数`，状态取 `up`/`down`，首个阶段在 sink 构建后立即生效；格式错误直接报配置错误（错误信息带变量名与出错片段）。
+  - `WP_TEST_RESCUE_REPEAT=1`（`1/true/yes/on`）：阶段表循环执行。
+  - 未设置时行为与之前一致（健康 2s → 故障 2s → 之后视为健康）。阶段表耗尽后一律视为健康，避免「最后一个阶段是故障」导致 sink 永久不可用。
+
+### Fixed
+- **救援回放可能投递到错误的 sink 组**：恢复器原先只按 sink 名匹配目标，自动命名时不同组的同名 sink（都是 `[0]`）都会被当成候选，救援数据按通道余量被分流到别的群组。现在从救援文件路径（`<root>/<group>/<sink>-<ts>-<seq>.dat`）解析出组名，按「组 + 名」精确匹配，匹配不到才回退到按名匹配（兼容旧的平铺布局）。
+- **回放把背压当成 sink 故障**：分发通道满（`TrySendStatus::Fulfilled`）原先被映射成 `stg ctrl error` 并触发候选切换，既放大错投，也可能让整份救援文件回放中断。现在通道满在同一个候选上等待重试（2ms × 2500 ≈ 5s），只有通道关闭等真实错误才切换候选。
+- **回放热路径的额外深拷贝**：每条记录不再为每次尝试深拷贝一次 `DataRecord`，重试只做 `Arc::clone`。
+
+### Changed
+- **救援/丢弃生命周期的三条日志统一到 WARN**，每次故障各一条，不再被 60s 限流吞掉：
+  - `rescue file finalized`、`recovered from send failures (drop_when_error)` 由 INFO 升为 WARN；
+  - `breaker open, skipped` 改为每个故障期输出第一条。
+
 ## [1.36.0] - 2026-10-26
 
 ### Added
