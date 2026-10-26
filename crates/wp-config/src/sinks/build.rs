@@ -45,6 +45,7 @@ fn build_sink_instance(
     );
     // filter_expect: 默认为 true；用于决定 cond 匹配的期望值
     sink.set_filter_expect(r.filter_expect());
+    sink.set_drop_when_error(r.drop_when_error());
     sink.connector_id = Some(conn.id.clone());
     sink.group_name = Some(group_name.to_string());
     sink.expect = r.expect().cloned();
@@ -738,12 +739,11 @@ mod tests {
         }
 
         fn validate_spec(&self, spec: &SinkSpec) -> SinkResult<()> {
-            for key in ["stream_tag_field"] {
-                if spec.params.contains_key(key) {
-                    return Err(SinkReason::core_conf()
-                        .to_err()
-                        .with_detail(format!("connector saw runtime param: {key}")));
-                }
+            let key = "stream_tag_field";
+            if spec.params.contains_key(key) {
+                return Err(SinkReason::core_conf()
+                    .to_err()
+                    .with_detail(format!("connector saw runtime param: {key}")));
             }
             Ok(())
         }
@@ -796,6 +796,94 @@ params = { file = "out.json" }
             build_route_conf_from_with(&rf, None, &conn_map, &StrictLookup).expect("route conf");
         let sink = conf.sink_group.sinks.first().expect("sink");
         assert!(!sink.core.params.contains_key("stream_tag_field"));
+    }
+
+    #[test]
+    fn drop_when_error_is_carried_from_route_file() {
+        let rf: RouteFile = toml::from_str(
+            r#"
+version = "2.0"
+[sink_group]
+name = "/sink/test"
+oml = ["network.netflow"]
+
+[[sink_group.sinks]]
+name = "json"
+connect = "file_json_sink"
+drop_when_error = true
+params = { file = "out.json" }
+"#,
+        )
+        .expect("route file");
+        let mut conn_map = BTreeMap::new();
+        conn_map.insert(
+            "file_json_sink".to_string(),
+            ConnectorRec {
+                id: "file_json_sink".to_string(),
+                kind: "file".to_string(),
+                scope: ConnectorScope::Sink,
+                allow_override: vec!["base".to_string(), "file".to_string()],
+                default_params: ParamMap::new(),
+                origin: None,
+            },
+        );
+
+        let conf = build_route_conf_from(&rf, None, &conn_map).expect("route conf");
+        let sink = conf.sink_group.sinks.first().expect("sink");
+        assert!(sink.drop_when_error());
+    }
+
+    #[test]
+    fn drop_when_error_defaults_to_false() {
+        let rf: RouteFile = toml::from_str(
+            r#"
+version = "2.0"
+[sink_group]
+name = "/sink/test"
+
+[[sink_group.sinks]]
+name = "json"
+connect = "file_json_sink"
+params = { file = "out.json" }
+"#,
+        )
+        .expect("route file");
+        let mut conn_map = BTreeMap::new();
+        conn_map.insert(
+            "file_json_sink".to_string(),
+            ConnectorRec {
+                id: "file_json_sink".to_string(),
+                kind: "file".to_string(),
+                scope: ConnectorScope::Sink,
+                allow_override: vec!["base".to_string(), "file".to_string()],
+                default_params: ParamMap::new(),
+                origin: None,
+            },
+        );
+
+        let conf = build_route_conf_from(&rf, None, &conn_map).expect("route conf");
+        let sink = conf.sink_group.sinks.first().expect("sink");
+        assert!(!sink.drop_when_error());
+    }
+
+    #[test]
+    fn drop_when_error_rejects_non_bool() {
+        let err = toml::from_str::<RouteFile>(
+            r#"
+version = "2.0"
+[sink_group]
+name = "/sink/test"
+
+[[sink_group.sinks]]
+name = "json"
+connect = "file_json_sink"
+drop_when_error = "drop"
+"#,
+        )
+        .expect_err("drop_when_error must be a boolean")
+        .to_string();
+        assert!(err.contains("drop_when_error"), "err={err}");
+        assert!(err.contains("boolean"), "err={err}");
     }
 
     #[test]

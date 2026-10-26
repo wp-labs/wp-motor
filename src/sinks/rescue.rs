@@ -127,10 +127,12 @@ impl AsyncCtrl for RescueFileSink {
             .flush()
             .await
             .owe_sink("flush rescue file failed")?;
-        if let Some(new_path) = self.path.strip_suffix(".lock")
-            && let Err(e) = fs::rename(&self.path, new_path)
-        {
-            error_data!("unlock rescue file on stop failed: {}", e);
+        // 重命名后同步路径，避免 Drop 再尝试一次（会因源文件不存在而误报错误）。
+        if let Some(new_path) = self.path.strip_suffix(".lock").map(|p| p.to_string()) {
+            match fs::rename(&self.path, &new_path) {
+                Ok(()) => self.path = new_path,
+                Err(e) => error_data!("unlock rescue file on stop failed: {}", e),
+            }
         }
         Ok(())
     }
@@ -239,6 +241,28 @@ mod tests {
             }
             _ => panic!("expected record payload"),
         }
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn rescue_sink_stop_is_idempotent() -> SinkResult<()> {
+        let temp = tempdir().owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
+        let path = temp.path().join("rescue/idempotent.dat.lock");
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
+        }
+        let mut sink = RescueFileSink::new(path.to_str().unwrap()).await?;
+        let mut record = DataRecord::default();
+        record.append(DataField::from_chars("key", "value"));
+        AsyncRecordSink::sink_record(&mut sink, &record).await?;
+
+        AsyncCtrl::stop(&mut sink).await?;
+        // 第二次 stop 不应失败，也不应因源文件已重命名而误报。
+        AsyncCtrl::stop(&mut sink).await?;
+
+        let dat_path = temp.path().join("rescue/idempotent.dat");
+        assert!(dat_path.exists(), "rescue file should be unlocked once");
+        assert!(!path.exists(), "the .lock file must be gone");
         Ok(())
     }
 }

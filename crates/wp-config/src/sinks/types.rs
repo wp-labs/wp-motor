@@ -91,6 +91,9 @@ pub struct RouteSink {
     /// 当 cond 结果等于该值时投递；默认为 true
     #[serde(default = "crate_default_true")]
     filter_expect: bool,
+    /// 发送失败时是否丢弃本条/本批数据（而不是写救援文件）；默认 false
+    #[serde(default)]
+    drop_when_error: bool,
 }
 
 impl EnvEvaluable<RouteSink> for RouteSink {
@@ -127,6 +130,9 @@ impl RouteSink {
     }
     pub fn filter_expect(&self) -> bool {
         self.filter_expect
+    }
+    pub fn drop_when_error(&self) -> bool {
+        self.drop_when_error
     }
 }
 

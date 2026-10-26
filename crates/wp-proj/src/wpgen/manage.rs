@@ -80,6 +80,7 @@ mod tests {
     use wp_conf::test_support::ForTest;
 
     use super::*;
+    use crate::project::tests::{HomeOverride, admin_api_home_lock};
     use crate::project::{WarpProject, init::PrjScope};
     use crate::wpgen::gen_conf_init;
     use crate::wpgen::load_wpgen_resolved;
@@ -102,6 +103,10 @@ mod tests {
     #[test]
     fn clean_outputs_remove_file_sink_outputs() {
         let case_path = tempdir().expect("test path");
+        // `init_basic(Full)` 会向 $HOME 写 admin token：与其它 HOME 覆盖测试互斥，
+        // 并把 HOME 指向本次临时目录，避免写真实 HOME 或被其它测试清掉。
+        let _guard = admin_api_home_lock().lock().expect("lock HOME override");
+        let _home = HomeOverride::new(case_path.path());
         let mut project = WarpProject::bare(case_path.path());
         project
             .init_basic(PrjScope::Full)
@@ -138,6 +143,8 @@ mod tests {
     #[test]
     fn clean_outputs_reports_delete_failures() {
         let case_path = tempdir().expect("test path");
+        let _guard = admin_api_home_lock().lock().expect("lock HOME override");
+        let _home = HomeOverride::new(case_path.path());
         let mut project = WarpProject::bare(case_path.path());
         project
             .init_basic(PrjScope::Full)

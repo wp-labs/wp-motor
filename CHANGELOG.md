@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.36.0] - 2026-10-26
+
+### Added
+- **Sink 级发送失败丢弃 `drop_when_error`（默认 `false`）**：`[[sink_group.sinks]]` 新增布尔开关。
+  - `true`：发送失败时丢弃本条/本批数据，不写救援文件、不切换坏 sink，同组其它 sink 继续投递；connector 自身的 `max_retries` 仍然生效。
+  - 内置 sink 级熔断：首次失败后暂停实际下发（5s 起、连续失败翻倍、上限 60s），到期只放行一个探测批次；探测成功自动恢复投递并输出汇总。
+  - 可观测性：首次失败立即 WARN，之后每 60s 最多一条，并区分真实失败与熔断跳过；监控统计新增按 sink 的 `sink_dropped_total`，窗口日志带 `last_error_at` / `last_error`。
+
+### Fixed
+- **下游持续不可用时救援文件不再“每失败一批一个”**：一次故障复用同一个救援文件，真正投递成功后才落成 `.dat`；故障期间每 60s 输出一条救援文件状态日志（路径、已写记录数、大小）。
+- **多副本同名 sink 的故障恢复**：恢复后的连接只会换回发生故障的那个副本，不会再落到同名的其它副本上。
+- **救援文件回收阶段的重复关闭**：不再打印 `unlock rescue file failed` 误报。
+
 ## [1.35.0] - 2026-10-25
 
 ### Changed

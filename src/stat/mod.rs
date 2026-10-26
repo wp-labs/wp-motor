@@ -14,6 +14,7 @@ pub mod metric_set;
 pub mod reporting;
 pub mod runtime_counters;
 pub mod runtime_metric;
+pub mod sink_error_stats;
 //pub mod sink_stat;
 
 pub type MonSend = tokio::sync::mpsc::Sender<ReportVariant>;

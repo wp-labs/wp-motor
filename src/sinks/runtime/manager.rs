@@ -1,19 +1,21 @@
 use crate::compat::LegacyOwe;
 use crate::sinks::pdm_outer::TDMDataAble;
 use crate::sinks::prelude::*;
-use chrono::Utc;
+use chrono::{DateTime, Local, Utc};
 use derive_getters::Getters;
 use orion_exp::{Expression, RustSymbol};
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use wp_conf::structure::default_batch_size;
 use wp_model_core::model::{DataField, fmt_def::TextFmt};
 
 // 全局计数器，用于生成唯一的救援文件序号
 static RESCUE_FILE_SEQ: AtomicU64 = AtomicU64::new(0);
+// 运行期 sink 实例 id：同名 sink 的多副本需要区分，用于把恢复后的 sink 换回正确副本
+static SINK_INSTANCE_SEQ: AtomicU64 = AtomicU64::new(0);
 
 use crate::runtime::errors::err4_send_to_sink;
 use crate::sinks::RescueFileSink;
@@ -23,6 +25,7 @@ use crate::sinks::{
 };
 use crate::stat::MonSend;
 use crate::stat::metric_collect::MetricCollectors;
+use crate::stat::sink_error_stats;
 use wp_conf::structure::SinkInstanceConf;
 use wp_connector_api::{BatchMeta, SinkReason, SinkResult};
 use wp_error::error_handling::{ErrorHandlingStrategy, sys_robust_mode};
@@ -35,6 +38,111 @@ use wp_stat::StatReq;
 use wp_stat::TimedStat;
 
 use super::stat::RuntimeStautus;
+
+/// `drop_when_error` 下两条 WARN 之间的最小间隔（避免长故障期被单个 sink 刷屏）
+const DROP_WARN_INTERVAL: Duration = Duration::from_secs(60);
+/// rescue 模式下救援文件状态日志的最小间隔
+const RESCUE_LOG_INTERVAL: Duration = Duration::from_secs(60);
+/// 熔断后的冷却起点；连续失败按 2 倍增长，直到上限。
+const HEALTH_BACKOFF_BASE: Duration = Duration::from_secs(5);
+const HEALTH_BACKOFF_MAX: Duration = Duration::from_secs(60);
+
+/// sink 级健康闸门。
+///
+/// `drop_when_error = true` 时启用：一次发送失败后暂停实际下发（冷却 5s，连续失败翻倍，
+/// 上限 60s），冷却到期只放行一个探测批次。
+/// 这样坏链路期间不会每批都去撞连接/重试，好链路恢复后下一个探测批次会自动重新投递。
+#[derive(Debug)]
+struct SinkHealth {
+    failures: u32,
+    retry_at: Option<Instant>,
+    backoff: Duration,
+}
+
+impl SinkHealth {
+    fn new() -> Self {
+        Self {
+            failures: 0,
+            retry_at: None,
+            backoff: HEALTH_BACKOFF_BASE,
+        }
+    }
+
+    fn is_open(&self, now: Instant) -> bool {
+        matches!(self.retry_at, Some(at) if now < at)
+    }
+
+    fn on_failure(&mut self, now: Instant) {
+        self.failures = self.failures.saturating_add(1);
+        if self.failures > 1 {
+            self.backoff = (self.backoff * 2).min(HEALTH_BACKOFF_MAX);
+        }
+        self.retry_at = Some(now + self.backoff);
+    }
+
+    /// 健康闸门与故障期记账一起复位。
+    fn on_success(&mut self) {
+        self.failures = 0;
+        self.retry_at = None;
+        self.backoff = HEALTH_BACKOFF_BASE;
+    }
+
+    #[cfg(test)]
+    fn set_backoff_for_test(&mut self, base: Duration) {
+        self.backoff = base;
+    }
+}
+
+/// `drop_when_error` 的故障期状态：只用于限流 WARN 与恢复汇总。
+#[derive(Default)]
+struct OutageTracker {
+    outage: bool,
+    outage_started_at: Option<DateTime<Local>>,
+    dropped_in_outage: u64,
+    dropped_since_warn: u64,
+    last_warn_at: Option<Instant>,
+}
+
+impl OutageTracker {
+    /// 记录一次丢弃；返回 `Some(n)` 表示应立即输出一条 WARN，`n` 为距上次 WARN 的丢弃数。
+    fn record_drop(&mut self, count: u64) -> Option<u64> {
+        if !self.outage {
+            self.outage = true;
+            self.outage_started_at = Some(Local::now());
+            self.dropped_in_outage = 0;
+            self.dropped_since_warn = 0;
+            self.last_warn_at = None;
+        }
+        self.dropped_in_outage = self.dropped_in_outage.saturating_add(count);
+        self.dropped_since_warn = self.dropped_since_warn.saturating_add(count);
+
+        let should_warn = match self.last_warn_at {
+            None => true,
+            Some(at) => at.elapsed() >= DROP_WARN_INTERVAL,
+        };
+        if should_warn {
+            self.last_warn_at = Some(Instant::now());
+            let since_warn = self.dropped_since_warn;
+            self.dropped_since_warn = 0;
+            return Some(since_warn);
+        }
+        None
+    }
+
+    /// 记录一次成功发送；若刚结束一段故障期，返回 `(丢弃数, 故障开始时间)`。
+    fn record_success(&mut self) -> Option<(u64, DateTime<Local>)> {
+        if !self.outage {
+            return None;
+        }
+        self.outage = false;
+        self.last_warn_at = None;
+        self.dropped_since_warn = 0;
+        let dropped = self.dropped_in_outage;
+        self.dropped_in_outage = 0;
+        let started_at = self.outage_started_at.take()?;
+        Some((dropped, started_at))
+    }
+}
 
 #[derive(Getters)]
 pub struct SinkRuntime {
@@ -57,6 +165,24 @@ pub struct SinkRuntime {
     backup_used: bool,
     timer_poll_ticks: u8,
     last_stat_sent_at: Instant,
+    drop_when_error: bool,
+    /// 运行期实例 id（同一进程内唯一，用于同名副本定位）
+    #[getter(skip)]
+    instance_id: u64,
+    /// 故障期间暂时退役的救援 sink：切回真实 sink 后仍保持打开，下次失败直接复用同一个文件
+    #[getter(skip)]
+    retired_rescue: Option<SinkBackendType>,
+    /// 当前救援文件路径与本次故障期间已写入的记录数（用于可观测性）
+    #[getter(skip)]
+    rescue_file: Option<String>,
+    #[getter(skip)]
+    rescue_records: u64,
+    #[getter(skip)]
+    last_rescue_log_at: Option<Instant>,
+    #[getter(skip)]
+    health: SinkHealth,
+    #[getter(skip)]
+    outage: OutageTracker,
 }
 
 /// 批量发送错误处理结果
@@ -99,8 +225,14 @@ impl SinkRuntime {
         let backup_name = format!("{}_bak", name.clone().into());
         let normal_stat = MetricCollectors::new(name.clone().into(), stat_reqs.clone());
         let backup_stat = MetricCollectors::new(backup_name.clone(), stat_reqs);
-        info_ctrl!("create sink:{} batch_size={}", conf.full_name(), batch_size);
+        info_ctrl!(
+            "create sink:{} batch_size={} drop_when_error={}",
+            conf.full_name(),
+            batch_size,
+            conf.drop_when_error()
+        );
         let pre_tags = Self::compile_tags(&conf);
+        let drop_when_error = conf.drop_when_error();
 
         Self {
             rescue,
@@ -120,6 +252,14 @@ impl SinkRuntime {
             backup_used: false,
             timer_poll_ticks: 0,
             last_stat_sent_at: Instant::now(),
+            drop_when_error,
+            instance_id: SINK_INSTANCE_SEQ.fetch_add(1, Ordering::Relaxed),
+            retired_rescue: None,
+            rescue_file: None,
+            rescue_records: 0,
+            last_rescue_log_at: None,
+            health: SinkHealth::new(),
+            outage: OutageTracker::default(),
         }
     }
     // 将配置中的 tags 解析为去重后的字段列表（后写覆盖），以降低运行期构造开销
@@ -156,7 +296,104 @@ impl SinkRuntime {
     pub fn get_cond(&self) -> Option<&Expression<DataField, RustSymbol>> {
         self.cond.as_ref()
     }
+
+    /// 当前运行期实例 id，用于同名 sink 多副本的精确定位。
+    pub fn instance_id(&self) -> u64 {
+        self.instance_id
+    }
+
+    /// `drop_when_error = true` 且熔断处于打开状态时，跳过本次实际下发。
+    fn should_skip_send(&self) -> bool {
+        self.drop_when_error && self.health.is_open(Instant::now())
+    }
+
+    /// 熔断打开时记录整批丢弃并返回 `true`，调用方据此直接结束本次发送。
+    fn drop_batch_if_open(&mut self, count: u64) -> bool {
+        if !self.should_skip_send() {
+            return false;
+        }
+        self.record_skipped_drop(count);
+        true
+    }
+
+    /// 记录一次真实发送失败后的丢弃：写进程级计数（供监控导出），并按间隔限流 WARN。
+    fn record_failed_drop(&mut self, count: u64, error: &SinkError) {
+        if count == 0 {
+            return;
+        }
+        let raw = error.to_string();
+        let text = sink_error_stats::sanitize_error_text(&raw);
+        let total = sink_error_stats::record_failure(&self.name, count, &raw);
+        if let Some(since_warn) = self.outage.record_drop(count) {
+            warn_data!(
+                "sink '{}' drop_when_error: dropped {} record(s), total {}, last_error={}",
+                self.name,
+                since_warn,
+                total,
+                text
+            );
+        }
+    }
+
+    /// 记录熔断期间的跳过：不计新错误，只累计丢弃，并区分于真实失败。
+    fn record_skipped_drop(&mut self, count: u64) {
+        if count == 0 {
+            return;
+        }
+        let total = sink_error_stats::record_drop(&self.name, count);
+        if let Some(since_warn) = self.outage.record_drop(count) {
+            let last_error = sink_error_stats::snapshot_for(&self.name)
+                .and_then(|snap| snap.last_error)
+                .unwrap_or_default();
+            warn_data!(
+                "sink '{}' drop_when_error: breaker open, skipped {} record(s), total {}, last_error={}",
+                self.name,
+                since_warn,
+                total,
+                last_error
+            );
+        }
+    }
+
+    /// 发送成功时调用：健康闸门复位；若刚结束一段故障期，回收救援文件并输出汇总。
+    async fn record_send_success(&mut self) {
+        self.health.on_success();
+        if let Some(mut retired) = self.retired_rescue.take() {
+            let file = self.rescue_file.take().unwrap_or_default();
+            let records = self.rescue_records;
+            self.rescue_records = 0;
+            self.last_rescue_log_at = None;
+            match retired.stop().await {
+                Ok(()) => info_data!(
+                    "sink '{}' rescue file finalized: path={} records={}",
+                    self.name,
+                    file,
+                    records
+                ),
+                Err(e) => error_data!(
+                    "sink '{}' finalize rescue file {} failed: {}",
+                    self.name,
+                    file,
+                    e
+                ),
+            }
+        }
+        if let Some((dropped, started_at)) = self.outage.record_success() {
+            info_data!(
+                "sink '{}' recovered from send failures (drop_when_error): dropped {} record(s) since {}",
+                self.name,
+                dropped,
+                started_at.format("%Y-%m-%d %H:%M:%S")
+            );
+        }
+    }
     pub async fn swap_backsink(&mut self) -> SinkResult<Option<SinkBackendType>> {
+        // 本次故障的救援文件仍然打开：直接复用，避免每个失败批次生成一个新文件。
+        if let Some(rescue) = self.retired_rescue.take() {
+            debug_ctrl!("reuse rescue sink for {}", self.name);
+            let old_primary = std::mem::replace(&mut self.primary, rescue);
+            return Ok(Some(old_primary));
+        }
         let now = Utc::now();
         let fmt_time = now.format("%Y-%m-%d_%H:%M:%S").to_string();
         // 使用全局序号确保文件名唯一性，避免同一秒内重复创建相同文件名
@@ -173,9 +410,34 @@ impl SinkRuntime {
         }
         info_ctrl!("crate out file use async mode {}", file_path);
         let back = RescueFileSink::new(&file_path).await?;
+        self.rescue_file = Some(file_path.clone());
+        self.rescue_records = 0;
         let old_primary =
             std::mem::replace(&mut self.primary, SinkBackendType::Proxy(Box::new(back)));
         Ok(Some(old_primary))
+    }
+
+    /// 救援模式下每 60s 最多一条状态日志：文件路径、已写记录数、当前大小。
+    ///
+    /// 救援文件在回收前是 `.lock`，`wp rescue stat` 不会统计它，长故障期间需要这条日志兜底。
+    fn log_rescue_state(&mut self) {
+        let should_log = match self.last_rescue_log_at {
+            None => true,
+            Some(at) => at.elapsed() >= RESCUE_LOG_INTERVAL,
+        };
+        if !should_log {
+            return;
+        }
+        self.last_rescue_log_at = Some(Instant::now());
+        let file = self.rescue_file.as_deref().unwrap_or("<unknown>");
+        let size = fs::metadata(file).map(|m| m.len()).unwrap_or(0);
+        warn_data!(
+            "sink '{}' on rescue: file={} records={} size={}B",
+            self.name,
+            file,
+            self.rescue_records,
+            size
+        );
     }
 
     pub async fn send_stat(&mut self, mon_send: &MonSend) -> SinkResult<()> {
@@ -239,6 +501,14 @@ impl SinkRuntime {
     ) -> SinkResult<()> {
         loop {
             let mut redo = false;
+            if self.should_skip_send() {
+                // 坏链路期间不再调用 connector：只做记账，同组其它 sink 继续。
+                debug_edata!(event_id, "sink breaker open, drop record");
+                self.record_skipped_drop(1);
+                self.stat_beg(&data);
+                self.stat_end(&data);
+                break;
+            }
             self.stat_beg(&data);
             // 避免不必要的数据克隆，改为按引用下发
             let result = match &data {
@@ -259,32 +529,57 @@ impl SinkRuntime {
 
             //写入数据出错, 原因: sink 断连. 或 sink 失效. 处理的方案,只有重连.
             if let Err(e) = result {
-                match err4_send_to_sink(&e, &sys_robust_mode()) {
-                    ErrorHandlingStrategy::FixRetry => {
-                        if let Some(bad_sink_send) = bad_s {
-                            self.use_back_sink(bad_sink_send, mon).await?;
-                            if !redo {
-                                redo = true;
+                if self.drop_when_error {
+                    // 丢弃模式径直绕过 wp-motor 层的救援机制：不写救援文件、不切换坏 sink；
+                    // connector 自身的重试（params.max_retries）仍然生效。
+                    debug_edata!(event_id, "sink error dropped: {}", e);
+                    self.health.on_failure(Instant::now());
+                    self.record_failed_drop(1, &e);
+                    // 丢弃也视为已消费，避免在统计里留下永远不结束的 backlog。
+                    self.stat_end(&data);
+                } else {
+                    match err4_send_to_sink(&e, &sys_robust_mode()) {
+                        ErrorHandlingStrategy::FixRetry => {
+                            if self.backup_used {
+                                // 已经在救援态（primary 就是救援文件）仍写失败，通常是磁盘问题；
+                                // 再换一次只会把救援 sink 当成坏 sink 吐回去，直接报错。
+                                error_data!(
+                                    "sink '{}' is already on rescue file but still failed: {}",
+                                    self.name,
+                                    e
+                                );
+                                return Err(e);
+                            }
+                            if let Some(bad_sink_send) = bad_s {
+                                self.use_back_sink(bad_sink_send, mon).await?;
+                                if !redo {
+                                    redo = true;
+                                }
                             }
                         }
-                    }
-                    ErrorHandlingStrategy::Throw => {
-                        warn_data!("sink error and interrupt");
-                        return Err(e);
-                    }
-                    ErrorHandlingStrategy::Tolerant => {
-                        debug_edata!(event_id, "sink error and tolerant: {}", e);
-                        //pass;
-                    }
-                    ErrorHandlingStrategy::Ignore => {
-                        debug_edata!(event_id, "sink error and ignore: {}", e);
-                    }
-                    ErrorHandlingStrategy::Terminate => {
-                        info_edata!(event_id, "sink error and end: {}", e);
-                        break;
+                        ErrorHandlingStrategy::Throw => {
+                            warn_data!("sink error and interrupt");
+                            return Err(e);
+                        }
+                        ErrorHandlingStrategy::Tolerant => {
+                            debug_edata!(event_id, "sink error and tolerant: {}", e);
+                            //pass;
+                        }
+                        ErrorHandlingStrategy::Ignore => {
+                            debug_edata!(event_id, "sink error and ignore: {}", e);
+                        }
+                        ErrorHandlingStrategy::Terminate => {
+                            info_edata!(event_id, "sink error and end: {}", e);
+                            break;
+                        }
                     }
                 }
             } else {
+                if self.backup_used {
+                    self.rescue_records = self.rescue_records.saturating_add(1);
+                    self.log_rescue_state();
+                }
+                self.record_send_success().await;
                 self.stat_end(&data);
                 debug_edata!(event_id, "sink {} send suc!", self.name);
             }
@@ -331,6 +626,12 @@ impl SinkRuntime {
             return Ok(());
         }
 
+        if self.drop_batch_if_open(records.len() as u64) {
+            self.stat_beg_records_batch(&records);
+            self.stat_end_records_batch(&records);
+            return Ok(());
+        }
+
         // 统计开始
         self.stat_beg_records_batch(&records);
 
@@ -346,13 +647,24 @@ impl SinkRuntime {
                 Ok(()) => {
                     // 统计结束
                     self.stat_end_records_batch(&records);
+                    if self.backup_used {
+                        self.rescue_records =
+                            self.rescue_records.saturating_add(records.len() as u64);
+                        self.log_rescue_state();
+                    }
+                    self.record_send_success().await;
                     return Ok(());
                 }
                 Err(e) => {
-                    for e_id in 0..records.len() as u64 {
-                        error_edata!(e_id, "flush sink data failed: {}", e);
+                    if !self.drop_when_error {
+                        for e_id in 0..records.len() as u64 {
+                            error_edata!(e_id, "flush sink data failed: {}", e);
+                        }
                     }
-                    match self.handle_send_error(&e, bad_s, mon).await? {
+                    match self
+                        .handle_send_error(&e, records.len(), bad_s, mon)
+                        .await?
+                    {
                         BatchErrHandle::Retry => continue,
                         BatchErrHandle::Consume => {
                             self.stat_end_records_batch(&records);
@@ -498,6 +810,12 @@ impl SinkRuntime {
             return Ok(());
         }
 
+        if self.drop_batch_if_open(package.len() as u64) {
+            self.record_package_stats_begin_ffv(&package);
+            self.record_package_stats_end_ffv(&package);
+            return Ok(());
+        }
+
         self.record_package_stats_begin_ffv(&package);
         loop {
             let mut raw_strings = Vec::new();
@@ -529,9 +847,18 @@ impl SinkRuntime {
             match result {
                 Ok(()) => {
                     self.record_package_stats_end_ffv(&package);
+                    if self.backup_used {
+                        self.rescue_records =
+                            self.rescue_records.saturating_add(package.len() as u64);
+                        self.log_rescue_state();
+                    }
+                    self.record_send_success().await;
                     return Ok(());
                 }
-                Err(e) => match self.handle_send_error(&e, bad_s, mon).await? {
+                Err(e) => match self
+                    .handle_send_error(&e, package.len(), bad_s, mon)
+                    .await?
+                {
                     BatchErrHandle::Retry => continue,
                     BatchErrHandle::Consume => {
                         self.record_package_stats_end_ffv(&package);
@@ -557,6 +884,12 @@ impl SinkRuntime {
             return Ok(());
         }
 
+        if self.drop_batch_if_open(package.len() as u64) {
+            self.record_package_stats_begin_str(&package);
+            self.record_package_stats_end_str(&package);
+            return Ok(());
+        }
+
         self.record_package_stats_begin_str(&package);
         loop {
             let raw_strings: Vec<&str> = package.iter().map(|unit| unit.data().as_str()).collect();
@@ -565,9 +898,18 @@ impl SinkRuntime {
             match result {
                 Ok(()) => {
                     self.record_package_stats_end_str(&package);
+                    if self.backup_used {
+                        self.rescue_records =
+                            self.rescue_records.saturating_add(package.len() as u64);
+                        self.log_rescue_state();
+                    }
+                    self.record_send_success().await;
                     return Ok(());
                 }
-                Err(e) => match self.handle_send_error(&e, bad_s, mon).await? {
+                Err(e) => match self
+                    .handle_send_error(&e, package.len(), bad_s, mon)
+                    .await?
+                {
                     BatchErrHandle::Retry => continue,
                     BatchErrHandle::Consume => {
                         self.record_package_stats_end_str(&package);
@@ -701,15 +1043,35 @@ impl SinkRuntime {
         }
     }
 
-    /// 处理发送错误
+    /// 处理发送错误；`dropped` 为本批被丢弃的记录数（`drop_when_error` 下写入计数）。
     async fn handle_send_error(
         &mut self,
         error: &SinkError,
+        dropped: usize,
         bad_s: Option<&ASinkSender>,
         mon: Option<&MonSend>,
     ) -> SinkResult<BatchErrHandle> {
+        if self.drop_when_error {
+            // 丢弃整批：不写救援文件、不切换坏 sink，也不回填 pending 缓冲。
+            debug_data!(
+                "sink '{}' drop_when_error: drop {} record(s) in failed batch",
+                self.name,
+                dropped
+            );
+            self.health.on_failure(Instant::now());
+            self.record_failed_drop(dropped as u64, error);
+            return Ok(BatchErrHandle::Consume);
+        }
         match err4_send_to_sink(error, &sys_robust_mode()) {
             ErrorHandlingStrategy::FixRetry => {
+                if self.backup_used {
+                    error_data!(
+                        "sink '{}' is already on rescue file but still failed: {}",
+                        self.name,
+                        error
+                    );
+                    return Ok(BatchErrHandle::Throw);
+                }
                 if let Some(bad_sink_send) = bad_s {
                     self.use_back_sink(bad_sink_send, mon).await?;
                     return Ok(BatchErrHandle::Retry);
@@ -784,6 +1146,16 @@ impl SinkRuntime {
         self.status.is_ready()
     }
 
+    /// 当前运行期是否对应这个待恢复 handle（同名副本也能准确定位）。
+    pub fn accepts_handle(&self, sink_h: &ASinkHandle) -> bool {
+        self.name == sink_h.name && self.instance_id == sink_h.instance_id
+    }
+
+    /// 是否处于救援态（primary 当前是救援 sink）。
+    pub fn is_backup_active(&self) -> bool {
+        self.backup_used
+    }
+
     async fn use_back_sink(
         &mut self,
         bad_sink_send: &ASinkSender,
@@ -796,7 +1168,11 @@ impl SinkRuntime {
                     self.send_stat(mon).await?;
                 }
                 if let Err(e) = bad_sink_send
-                    .send(ASinkHandle::new(self.name.clone(), old_primary))
+                    .send(ASinkHandle::new(
+                        self.name.clone(),
+                        self.instance_id,
+                        old_primary,
+                    ))
                     .await
                 {
                     warn_data!("Failed to enqueue bad sink for {}: {}", self.name, e);
@@ -810,14 +1186,47 @@ impl SinkRuntime {
         Ok(())
     }
     pub async fn recover_sink(&mut self, sink_h: ASinkHandle, mon: &MonSend) -> SinkResult<bool> {
-        if self.name == sink_h.name {
-            let mut old_primary = std::mem::replace(&mut self.primary, sink_h.sink);
-            old_primary.stop().await?;
-            self.send_stat(mon).await?;
-            self.backup_used = false;
-            return Ok(true);
+        // 只在救援态接受恢复：已切回的陈旧 handle 不能把当前真实 sink 换出去。
+        if !self.is_backup_active() || !self.accepts_handle(&sink_h) {
+            return Ok(false);
         }
-        Ok(false)
+        let retired = std::mem::replace(&mut self.primary, sink_h.sink);
+        // 救援 sink 不急着关闭：本次故障内再次失败时直接换回来，保证一个 outage 只有一个救援文件。
+        if let Some(mut previous) = self.retired_rescue.replace(retired) {
+            previous.stop().await?;
+        }
+        self.send_stat(mon).await?;
+        self.backup_used = false;
+        self.health.on_success();
+        debug_ctrl!(
+            "sink '{}' recovered; rescue sink kept open for reuse",
+            self.name
+        );
+        Ok(true)
+    }
+
+    /// 关闭所有后端（包括已退役的救援 sink），用进程退出时收尾。
+    pub async fn stop_backends(&mut self) -> SinkResult<()> {
+        let mut first_err = None;
+        if let Some(mut retired) = self.retired_rescue.take() {
+            self.rescue_file = None;
+            self.rescue_records = 0;
+            if let Err(e) = retired.stop().await {
+                first_err = Some(e);
+            }
+        }
+        if let Err(e) = self.primary.stop().await
+            && first_err.is_none()
+        {
+            first_err = Some(e);
+        }
+        // primary 可能本身就是本次故障中的救援 sink，收尾后同样清空状态。
+        self.rescue_file = None;
+        self.rescue_records = 0;
+        match first_err {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
     }
 }
 
@@ -833,6 +1242,36 @@ mod tests {
     use wp_model_core::model::{DataField, DataRecord};
 
     struct FailingSink;
+
+    /// 前 `fail_first` 次发送失败，之后成功；`attempts` 记录真实的 sink 调用次数。
+    struct FlakySink {
+        attempts: Arc<AtomicUsize>,
+        fail_first: usize,
+    }
+
+    impl FlakySink {
+        fn new(attempts: Arc<AtomicUsize>, fail_first: usize) -> Self {
+            Self {
+                attempts,
+                fail_first,
+            }
+        }
+
+        fn attempt(&self) -> SinkResult<()> {
+            let idx = self.attempts.fetch_add(1, Ordering::SeqCst);
+            if idx < self.fail_first {
+                Err(SinkError::from(SinkReason::StgCtrl))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    fn rec_packet(rule: &str) -> SinkDataEnum {
+        let mut record = DataRecord::default();
+        record.append(DataField::from_chars("k", "v"));
+        SinkDataEnum::Rec(ProcMeta::WplName(rule.to_string()), Arc::new(record))
+    }
 
     struct CountingSink {
         sink_records_calls: Arc<AtomicUsize>,
@@ -872,6 +1311,47 @@ mod tests {
 
         async fn reconnect(&mut self) -> SinkResult<()> {
             Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl AsyncCtrl for FlakySink {
+        async fn stop(&mut self) -> SinkResult<()> {
+            Ok(())
+        }
+
+        async fn reconnect(&mut self) -> SinkResult<()> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl AsyncRecordSink for FlakySink {
+        async fn sink_record(&mut self, _data: &DataRecord) -> SinkResult<()> {
+            self.attempt()
+        }
+
+        async fn sink_records(&mut self, _data: Vec<Arc<DataRecord>>) -> SinkResult<()> {
+            self.attempt()
+        }
+    }
+
+    #[async_trait]
+    impl AsyncRawdatSink for FlakySink {
+        async fn sink_str(&mut self, _data: &str) -> SinkResult<()> {
+            self.attempt()
+        }
+
+        async fn sink_bytes(&mut self, _data: &[u8]) -> SinkResult<()> {
+            self.attempt()
+        }
+
+        async fn sink_str_batch(&mut self, _data: Vec<&str>) -> SinkResult<()> {
+            self.attempt()
+        }
+
+        async fn sink_bytes_batch(&mut self, _data: Vec<&[u8]>) -> SinkResult<()> {
+            self.attempt()
         }
     }
 
@@ -1141,6 +1621,511 @@ mod tests {
             .owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
         assert!(meta.len() > 0, "rescue file should contain payload");
         Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn drop_when_error_single_failure_drops_without_rescue_or_swap() -> SinkResult<()> {
+        let temp = tempdir().owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
+        let rescue_root = temp.path().join("rescue_root");
+        std::fs::create_dir_all(&rescue_root)
+            .owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
+        let sink_name = "drop_single";
+
+        let mut conf = SinkInstanceConf::null_new(sink_name.to_string(), TextFmt::Json, None);
+        conf.set_drop_when_error(true);
+        let (bad_tx, mut bad_rx) = tokio::sync::mpsc::channel(1);
+
+        let mut runtime = SinkRuntime::new(
+            rescue_root.display().to_string(),
+            sink_name,
+            conf,
+            SinkBackendType::Proxy(Box::new(FailingSink)),
+            None,
+            Vec::new(),
+        );
+
+        let mut record = DataRecord::default();
+        record.append(DataField::from_chars("k", "v"));
+        let packet =
+            SinkDataEnum::Rec(ProcMeta::WplName("/shh/drop_rule".into()), Arc::new(record));
+
+        runtime
+            .send_to_sink(1, packet, Some(&bad_tx), None)
+            .await
+            .expect("drop_when_error sink failure must be swallowed");
+
+        assert!(
+            bad_rx.try_recv().is_err(),
+            "drop_when_error must not hand the sink to the bad-sink channel"
+        );
+        assert_eq!(
+            std::fs::read_dir(&rescue_root)
+                .owe(SinkReason::Uvs(UnifiedReason::system_error()))?
+                .count(),
+            0,
+            "drop_when_error must not create rescue files"
+        );
+
+        let snap = sink_error_stats::snapshot_for(sink_name).expect("drop counter recorded");
+        assert_eq!(snap.dropped_total, 1);
+        assert!(snap.last_error.is_some());
+        assert!(snap.last_error_at.is_some());
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn drop_when_error_batch_failure_drops_the_whole_batch() -> SinkResult<()> {
+        let temp = tempdir().owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
+        let rescue_root = temp.path().join("rescue_root");
+        std::fs::create_dir_all(&rescue_root)
+            .owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
+        let sink_name = "drop_batch";
+        let attempts = Arc::new(AtomicUsize::new(0));
+
+        let mut conf = SinkInstanceConf::null_new(sink_name.to_string(), TextFmt::Json, None);
+        conf.set_drop_when_error(true);
+        let batch_size = 4;
+        let mut runtime = SinkRuntime::with_batch_size(
+            rescue_root.display().to_string(),
+            sink_name,
+            conf,
+            SinkBackendType::Proxy(Box::new(FlakySink::new(attempts.clone(), usize::MAX))),
+            None,
+            Vec::new(),
+            batch_size,
+        );
+
+        runtime
+            .send_package_to_sink(&build_package(batch_size), None, None)
+            .await
+            .expect("drop_when_error batch failure must be swallowed");
+        // 熔断已打开：第二批不再调用 connector。
+        runtime
+            .send_package_to_sink(&build_package(batch_size), None, None)
+            .await
+            .expect("breaker open, batch skipped");
+
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            std::fs::read_dir(&rescue_root)
+                .owe(SinkReason::Uvs(UnifiedReason::system_error()))?
+                .count(),
+            0,
+            "drop_when_error must not create rescue files for batches"
+        );
+        let snap = sink_error_stats::snapshot_for(sink_name).expect("drop counter recorded");
+        assert_eq!(
+            snap.dropped_total,
+            (batch_size * 2) as u64,
+            "failed batch and breaker-skipped batch are both accounted"
+        );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn drop_when_error_breaker_skips_without_touching_sink() -> SinkResult<()> {
+        let sink_name = "drop_breaker_skip";
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let mut conf = SinkInstanceConf::null_new(sink_name.to_string(), TextFmt::Json, None);
+        conf.set_drop_when_error(true);
+        let mut runtime = SinkRuntime::new(
+            "./rescue".to_string(),
+            sink_name,
+            conf,
+            SinkBackendType::Proxy(Box::new(FlakySink::new(attempts.clone(), usize::MAX))),
+            None,
+            Vec::new(),
+        );
+
+        runtime
+            .send_to_sink(1, rec_packet("/shh/breaker_rule"), None, None)
+            .await
+            .expect("first failure dropped");
+        assert_eq!(
+            attempts.load(Ordering::SeqCst),
+            1,
+            "first send hits the sink"
+        );
+
+        for id in 2..=6 {
+            runtime
+                .send_to_sink(id, rec_packet("/shh/breaker_rule"), None, None)
+                .await
+                .expect("breaker skips silently");
+        }
+        assert_eq!(
+            attempts.load(Ordering::SeqCst),
+            1,
+            "breaker open must not call the connector again"
+        );
+
+        let snap = sink_error_stats::snapshot_for(sink_name).expect("drop counter recorded");
+        assert_eq!(snap.dropped_total, 6);
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn drop_when_error_breaker_probe_recovers_after_cooldown() -> SinkResult<()> {
+        let sink_name = "drop_breaker_probe";
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let mut conf = SinkInstanceConf::null_new(sink_name.to_string(), TextFmt::Json, None);
+        conf.set_drop_when_error(true);
+        // 第一次尝试失败，之后的探测成功。
+        let mut runtime = SinkRuntime::new(
+            "./rescue".to_string(),
+            sink_name,
+            conf,
+            SinkBackendType::Proxy(Box::new(FlakySink::new(attempts.clone(), 1))),
+            None,
+            Vec::new(),
+        );
+        runtime
+            .health
+            .set_backoff_for_test(Duration::from_millis(20));
+
+        runtime
+            .send_to_sink(1, rec_packet("/shh/probe_rule"), None, None)
+            .await
+            .expect("first failure dropped");
+        assert!(runtime.health.is_open(Instant::now()));
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        runtime
+            .send_to_sink(2, rec_packet("/shh/probe_rule"), None, None)
+            .await
+            .expect("probe succeeds after recovery");
+        assert_eq!(attempts.load(Ordering::SeqCst), 2, "probe reaches the sink");
+        assert!(!runtime.health.is_open(Instant::now()));
+
+        runtime
+            .send_to_sink(3, rec_packet("/shh/probe_rule"), None, None)
+            .await
+            .expect("normal delivery resumes");
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn rescue_file_is_reused_across_swap_cycles() -> SinkResult<()> {
+        let temp = tempdir().owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
+        let rescue_root = temp.path().join("rescue_root");
+        std::fs::create_dir_all(&rescue_root)
+            .owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
+        let sink_name = "rescue_reuse";
+        let conf = SinkInstanceConf::null_new(sink_name.to_string(), TextFmt::Json, None);
+        let (bad_tx, mut bad_rx) = tokio::sync::mpsc::channel(4);
+        let (mon_tx, _mon_rx) = tokio::sync::mpsc::channel(16);
+
+        let mut runtime = SinkRuntime::new(
+            rescue_root.display().to_string(),
+            sink_name,
+            conf,
+            SinkBackendType::Proxy(Box::new(FailingSink)),
+            None,
+            Vec::new(),
+        );
+        let instance_id = runtime.instance_id();
+
+        // 第一次失败：切到救援文件，真实 sink 进入 bad-sink 队列。
+        runtime
+            .send_to_sink(1, rec_packet("/shh/reuse"), Some(&bad_tx), None)
+            .await?;
+        bad_rx.recv().await.expect("bad sink handle");
+        assert_eq!(
+            rescue_files(&rescue_root)?,
+            1,
+            "first failure creates a file"
+        );
+
+        // 维护线程重连后切回真实 sink（仍然会失败），救援文件保持打开。
+        runtime
+            .recover_sink(
+                ASinkHandle::new(
+                    sink_name.to_string(),
+                    instance_id,
+                    SinkBackendType::Proxy(Box::new(FailingSink)),
+                ),
+                &mon_tx,
+            )
+            .await?;
+        assert_eq!(rescue_files(&rescue_root)?, 1);
+
+        // 第二次失败：复用同一个救援文件，不再新建。
+        runtime
+            .send_to_sink(2, rec_packet("/shh/reuse"), Some(&bad_tx), None)
+            .await?;
+        bad_rx.recv().await.expect("bad sink handle");
+        assert_eq!(
+            rescue_files(&rescue_root)?,
+            1,
+            "one outage must produce exactly one rescue file"
+        );
+
+        // 真正恢复：成功投递后救援文件被回收成 .dat。
+        runtime
+            .recover_sink(
+                ASinkHandle::new(
+                    sink_name.to_string(),
+                    instance_id,
+                    SinkBackendType::Proxy(Box::new(CountingSink::new(Arc::new(
+                        AtomicUsize::new(0),
+                    )))),
+                ),
+                &mon_tx,
+            )
+            .await?;
+        runtime
+            .send_to_sink(3, rec_packet("/shh/reuse"), Some(&bad_tx), None)
+            .await?;
+
+        let files = rescue_file_names(&rescue_root)?;
+        assert_eq!(files.len(), 1, "finalized rescue file: {files:?}");
+        assert!(
+            files[0].ends_with(".dat"),
+            "finalized rescue file must drop the .lock suffix: {files:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sink_health_backoff_grows_and_caps() {
+        let mut health = SinkHealth::new();
+        let t = Instant::now();
+
+        health.on_failure(t);
+        assert!(
+            health.is_open(t + Duration::from_secs(4)),
+            "first cooldown is 5s"
+        );
+        assert!(!health.is_open(t + Duration::from_secs(6)));
+
+        health.on_failure(t + Duration::from_secs(6));
+        assert!(
+            health.is_open(t + Duration::from_secs(15)),
+            "second failure doubles the cooldown to 10s"
+        );
+        assert!(!health.is_open(t + Duration::from_secs(17)));
+
+        for _ in 0..10 {
+            health.on_failure(t);
+        }
+        assert!(
+            health.is_open(t + Duration::from_secs(59)),
+            "cooldown is capped at 60s"
+        );
+        assert!(!health.is_open(t + Duration::from_secs(61)));
+
+        health.on_success();
+        assert!(!health.is_open(t), "success resets the breaker");
+        health.on_failure(t);
+        assert!(
+            health.is_open(t + Duration::from_secs(4)),
+            "backoff resets to 5s"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn recover_sink_requires_matching_instance_id() -> SinkResult<()> {
+        let sink_name = "rescue_instance_id";
+        let conf = || SinkInstanceConf::null_new(sink_name.to_string(), TextFmt::Json, None);
+        let mut first = SinkRuntime::new(
+            "./rescue".to_string(),
+            sink_name,
+            conf(),
+            SinkBackendType::Proxy(Box::new(FailingSink)),
+            None,
+            Vec::new(),
+        );
+        let mut second = SinkRuntime::new(
+            "./rescue".to_string(),
+            sink_name,
+            conf(),
+            SinkBackendType::Proxy(Box::new(FailingSink)),
+            None,
+            Vec::new(),
+        );
+        let (mon_tx, _mon_rx) = tokio::sync::mpsc::channel(16);
+
+        let handle_for_second = ASinkHandle::new(
+            sink_name.to_string(),
+            second.instance_id(),
+            SinkBackendType::Proxy(Box::new(FailingSink)),
+        );
+        assert!(!first.accepts_handle(&handle_for_second));
+        assert!(
+            !first.recover_sink(handle_for_second, &mon_tx).await?,
+            "a replica must not swallow another replica's recovered sink"
+        );
+
+        // 未处于救援态时，陈旧 handle 不能把当前真实 sink 换出去。
+        second.backup_used = true;
+        let handle_for_second = ASinkHandle::new(
+            sink_name.to_string(),
+            second.instance_id(),
+            SinkBackendType::Proxy(Box::new(FailingSink)),
+        );
+        assert!(
+            second.recover_sink(handle_for_second, &mon_tx).await?,
+            "the matching replica accepts its handle while rescuing"
+        );
+        assert!(!second.is_backup_active());
+
+        let stale = ASinkHandle::new(
+            sink_name.to_string(),
+            second.instance_id(),
+            SinkBackendType::Proxy(Box::new(FailingSink)),
+        );
+        assert!(
+            !second.recover_sink(stale, &mon_tx).await?,
+            "a stale handle must not swap the live sink again"
+        );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn drop_when_error_skips_str_package_when_breaker_open() -> SinkResult<()> {
+        let sink_name = "drop_str_pkg";
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let mut conf = SinkInstanceConf::null_new(sink_name.to_string(), TextFmt::Json, None);
+        conf.set_drop_when_error(true);
+        let mut runtime = SinkRuntime::new(
+            "./rescue".to_string(),
+            sink_name,
+            conf,
+            SinkBackendType::Proxy(Box::new(FlakySink::new(attempts.clone(), usize::MAX))),
+            None,
+            Vec::new(),
+        );
+
+        runtime
+            .send_to_sink(1, rec_packet("/shh/str_pkg"), None, None)
+            .await?;
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+
+        let pkg = SinkStrPackage::from_units(
+            (0..3).map(|idx| crate::sinks::SinkStrUnit::new(idx as u64, format!("line-{idx}"))),
+        );
+        runtime.send_str_package_to_sink(pkg, None, None).await?;
+
+        assert_eq!(
+            attempts.load(Ordering::SeqCst),
+            1,
+            "breaker open must skip str package sends"
+        );
+        let snap = sink_error_stats::snapshot_for(sink_name).expect("drop counter recorded");
+        assert_eq!(snap.dropped_total, 1 + 3);
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn rescue_batch_failure_retries_into_rescue_file() -> SinkResult<()> {
+        let temp = tempdir().owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
+        let rescue_root = temp.path().join("rescue_root");
+        std::fs::create_dir_all(&rescue_root)
+            .owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
+        let sink_name = "rescue_batch";
+        let conf = SinkInstanceConf::null_new(sink_name.to_string(), TextFmt::Json, None);
+        let (bad_tx, mut bad_rx) = tokio::sync::mpsc::channel(4);
+        let batch_size = 4;
+        let mut runtime = SinkRuntime::with_batch_size(
+            rescue_root.display().to_string(),
+            sink_name,
+            conf,
+            SinkBackendType::Proxy(Box::new(FailingSink)),
+            None,
+            Vec::new(),
+            batch_size,
+        );
+
+        runtime
+            .send_package_to_sink(&build_package(batch_size), Some(&bad_tx), None)
+            .await?;
+        let handle = bad_rx.recv().await.expect("bad sink handle");
+        assert_eq!(handle.name, sink_name);
+
+        // 救援文件是 BufWriter，小于 100 条时不会立刻落盘；退出时 stop 会 flush + 改名。
+        runtime.stop_backends().await?;
+
+        let files = rescue_file_names(&rescue_root)?;
+        assert_eq!(files.len(), 1, "batch failure creates one rescue file");
+        assert!(
+            files[0].ends_with(".dat"),
+            "stopped rescue file must be unlocked: {files:?}"
+        );
+        let size = std::fs::metadata(rescue_root.join(&files[0]))
+            .owe(SinkReason::Uvs(UnifiedReason::system_error()))?
+            .len();
+        assert!(
+            size > 0,
+            "failed batch must be written into the rescue file"
+        );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn stop_backends_finalizes_retired_rescue() -> SinkResult<()> {
+        let temp = tempdir().owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
+        let rescue_root = temp.path().join("rescue_root");
+        std::fs::create_dir_all(&rescue_root)
+            .owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
+        let sink_name = "rescue_stop";
+        let conf = SinkInstanceConf::null_new(sink_name.to_string(), TextFmt::Json, None);
+        let (bad_tx, mut bad_rx) = tokio::sync::mpsc::channel(4);
+        let (mon_tx, _mon_rx) = tokio::sync::mpsc::channel(16);
+        let mut runtime = SinkRuntime::new(
+            rescue_root.display().to_string(),
+            sink_name,
+            conf,
+            SinkBackendType::Proxy(Box::new(FailingSink)),
+            None,
+            Vec::new(),
+        );
+        let instance_id = runtime.instance_id();
+
+        runtime
+            .send_to_sink(1, rec_packet("/shh/stop"), Some(&bad_tx), None)
+            .await?;
+        bad_rx.recv().await.expect("bad sink handle");
+        runtime
+            .recover_sink(
+                ASinkHandle::new(
+                    sink_name.to_string(),
+                    instance_id,
+                    SinkBackendType::Proxy(Box::new(FailingSink)),
+                ),
+                &mon_tx,
+            )
+            .await?;
+
+        // 退出时即使没有新的成功投递，也要把退役的救援文件回收成 .dat。
+        runtime.stop_backends().await?;
+        let files = rescue_file_names(&rescue_root)?;
+        assert_eq!(files.len(), 1, "finalized rescue file: {files:?}");
+        assert!(
+            files[0].ends_with(".dat"),
+            "stop_backends must unlock the rescue file: {files:?}"
+        );
+        Ok(())
+    }
+
+    fn rescue_file_names(dir: &Path) -> SinkResult<Vec<String>> {
+        if !dir.exists() {
+            return Ok(Vec::new());
+        }
+        let mut out = Vec::new();
+        for entry in std::fs::read_dir(dir).owe(SinkReason::Uvs(UnifiedReason::system_error()))? {
+            let entry = entry.owe(SinkReason::Uvs(UnifiedReason::system_error()))?;
+            if entry.path().is_file() {
+                out.push(entry.file_name().to_string_lossy().to_string());
+            }
+        }
+        out.sort();
+        Ok(out)
+    }
+
+    fn rescue_files(dir: &Path) -> SinkResult<usize> {
+        Ok(rescue_file_names(dir)?.len())
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

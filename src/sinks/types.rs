@@ -34,11 +34,17 @@ pub use crate::sinks::test_helpers::MockSink;
 
 pub struct ASinkHandle {
     pub name: String,
+    /// 运行期实例 id：同名 sink 存在多个副本时用于定位具体副本
+    pub instance_id: u64,
     pub sink: SinkBackendType,
 }
 impl ASinkHandle {
-    pub fn new(name: String, sink: SinkBackendType) -> Self {
-        Self { name, sink }
+    pub fn new(name: String, instance_id: u64, sink: SinkBackendType) -> Self {
+        Self {
+            name,
+            instance_id,
+            sink,
+        }
     }
 }
 

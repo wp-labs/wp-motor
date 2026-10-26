@@ -28,6 +28,10 @@ pub struct SinkInstanceConf {
     /// 当 cond 结果等于该值时投递；默认为 true
     #[serde(default = "default_true")]
     filter_expect: bool,
+    /// 发送失败时是否丢弃本条/本批数据（而不是写救援文件）；默认 false
+    #[serde(default)]
+    #[getter(skip)]
+    drop_when_error: bool,
     #[serde(skip, default)]
     pub connector_id: Option<String>,
     /// 运行期上下文：所属组名（仅在路由装配阶段注入；不参与序列化）
@@ -73,6 +77,12 @@ impl SinkInstanceConf {
     }
     pub fn set_filter_expect(&mut self, v: bool) {
         self.filter_expect = v;
+    }
+    pub fn drop_when_error(&self) -> bool {
+        self.drop_when_error
+    }
+    pub fn set_drop_when_error(&mut self, v: bool) {
+        self.drop_when_error = v;
     }
     pub fn set_tags(&mut self, tags: Vec<String>) {
         self.core.tags = tags;
@@ -121,6 +131,7 @@ impl SinkInstanceConf {
             connector_id: None,
             group_name: None,
             filter_expect: true,
+            drop_when_error: false,
         }
     }
 
@@ -416,6 +427,78 @@ path = "p2.dat"
             .validate()
             .expect_err("sink wp_meta_disable is unsupported");
         assert!(err.to_string().contains("wp_meta_disable"));
+    }
+
+    #[test]
+    fn drop_when_error_defaults_to_false() {
+        let raw = r#"
+name = "s_rescue"
+type = "file"
+[params]
+path = "a.dat"
+"#;
+        let dict = EnvDict::test_default();
+        let s: SinkInstanceConf =
+            SinkInstanceConf::env_parse_toml(raw, &dict).expect("deserialize");
+        assert!(!s.drop_when_error());
+    }
+
+    #[test]
+    fn drop_when_error_parses_true() {
+        let raw = r#"
+name = "s_drop"
+type = "http"
+drop_when_error = true
+"#;
+        let dict = EnvDict::test_default();
+        let s: SinkInstanceConf =
+            SinkInstanceConf::env_parse_toml(raw, &dict).expect("deserialize");
+        assert!(s.drop_when_error());
+    }
+
+    #[test]
+    fn drop_when_error_rejects_non_bool() {
+        let raw = r#"
+name = "s_bad"
+type = "http"
+drop_when_error = "tolerant"
+"#;
+        let err = toml::from_str::<SinkInstanceConf>(raw)
+            .expect_err("drop_when_error must be a boolean")
+            .to_string();
+        assert!(err.contains("drop_when_error"), "err={err}");
+        assert!(err.contains("boolean"), "err={err}");
+    }
+
+    #[test]
+    fn drop_when_error_rejects_integer() {
+        let raw = r#"
+name = "s_bad"
+type = "http"
+drop_when_error = 1
+"#;
+        let err = toml::from_str::<SinkInstanceConf>(raw)
+            .expect_err("integer is not a boolean")
+            .to_string();
+        assert!(err.contains("drop_when_error"), "err={err}");
+        assert!(err.contains("boolean"), "err={err}");
+    }
+
+    #[test]
+    fn drop_when_error_round_trips_through_serde() {
+        let raw = r#"
+name = "s_rt"
+type = "http"
+drop_when_error = true
+"#;
+        let dict = EnvDict::test_default();
+        let conf: SinkInstanceConf =
+            SinkInstanceConf::env_parse_toml(raw, &dict).expect("deserialize");
+        let text = toml::to_string(&conf).expect("serialize");
+        assert!(text.contains("drop_when_error = true"), "text={text}");
+
+        let back: SinkInstanceConf = toml::from_str(&text).expect("round trip");
+        assert!(back.drop_when_error());
     }
 
     #[test]

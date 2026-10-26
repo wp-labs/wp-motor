@@ -17,11 +17,13 @@ use crate::runtime::actor::command::{CmdSubscriber, TaskController};
 use crate::stat::metric_collect::MetricCollectors;
 use crate::stat::runtime_counters;
 use crate::stat::runtime_metric::RuntimeMetrics;
+use crate::stat::sink_error_stats;
 use crate::stat::{MonRecv, MonSend};
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
 use wp_error::run_error::RunResult;
-use wp_log::info_ctrl;
+use wp_log::{info_ctrl, warn_ctrl};
 use wp_stat::StatStage;
+use wp_stat::StatTarget;
 
 const MONITOR_CHANNEL_CAP: usize = 4096;
 const ENABLE_BACKLOG_JUDGEMENT: bool = false;
@@ -101,6 +103,17 @@ impl ActorMonitor {
             .collect();
         wparse_stat.registry(reqs);
         let mut runtime_stat = MetricCollectors::new("__runtime".to_string(), sink_reqs);
+        // drop_when_error 的丢弃计数独立采集，不依赖用户在 [[stat.sink]] 中配置的统计项。
+        let mut sink_drop_stat = MetricCollectors::new(
+            "__sink".to_string(),
+            vec![StatReq {
+                stage: StatStage::Sink,
+                name: "sink_dropped_total".to_string(),
+                target: StatTarget::All,
+                collect: Vec::new(),
+                max: 256,
+            }],
+        );
         let mut run_ctrl = TaskController::new("monitor", self.cmd_r.clone(), None);
         info_ctrl!(
             "monitor loop started (stat_sec={}, stat_print={})",
@@ -158,6 +171,7 @@ impl ActorMonitor {
                         );
                         merge_collectors_to_slice(&mut runtime_stat, &mut wparse_stat.slice);
                     }
+                    drain_sink_error_stats(&mut sink_drop_stat, &mut wparse_stat.slice);
                     if ENABLE_BACKLOG_JUDGEMENT {
                         emit_backlog_judgement(&wparse_stat.slice, snapshot, self.stat_print);
                     }
@@ -216,6 +230,7 @@ impl ActorMonitor {
             );
             merge_collectors_to_slice(&mut runtime_stat, &mut wparse_stat.slice);
         }
+        drain_sink_error_stats(&mut sink_drop_stat, &mut wparse_stat.slice);
         if ENABLE_BACKLOG_JUDGEMENT {
             emit_backlog_judgement(&wparse_stat.slice, snapshot, self.stat_print);
         }
@@ -250,6 +265,32 @@ fn merge_collectors_to_slice(
     }
 }
 
+/// 把丢弃的窗口增量写进统计表，并输出一行带最近错误的汇总。
+fn drain_sink_error_stats(
+    collectors: &mut MetricCollectors,
+    slice: &mut crate::stat::metric_set::MetricSet,
+) {
+    let windows = sink_error_stats::take_window();
+    if windows.is_empty() {
+        return;
+    }
+    for snap in windows {
+        collectors.record_task_batch(snap.sink.as_str(), u64_to_usize(snap.dropped_window));
+        warn_ctrl!(
+            "sink '{}' dropped: window={} total={} last_error_at={} last_error={}",
+            snap.sink,
+            snap.dropped_window,
+            snap.dropped_total,
+            snap.last_error_at
+                .as_ref()
+                .map(|t| t.to_rfc3339())
+                .unwrap_or_default(),
+            snap.last_error.as_deref().unwrap_or("")
+        );
+    }
+    merge_collectors_to_slice(collectors, slice);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,6 +299,46 @@ mod tests {
     use tokio::sync::mpsc;
     use tokio::time::Duration;
     use wp_stat::{StatRecorder, StatReq, StatTarget};
+
+    #[test]
+    fn sink_drop_stats_are_exported_per_window() {
+        use wp_stat::SliceMetrics;
+
+        // 窗口是进程级共享的：与 sink_error_stats 的窗口测试互斥。
+        let _guard = crate::stat::sink_error_stats::test_lock();
+        let sink = "/sink/monitor/drop_window";
+        let mut collectors = MetricCollectors::new(
+            "__sink".to_string(),
+            vec![StatReq {
+                stage: StatStage::Sink,
+                name: "sink_dropped_total".to_string(),
+                target: StatTarget::All,
+                collect: Vec::new(),
+                max: 256,
+            }],
+        );
+        let mut slice = crate::stat::metric_set::MetricSet::default();
+
+        crate::stat::sink_error_stats::record_failure(sink, 3, "boom");
+        drain_sink_error_stats(&mut collectors, &mut slice);
+
+        let report = slice
+            .units()
+            .iter()
+            .find(|r| r.get_name() == "sink_dropped_total")
+            .expect("drop report is exported");
+        let row = report
+            .get_data()
+            .iter()
+            .find(|r| r.slices_key().starts_with(sink))
+            .expect("per-sink row");
+        assert_eq!(row.get_total(), 3);
+
+        // 窗口被取走后不再重复上报。
+        let before = slice.units().len();
+        drain_sink_error_stats(&mut collectors, &mut slice);
+        assert_eq!(slice.units().len(), before);
+    }
 
     #[tokio::test]
     async fn monitor_sink_handle_can_be_replaced() {
