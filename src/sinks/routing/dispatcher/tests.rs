@@ -252,6 +252,61 @@ async fn batch_fast_path_replicates_records_with_tags() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn fast_path_global_tags_override_sink_tags() {
+    use crate::core::parser::global_tags::GlobalTags;
+    use wp_model_core::model::DataField;
+
+    let mut group = FlexGroup::default();
+    group.name = "fast_global".to_string();
+    let mut dispatcher = SinkDispatcher::new(SinkGroupConf::Flexi(group), SinkResUnit::use_null());
+    dispatcher.set_global_tags(Arc::new(GlobalTags::from_pairs(vec![(
+        "tenant_id".to_string(),
+        "alice".to_string(),
+    )])));
+
+    let mut sink_conf = SinkInstanceConf::null_new("s1".to_string(), TextFmt::Json, None);
+    sink_conf.set_tags(vec![
+        "env: dev".to_string(),
+        "tenant_id: from-sink".to_string(),
+    ]);
+    dispatcher.append(SinkRuntime::new(
+        "./rescue".to_string(),
+        "s1".to_string(),
+        sink_conf,
+        SinkBackendType::Proxy(crate::sinks::builtin_factories::make_blackhole_sink()),
+        None,
+        Vec::new(),
+    ));
+
+    let mut rec = DataRecord::default();
+    rec.append(DataField::from_chars("k", "v"));
+    // 模拟解析阶段已盖上的全局 tag，随后叠加同名 sink tag
+    rec.append(DataField::from_chars("tenant_id", "alice"));
+    let rule = crate::sinks::ProcMeta::WplName("/fast".to_string());
+    let batch = vec![SinkRecUnit::with_record(1, rule.clone(), Arc::new(rec))];
+
+    let mut cache = FieldQueryCache::default();
+    let outputs = dispatcher
+        .oml_proc_batch_async(batch, &InfraSinkAgent::use_null(), &mut cache, &rule)
+        .await
+        .unwrap();
+
+    assert_eq!(outputs.len(), 1);
+    assert_eq!(outputs[0].len(), 1);
+    let record = outputs[0][0].data();
+    assert_eq!(
+        record
+            .items
+            .iter()
+            .filter(|f| f.get_name() == "tenant_id")
+            .count(),
+        1
+    );
+    assert!(matches!(record.get_value("tenant_id"), Some(Value::Chars(v)) if v == "alice"));
+    assert!(matches!(record.get_value("env"), Some(Value::Chars(v)) if v == "dev"));
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn batch_routing_respects_sink_conditions() {
     use wp_model_core::model::DataField;
 
@@ -459,6 +514,438 @@ converted : chars = chars(done) ;
             }
         }
     }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn oml_output_reapplies_global_tags_and_overrides_model_field() {
+    use crate::core::parser::global_tags::GlobalTags;
+    use wp_model_core::model::DataField;
+
+    let mut sink_res = SinkResUnit::use_null();
+    let mut code = r#"
+name : global_tag_model
+rule :
+    /batch/global_tag
+---
+tenant_id : chars = chars(model_tenant) ;
+log_type : chars = chars(raw_log) ;
+"#;
+    let model = oml_parse_raw(&mut code).await.expect("parse oml model");
+    sink_res.push_model(DataModel::Object(model));
+
+    let mut group = FlexGroup::default();
+    group.name = "global_tag".to_string();
+    let mut dispatcher = SinkDispatcher::new(SinkGroupConf::Flexi(group), sink_res);
+    dispatcher.set_global_tags(Arc::new(GlobalTags::from_pairs(vec![
+        ("tenant_id".to_string(), "alice".to_string()),
+        ("wist-gw_id".to_string(), "gw-local".to_string()),
+    ])));
+
+    let sink_conf_a = SinkInstanceConf::null_new("sink_a".to_string(), TextFmt::Json, None);
+    let sink_a = SinkRuntime::new(
+        "./rescue".to_string(),
+        "sink_a".to_string(),
+        sink_conf_a,
+        SinkBackendType::Proxy(crate::sinks::builtin_factories::make_blackhole_sink()),
+        None,
+        Vec::new(),
+    );
+
+    let mut sink_conf_b = SinkInstanceConf::null_new("sink_b".to_string(), TextFmt::Json, None);
+    // sink 自带 tag 不得覆盖全局 tag：同名时以全局值为准，且只保留一个键。
+    sink_conf_b.set_tags(vec![
+        "env: dev".to_string(),
+        "tenant_id: from-sink".to_string(),
+    ]);
+    let sink_b = SinkRuntime::new(
+        "./rescue".to_string(),
+        "sink_b".to_string(),
+        sink_conf_b,
+        SinkBackendType::Proxy(crate::sinks::builtin_factories::make_blackhole_sink()),
+        None,
+        Vec::new(),
+    );
+
+    dispatcher.append(sink_a);
+    dispatcher.append(sink_b);
+
+    let rule = crate::sinks::ProcMeta::WplName("/batch/global_tag".to_string());
+    let mut rec = DataRecord::default();
+    rec.append(DataField::from_chars("src", "alpha"));
+    let batch = vec![SinkRecUnit::with_record(1, rule.clone(), Arc::new(rec))];
+
+    let mut cache = FieldQueryCache::default();
+    let outputs = dispatcher
+        .oml_proc_batch_async(batch, &InfraSinkAgent::use_null(), &mut cache, &rule)
+        .await
+        .unwrap();
+
+    assert_eq!(outputs.len(), 2);
+    for (idx, units) in outputs.iter().enumerate() {
+        assert_eq!(units.len(), 1);
+        let record = units[0].data();
+        // 全局 tag 覆盖模型里写死的同名字段，且不产生重复键
+        assert_eq!(
+            record
+                .items
+                .iter()
+                .filter(|f| f.get_name() == "tenant_id")
+                .count(),
+            1
+        );
+        assert!(matches!(record.get_value("tenant_id"), Some(Value::Chars(v)) if v == "alice"));
+        assert!(matches!(record.get_value("wist-gw_id"), Some(Value::Chars(v)) if v == "gw-local"));
+        // 模型自身的输出字段保留
+        assert!(matches!(record.get_value("log_type"), Some(Value::Chars(v)) if v == "raw_log"));
+        // sink 自带 tag 仍然存在（仅第二个 sink 配置了 env）
+        assert_eq!(record.get_value("env").is_some(), idx == 1);
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn global_tags_are_visible_to_sink_conditions() {
+    use crate::core::parser::global_tags::GlobalTags;
+
+    let mut group = FlexGroup::default();
+    group.name = "global_tag_cond".to_string();
+    let mut dispatcher = SinkDispatcher::new(SinkGroupConf::Flexi(group), SinkResUnit::use_null());
+    dispatcher.set_global_tags(Arc::new(GlobalTags::from_pairs(vec![(
+        "tier".to_string(),
+        "gold".to_string(),
+    )])));
+
+    let mut hit_conf = SinkInstanceConf::null_new("hit".to_string(), TextFmt::Json, None);
+    hit_conf.set_filter_expect(true);
+    let hit_cond = TCondParser::exp(&mut "$tier == chars(gold)".to_string().as_str()).unwrap();
+    dispatcher.append(SinkRuntime::new(
+        "./rescue".to_string(),
+        "hit".to_string(),
+        hit_conf,
+        SinkBackendType::Proxy(crate::sinks::builtin_factories::make_blackhole_sink()),
+        Some(hit_cond),
+        Vec::new(),
+    ));
+
+    let mut miss_conf = SinkInstanceConf::null_new("miss".to_string(), TextFmt::Json, None);
+    miss_conf.set_filter_expect(true);
+    let miss_cond = TCondParser::exp(&mut "$tier == chars(silver)".to_string().as_str()).unwrap();
+    dispatcher.append(SinkRuntime::new(
+        "./rescue".to_string(),
+        "miss".to_string(),
+        miss_conf,
+        SinkBackendType::Proxy(crate::sinks::builtin_factories::make_blackhole_sink()),
+        Some(miss_cond),
+        Vec::new(),
+    ));
+
+    let rule = crate::sinks::ProcMeta::WplName("/r".to_string());
+    let batch = vec![SinkRecUnit::with_record(
+        1,
+        rule.clone(),
+        Arc::new(DataRecord::default()),
+    )];
+
+    let mut cache = FieldQueryCache::default();
+    let outputs = dispatcher
+        .oml_proc_batch_async(batch, &InfraSinkAgent::use_null(), &mut cache, &rule)
+        .await
+        .unwrap();
+
+    assert_eq!(outputs.len(), 2);
+    assert_eq!(outputs[0].len(), 1, "cond 应能看到补盖的全局 tag");
+    assert_eq!(outputs[1].len(), 0, "不匹配的 cond 不应被投递");
+
+    let record = outputs[0][0].data();
+    assert!(matches!(record.get_value("tier"), Some(Value::Chars(v)) if v == "gold"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn global_tag_override_decides_cond_routing() {
+    use crate::core::parser::global_tags::GlobalTags;
+
+    // 模型固定输出 env=prod；全局 tag 把 env 改成 dev 后再参与 cond 判断
+    let mut sink_res = SinkResUnit::use_null();
+    let mut code = r#"
+name : env_override_model
+rule :
+    /batch/env_override
+---
+env : chars = chars(prod) ;
+"#;
+    let model = oml_parse_raw(&mut code).await.expect("parse oml model");
+    sink_res.push_model(DataModel::Object(model));
+
+    let mut group = FlexGroup::default();
+    group.name = "env_override".to_string();
+    let mut dispatcher = SinkDispatcher::new(SinkGroupConf::Flexi(group), sink_res);
+    dispatcher.set_global_tags(Arc::new(GlobalTags::from_pairs(vec![(
+        "env".to_string(),
+        "dev".to_string(),
+    )])));
+
+    let mut sink_conf = SinkInstanceConf::null_new("dev_sink".to_string(), TextFmt::Json, None);
+    sink_conf.set_filter_expect(true);
+    let cond = TCondParser::exp(&mut "$env == chars(dev)".to_string().as_str()).unwrap();
+    dispatcher.append(SinkRuntime::new(
+        "./rescue".to_string(),
+        "dev_sink".to_string(),
+        sink_conf,
+        SinkBackendType::Proxy(crate::sinks::builtin_factories::make_blackhole_sink()),
+        Some(cond),
+        Vec::new(),
+    ));
+
+    let rule = crate::sinks::ProcMeta::WplName("/batch/env_override".to_string());
+    let batch = vec![SinkRecUnit::with_record(
+        1,
+        rule.clone(),
+        Arc::new(DataRecord::default()),
+    )];
+
+    let mut cache = FieldQueryCache::default();
+    let outputs = dispatcher
+        .oml_proc_batch_async(batch, &InfraSinkAgent::use_null(), &mut cache, &rule)
+        .await
+        .unwrap();
+
+    // 若 cond 在覆盖前求值，模型输出的 prod 不会命中 dev
+    assert_eq!(outputs[0].len(), 1, "cond 应在全局 tag 覆盖之后求值");
+    assert!(matches!(
+        outputs[0][0].data().get_value("env"),
+        Some(Value::Chars(v)) if v == "dev"
+    ));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn oml_failure_record_gets_global_tags() {
+    use crate::core::parser::global_tags::GlobalTags;
+    use crate::facade::test_helpers::SinkTerminal;
+    use crate::sinks::SinkGroupAgent;
+    use wp_model_core::model::DataField;
+
+    let mut sink_res = SinkResUnit::use_null();
+    // 读取输入中不存在的字段 -> 模型输出为空 -> 进失败（error sink）分支
+    let mut code = r#"
+name : empty_oml_model
+rule :
+    /batch/empty
+---
+missing : chars = read(does_not_exist) ;
+"#;
+    let model = oml_parse_raw(&mut code).await.expect("parse oml model");
+    sink_res.push_model(DataModel::Object(model));
+
+    let mut group = FlexGroup::default();
+    group.name = "empty".to_string();
+    let mut dispatcher = SinkDispatcher::new(SinkGroupConf::Flexi(group), sink_res);
+    dispatcher.set_global_tags(Arc::new(GlobalTags::from_pairs(vec![(
+        "tenant_id".to_string(),
+        "alice".to_string(),
+    )])));
+
+    let sink_conf_a = SinkInstanceConf::null_new("sink_a".to_string(), TextFmt::Json, None);
+    dispatcher.append(SinkRuntime::new(
+        "./rescue".to_string(),
+        "sink_a".to_string(),
+        sink_conf_a,
+        SinkBackendType::Proxy(crate::sinks::builtin_factories::make_blackhole_sink()),
+        None,
+        Vec::new(),
+    ));
+
+    // 用一个真实 channel 充当 infra error sink，捕获失败记录
+    let (err_tx, mut err_rx) = tokio::sync::mpsc::channel(4);
+    let infra = crate::sinks::InfraSinkAgent {
+        default: SinkGroupAgent::null(),
+        miss: SinkGroupAgent::null(),
+        residue: SinkGroupAgent::null(),
+        moni: SinkGroupAgent::null(),
+        error: SinkGroupAgent::new(
+            SinkGroupConf::Flexi(FlexGroup::default()),
+            SinkTerminal::Channel(err_tx),
+        ),
+    };
+
+    let rule = crate::sinks::ProcMeta::WplName("/batch/empty".to_string());
+    let mut rec = DataRecord::default();
+    rec.append(DataField::from_chars("src", "alpha"));
+    let batch = vec![SinkRecUnit::with_record(1, rule.clone(), Arc::new(rec))];
+
+    let mut cache = FieldQueryCache::default();
+    let outputs = dispatcher
+        .oml_proc_batch_async(batch, &infra, &mut cache, &rule)
+        .await
+        .unwrap();
+
+    assert_eq!(outputs.len(), 1);
+    assert!(outputs[0].is_empty(), "空输出不应下发到业务 sink");
+
+    let package = err_rx.try_recv().expect("error sink 应收到失败记录");
+    assert_eq!(package.len(), 1);
+    let record = package[0].data();
+    assert_eq!(
+        record
+            .items
+            .iter()
+            .filter(|f| f.get_name() == "tenant_id")
+            .count(),
+        1
+    );
+    assert!(matches!(record.get_value("tenant_id"), Some(Value::Chars(v)) if v == "alice"));
+    assert!(matches!(
+        record.get_value("__err_kind"),
+        Some(Value::Chars(v)) if v == "oml_transform_empty"
+    ));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn empty_global_tags_do_not_change_oml_output() {
+    use crate::core::parser::global_tags::GlobalTags;
+
+    let mut sink_res = SinkResUnit::use_null();
+    let mut code = r#"
+name : empty_tags_model
+rule :
+    /batch/empty_tags
+---
+converted : chars = chars(done) ;
+"#;
+    let model = oml_parse_raw(&mut code).await.expect("parse oml model");
+    sink_res.push_model(DataModel::Object(model));
+
+    let mut group = FlexGroup::default();
+    group.name = "empty_tags".to_string();
+    let mut dispatcher = SinkDispatcher::new(SinkGroupConf::Flexi(group), sink_res);
+    // 配了 Some(empty) 也不应该多出字段
+    dispatcher.set_global_tags(Arc::new(GlobalTags::default()));
+
+    let sink_conf = SinkInstanceConf::null_new("s1".to_string(), TextFmt::Json, None);
+    dispatcher.append(SinkRuntime::new(
+        "./rescue".to_string(),
+        "s1".to_string(),
+        sink_conf,
+        SinkBackendType::Proxy(crate::sinks::builtin_factories::make_blackhole_sink()),
+        None,
+        Vec::new(),
+    ));
+
+    let rule = crate::sinks::ProcMeta::WplName("/batch/empty_tags".to_string());
+    let batch = vec![SinkRecUnit::with_record(
+        1,
+        rule.clone(),
+        Arc::new(DataRecord::default()),
+    )];
+
+    let mut cache = FieldQueryCache::default();
+    let outputs = dispatcher
+        .oml_proc_batch_async(batch, &InfraSinkAgent::use_null(), &mut cache, &rule)
+        .await
+        .unwrap();
+
+    assert_eq!(outputs.len(), 1);
+    assert_eq!(outputs[0].len(), 1);
+    assert_eq!(outputs[0][0].data().items.len(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn fast_path_keeps_zero_copy_when_no_sink_tags() {
+    use crate::core::parser::global_tags::GlobalTags;
+    use wp_model_core::model::DataField;
+
+    let mut group = FlexGroup::default();
+    group.name = "fast_zero_copy".to_string();
+    let mut dispatcher = SinkDispatcher::new(SinkGroupConf::Flexi(group), SinkResUnit::use_null());
+    dispatcher.set_global_tags(Arc::new(GlobalTags::from_pairs(vec![(
+        "tenant_id".to_string(),
+        "alice".to_string(),
+    )])));
+
+    // 无 sink tags：应继续共享 base Arc，不因全局 tag 而多一次 clone
+    let sink_conf = SinkInstanceConf::null_new("s1".to_string(), TextFmt::Json, None);
+    dispatcher.append(SinkRuntime::new(
+        "./rescue".to_string(),
+        "s1".to_string(),
+        sink_conf,
+        SinkBackendType::Proxy(crate::sinks::builtin_factories::make_blackhole_sink()),
+        None,
+        Vec::new(),
+    ));
+
+    let mut rec = DataRecord::default();
+    rec.append(DataField::from_chars("k", "v"));
+    rec.append(DataField::from_chars("tenant_id", "alice"));
+    let shared = Arc::new(rec);
+    let rule = crate::sinks::ProcMeta::WplName("/fast".to_string());
+    let batch = vec![SinkRecUnit::with_record(
+        1,
+        rule.clone(),
+        Arc::clone(&shared),
+    )];
+
+    let mut cache = FieldQueryCache::default();
+    let outputs = dispatcher
+        .oml_proc_batch_async(batch, &InfraSinkAgent::use_null(), &mut cache, &rule)
+        .await
+        .unwrap();
+
+    assert_eq!(outputs[0].len(), 1);
+    assert!(Arc::ptr_eq(&shared, outputs[0][0].data()));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn oml_global_tags_coexist_with_non_conflicting_sink_tags() {
+    use crate::core::parser::global_tags::GlobalTags;
+
+    let mut sink_res = SinkResUnit::use_null();
+    let mut code = r#"
+name : coexist_model
+rule :
+    /batch/coexist
+---
+log_type : chars = chars(raw_log) ;
+"#;
+    let model = oml_parse_raw(&mut code).await.expect("parse oml model");
+    sink_res.push_model(DataModel::Object(model));
+
+    let mut group = FlexGroup::default();
+    group.name = "coexist".to_string();
+    let mut dispatcher = SinkDispatcher::new(SinkGroupConf::Flexi(group), sink_res);
+    dispatcher.set_global_tags(Arc::new(GlobalTags::from_pairs(vec![(
+        "tenant_id".to_string(),
+        "alice".to_string(),
+    )])));
+
+    let mut sink_conf = SinkInstanceConf::null_new("s1".to_string(), TextFmt::Json, None);
+    sink_conf.set_tags(vec!["env: dev".to_string()]);
+    dispatcher.append(SinkRuntime::new(
+        "./rescue".to_string(),
+        "s1".to_string(),
+        sink_conf,
+        SinkBackendType::Proxy(crate::sinks::builtin_factories::make_blackhole_sink()),
+        None,
+        Vec::new(),
+    ));
+
+    let rule = crate::sinks::ProcMeta::WplName("/batch/coexist".to_string());
+    let batch = vec![SinkRecUnit::with_record(
+        1,
+        rule.clone(),
+        Arc::new(DataRecord::default()),
+    )];
+
+    let mut cache = FieldQueryCache::default();
+    let outputs = dispatcher
+        .oml_proc_batch_async(batch, &InfraSinkAgent::use_null(), &mut cache, &rule)
+        .await
+        .unwrap();
+
+    assert_eq!(outputs[0].len(), 1);
+    let record = outputs[0][0].data();
+    let names: Vec<&str> = record.items.iter().map(|f| f.get_name()).collect();
+    // 无冲突时不重新 replace，字段顺序保持“模型输出 -> 全局 tag -> sink tag”
+    assert_eq!(names, vec!["log_type", "tenant_id", "env"]);
+    assert!(matches!(record.get_value("tenant_id"), Some(Value::Chars(v)) if v == "alice"));
+    assert!(matches!(record.get_value("env"), Some(Value::Chars(v)) if v == "dev"));
 }
 
 #[test]

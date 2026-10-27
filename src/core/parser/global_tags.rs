@@ -59,6 +59,11 @@ impl GlobalTags {
         self.tags.iter()
     }
 
+    /// 是否包含指定 key。
+    pub fn contains(&self, key: &str) -> bool {
+        self.tags.contains_key(key)
+    }
+
     pub fn to_map(&self) -> BTreeMap<String, String> {
         self.tags
             .iter()
@@ -125,7 +130,9 @@ fn validate_pairs(
 
 /// 把全局 tag 盖到 record 上；同名规则字段会被全局值覆盖。
 ///
-/// 主 record 与 `copy_event_parse` 旁路 record 都走同一入口。
+/// 主 record 与 `copy_event_parse` 旁路 record 都走同一入口；OML 会用模型
+/// 输出重建 record，因此 `SinkDispatcher` 在变换后、以及追加 sink tags 后
+/// 会再次调用本函数。replace 语义保证重复调用安全，且全局值优先级最高。
 pub fn apply_global_tags(record: &mut DataRecord, tags: &GlobalTags) {
     for (key, value) in tags.iter() {
         while record.remove_field(key.as_str()) {}
@@ -213,6 +220,13 @@ mod tests {
     }
 
     #[test]
+    fn contains_checks_membership() {
+        let tags = GlobalTags::from_pairs(vec![("owner_id".into(), "team-a".into())]);
+        assert!(tags.contains("owner_id"));
+        assert!(!tags.contains("env"));
+    }
+
+    #[test]
     fn from_pairs_keeps_sorted_map() {
         let tags = GlobalTags::from_pairs(vec![
             ("owner_id".into(), "team-a".into()),
@@ -263,6 +277,47 @@ mod tests {
         let mut record = DataRecord::from(vec![DataField::from_chars("msg", "hello")]);
         apply_global_tags(&mut record, &tags);
         assert_eq!(record.len(), 1);
+    }
+
+    #[test]
+    fn apply_is_idempotent() {
+        let tags = GlobalTags::from_pairs(vec![
+            ("owner_id".into(), "team-a".into()),
+            ("env".into(), "prod".into()),
+        ]);
+        let mut record = DataRecord::from(vec![
+            DataField::from_chars("msg", "hello"),
+            DataField::from_chars("owner_id", "from-rule"),
+        ]);
+
+        apply_global_tags(&mut record, &tags);
+        let first: Vec<String> = record.items.iter().map(|f| f.get_name().into()).collect();
+        apply_global_tags(&mut record, &tags);
+        let second: Vec<String> = record.items.iter().map(|f| f.get_name().into()).collect();
+
+        // sink 阶段会再盖一次，内容和顺序必须与只盖一次完全一致
+        assert_eq!(first, second);
+        assert_eq!(record.len(), 3);
+        assert_eq!(
+            record.field("owner_id").unwrap().get_value().as_str(),
+            Some("team-a")
+        );
+    }
+
+    #[test]
+    fn apply_overrides_typed_field_as_chars() {
+        use wp_model_core::model::Value;
+
+        let tags = GlobalTags::from_pairs(vec![("tenant_id".into(), "alice".into())]);
+        let mut record = DataRecord::from(vec![DataField::from_int("tenant_id", 42)]);
+
+        apply_global_tags(&mut record, &tags);
+
+        assert_eq!(record.len(), 1);
+        assert!(matches!(
+            record.field("tenant_id").unwrap().get_value(),
+            Value::Chars(v) if v == "alice"
+        ));
     }
 
     #[test]

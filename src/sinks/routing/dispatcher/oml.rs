@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use super::SinkDispatcher;
 // trait for .send_to_sink on SinkTerminal
+use crate::core::parser::global_tags::apply_global_tags;
 use crate::sinks::InfraSinkAgent;
 use crate::sinks::prelude::*;
 // PkgID, info/debug macros
@@ -106,6 +107,10 @@ impl SinkDispatcher {
                     original_len,
                     output.items.len(),
                 );
+                // 错误通道也是输出：失败记录同样要带实例级全局 tag。
+                if let Some(global_tags) = self.global_tags.as_ref() {
+                    apply_global_tags(&mut failed, global_tags);
+                }
                 warn_data!("oml proc fail!{},{}", event_id, failed.to_string());
                 failures.push(SinkRecUnit::with_record(
                     event_id,
@@ -199,6 +204,8 @@ impl SinkDispatcher {
                 } else {
                     let mut enriched = (*base_arc).clone();
                     Self::append_pre_tags(&mut enriched, sink.pre_tags());
+                    // 同名时全局 tag 优先（快路径的 record 已在解析期盖过）。
+                    self.resolve_tag_conflicts(&mut enriched, sink.pre_tags());
                     Arc::new(enriched)
                 };
                 per_sink[idx].push(SinkRecUnit::with_record(pkg_id, meta.clone(), rec));
@@ -226,11 +233,18 @@ impl SinkDispatcher {
         &self,
         pkg_id: PkgID,
         meta: ProcMeta,
-        base: DataRecord,
+        mut base: DataRecord,
         per_sink: &mut [Vec<SinkRecUnit>],
     ) {
         if per_sink.is_empty() {
             return;
+        }
+        // OML 变换会用模型输出重建 record，解析阶段盖上的字段（含全局 tag）
+        // 在此全部丢失。这里在仍持有 owned record 时补盖一次，后续 fanout
+        // 的 clone 会自然带上，无需额外拷贝；放在 cond 之前，保证
+        // 无 OML 路径（解析期已盖）与有 OML 路径的条件路由行为一致。
+        if let Some(global_tags) = self.global_tags.as_ref() {
+            apply_global_tags(&mut base, global_tags);
         }
         let matches = self.evaluate_sink_matches(&base);
         let mut remaining = matches.iter().filter(|&&m| m).count();
@@ -246,6 +260,7 @@ impl SinkDispatcher {
             let mut record = Self::acquire_record_for_target(&mut base_slot, remaining);
             if let Some(sink) = self.sinks.get(idx) {
                 Self::append_pre_tags(&mut record, sink.pre_tags());
+                self.resolve_tag_conflicts(&mut record, sink.pre_tags());
             }
             let unit = SinkRecUnit::with_record(pkg_id, meta.clone(), Arc::new(record));
             if let Some(slot) = per_sink.get_mut(idx) {
@@ -277,6 +292,20 @@ impl SinkDispatcher {
             base_slot.take().expect("base record already moved")
         } else {
             base_slot.as_ref().expect("base record missing").clone()
+        }
+    }
+
+    /// 全局 tag 优先级最高：仅当 sink tags 与全局键冲突时，在追加后
+    /// 再 replace 一次（避免无冲突场景下多余扫描与字段顺序变化）。
+    fn resolve_tag_conflicts(&self, record: &mut DataRecord, pre_tags: &[DataField]) {
+        let Some(global_tags) = self.global_tags.as_ref() else {
+            return;
+        };
+        if pre_tags
+            .iter()
+            .any(|tag| global_tags.contains(tag.get_name()))
+        {
+            apply_global_tags(record, global_tags);
         }
     }
 

@@ -290,7 +290,7 @@ pub async fn start_processing_tasks(
         moni_send.clone(),
         stat_reqs,
         &drain_bus,
-        global_tags,
+        global_tags.clone(),
     )
     .await?;
 
@@ -323,7 +323,12 @@ pub async fn start_processing_tasks(
         0
     };
     let sink_group_opt =
-        if let (Some(sinks), Some(infra_agent)) = (resource.sinks.take(), infra_agent_opt) {
+        if let (Some(mut sinks), Some(infra_agent)) = (resource.sinks.take(), infra_agent_opt) {
+            // OML 会用模型输出重建 record，解析阶段盖上的全局 tag 会丢失；
+            // 这里把实例级 tag 交给各业务 sink 组，由其在 fanout 前补盖。
+            for group in sinks.items.iter_mut() {
+                group.set_global_tags(global_tags.clone());
+            }
             Some(start_data_sinks(
                 infra_agent,
                 sinks,

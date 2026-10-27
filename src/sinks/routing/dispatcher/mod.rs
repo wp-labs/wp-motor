@@ -1,7 +1,9 @@
 use super::agent::InfraSinkAgent;
 use std::collections::HashMap;
+use std::sync::Arc;
 use wp_conf::limits::sink_channel_cap;
 
+use crate::core::parser::global_tags::GlobalTags;
 use crate::resources::SinkResUnit;
 use crate::sinks::SinkRuntime;
 use crate::sinks::{ASinkSender, SinkDatYReceiver, SinkDatYSender, SinkPackage, SinkRecUnit};
@@ -61,6 +63,10 @@ pub struct SinkDispatcher {
     ingress_target: String,
     ingress_stat: MetricCollectors,
     ingress_pending: usize,
+    /// 实例级全局 tag（`WP_GLOBAL_TAGS`）。OML 变换会重建 record，
+    /// 这里保存一份，在 fanout 前补盖，保证有/无 OML 的输出一致。
+    #[getter(skip)]
+    global_tags: Option<Arc<GlobalTags>>,
 }
 
 impl SinkDispatcher {
@@ -78,7 +84,13 @@ impl SinkDispatcher {
             ingress_stat: MetricCollectors::new(ingress_target.clone(), Vec::new()),
             ingress_target,
             ingress_pending: 0,
+            global_tags: None,
         }
+    }
+
+    /// 注入实例级全局 tag；由运行期启动路径统一设置。
+    pub fn set_global_tags(&mut self, global_tags: Arc<GlobalTags>) {
+        self.global_tags = Some(global_tags);
     }
     pub fn set_ingress_stat_target(
         &mut self,

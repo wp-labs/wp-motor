@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.1] - 2026-10-27
+
+### Fixed
+- **配了 `sink_group.oml` 之后 `WP_GLOBAL_TAGS` 丢失**：OML 会用模型输出重建记录，解析阶段盖上的实例级全局 tag 不再出现在输出里。现在在变换后、投递前补盖，`oml = ["..."]` 与不配 OML 的字段集保持一致。
+- **全局 tag 优先级最高**：与模型里写死的同名字段或 `[[sink_group.sinks]].tags` 同名时，最终只保留一份并使用 `WP_GLOBAL_TAGS` 的值，不再出现重复键。
+- **OML 转换失败的记录也会带全局 tag**：进入 error sink 的失败记录同样带上实例级字段，便于按实例/租户排查。
+
 ## [1.37.0] - 2026-10-26
 
 ### Added
