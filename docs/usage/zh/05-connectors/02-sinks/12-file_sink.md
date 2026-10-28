@@ -44,9 +44,11 @@ allow_override = ["base", "file", "max_size", "max_rolls", "roll_compress"]
 fmt = "json"
 base = "./data/out_dat"
 file = "default.json"
-max_size = 0
-roll_compress = "none"
 ```
+
+> ⚠️ 不要把 `max_size` / `max_rolls` / `roll_compress` 写进 `[connectors.params]` 当默认值：
+> 覆盖参数时会做类型一致性校验（覆盖值类型必须与默认值相同），默认成整数 `0` 后
+> `max_size = "10MB"` 会被拒绝。不配默认值时的行为等价于不滚动（`max_size` 无限）。
 
 按 10MB 滚动、保留 3 份历史、历史文件 zip 归档：
 

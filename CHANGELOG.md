@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.38.3] - 2026-10-28
+
+### Fixed
+- **文件 Sink 的 `max_size = "10MB"` 不再报类型错误**：内置 `file_*` connector 模板不再给 `max_size` / `roll_compress` 配默认值（仅保留在 `allow_override`）。配置合并会校验覆盖值类型与默认值一致，默认成整数 `0` 会把文档推荐的字符串容量判为类型错误；不配默认值等价于不滚动。
+
 ## [1.38.2] - 2026-10-28
 
 ### Fixed

@@ -81,9 +81,12 @@ allow_override = ["base", "file", "max_size", "max_rolls", "roll_compress"]
 fmt = "json"
 base = "./data/out_dat"
 file = "default.json"
-max_size = 0
-roll_compress = "none"
 ```
+
+> ⚠️ Do not put `max_size` / `max_rolls` / `roll_compress` into `[connectors.params]` as defaults:
+> overrides are type-checked against the default value, so defaulting `max_size` to integer `0`
+> makes `max_size = "10MB"` fail with a type mismatch. Leaving them unset is equivalent to
+> "no rolling" (unlimited `max_size`).
 
 ## Configuration Examples
 
