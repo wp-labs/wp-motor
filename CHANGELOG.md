@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.38.2] - 2026-10-28
+
+### Fixed
+- **清除 `zstd` 安全公告**：依赖链升级到 `wp-core-connectors 0.11.2`（`wp-connector-utils 0.5.1`）+ `include-flate 0.3.5`，`zstd` 统一到 0.14.3 / `zstd-safe` 8.2.0，依赖树中不再存在 0.13.x。覆盖 `RUSTSEC-2026-0391` / `0398` / `0403`。
+
+### Note
+- 已有工程若锁定了旧版本，请执行一次 `cargo update -p wp-connector-utils -p zstd`。
+
 ## [1.38.1] - 2026-10-28
 
 ### Changed
