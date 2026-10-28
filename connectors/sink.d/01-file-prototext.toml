@@ -1,8 +1,12 @@
 [[connectors]]
 id = "file_proto_sink"
 type = "file"
-allow_override = ["base","file"]
+allow_override = ["base","file","max_size","max_rolls","roll_compress"]
 [connectors.params]
 fmt  = "proto-text"
 base = "./data/out_dat"
 file = "default.dat"
+# 单文件最大字节数：0 = 不限容量（不滚动），支持 "10MB" / "1GiB" 这类写法
+max_size = 0
+# 滚动归档压缩：none | gzip | zip（true 等价 gzip）
+roll_compress = "none"

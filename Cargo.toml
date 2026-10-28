@@ -54,7 +54,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.37.1" # @gxl:set(version)
+version = "1.38.0" # @gxl:set(version)
 edition = "2024"
 license = "Apache-2.0"
 
@@ -364,7 +364,7 @@ wp-knowledge =  "0.19"
 #wp_lang = { package = "wp-lang", version = "0.1" }
 wp_oml = { package = "wp-oml", path = "./crates/wp-oml" }
 wp_proj = { package = "wp-proj", path = "./crates/wp-proj" }
-wp-core-connectors = "0.10"
+wp-core-connectors = "0.11"
 
 # --- Arbitrary Precision Integer (Value::BigUint) ---
 num-bigint = "0.4"

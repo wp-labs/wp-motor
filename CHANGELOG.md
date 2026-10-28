@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.38.0] - 2026-10-28
+
+### Added
+- **文件 Sink 支持按容量滚动与归档压缩**（升级到 `wp-core-connectors 0.11`）：新增 `max_size`（单文件最大字节数，支持 `10MB` / `1GiB` 写法，`0` = 不限容量）、`max_rolls`（保留的历史文件个数，默认 `3`）与 `roll_compress`（`none` / `gzip` / `zip`）。
+  - 写入前检查容量，超限时先滚动再写；历史文件按 `out.dat.1` / `out.dat.1.gz` / `out.dat.1.zip` 编号，超出保留个数的自动删除，续写已有文件时从当前大小起算。
+  - 滚动时收尾压缩/加密流并为新文件重建，每个历史文件都能独立解压解密；归档压缩在阻塞线程执行，失败自动回退为不压缩归档，不丢数据。
+- 内置 `file_json_sink` / `file_kv_sink` / `file_raw_sink` / `file_proto_sink` 模板与 `file_proto_text_sink` 定义暴露上述参数（`allow_override` 已加白名单）。
+
+### Note
+- 现有项目的 connector 定义需把 `max_size` / `max_rolls` / `roll_compress` 加入 `allow_override` 才能覆盖；`protocol = "arrow"` 不支持滚动。
+
 ## [1.37.1] - 2026-10-27
 
 ### Fixed

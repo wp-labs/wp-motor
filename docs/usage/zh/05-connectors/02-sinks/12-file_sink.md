@@ -12,6 +12,50 @@ File Sink 用于将处理后的数据写入本地文件。支持多种数据格�
 | `base` | string | `./data/out_dat` | 输出目录 |
 | `file` | string | `out.dat` | 输出文件名 |
 | `sync` | bool | `false` | 是否立即刷新到磁盘 |
+| `max_size` | int/string | `0` | 单文件最大容量（字节，或 `10MB`/`1GiB` 写法）；`0` 表示不限容量、不滚动 |
+| `max_rolls` | int | `3` | 保留的滚动文件个数（不含当前文件）；`0` 表示滚动时直接丢弃旧文件 |
+| `roll_compress` | string/bool | `none` | 归档压缩方式：`none` / `gzip` / `zip`（`true` 等价 `gzip`） |
+
+## 容量限制与滚动
+
+配置 `max_size` 后，写入前会检查当前文件大小：本次写入会超过上限时先滚动，
+再把记录写进新文件（单条记录不会被拆开，所以单个文件可能略超上限）。
+
+- 历史文件按序号命名：`default.json`（当前）→ `default.json.1`（最新历史）→ `default.json.2` → `default.json.3`；
+- `roll_compress` 可把历史文件归档成压缩包：`gzip` → `default.json.1.gz`（可直接 `gunzip`/`zcat`），`zip` → `default.json.1.zip`（标准 zip，内含单个同名条目）；默认 `none` 不压缩；
+- `max_rolls` 控制保留的历史文件个数，默认 `3`，即最多保留 `.1` ~ `.3`；超出后最旧的文件被删除；
+- 容量按**落盘字节**计算：开启 `compression` / `encryption` 时统计的是压缩/加密后的字节，且压缩流以 64KiB 块输出，触发粒度较粗；
+- 滚动时会对当前文件做收尾（压缩流 flush、`sync_all`），并为新文件重建压缩/加密流，因此每个滚动文件都能独立解密解压；
+- 归档压缩在独立阻塞线程中完成，失败时自动回退为不压缩归档，不会丢数据；
+- `max_rolls` / `roll_compress` 必须与 `max_size > 0` 一起使用，否则视为配置错误；
+- 重启续写已有文件时，容量从文件当前大小起算；
+- 滚动只在写入时按容量触发，进程停止时不会额外滚动（最后一批数据留在当前文件）；
+- `wparse stat sink-file` / `validate sink-file` 只统计当前活动文件的行数，不含历史归档；
+- 目前只有 `protocol = "txt"`（默认）的文件 Sink 支持滚动，`protocol = "arrow"` 配 `max_size` / `max_rolls` / `roll_compress` 会报错。
+
+使用前需确认连接器 `allow_override` 中包含 `max_size` / `max_rolls`：
+
+```toml
+[[connectors]]
+id = "file_json_sink"
+type = "file"
+allow_override = ["base", "file", "max_size", "max_rolls", "roll_compress"]
+[connectors.params]
+fmt = "json"
+base = "./data/out_dat"
+file = "default.json"
+max_size = 0
+roll_compress = "none"
+```
+
+按 10MB 滚动、保留 3 份历史、历史文件 zip 归档：
+
+```toml
+[[sink_group.sinks]]
+name = "json"
+connect = "file_json_sink"
+params = { file = "app.json", max_size = "10MB", max_rolls = 3, roll_compress = "zip" }
+```
 
 ## 支持的输出格式
 
@@ -341,7 +385,8 @@ file = "user_login_2024-01.log"
 
 ### 4. 定期清理旧文件
 
-配合日志轮转工具（如 logrotate）管理文件。
+优先使用 Sink 内置滚动（`max_size` + `max_rolls`，默认保留 3 份历史），
+需要长周期归档时再配合 `logrotate` 等外部工具。
 
 ### 5. 监控磁盘空间
 
@@ -384,11 +429,15 @@ tail -f ./data/output/results.json
 
 ### Q: 文件过大如何处理？
 
-**A**: 配合日志轮转工具：
-```bash
-# 使用 logrotate
-logrotate /etc/logrotate.d/wp-motor
+**A**: 用 Sink 自带的容量滚动（推荐），无需依赖外部工具：
+
+```toml
+params = { file = "app.json", max_size = "100MB", max_rolls = 3, roll_compress = "gzip" }
 ```
+
+历史文件会归档成 `app.json.1.gz`、`app.json.2.gz`、`app.json.3.gz`。
+
+也可以在项目外部配合 `logrotate` 等工具做长周期归档。
 
 ### Q: sync 参数如何选择？
 
