@@ -7,7 +7,7 @@ This guide introduces how to configure and use various data outputs (Sinks) in t
 | Type | Description | Documentation |
 |------|-------------|---------------|
 | `blackhole` | Blackhole output (for testing) | - |
-| `file` | Output to local file | [File Sink Configuration](./12-file_sink.md) |
+| `file` | Output to local file (size-based rolling, gzip/zip archives) | [File Sink Configuration](./12-file_sink.md) |
 | `syslog` | Output to Syslog server (UDP/TCP) | [Syslog Sink Configuration](./13-syslog_sink.md) |
 | `tcp` | Output to TCP server | [TCP Sink Configuration](./15-tcp_sink.md) |
 | `arrow-ipc` | Output as Arrow IPC frames over TCP | [Arrow IPC Sink Configuration](./20-arrow_ipc_sink.md) |

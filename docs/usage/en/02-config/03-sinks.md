@@ -59,6 +59,22 @@ connect = "file_kv_sink"
 filter = "./sink/business.d/filter.conf"   # Match -> intercept, not written to safe
 params = { base = "./out/sink", file = "safe.dat" }
 ```
+### File rolling and archiving
+
+File sinks can roll by per-file size and archive rotated files as gzip/zip:
+
+```toml
+[[sink_group.sinks]]
+name = "json"
+connect = "file_json_sink"
+params = { file = "app.json", max_size = "10MB", max_rolls = 3, roll_compress = "gzip" }
+```
+
+- `max_size`: max bytes per file (`0` / unset = no rolling); size strings such as `10MB` / `1GiB` are accepted;
+- `max_rolls`: rotated files to keep, default `3`; `0` drops the old file on roll;
+- `roll_compress`: `none` (default) / `gzip` / `zip`; rotated files become `app.json.1[.gz|.zip]`.
+
+See [File Sink](../05-connectors/02-sinks/12-file_sink.md) for details.
 
 
 ## Send Failure Handling (drop_when_error)

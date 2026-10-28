@@ -7,7 +7,7 @@
 | 类型 | 说明 | 文档 |
 |------|------|------|
 | `blackhole` | 黑洞输出（用于测试） | - |
-| `file` | 输出到本地文件 | [文件 Sink 配置](./12-file_sink.md) |
+| `file` | 输出到本地文件（支持按容量滚动、gzip/zip 归档） | [文件 Sink 配置](./12-file_sink.md) |
 | `syslog` | 输出到 Syslog 服务器 (UDP/TCP) | [Syslog Sink 配置](./13-syslog_sink.md) |
 | `tcp` | 输出到 TCP 服务端 | [TCP Sink 配置](./15-tcp_sink.md) |
 | `arrow-ipc` | 输出为 Arrow IPC 帧（TCP） | [Arrow IPC Sink 配置](./20-arrow_ipc_sink.md) |

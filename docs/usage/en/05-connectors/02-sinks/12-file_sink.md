@@ -70,7 +70,7 @@ never split, so one file may slightly exceed the limit.
 - `wparse stat sink-file` / `validate sink-file` count only the active file, not rotated archives;
 - Rolling is only supported for `protocol = "txt"` (default); `protocol = "arrow"` with `max_size` / `max_rolls` / `roll_compress` is rejected.
 
-The connector must whitelist the new params:
+The connector must whitelist `max_size` / `max_rolls` / `roll_compress`:
 
 ```toml
 [[connectors]]

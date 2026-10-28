@@ -191,6 +191,8 @@ output = "file"
 file_path = "./logs"
 ```
 
+> 输出到文件时同样支持按容量滚动与归档压缩：在 `params` 里加 `max_size = "10MB"`、`max_rolls = 3`、`roll_compress = "gzip"` 即可（详见 [文件 Sink 配置](../05-connectors/02-sinks/12-file_sink.md)）。
+
 ### 示例 2：渐进压力测试
 
 ```toml

@@ -167,6 +167,8 @@ output = "file"
 file_path = "./logs"
 ```
 
+> File output supports size-based rolling and archive compression too: add `max_size = "10MB"`, `max_rolls = 3` and `roll_compress = "gzip"` to `params` (see [File Sink](../05-connectors/02-sinks/12-file_sink.md)).
+
 ### Example 2: Progressive Stress Test
 
 ```toml

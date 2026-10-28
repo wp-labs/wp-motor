@@ -33,7 +33,7 @@ File Sink 用于将处理后的数据写入本地文件。支持多种数据格�
 - `wparse stat sink-file` / `validate sink-file` 只统计当前活动文件的行数，不含历史归档；
 - 目前只有 `protocol = "txt"`（默认）的文件 Sink 支持滚动，`protocol = "arrow"` 配 `max_size` / `max_rolls` / `roll_compress` 会报错。
 
-使用前需确认连接器 `allow_override` 中包含 `max_size` / `max_rolls`：
+使用前需确认连接器 `allow_override` 中包含 `max_size` / `max_rolls` / `roll_compress`：
 
 ```toml
 [[connectors]]

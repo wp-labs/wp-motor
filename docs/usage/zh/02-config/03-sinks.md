@@ -83,6 +83,22 @@ connect = "file_kv_sink"
 filter = "./sink/business.d/filter.conf"   # 命中 -> 拦截，不写 safe
 params = { base = "./out/sink", file = "safe.dat" }
 ```
+### 文件滚动与归档
+
+文件型 sink 可以按单文件容量滚动，并把历史文件归档成 gzip/zip：
+
+```toml
+[[sink_group.sinks]]
+name = "json"
+connect = "file_json_sink"
+params = { file = "app.json", max_size = "10MB", max_rolls = 3, roll_compress = "gzip" }
+```
+
+- `max_size`：单文件最大字节数（`0` / 不配 = 不滚动），支持 `10MB` / `1GiB` 这类写法；
+- `max_rolls`：保留的历史文件数，默认 `3`；`0` 表示滚动时丢弃旧文件；
+- `roll_compress`：`none`（默认）/ `gzip` / `zip`，历史文件依次为 `app.json.1[.gz|.zip]`。
+
+详见 [文件 Sink 配置](../05-connectors/02-sinks/12-file_sink.md)。
 
 
 ## 发送失败处理（drop_when_error）
