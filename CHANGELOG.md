@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.38.1] - 2026-10-28
+
+### Changed
+- **升级 `wp-core-connectors 0.11.1`**：把滚动归档的 `zip` 依赖从 8.6 升到 9.1，消除 `RUSTSEC-2026-0367` / `0368` / `0369` 三条公告（仅影响解压路径，本项目只写入，但下游 `cargo audit` 不再因此报警）；同时去掉了 `zopfli` 依赖。
+
 ## [1.38.0] - 2026-10-28
 
 ### Added
