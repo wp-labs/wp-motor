@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use super::SinkDispatcher;
+use crate::core::parser::global_tags::apply_global_tags;
 use crate::sinks::{ASinkSender, ProcMeta, SinkDataEnum, SinkPackage, SinkRecUnit};
 use crate::stat::MonSend;
 use wp_connector_api::SinkResult;
@@ -124,10 +125,20 @@ impl SinkDispatcher {
             return Ok(0);
         }
 
+        // 监控指标绕过 OML；在 fanout 前补盖实例级全局 tag，每条记录只处理一次。
+        let global_tags = self.global_tags.as_deref().filter(|tags| !tags.is_empty());
+
         // Distribute units to appropriate sink replicas
         // ordinals tracks the current replica index for each sink name as we iterate through sinks
         let mut ordinals: HashMap<String, usize> = HashMap::new();
         for unit in pkg.into_iter() {
+            let unit = if let Some(tags) = global_tags {
+                let (pkg_id, meta, mut record) = unit.into_parts();
+                apply_global_tags(Arc::make_mut(&mut record), tags);
+                SinkRecUnit::with_record(pkg_id, meta, record)
+            } else {
+                unit
+            };
             let event_id = *unit.id();
 
             // Reset ordinals for each unit to start from replica 0
