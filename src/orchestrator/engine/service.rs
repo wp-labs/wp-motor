@@ -302,7 +302,9 @@ pub async fn start_processing_tasks(
     let infra_agent_opt = resource.infra.as_ref().map(|i| i.agent());
     let knowdb_handler = resource.knowdb_handler.clone();
 
-    if let Some(infra_svc) = resource.infra.take() {
+    if let Some(mut infra_svc) = resource.infra.take() {
+        // 监控 sink 走直发路径，需要与业务 sink 共用实例级全局 tag。
+        infra_svc.moni_sink.set_global_tags(global_tags.clone());
         start_infra_working(
             infra_svc,
             moni_send.clone(),
