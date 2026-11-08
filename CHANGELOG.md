@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.0] - 2026-11-08
+
+### Added
+- **WPL 新增 `xml(...)` 结构化类型**（随 `wp-lang` 0.9.0）：直接把 XML 文档按元素路径解析成字段（`chars@url`、`chars@packet/sip`），与元素顺序无关、缺失元素自动跳过；未声明元素按 `chars` 输出（`_@key` 可丢弃），实体自动解码。支持 JSON 内嵌 XML 的常见形态：`chars@result | json_unescape() | (xml(...))`。
+
+### Fixed
+- **分隔符模式的「星号 + 保留标记」不再失效**：`{*(key=)}` / `{*(<tag>)}` 现在会向前搜索并保留 `key=`（此前只在当前光标位置匹配，匹配不到就退化为读到行尾）。
+
+### Changed
+- 升级 `wp-lang` 0.8 → 0.9（新增 `quick-xml` 依赖）。
+
 ## [1.38.3] - 2026-10-28
 
 ### Fixed
