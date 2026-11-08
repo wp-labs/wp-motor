@@ -287,9 +287,58 @@ rule json_payload {
 }
 "#;
 
+    // 深信服探针：关键信息在 JSON 的 `result` 字段里，内容是 XML 文档（issue wp-labs/warp-parse#373）
+    const XML_RESULT_RULE: &str = r#"
+rule sangfor_probe_ips {
+  (
+    json(
+      chars@logtype,
+      ip@src_ip,
+      chars@result | json_unescape() | (
+        xml(
+          chars@url:res_url,
+          chars@user_agent:res_user_agent,
+          digit@status_code:res_status_code,
+        )
+      )
+    ) | f_chars_has(logtype, ips)
+  )
+}
+"#;
+
     // 日志与规则样例来源于独立 wp-lang 仓库的 bench/test 数据
     const NGINX_SAMPLE: &str = r#"222.133.52.20 - - [06/Aug/2019:12:12:19 +0800] "GET /nginx-logo.png HTTP/1.1" 200 368 "http://119.122.1.4/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.142 Safari/537.36" "-""#;
     const JSON_SAMPLE: &str = r#"{ "data": "192.168.1.1" }"#;
+    const XML_RESULT_SAMPLE: &str = r#"{"logtype":"ips","src_ip":"172.16.1.2","result":"<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<root>\n  <url>172.16.8.248/****/aa.php</url>\n  <user_agent>Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)</user_agent>\n  <status_code>302</status_code>\n</root>\n"}"#;
+
+    #[test]
+    fn batch_parse_package_supports_xml_result_field() {
+        use wp_model_core::model::Value;
+
+        let mut engine = build_real_engine(&[("sangfor_probe_ips", XML_RESULT_RULE)]);
+        let event = build_event(XML_RESULT_SAMPLE);
+        let parsed = engine
+            .batch_parse_package(vec![event], &ParseOption::default())
+            .expect("parse xml payload");
+
+        assert!(parsed.missed_packets.is_empty());
+        let pkg = parsed
+            .sink_groups
+            .get("sangfor_probe_ips")
+            .expect("missing sangfor group");
+        let record = pkg.first().expect("missing record").data();
+
+        assert_chars_field(record, "res_url", "172.16.8.248/****/aa.php");
+        assert_chars_field(
+            record,
+            "res_user_agent",
+            "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)",
+        );
+        match record.field("res_status_code").map(|f| f.get_value()) {
+            Some(Value::Int(v)) => assert_eq!(*v, 302),
+            other => panic!("res_status_code expected int, got {other:?}"),
+        }
+    }
 
     #[test]
     fn batch_parse_package_handles_real_multi_rules() {

@@ -383,7 +383,7 @@ wp-model-core = "0.10"
 
 # --- External: Infrastructure Libraries ---
 wp-log = "0.5"
-wp-lang = "0.8"
+wp-lang = "0.9"
 wp-error = "0.13"
 wp-specs = "0.13"
 wp-conf-base = "0.7"
