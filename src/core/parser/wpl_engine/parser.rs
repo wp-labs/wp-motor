@@ -497,6 +497,47 @@ mod tests {
         }
     }
 
+    /// 盖戳后的 `wp_event_id` 必须是 `秒(32)|实例(10)|计数器(22)` 布局。
+    ///
+    /// 不能用 `event()` 假事件（它的 `event_id` 是硬编码的 1），
+    /// 这里用真实发号器构造事件。
+    #[test]
+    fn stamped_event_id_follows_the_layout() {
+        let pipelines = vec![pipeline_with(0, "rule a { (chars\\0) }", false)];
+        let mut parser = MultiParser::new(pipelines);
+        let setting = ParseOption::new(true, false, Vec::new());
+
+        let event_id = crate::sources::event_id::next_event_id();
+        let source = SourceEvent::new(
+            event_id,
+            "test-src",
+            wp_model_core::raw::RawData::String("abc".to_string()),
+            std::sync::Arc::new(wp_connector_api::Tags::new()),
+        );
+
+        match parser.parse_event(&source, &setting) {
+            ProcessResult::Success { record, .. } => {
+                let raw = record
+                    .field("wp_event_id")
+                    .unwrap()
+                    .get_value()
+                    .as_str()
+                    .expect("wp_event_id 是字符串字段")
+                    .to_string();
+                assert_eq!(raw, event_id.to_string());
+
+                let (secs, lane, _) = wp_model_core::event_id::decompose_event_id(event_id);
+                assert_eq!(
+                    wp_model_core::event_id::INS_ID_BASE + lane,
+                    wp_model_core::event_id::instance_id(),
+                    "wp_event_id 的实例号段与当前实例号不一致"
+                );
+                assert!(secs > 1_700_000_000, "秒段应取自当前时间，实际 {secs}");
+            }
+            other => panic!("expected success, got {:?}", other),
+        }
+    }
+
     #[test]
     fn global_tags_stamped_on_partial() {
         // 解析 `{...}` 后只剩 `!`，residue 远小于 20%，走 Partial 分支

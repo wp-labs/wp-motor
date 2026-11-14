@@ -13,6 +13,29 @@ When parsing data, the Warp Parse system automatically appends mechanism data fi
 - **Source**: Obtained from SourceEvent.event_id
 - **Purpose**: Track the complete processing flow of a single event through the system
 
+The value is a 64-bit integer with a fixed layout:
+
+```text
+ 63            32 31        22 21                    0
++----------------+-----------+-----------------------+
+| secs (32 bit)  | inst (10) |  per-second counter   |
++----------------+-----------+-----------------------+
+|                |           |        (22 bit)       |
++----------------+-----------+-----------------------+
+```
+
+- **secs**: Unix timestamp (since 1970), valid until 2106-02-07. It sits in the high bits, so comparing `wp_event_id` **numerically** yields time order.
+  > If the column is a `VARCHAR`, lexicographic order only matches numeric order while all values have the same digit count. IDs are 19 digits today and become 20 around 2044; across that boundary sorting is wrong. Use `CAST(... AS UNSIGNED)` or pad the column to a fixed width (e.g. `CHAR(20)`).
+- **instance**: see [Instance ID (WP_INS_ID)](#instance-id-wp_ins_id); value is `instance_id - 100`.
+- **per-second counter**: resets every second, capped at 4,194,304 (2x headroom over a single instance running at 2M EPS).
+
+**Uniqueness boundary**: as long as every instance has a distinct `WP_INS_ID`, IDs never collide across instances. The following still produce duplicates and must be avoided at deployment time:
+
+- multiple instances configured with the same `WP_INS_ID` (including *none* of them configured, all falling back to `100`)
+- downstream column too narrow: `wp_event_id` is a string, so storing it in a 32-bit integer, a `double` (loses precision above 2^53) or a short `VARCHAR` makes it *look* duplicated
+
+> **About 2038**: inside wparse, `wp_event_id` is always a `u64` and is emitted as a string field — no signed integer is involved anywhere. The 2038 date only matters when the receiving column is a *signed* `BIGINT` / `Int64`: after 2038-01-19 the value (roughly `secs × 2^32`) exceeds `i64::MAX` once `secs` reaches `2^31`. With a string column or `BIGINT UNSIGNED` there is no such limit until 2106-02-07, when the 32-bit `secs` field itself runs out.
+
 ### 2. wp_src_key
 
 - **Field Type**: String
@@ -46,6 +69,31 @@ When parsing data, the Warp Parse system automatically appends mechanism data fi
 - **Override**: A same-name field produced by the rule is replaced by the global tag (exactly one field remains)
 
 `.env` lookup order: `<work_root>/.env` → `<work_root>/.warp_parse/.env`. Existing process environment variables win; `.env` never overrides them.
+
+## Instance ID (WP_INS_ID)
+
+Every wparse instance must own its instance id; it determines the instance segment of `wp_event_id`. Two instances sharing one id produce duplicate IDs.
+
+- **Environment variable**: `WP_INS_ID`
+- **Range**: `100..=1123` (1024 instances)
+- **Default**: `100`
+- **Lookup order**: process environment (`docker -e` / systemd) first; otherwise `<work_root>/.env`, then `<work_root>/.warp_parse/.env` — identical to `WP_GLOBAL_TAGS`
+- **Validation**: non-numeric, out of range, or changed after the first ID was issued → **startup fails** (never silently falls back)
+
+```bash
+# option 1: environment variable
+docker run -e WP_INS_ID=101 ...
+# option 2: work root/.env
+WP_INS_ID=101
+```
+
+**A WARN is emitted when it is unset**: harmless for a single instance, but under a multi-instance deployment every unconfigured instance gets `100` and IDs are guaranteed to collide.
+
+```text
+WARN WP_INS_ID not set; using default instance id 100 (multiple instance will collide)
+```
+
+The instance id is baked into historical data and cannot be renumbered later (the id segment would then collide with the instance's own older rows), so leave headroom when allocating.
 
 ## Configuration Control
 

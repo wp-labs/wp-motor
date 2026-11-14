@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.2] - 2026-11-14
+
+### ⚠️ BREAKING CHANGES
+
+- **`wp_event_id` 改为确定性布局 `秒(32) | 实例号(10) | 每秒计数器(22)`**（升级 `wp-model-core 0.10.2`、`wp-lang 0.9.1`）。此前是「随机 63 位种子 + 进程内计数器」，跨实例没有结构隔离；现在时间在高位，按**数值**比较即时间序（可用到 2106-02-07）。字段仍是字符串，新旧行混存不会插入失败，但交界处不再有序。
+
+### Added
+
+- **实例号 `WP_INS_ID`**：取值 `100..=1123`（共 1024 个实例），决定 `wp_event_id` 的实例段。读取路径与 `WP_GLOBAL_TAGS` 完全一致 —— 进程环境优先，其次 work root 的 `.env` / `.warp_parse/.env`；未设置时回退默认值 `100` 并打 WARN。
+- 启动校验：`WP_INS_ID` 非数字、越界、或首次发号后被改动 → **启动失败**，不静默回退（静默回退会让多个实例共用同一 lane、持续产出重复 ID）。
+- 文档：`docs/usage/{zh,en}/05-connectors/01-sources/09-metadata.md` 补充 ID 布局、`WP_INS_ID` 用法、冲突边界与下游列类型注意事项。
+
+### Changed
+
+- 每秒计数器上限 4,194,304（单实例 200 万 EPS 仍有 2 倍余量）；超出时逻辑秒前进一格，不 stall、不回绕。
+- 挂钟回拨时沿用已用过的逻辑秒继续累加计数器，不会重复。
+- 首次发号的逻辑秒对齐到「首次调用所在整秒 + 1」，使同一秒内崩溃重启不会重放上一轮的号。
+
 ## [1.39.1] - 2026-11-14
 
 ### Fixed

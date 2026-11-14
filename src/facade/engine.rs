@@ -124,6 +124,22 @@ impl WpApp {
                 .to_err()
                 .with_detail(format!("invalid WP_GLOBAL_TAGS: {err}"))
         })?);
+        // 实例号来自 WP_INS_ID（或 work root 下的 .env），决定 wp_event_id 的 lane 段。
+        // 非法值直接终止启动，避免多个实例静默共用同一个 lane 而产出重复 ID。
+        match wp_model_core::event_id::init_instance_id_from_env() {
+            Ok(Some(id)) => info_ctrl!("instance id: {id}"),
+            Ok(None) => warn_ctrl!(
+                "{} not set; using default instance id {} (multiple instance will collide)",
+                wp_model_core::event_id::WP_INS_ID_ENV,
+                wp_model_core::event_id::INS_ID_BASE
+            ),
+            Err(err) => {
+                return Err(RunReason::core_conf().to_err().with_detail(format!(
+                    "invalid {}: {err}",
+                    wp_model_core::event_id::WP_INS_ID_ENV
+                )));
+            }
+        }
         let (control_handle, cmd_recv) = default_runtime_command_bus();
         Ok(Self {
             main_conf,
