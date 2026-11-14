@@ -225,3 +225,22 @@ table = "nginx_${ENV}"
   - Check whether you mistakenly wrote `SEC_MYSQL_URL = "..."` in the file
 - To confirm fallback behavior:
   - If the project does not contain `.warp_parse/sec_key.toml`, the loader will try `$HOME/.warp_parse/sec_key.toml`
+
+## Instance-Level Environment Variables (WP_INS_ID / WP_GLOBAL_TAGS)
+
+Everything above is about **config interpolation** via `${...}`. A separate group of environment variables is read directly by the engine at startup: they cannot be written into `wparse.toml` and cannot be referenced with `${...}`.
+
+| Variable | Purpose | Value |
+| --- | --- | --- |
+| `WP_INS_ID` | Instance id, determines the instance segment of `wp_event_id` | `100..=1123`, default `100` |
+| `WP_GLOBAL_TAGS` | Global fields stamped onto every record | `k=v,k2=v2` or JSON |
+
+Lookup order is the same as above (first match wins, process environment first):
+
+1. process environment (`docker -e` / systemd `Environment=`)
+2. `<work_root>/.env`
+3. `<work_root>/.warp_parse/.env`
+
+An invalid `WP_INS_ID` (non-numeric or out of range) makes `wparse` **fail to start**. When unset it falls back to `100` and logs a WARN — under a multi-instance deployment every unconfigured instance then shares `100` and ids are guaranteed to collide, so it must be set explicitly.
+
+Numbering plans, K8s / Compose examples and collision boundaries are documented in `docs/use/en/operations/instance-id.md` in the `warp-parse` repository.

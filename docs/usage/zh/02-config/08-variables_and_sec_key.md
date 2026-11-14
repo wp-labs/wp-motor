@@ -222,3 +222,22 @@ table = "nginx_${ENV}"
   - 检查文件里是否写成了 `SEC_MYSQL_URL = "..."`，这属于错误写法
 - 想确认 fallback：
   - 项目目录没有 `.warp_parse/sec_key.toml` 时，会继续尝试 `$HOME/.warp_parse/sec_key.toml`
+
+## 实例级环境变量（WP_INS_ID / WP_GLOBAL_TAGS）
+
+上面讲的 `${...}` 是**配置插值**。另有一类环境变量由引擎在启动时直接读取，不能写进 `wparse.toml`，也不能用 `${...}` 引用：
+
+| 变量 | 作用 | 取值 |
+| --- | --- | --- |
+| `WP_INS_ID` | 实例号，决定 `wp_event_id` 的实例段 | `100..=1123`，默认 `100` |
+| `WP_GLOBAL_TAGS` | 盖到每条记录上的全局字段 | `k=v,k2=v2` 或 JSON |
+
+读取顺序与上面一致（先命中者生效，进程环境优先）：
+
+1. 进程环境（`docker -e` / systemd `Environment=`）
+2. `<work_root>/.env`
+3. `<work_root>/.warp_parse/.env`
+
+`WP_INS_ID` 取值非法（非数字或越界）会让 `wparse` **启动失败**；未设置时回退 `100` 并打 WARN —— 多实例部署下所有未配置的实例会共用 `100`，ID 必然重复，必须显式配置。
+
+编号规划、K8s / Compose 示例与冲突边界见 `warp-parse` 仓库的 `docs/use/zh/operations/instance-id.md`。
