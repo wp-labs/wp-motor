@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.1] - 2026-11-14
+
+### Fixed
+
+- **TCP/TLS sink 在接收端重启后自动恢复**（升级 `wp-core-connectors 0.11.5`，warp-parse#374）：`tcp` sink 写失败后按 1s→30s 退避自动重建连接（含 TLS 握手与 codec），不再需要重启发送端；重连建连有 5s 超时，链路已坏时退出不再因 close_notify / 排空失败报错。
+- **`syslog` TCP sink 断链自愈**：`syslog` + TCP 在接收端恢复后自动重连；UDP 行为不变。
+- **TCP/TLS 连接开启 keepalive**：空闲 30s 开始探测、间隔 10s、3 次无响应判定断链，更快发现半开连接。
+
+### Note
+
+- `drop_when_error = true` 的丢弃策略不变；区别是熔断探测现在能真正重建链路，接收端恢复后无需人工重启发送端。
+
 ## [1.39.0] - 2026-11-08
 
 ### Added
