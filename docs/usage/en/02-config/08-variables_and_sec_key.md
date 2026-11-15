@@ -234,7 +234,10 @@ Everything above is about **config interpolation** via `${...}`. A separate grou
 | --- | --- | --- |
 | `WP_INS_ID` | Instance id, determines the instance segment of `wp_event_id` | `100..=1123`, default `100` |
 | `WP_GLOBAL_TAGS` | Global fields stamped onto every record | `k=v,k2=v2` or JSON |
-| `UPSTREAM_OML_NAME_KEEP` | Whether a relay keeps the upstream `wp_oml_name` | `true` / `false`, default `false` |
+| `UPSTREAM_EVENT_ID_KEEP` | Relay: keep the upstream `wp_event_id` | `true` / `false`, default `true` |
+| `UPSTREAM_SRC_KEEP` | Relay: keep the upstream `wp_src_key` / `wp_src_ip` | `true` / `false`, default `true` |
+| `UPSTREAM_EVENT_MD5_KEEP` | Relay: keep the upstream `wp_event_md5` | `true` / `false`, default `true` |
+| `UPSTREAM_OML_NAME_KEEP` | Relay: keep the upstream `wp_oml_name` | `true` / `false`, default `false` |
 
 Lookup order is the same as above (first match wins, process environment first):
 
@@ -243,5 +246,7 @@ Lookup order is the same as above (first match wins, process environment first):
 3. `<work_root>/.warp_parse/.env`
 
 An invalid `WP_INS_ID` (non-numeric or out of range) makes `wparse` **fail to start**. When unset it falls back to `100` and logs a WARN — under a multi-instance deployment every unconfigured instance then shares `100` and ids are guaranteed to collide, so it must be set explicitly.
+
+The four `UPSTREAM_*_KEEP` switches only apply on **relay chains** (the upstream record already carries a same-named `wp_*` field). Semantics and the "overwrite leaves exactly one field" rule are documented in [source meta](../05-connectors/01-sources/09-metadata.md).
 
 Numbering plans, K8s / Compose examples and collision boundaries are documented in `docs/use/en/operations/instance-id.md` in the `warp-parse` repository.

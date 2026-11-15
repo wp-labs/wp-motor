@@ -1,6 +1,7 @@
 pub(crate) mod global_tags;
 pub(crate) mod indexing;
 pub(crate) mod setting;
+pub(crate) mod upstream_meta;
 //pub(crate) mod plg_pipes;
 pub(crate) mod wpl_engine;
 

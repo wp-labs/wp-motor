@@ -231,7 +231,10 @@ table = "nginx_${ENV}"
 | --- | --- | --- |
 | `WP_INS_ID` | 实例号，决定 `wp_event_id` 的实例段 | `100..=1123`，默认 `100` |
 | `WP_GLOBAL_TAGS` | 盖到每条记录上的全局字段 | `k=v,k2=v2` 或 JSON |
-| `UPSTREAM_OML_NAME_KEEP` | 接力时是否保留上游的 `wp_oml_name` | `true` / `false`，默认 `false` |
+| `UPSTREAM_EVENT_ID_KEEP` | 接力时是否沿用上游 `wp_event_id` | `true` / `false`，默认 `true` |
+| `UPSTREAM_SRC_KEEP` | 接力时是否沿用上游 `wp_src_key` / `wp_src_ip` | `true` / `false`，默认 `true` |
+| `UPSTREAM_EVENT_MD5_KEEP` | 接力时是否沿用上游 `wp_event_md5` | `true` / `false`，默认 `true` |
+| `UPSTREAM_OML_NAME_KEEP` | 接力时是否沿用上游 `wp_oml_name` | `true` / `false`，默认 `false` |
 
 读取顺序与上面一致（先命中者生效，进程环境优先）：
 
@@ -240,5 +243,7 @@ table = "nginx_${ENV}"
 3. `<work_root>/.warp_parse/.env`
 
 `WP_INS_ID` 取值非法（非数字或越界）会让 `wparse` **启动失败**；未设置时回退 `100` 并打 WARN —— 多实例部署下所有未配置的实例会共用 `100`，ID 必然重复，必须显式配置。
+
+`UPSTREAM_*_KEEP` 四个开关只在**接力链路**（上游记录已带同名 `wp_*` 字段）时起作用；语义与“覆盖后只保留一个字段”的规则见 [源元数据](../05-connectors/01-sources/09-metadata.md)。
 
 编号规划、K8s / Compose 示例与冲突边界见 `warp-parse` 仓库的 `docs/use/zh/operations/instance-id.md`。

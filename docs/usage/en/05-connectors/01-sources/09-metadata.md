@@ -36,26 +36,51 @@ The value is a 64-bit integer with a fixed layout:
 
 > **About 2038**: inside wparse, `wp_event_id` is always a `u64` and is emitted as a string field — no signed integer is involved anywhere. The 2038 date only matters when the receiving column is a *signed* `BIGINT` / `Int64`: after 2038-01-19 the value (roughly `secs × 2^32`) exceeds `i64::MAX` once `secs` reaches `2^31`. With a string column or `BIGINT UNSIGNED` there is no such limit until 2106-02-07, when the 32-bit `secs` field itself runs out.
 
-**Relay chains: upstream wp_* fields are never overwritten**
+**Relay chains: how upstream wp_* fields are kept**
 
-When two instances relay data (A parses, then B parses A's output) and B's rule extracts the upstream `wp_event_id` / `wp_src_key` / `wp_src_ip` / `wp_event_md5` as ordinary fields, this instance neither overwrites nor duplicates them:
+When two instances relay data (A parses, then B parses A's output) and B's rule extracts the upstream `wp_*` meta as ordinary fields, four switches decide the outcome. **Their defaults equal the behaviour before the switches existed**:
 
-| Field | Behaviour when upstream already set it |
-| --- | --- |
-| `wp_event_id` | kept as-is; when it parses as canonical decimal the internal handle (the `id=` in logs/routing) is synced to that value |
-| `wp_src_key` / `wp_src_ip` | kept as-is (the original entry point is preserved instead of this instance's source) |
-| `wp_event_md5` | kept as-is, not replaced by a locally recomputed digest |
-| `wp_oml_name` | controlled by `UPSTREAM_OML_NAME_KEEP` (below); it is injected at the sink layer, not while parsing |
+| Switch | Default | Applies to | `true` | `false` |
+| --- | --- | --- | --- | --- |
+| `UPSTREAM_EVENT_ID_KEEP` | `true` | `wp_event_id` | keep the upstream id, stages correlate | issue a new id, overwrite the upstream value |
+| `UPSTREAM_SRC_KEEP` | `true` | `wp_src_key` / `wp_src_ip` | keep upstream (original entry point) | overwrite with this instance's source key / peer IP |
+| `UPSTREAM_EVENT_MD5_KEEP` | `true` | `wp_event_md5` (only when `gen_event_md5 = true`) | keep the upstream digest (original payload) | recompute from this instance's payload and overwrite |
+| `UPSTREAM_OML_NAME_KEEP` | `false` | `wp_oml_name` (injected by the sink layer) | keep the upstream (original stage) OML name | overwrite with this instance's OML name |
 
-`wp_oml_name` does **not** keep the upstream value by default: the `tcp` / `syslog` / `kafka` / `file` sinks replace any same-named field with this instance's OML name (remove-then-append, so exactly one survives). To keep the original stage's OML name:
+All four are read from the process environment (a `.env` loaded at startup counts too) and accept `1/true/yes/on` and `0/false/no/off`; anything else falls back to the default.
 
 ```bash
+# Typical use: identify each stage independently
+UPSTREAM_EVENT_ID_KEEP=false
+# Group dashboards by this instance's source instead of the original entry point
+UPSTREAM_SRC_KEEP=false
+# Keep the original stage's OML name
 UPSTREAM_OML_NAME_KEEP=true
 ```
 
-The flag is read from the process environment just like `WP_INS_ID` / `WP_GLOBAL_TAGS` (a `.env` loaded at startup counts too). It accepts `1/true/yes/on` and `0/false/no/off`; anything else falls back to the default `false`. When enabled, a record that already carries `wp_oml_name` is passed through untouched.
+### Shared write rule
+
+Whatever the switches say, **a record never ends up with two identically named meta fields**:
+
+- upstream has no such field → append this instance's value
+- upstream has it + keep → leave untouched
+- upstream has it + do not keep → **remove every same-named field first, then append this instance's value**
+
+When `wp_event_id` is overwritten, the internal handle (the `id=` in logs/routing) changes together with the field, so they always agree.
+
+### `wp_event_id` value requirements
 
 Only **canonical decimal** is accepted for the upstream `wp_event_id` (all digits, no leading zero, non-zero). `0042`, `+42`, `-5`, `0` and the empty string are all treated as unusable: the **field is kept unchanged**, a fresh internal id is issued, and a single WARN asks you to check the rule that extracts it. That keeps the internal handle textually identical to the field, not merely numerically equal. Fields modelled as `digit` / `u64` are adopted too.
+
+### What needs no switch
+
+| Field | Why |
+| --- | --- |
+| `wp_source_type` / `access_source` / custom source tags | `enrich_record_with_tags` already skips keys the record already has |
+| `wp_package_name` / `wp_rule_name` / `wp_sink_group` / `wp_sink_name` | only used in statistics dimension records, never written to the output |
+| `WP_GLOBAL_TAGS` | by definition an instance-level forced override, and the `wp_` prefix is rejected |
+
+> To record *this* instance's entry point, use `WP_GLOBAL_TAGS` (e.g. `stage=b`) or an explicit rule field — `wp_src_key` will not carry it once it is kept from upstream.
 
 > To also record this instance's own entry point, use `WP_GLOBAL_TAGS` (e.g. `stage=b`) or an explicit rule field — `wp_src_key` will not carry it.
 

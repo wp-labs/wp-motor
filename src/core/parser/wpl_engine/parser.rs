@@ -1,6 +1,7 @@
 //! 单个数据包解析逻辑
 
 use super::types::ProcessResult;
+use crate::core::parser::upstream_meta::UpstreamKeep;
 use crate::core::parser::wpl_engine::pipeline::WplPipeline;
 use crate::{core::parser::ParseOption, stat::MonSend};
 use orion_conf::ToStructError;
@@ -199,25 +200,56 @@ impl UpstreamMeta {
 fn stamp_event_meta(record: &mut DataRecord, event: &SourceEvent, setting: &ParseOption) {
     if *setting.gen_msg_id() {
         let upstream = scan_upstream_meta(record);
-        apply_event_id(record, upstream.event_id, event.event_id);
+        let keep = UpstreamKeep::load();
 
-        if !upstream.src_key {
-            record.append(Field::from_chars(META_SRC_KEY, event.src_key.as_str()));
+        apply_event_id(record, upstream.event_id, keep.event_id, event.event_id);
+
+        upsert_meta(record, upstream.src_key, keep.src, META_SRC_KEY, || {
+            Field::from_chars(META_SRC_KEY, event.src_key.as_str())
+        });
+        if let Some(ups_ip) = event.ups_ip {
+            upsert_meta(record, upstream.src_ip, keep.src, META_SRC_IP, || {
+                Field::from_ip(META_SRC_IP, ups_ip)
+            });
         }
-        if !upstream.src_ip
-            && let Some(ups_ip) = event.ups_ip
-        {
-            record.append(Field::from_ip(META_SRC_IP, ups_ip));
-        }
-        if *setting.gen_event_md5() && !upstream.event_md5 {
-            let digest = format!("{:x}", md5::compute(event.payload.as_bytes()));
-            record.append(Field::from_chars(META_EVENT_MD5, digest));
+        if *setting.gen_event_md5() {
+            upsert_meta(
+                record,
+                upstream.event_md5,
+                keep.event_md5,
+                META_EVENT_MD5,
+                || {
+                    let digest = format!("{:x}", md5::compute(event.payload.as_bytes()));
+                    Field::from_chars(META_EVENT_MD5, digest)
+                },
+            );
         }
     }
     // 全局 tag 独立于 gen_msg_id：只要实例配置了 WP_GLOBAL_TAGS 就盖戳。
     if let Some(global_tags) = setting.global_tags() {
         crate::core::parser::global_tags::apply_global_tags(record, global_tags);
     }
+}
+
+/// 按「是否保留上游」决定一个 meta 字段怎么落：
+///
+/// - 上游没有 → 追加本实例的值
+/// - 上游有 + 保留 → 不动
+/// - 上游有 + 不保留 → 先移除同名旧值，再追加本实例的值（保证只有一个）
+fn upsert_meta(
+    record: &mut DataRecord,
+    upstream_present: bool,
+    keep_upstream: bool,
+    name: &str,
+    make: impl FnOnce() -> wp_model_core::model::DataField,
+) {
+    if upstream_present && keep_upstream {
+        return;
+    }
+    if upstream_present {
+        while record.remove_field(name) {}
+    }
+    record.append(make());
 }
 
 /// 单次遍历找出上游已带的 meta 字段，避免对每条记录做四次线性查找。
@@ -244,27 +276,36 @@ fn scan_upstream_meta(record: &DataRecord) -> UpstreamMeta {
     found
 }
 
-/// 决定 `record.id`：上游已带合法 `wp_event_id` 就沿用，否则发新号。
+/// 决定 `record.id`：上游已带合法 `wp_event_id` 且允许保留时沿用，否则发新号。
 ///
 /// 上游字段存在但取值不可用时，保留原值不动（尊重上游内容），
 /// 内部句柄仍然发新号，保证路由/日志侧的唯一性。
-fn apply_event_id(record: &mut DataRecord, has_upstream: bool, generated: u64) {
-    if !has_upstream {
-        record.set_id(generated);
+fn apply_event_id(
+    record: &mut DataRecord,
+    has_upstream: bool,
+    keep_upstream: bool,
+    generated: u64,
+) {
+    if has_upstream && keep_upstream {
+        match upstream_event_id(record) {
+            Some(id) => {
+                // 字段已存在，`set_id` 不会重复追加；这里只需同步内部句柄。
+                record.id = id;
+                note_adopted_upstream_id(id);
+            }
+            None => {
+                record.id = generated;
+                note_unusable_upstream_id();
+            }
+        }
         return;
     }
 
-    match upstream_event_id(record) {
-        Some(id) => {
-            // 字段已存在，`set_id` 不会重复追加；这里只需同步内部句柄。
-            record.id = id;
-            note_adopted_upstream_id(id);
-        }
-        None => {
-            record.id = generated;
-            note_unusable_upstream_id();
-        }
+    // 上游没有，或要求以本实例为准：清掉旧值再发新号。
+    if has_upstream {
+        while record.remove_field(META_EVENT_ID) {}
     }
+    record.set_id(generated);
 }
 
 /// 读上游 `wp_event_id` 的数值。
@@ -847,6 +888,102 @@ mod tests {
             }
             other => panic!("expected success, got {:?}", other),
         }
+    }
+
+    // ---------------- meta 落盘策略（upsert_meta / apply_event_id） ----------------
+
+    fn rec_with_meta(name: &'static str, value: &str) -> DataRecord {
+        DataRecord::from(vec![Field::from_chars(name, value)])
+    }
+
+    #[test]
+    fn upsert_meta_appends_when_absent() {
+        let mut record = rec_with_meta("msg", "hello");
+        upsert_meta(&mut record, false, false, META_SRC_KEY, || {
+            Field::from_chars(META_SRC_KEY, "local")
+        });
+        assert_eq!(
+            record.field(META_SRC_KEY).unwrap().get_value().as_str(),
+            Some("local")
+        );
+    }
+
+    #[test]
+    fn upsert_meta_keeps_upstream_when_asked() {
+        let mut record = rec_with_meta(META_SRC_KEY, "upstream");
+        upsert_meta(&mut record, true, true, META_SRC_KEY, || {
+            Field::from_chars(META_SRC_KEY, "local")
+        });
+        assert_eq!(
+            record.field(META_SRC_KEY).unwrap().get_value().as_str(),
+            Some("upstream")
+        );
+        assert_eq!(
+            record
+                .items
+                .iter()
+                .filter(|f| f.get_name() == META_SRC_KEY)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn upsert_meta_replaces_upstream_when_overriding() {
+        // 故意放两个同名旧值，验证全部被清掉
+        let mut record = DataRecord::from(vec![
+            Field::from_chars(META_SRC_KEY, "old-a"),
+            Field::from_chars(META_SRC_KEY, "old-b"),
+        ]);
+        upsert_meta(&mut record, true, false, META_SRC_KEY, || {
+            Field::from_chars(META_SRC_KEY, "local")
+        });
+        assert_eq!(
+            record
+                .items
+                .iter()
+                .filter(|f| f.get_name() == META_SRC_KEY)
+                .count(),
+            1,
+            "覆盖后只允许保留一个"
+        );
+        assert_eq!(
+            record.field(META_SRC_KEY).unwrap().get_value().as_str(),
+            Some("local")
+        );
+    }
+
+    #[test]
+    fn apply_event_id_overrides_upstream_when_keep_disabled() {
+        let mut record = rec_with_meta(META_EVENT_ID, "12345");
+        apply_event_id(&mut record, true, false, 777);
+
+        assert_eq!(record.id, 777, "不保留时必须用本实例的新号");
+        assert_eq!(
+            record.field(META_EVENT_ID).unwrap().get_value().as_str(),
+            Some("777"),
+            "字段也要被覆盖为新号"
+        );
+        assert_eq!(
+            record
+                .items
+                .iter()
+                .filter(|f| f.get_name() == META_EVENT_ID)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn apply_event_id_keeps_upstream_when_enabled() {
+        let mut record = rec_with_meta(META_EVENT_ID, "12345");
+        apply_event_id(&mut record, true, true, 777);
+
+        assert_eq!(record.id, 12345);
+        assert_eq!(
+            record.field(META_EVENT_ID).unwrap().get_value().as_str(),
+            Some("12345")
+        );
     }
 
     /// 上游没有 meta 时，行为与之前一致：全部字段由本实例盖戳。

@@ -36,26 +36,49 @@ Warp Parse 系统在解析数据时，会自动向 DataRecord 追加一些机制
 
 **接力链路：上游已带 wp_* 字段时不覆盖**
 
-两个实例接力（A 解析完 → B 再解析 A 的输出）时，如果 B 的规则把上游的 `wp_event_id` / `wp_src_key` / `wp_src_ip` / `wp_event_md5` 当普通字段提取出来，本实例**不会覆盖、也不会重复追加**：
+两个实例接力（A 解析完 → B 再解析 A 的输出）时，如果 B 的规则把上游的 `wp_*` meta 当普通字段提取出来，由四个开关决定怎么落。**默认值就是引入开关前的行为**：
 
-| 字段 | 上游已有时的处理 |
-| --- | --- |
-| `wp_event_id` | 原样保留；能解析为**规范十进制**时，内部句柄（日志/路由里的 `id=`）同步为该值 |
-| `wp_src_key` / `wp_src_ip` | 原样保留（保留最初入口的信息，不再写本实例的 source） |
-| `wp_event_md5` | 原样保留，不用本实例重算的值覆盖 |
-| `wp_oml_name` | **由 `UPSTREAM_OML_NAME_KEEP` 控制**（见下）；字段在 sink 输出层注入，不在解析期 |
+| 开关 | 默认 | 作用范围 | `true` | `false` |
+| --- | --- | --- | --- | --- |
+| `UPSTREAM_EVENT_ID_KEEP` | `true` | `wp_event_id` | 沿用上游 ID，跨阶段可关联 | 本实例重新发号，覆盖上游值 |
+| `UPSTREAM_SRC_KEEP` | `true` | `wp_src_key` / `wp_src_ip` | 沿用上游（保留最初入口） | 用本实例的 source key / 对端 IP 覆盖 |
+| `UPSTREAM_EVENT_MD5_KEEP` | `true` | `wp_event_md5`（仅 `gen_event_md5 = true`） | 沿用上游指纹（原始 payload 的 md5） | 用本实例收到的 payload 重算并覆盖 |
+| `UPSTREAM_OML_NAME_KEEP` | `false` | `wp_oml_name`（由 sink 层注入） | 沿用上游（最初阶段）的 OML 名 | 用本实例的 OML 名覆盖 |
 
-`wp_oml_name` 默认**不保留**上游值：`tcp` / `syslog` / `kafka` / `file` 四类 sink 在输出前会用本实例的 OML 名**覆盖**同名旧字段（先移除再追加，保证只有一个）。要让接力链路保留最初阶段的 OML 名：
+四个开关都从进程环境读取（启动时加载的 `.env` 同样生效），接受 `1/true/yes/on` 与 `0/false/no/off`；无法识别的值按默认值处理。
 
 ```bash
+# 典型用法：每阶段独立标识（不想跨阶段关联时）
+UPSTREAM_EVENT_ID_KEEP=false
+# 想让看板按本实例的 source 分组，而不是归到最初入口
+UPSTREAM_SRC_KEEP=false
+# 想保留最初阶段的 OML 名
 UPSTREAM_OML_NAME_KEEP=true
 ```
 
-该开关与 `WP_INS_ID` / `WP_GLOBAL_TAGS` 一样从进程环境读取（启动时加载的 `.env` 同样生效），接受 `1/true/yes/on` 与 `0/false/no/off`；无法识别的值按默认值 `false` 处理。开启后，记录已带 `wp_oml_name` 就原样放过，不再追加。
+### 共同的落盘规则
+
+不管开关取值如何，**一条记录里不会出现两个同名 meta 字段**：
+
+- 上游没有该字段 → 追加本实例的值
+- 上游有 + 保留 → 不动
+- 上游有 + 不保留 → **先移除所有同名旧字段，再追加本实例的值**
+
+`wp_event_id` 被覆盖时，内部句柄（日志/路由里的 `id=`）与字段同时改为新号，两者始终一致。
+
+### `wp_event_id` 的取值要求
 
 上游 `wp_event_id` 只接受**规范十进制**（全为数字、无前导零、非 `0`）；`0042`、`+42`、`-5`、`0`、空串等一律视为不可用：**字段原样保留**，内部句柄另发新号，并打一次 WARN 提示检查提取该字段的规则。这样内部句柄与字段文本严格一致，而不是仅数值相等。按 `digit` / `u64` 建模的整数字段同样能采纳。
 
-> 想同时保留“本实例入口”的信息，请用 `WP_GLOBAL_TAGS`（如 `stage=b`）或规则里的显式字段，不要指望 `wp_src_key`。
+### 哪些不用开关
+
+| 字段 | 为什么不需要 |
+| --- | --- |
+| `wp_source_type` / `access_source` / 自定义 source tags | `enrich_record_with_tags` 已经是「记录里已有同名字段就跳过」 |
+| `wp_package_name` / `wp_rule_name` / `wp_sink_group` / `wp_sink_name` | 只进统计维度记录，不进输出 |
+| `WP_GLOBAL_TAGS` | 语义就是实例级强制覆盖，且禁止 `wp_` 前缀 |
+
+> 想记录“本实例入口”的信息，请用 `WP_GLOBAL_TAGS`（如 `stage=b`）或规则里的显式字段，不要指望 `wp_src_key`。
 
 ### 2. wp_src_key
 

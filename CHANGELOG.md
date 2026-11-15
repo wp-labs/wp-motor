@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.4] - 2026-11-15
+
+### Added
+
+- **三个接力开关，把“是否沿用上游 meta”从固定行为改为可配**（默认值均等于启用开关前的行为，升级不改变现有输出）：
+
+  | 开关 | 默认 | 范围 | `false` 时 |
+  | --- | --- | --- | --- |
+  | `UPSTREAM_EVENT_ID_KEEP` | `true` | `wp_event_id` | 本实例重新发号，覆盖上游值 |
+  | `UPSTREAM_SRC_KEEP` | `true` | `wp_src_key` / `wp_src_ip` | 用本实例的 source key / 对端 IP 覆盖 |
+  | `UPSTREAM_EVENT_MD5_KEEP` | `true` | `wp_event_md5`（仅 `gen_event_md5 = true`） | 用本实例收到的 payload 重算并覆盖 |
+
+  与 `UPSTREAM_OML_NAME_KEEP` 一样从进程环境读取（`.env` 同样生效），接受 `1/true/yes/on` 与 `0/false/no/off`；无法识别的值取默认值。
+
+### Changed
+
+- **meta 落盘统一走 upsert 语义**：上游没有就追加；有且保留就不动；有但不保留则**先移除所有同名旧值再追加**，保证一条记录里不会出现两个同名 meta 字段。`wp_event_id` 被覆盖时，内部句柄与字段同时更新。
+- `wp_event_md5` 在“保留上游”时不再重算，省掉一次 md5（只在上游缺失或要求覆盖时才计算）。
+
+### Note
+
+- 不需要开关的字段：`wp_source_type` / `access_source` 等 source tags 已由 `enrich_record_with_tags` 保证“记录已有同名字段就跳过”；`wp_package_name` / `wp_rule_name` / `wp_sink_group` / `wp_sink_name` 只进统计维度记录，不进输出。
+
 ## [1.39.3] - 2026-11-15
 
 ### Changed
