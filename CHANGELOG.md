@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.3] - 2026-11-15
+
+### Changed
+
+- **接力链路不再覆盖上游 `wp_*` meta**：B 的规则把上游的 `wp_event_id` / `wp_src_key` / `wp_src_ip` / `wp_event_md5` 当普通字段提取出来时，本实例不再覆盖，也不再重复追加。
+  - `wp_event_id` 能解析为十进制正整数时，内部句柄（日志/路由里的 `id=`）同步为该值，**字段与句柄保持一致**；不可解析（空串、`0`、带前缀）时字段保留原值，内部句柄另发新号，并打一次 WARN 提示检查提取该字段的规则。
+  - 此前上游 `wp_event_id` 会保留在字段里，但 `Record.id` 是本地新号，两者不一致；现在统一使用上游值。
+  - 此前规则产出的 `wp_src_key` / `wp_event_md5` 会被再追加一个同名字段（一条记录两个同名 meta），现在只有一个。
+  - 保留语义：`wp_src_key` / `wp_src_ip` 沿用上游值，即“最初入口”的信息；本实例自己的入口请用 `WP_GLOBAL_TAGS`
+
 ## [1.39.2] - 2026-11-14
 
 ### ⚠️ BREAKING CHANGES

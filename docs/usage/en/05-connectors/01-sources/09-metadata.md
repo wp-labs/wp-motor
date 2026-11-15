@@ -36,6 +36,20 @@ The value is a 64-bit integer with a fixed layout:
 
 > **About 2038**: inside wparse, `wp_event_id` is always a `u64` and is emitted as a string field — no signed integer is involved anywhere. The 2038 date only matters when the receiving column is a *signed* `BIGINT` / `Int64`: after 2038-01-19 the value (roughly `secs × 2^32`) exceeds `i64::MAX` once `secs` reaches `2^31`. With a string column or `BIGINT UNSIGNED` there is no such limit until 2106-02-07, when the 32-bit `secs` field itself runs out.
 
+**Relay chains: upstream wp_* fields are never overwritten**
+
+When two instances relay data (A parses, then B parses A's output) and B's rule extracts the upstream `wp_event_id` / `wp_src_key` / `wp_src_ip` / `wp_event_md5` as ordinary fields, this instance neither overwrites nor duplicates them:
+
+| Field | Behaviour when upstream already set it |
+| --- | --- |
+| `wp_event_id` | kept as-is; when it parses as a positive decimal integer the internal handle (the `id=` in logs/routing) is synced to that value |
+| `wp_src_key` / `wp_src_ip` | kept as-is (the original entry point is preserved instead of this instance's source) |
+| `wp_event_md5` | kept as-is, not replaced by a locally recomputed digest |
+
+If the upstream `wp_event_id` is not a positive decimal integer (empty, `0`, prefixed, …) the **field is kept unchanged**, a fresh internal id is issued, and a single WARN asks you to check the rule that extracts it.
+
+> To also record this instance's own entry point, use `WP_GLOBAL_TAGS` (e.g. `stage=b`) or an explicit rule field — `wp_src_key` will not carry it.
+
 ### 2. wp_src_key
 
 - **Field Type**: String

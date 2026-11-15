@@ -169,25 +169,122 @@ fn stamp_record_and_sides(
         .collect()
 }
 
+/// 事件级 meta 字段名。
+const META_EVENT_ID: &str = "wp_event_id";
+const META_SRC_KEY: &str = "wp_src_key";
+const META_SRC_IP: &str = "wp_src_ip";
+const META_EVENT_MD5: &str = "wp_event_md5";
+
+/// 上游（接力场景）已经盖过的 wp_* meta 字段。
+#[derive(Default)]
+struct UpstreamMeta {
+    event_id: bool,
+    src_key: bool,
+    src_ip: bool,
+    event_md5: bool,
+}
+
+impl UpstreamMeta {
+    fn is_complete(&self) -> bool {
+        self.event_id && self.src_key && self.src_ip && self.event_md5
+    }
+}
+
 /// 给 record 盖事件级 meta：wp_event_id / wp_src_key / wp_src_ip / wp_event_md5，
 /// 以及进程级全局 tag（`WP_GLOBAL_TAGS`）。
 /// 由 gen_msg_id 总开关 + gen_event_md5 子开关控制；主 record 与旁路 record 都走此路径。
+///
+/// **上游已有的 wp_* meta 不会被覆盖**：接力链路（A 解析完 → B 再解析 A 的输出）里，
+/// 规则把上游 ID 当作字段提取出来时，沿用上游值而不是重新覆盖，否则跨阶段关联会断掉。
 fn stamp_event_meta(record: &mut DataRecord, event: &SourceEvent, setting: &ParseOption) {
     if *setting.gen_msg_id() {
-        record.set_id(event.event_id);
-        record.append(Field::from_chars("wp_src_key", event.src_key.as_str()));
-        if let Some(ups_ip) = event.ups_ip {
-            record.append(Field::from_ip("wp_src_ip", ups_ip));
+        let upstream = scan_upstream_meta(record);
+        apply_event_id(record, upstream.event_id, event.event_id);
+
+        if !upstream.src_key {
+            record.append(Field::from_chars(META_SRC_KEY, event.src_key.as_str()));
         }
-        if *setting.gen_event_md5() {
+        if !upstream.src_ip
+            && let Some(ups_ip) = event.ups_ip
+        {
+            record.append(Field::from_ip(META_SRC_IP, ups_ip));
+        }
+        if *setting.gen_event_md5() && !upstream.event_md5 {
             let digest = format!("{:x}", md5::compute(event.payload.as_bytes()));
-            record.append(Field::from_chars("wp_event_md5", digest));
+            record.append(Field::from_chars(META_EVENT_MD5, digest));
         }
     }
     // 全局 tag 独立于 gen_msg_id：只要实例配置了 WP_GLOBAL_TAGS 就盖戳。
     if let Some(global_tags) = setting.global_tags() {
         crate::core::parser::global_tags::apply_global_tags(record, global_tags);
     }
+}
+
+/// 单次遍历找出上游已带的 meta 字段，避免对每条记录做四次线性查找。
+fn scan_upstream_meta(record: &DataRecord) -> UpstreamMeta {
+    let mut found = UpstreamMeta::default();
+    for item in record.items.iter() {
+        match item.get_name() {
+            META_EVENT_ID => found.event_id = true,
+            META_SRC_KEY => found.src_key = true,
+            META_SRC_IP => found.src_ip = true,
+            META_EVENT_MD5 => found.event_md5 = true,
+            _ => {}
+        }
+        if found.is_complete() {
+            break;
+        }
+    }
+    found
+}
+
+/// 决定 `record.id`：上游已带合法 `wp_event_id` 就沿用，否则发新号。
+///
+/// 上游字段存在但不是十进制正整数时，保留原值不动（尊重上游内容），
+/// 内部句柄仍然发新号，保证路由/日志侧的唯一性。
+fn apply_event_id(record: &mut DataRecord, has_upstream: bool, generated: u64) {
+    if !has_upstream {
+        record.set_id(generated);
+        return;
+    }
+
+    let upstream = record
+        .field(META_EVENT_ID)
+        .and_then(|field| field.get_value().as_str())
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .filter(|id| *id != 0);
+
+    match upstream {
+        Some(id) => {
+            // 字段已存在，`set_id` 不会重复追加；这里只需同步内部句柄。
+            record.id = id;
+            note_adopted_upstream_id(id);
+        }
+        None => {
+            record.id = generated;
+            note_unusable_upstream_id();
+        }
+    }
+}
+
+static ADOPT_NOTICE: std::sync::Once = std::sync::Once::new();
+static UNUSABLE_NOTICE: std::sync::Once = std::sync::Once::new();
+
+fn note_adopted_upstream_id(id: u64) {
+    ADOPT_NOTICE.call_once(|| {
+        wp_log::info_ctrl!(
+            "relay: adopting upstream wp_event_id (first value {id}); downstream keeps the upstream id"
+        );
+    });
+}
+
+fn note_unusable_upstream_id() {
+    UNUSABLE_NOTICE.call_once(|| {
+        wp_log::warn_ctrl!(
+            "relay: upstream wp_event_id is not a positive integer; keeping the field as-is and \
+             issuing a new internal id (check the rule that extracts {META_EVENT_ID})"
+        );
+    });
 }
 
 #[cfg(test)]
@@ -533,6 +630,147 @@ mod tests {
                     "wp_event_id 的实例号段与当前实例号不一致"
                 );
                 assert!(secs > 1_700_000_000, "秒段应取自当前时间，实际 {secs}");
+            }
+            other => panic!("expected success, got {:?}", other),
+        }
+    }
+
+    // ---------------- 接力（上游已带 wp_* meta） ----------------
+
+    /// 规则把上游的 `wp_event_id` 当普通字段提取出来：沿用上游值，不覆盖、不重复追加。
+    #[test]
+    fn upstream_event_id_is_preserved_and_adopted() {
+        let pipelines = vec![pipeline_with(
+            0,
+            "rule relay { (chars:wp_event_id) }",
+            false,
+        )];
+        let mut parser = MultiParser::new(pipelines);
+        let setting = ParseOption::new(true, false, Vec::new());
+
+        match parser.parse_event(&event("12345"), &setting) {
+            ProcessResult::Success { record, .. } => {
+                assert_eq!(
+                    record.field("wp_event_id").unwrap().get_value().as_str(),
+                    Some("12345"),
+                    "上游的 wp_event_id 必须原样保留"
+                );
+                assert_eq!(record.id, 12345, "内部句柄必须与字段保持一致");
+                assert_eq!(
+                    record
+                        .items
+                        .iter()
+                        .filter(|f| f.get_name() == "wp_event_id")
+                        .count(),
+                    1,
+                    "不得重复追加 wp_event_id"
+                );
+            }
+            other => panic!("expected success, got {:?}", other),
+        }
+    }
+
+    /// 上游的 `wp_src_key` 不被本实例的 source key 覆盖，也不重复追加。
+    #[test]
+    fn upstream_src_key_is_not_overwritten() {
+        let pipelines = vec![pipeline_with(0, "rule relay { (chars:wp_src_key) }", false)];
+        let mut parser = MultiParser::new(pipelines);
+        let setting = ParseOption::new(true, true, Vec::new());
+
+        match parser.parse_event(&event("upstream-src"), &setting) {
+            ProcessResult::Success { record, .. } => {
+                assert_eq!(
+                    record.field("wp_src_key").unwrap().get_value().as_str(),
+                    Some("upstream-src"),
+                    "event() 的 src_key 是 test-src，不得覆盖上游值"
+                );
+                assert_eq!(
+                    record
+                        .items
+                        .iter()
+                        .filter(|f| f.get_name() == "wp_src_key")
+                        .count(),
+                    1
+                );
+            }
+            other => panic!("expected success, got {:?}", other),
+        }
+    }
+
+    /// 上游的 `wp_event_md5` 不被重算值覆盖（即使 gen_event_md5 已开启）。
+    #[test]
+    fn upstream_event_md5_is_not_recomputed() {
+        let pipelines = vec![pipeline_with(
+            0,
+            "rule relay { (chars:wp_event_md5) }",
+            false,
+        )];
+        let mut parser = MultiParser::new(pipelines);
+        let setting = ParseOption::new(true, true, Vec::new());
+
+        match parser.parse_event(&event("deadbeefdeadbeefdeadbeefdeadbeef"), &setting) {
+            ProcessResult::Success { record, .. } => {
+                assert_eq!(
+                    record.field("wp_event_md5").unwrap().get_value().as_str(),
+                    Some("deadbeefdeadbeefdeadbeefdeadbeef"),
+                    "不得用本实例重算的 md5 覆盖上游值"
+                );
+                assert_eq!(
+                    record
+                        .items
+                        .iter()
+                        .filter(|f| f.get_name() == "wp_event_md5")
+                        .count(),
+                    1
+                );
+            }
+            other => panic!("expected success, got {:?}", other),
+        }
+    }
+
+    /// 上游值不可解析时：字段原样保留，内部句柄仍发新号。
+    #[test]
+    fn unusable_upstream_event_id_keeps_field_and_issues_new_id() {
+        for payload in ["not-a-number", "0", "-5"] {
+            let pipelines = vec![pipeline_with(
+                0,
+                "rule relay { (chars:wp_event_id) }",
+                false,
+            )];
+            let mut parser = MultiParser::new(pipelines);
+            let setting = ParseOption::new(true, false, Vec::new());
+
+            match parser.parse_event(&event(payload), &setting) {
+                ProcessResult::Success { record, .. } => {
+                    assert_eq!(
+                        record.field("wp_event_id").unwrap().get_value().as_str(),
+                        Some(payload),
+                        "上游值必须保留（payload={payload:?}）"
+                    );
+                    assert_eq!(record.id, 1, "内部句柄仍取事件号（payload={payload:?}）");
+                }
+                other => panic!("expected success, got {:?}", other),
+            }
+        }
+    }
+
+    /// 上游没有 meta 时，行为与之前一致：全部字段由本实例盖戳。
+    #[test]
+    fn absent_upstream_meta_is_still_stamped() {
+        let pipelines = vec![pipeline_with(0, "rule a { (chars\\0) }", false)];
+        let mut parser = MultiParser::new(pipelines);
+        let setting = ParseOption::new(true, true, Vec::new());
+
+        match parser.parse_event(&event("abc"), &setting) {
+            ProcessResult::Success { record, .. } => {
+                assert_eq!(record.id, 1);
+                assert!(record.field("wp_event_id").is_some());
+                assert!(record.field("wp_src_key").is_some());
+                assert!(record.field("wp_event_md5").is_some());
+                assert!(
+                    record.field("wp_src_ip").is_none(),
+                    "event() 不携带 ups_ip，不应凭空盖戳"
+                );
             }
             other => panic!("expected success, got {:?}", other),
         }
