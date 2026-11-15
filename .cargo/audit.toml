@@ -25,10 +25,26 @@
 # 且只有服务端证书链经过 emSign 中间证书时才会被误导。
 # 待 wp-knowledge 升级到 sqlx 0.9 后移除。
 # Next review: 2027-01-21
+#
+# RUSTSEC-2026-0459: libsqlite3-sys 内置 SQLite <3.54.0 的 page-cache 未初始化内存泄露
+# （CVE-2026-119375）。进程同时打开一个 db 与其同目录的 -wal、且两者 page size 不一致时，
+# 普通查询可能返回进程内存里的残留字节；本地向量，需受害者主动打开攻击者放置的文件对。
+# 该条只影响启用 `bundled` 特性、编译了 crate 内置 SQLite 的构建；本仓链接系统 SQLite：
+# `cargo tree -e features` 仅有 default / vcpkg / pkg-config，无 bundled，且 sqlx 的
+# sqlite 特性未启用（sqlx-sqlite 不在构建图）。
+# 无法通过升级消除：rusqlite 0.41 需要 libsqlite3-sys ^0.39，而 sqlx-sqlite <=0.9.0
+# 锁定 <0.38.0；Cargo 对 links="sqlite3" 只允许一个版本，两者互斥。待 sqlx 放宽上界后
+# 随 sqlx 0.9 一并升级。
+# 守卫：CI 的 “Guard - sqlite must stay unbundled” 会在 bundled 被启用时直接失败，
+# 保证本豁免的前提不会静默失效。
+# 残余风险：宿主系统 SQLite <3.54.0 且 knowdb 目录可被不可信方写入时成立；
+# 建议部署环境使用 SQLite >= 3.54.0。
+# Next review: 2027-05-15
 ignore = [
     "RUSTSEC-2023-0071",
     "RUSTSEC-2026-0183",
     "RUSTSEC-2026-0184",
     "RUSTSEC-2026-0253",
     "RUSTSEC-2026-0381",
+    "RUSTSEC-2026-0459",
 ]
