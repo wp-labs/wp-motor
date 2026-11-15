@@ -190,3 +190,26 @@ wp_meta_disable = ["wp_event_md5"]
 ```
 
 Currently supported fields for disabling: `wp_oml_name`, `wp_event_md5`. This filters at the sink output layer only; it does not affect engine stamping.
+
+## Cost
+
+Relay detection adds exactly **one field-name scan** per record (`wp_` prefix short-circuits after a 3-byte compare for ordinary fields). Measured on a release build with a 28-field record over 1M iterations:
+
+| Operation | Cost |
+| --- | --- |
+| `scan_upstream_meta` (the new relay check) | **+37.7 ns/record** (≈1.35 ns per field) |
+| Keeping the upstream `wp_event_md5` (skips recomputation) | **−622 ns/record** |
+| Overriding an upstream value (removes the old field first) | +≈220 ns/record |
+
+For reference:
+
+- the whole stamping step (including `set_id`'s insert and three appends) is ~850 ns/record, so the new scan is **4.5%** of it
+- at 2M EPS the new scan costs about **0.075 cores** of CPU — roughly 1% per core with 8 parse workers
+- **on a relay with `gen_event_md5 = true` the path is faster than before**: skipping the md5 (622 ns) far outweighs the added scan (38 ns)
+
+Reproduce (the benchmark is `#[ignore]`d, so CI never runs it):
+
+```bash
+cd wp-motor
+cargo test --release --lib perf_probe_meta_stamp -- --ignored --nocapture
+```

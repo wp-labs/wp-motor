@@ -186,3 +186,26 @@ wp_meta_disable = ["wp_event_md5"]
 ```
 
 当前支持禁用的字段：`wp_oml_name`、`wp_event_md5`。该配置只在 sink 输出层过滤，不影响引擎盖戳。
+
+## 性能开销
+
+接力判定对每条记录只多做**一次字段名扫描**（`wp_` 前缀短路，业务字段一次 3 字节比较就退出）。实测（release 构建、28 字段记录、100 万次迭代）：
+
+| 操作 | 成本 |
+| --- | --- |
+| `scan_upstream_meta`（接力判定新增） | **+37.7 ns/record**（约 1.35 ns/字段） |
+| 保留上游 `wp_event_md5`（跳过重算） | **−622 ns/record** |
+| 覆盖上游值（先移除同名字段） | +约 220 ns/record |
+
+参考量级：
+
+- 盖戳步骤整体（含 `set_id` 的插入与 3 个字段追加）约 850 ns/record，新增扫描占 **4.5%**
+- 按 200 万 EPS 换算，新增扫描约 **0.075 核** CPU；8 个 parse worker 分摊后每核约 1%
+- **接力 + `gen_event_md5 = true` 时整条路径比改动前更快**：保留上游 md5 省掉的一次 md5 计算（622 ns）远大于新增扫描（38 ns）
+
+复现命令（基准测试默认 `#[ignore]`，不进 CI）：
+
+```bash
+cd wp-motor
+cargo test --release --lib perf_probe_meta_stamp -- --ignored --nocapture
+```
