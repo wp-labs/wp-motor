@@ -118,6 +118,31 @@ Only **canonical decimal** is accepted for the upstream `wp_event_id` (all digit
 
 `.env` lookup order: `<work_root>/.env` → `<work_root>/.warp_parse/.env`. Existing process environment variables win; `.env` never overrides them.
 
+## All mechanism fields at a glance
+
+| Field | Written by | Reaches output | Duplicates on relay | Switch |
+| --- | --- | --- | --- | --- |
+| `wp_event_id` | parser `set_id` | ✅ | yes (handled) | `UPSTREAM_EVENT_ID_KEEP` |
+| `wp_src_key` | parser | ✅ | yes (handled) | `UPSTREAM_SRC_KEEP` |
+| `wp_src_ip` | parser (connection-based sources only) | ✅ | yes (handled) | `UPSTREAM_SRC_KEEP` |
+| `wp_event_md5` | parser (`gen_event_md5`) | ✅ | yes (handled) | `UPSTREAM_EVENT_MD5_KEEP` |
+| `wp_oml_name` | sink layer (tcp / syslog / kafka / file) | ✅ | yes (handled) | `UPSTREAM_OML_NAME_KEEP` |
+| `wp_source_type` / `wp_access_ip` / `access_source` / custom tags | source-tag enrichment | ✅ | no (skipped when the record already has the key) | — |
+| `wp_rule_name` / `wp_package_name` | **statistics dimension records only** | ❌ | n/a | — |
+| `wp_sink_group` / `wp_sink_name` | **statistics dimension records only** | ❌ | n/a | — |
+
+**The four `UPSTREAM_*_KEEP` switches are the complete set**: only fields the engine appends unconditionally need one; everything else either already skips existing keys or never reaches the output.
+
+## Why the WPL rule name is not in the output
+
+`wp_rule_name` / `wp_package_name` are used solely as `stat` grouping dimensions and are **never written into records that pass through a sink**. Therefore:
+
+- to split / count / alert by “which WPL rule matched” → use the `stat` `pick` / `parse` groups, not a record field
+- to carry the rule name downstream → use `WP_GLOBAL_TAGS` (e.g. `stage=b`) or an explicit field in the rule; **do not use a `wp_` prefix**, that namespace belongs to the engine
+- the only “stage identity” field that reaches the output today is `wp_oml_name` (the OML model name), injected by the sink layer
+
+One detail: if a rule extracts the upstream `wp_rule_name` as a field and the `stat` request includes `wp_rule_name`, statistics will attribute those records to the **upstream** rule name. That is opt-in (it only happens when the rule extracts the field) and does not affect output data.
+
 ## Instance ID (WP_INS_ID)
 
 Every wparse instance must own its instance id; it determines the instance segment of `wp_event_id`. Two instances sharing one id produce duplicate IDs.

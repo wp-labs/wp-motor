@@ -114,6 +114,31 @@ UPSTREAM_OML_NAME_KEEP=true
 
 `.env` 查找顺序：`<work_root>/.env` → `<work_root>/.warp_parse/.env`。已存在的进程环境变量优先，`.env` 不会覆盖它们。
 
+## 全部机制字段一览
+
+| 字段 | 谁写入 | 进输出记录 | 接力会重复 | 对应开关 |
+| --- | --- | --- | --- | --- |
+| `wp_event_id` | 解析期 `set_id` | ✅ | 会（已处理） | `UPSTREAM_EVENT_ID_KEEP` |
+| `wp_src_key` | 解析期 | ✅ | 会（已处理） | `UPSTREAM_SRC_KEEP` |
+| `wp_src_ip` | 解析期（仅连接类 source） | ✅ | 会（已处理） | `UPSTREAM_SRC_KEEP` |
+| `wp_event_md5` | 解析期（`gen_event_md5`） | ✅ | 会（已处理） | `UPSTREAM_EVENT_MD5_KEEP` |
+| `wp_oml_name` | sink 输出前（tcp / syslog / kafka / file） | ✅ | 会（已处理） | `UPSTREAM_OML_NAME_KEEP` |
+| `wp_source_type` / `wp_access_ip` / `access_source` / 自定义 tags | source tags 富化 | ✅ | 不会（记录已有同名字段就跳过） | — |
+| `wp_rule_name` / `wp_package_name` | **仅统计维度记录** | ❌ | 不涉及 | — |
+| `wp_sink_group` / `wp_sink_name` | **仅统计维度记录** | ❌ | 不涉及 | — |
+
+**四个 `UPSTREAM_*_KEEP` 就已经是完整集合**：只有“引擎无条件往记录里补”的字段才需要开关，其余字段或者本来就“有则跳过”，或者根本不进输出。
+
+## WPL 规则名为什么不进输出
+
+`wp_rule_name` / `wp_package_name` 只用于 `stat` 的分组维度，**不会写进经过 sink 的记录**。所以：
+
+- 想按“命中了哪条 WPL 规则”拆分 / 统计 / 告警 → 用 `stat` 的 `pick` / `parse` 分组，不要指望记录里有这个字段
+- 想把规则名落到下游 → 用 `WP_GLOBAL_TAGS`（如 `stage=b`）或在规则里显式加一个字段；**名字不要用 `wp_` 前缀**，那是系统 meta 的命名空间
+- 当前唯一会进输出的“阶段身份”字段是 `wp_oml_name`（OML 模型名），它由 sink 层注入
+
+一个细节：如果规则把上游的 `wp_rule_name` 提取成字段，且 `stat` 请求里包含 `wp_rule_name`，统计会归到**上游**的规则名下 —— 这是 opt-in 行为（规则主动提取才会发生），不影响输出数据。
+
 ## 实例号（WP_INS_ID）
 
 每个 wparse 实例必须持有自己的实例号，它决定 `wp_event_id` 的实例段。多个实例共用同一个实例号会直接产出重复 ID。
