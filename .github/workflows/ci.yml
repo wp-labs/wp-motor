@@ -65,6 +65,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: cargo generate-lockfile
+      # RUSTSEC-2026-0459 豁免的前提是「链接系统 SQLite」：构建图里不得出现
+      # libsqlite3-sys 的 `bundled` 特性（它会把内置的 SQLite <3.54.0 编进来）。
+      # 一旦有人给 rusqlite 打开了 bundled，豁免立刻变成真实风险，必须拦住。
+      # 注意用 `grep -c` 而不是 `grep -q`：后者提前退出会让 cargo tree 收到
+      # SIGPIPE，在 set -o pipefail 下反把判断结果变成 false。
+      - name: Guard - sqlite must stay unbundled
+        run: |
+          set -uo pipefail
+          bundled=$(cargo tree -e features | grep -c 'libsqlite3-sys feature "bundled"' || true)
+          if [ "${bundled:-0}" -gt 0 ]; then
+            echo "::error::libsqlite3-sys/bundled 被启用，RUSTSEC-2026-0459 的豁免前提失效"
+            cargo tree -e features -i libsqlite3-sys
+            exit 1
+          fi
+          echo "ok: libsqlite3-sys 未启用 bundled（链接系统 SQLite）"
       - uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
