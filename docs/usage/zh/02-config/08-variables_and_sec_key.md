@@ -231,6 +231,7 @@ table = "nginx_${ENV}"
 | --- | --- | --- |
 | `WP_INS_ID` | 实例号，决定 `wp_event_id` 的实例段 | `100..=1123`，默认 `100` |
 | `WP_GLOBAL_TAGS` | 盖到每条记录上的全局字段 | `k=v,k2=v2` 或 JSON |
+| `UPSTREAM_OML_NAME_KEEP` | 接力时是否保留上游的 `wp_oml_name` | `true` / `false`，默认 `false` |
 
 读取顺序与上面一致（先命中者生效，进程环境优先）：
 

@@ -234,6 +234,7 @@ Everything above is about **config interpolation** via `${...}`. A separate grou
 | --- | --- | --- |
 | `WP_INS_ID` | Instance id, determines the instance segment of `wp_event_id` | `100..=1123`, default `100` |
 | `WP_GLOBAL_TAGS` | Global fields stamped onto every record | `k=v,k2=v2` or JSON |
+| `UPSTREAM_OML_NAME_KEEP` | Whether a relay keeps the upstream `wp_oml_name` | `true` / `false`, default `false` |
 
 Lookup order is the same as above (first match wins, process environment first):
 

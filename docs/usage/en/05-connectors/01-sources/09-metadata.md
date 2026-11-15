@@ -42,9 +42,18 @@ When two instances relay data (A parses, then B parses A's output) and B's rule 
 
 | Field | Behaviour when upstream already set it |
 | --- | --- |
-| `wp_event_id` | kept as-is; when it parses as a positive decimal integer the internal handle (the `id=` in logs/routing) is synced to that value |
+| `wp_event_id` | kept as-is; when it parses as canonical decimal the internal handle (the `id=` in logs/routing) is synced to that value |
 | `wp_src_key` / `wp_src_ip` | kept as-is (the original entry point is preserved instead of this instance's source) |
 | `wp_event_md5` | kept as-is, not replaced by a locally recomputed digest |
+| `wp_oml_name` | controlled by `UPSTREAM_OML_NAME_KEEP` (below); it is injected at the sink layer, not while parsing |
+
+`wp_oml_name` does **not** keep the upstream value by default: the `tcp` / `syslog` / `kafka` / `file` sinks replace any same-named field with this instance's OML name (remove-then-append, so exactly one survives). To keep the original stage's OML name:
+
+```bash
+UPSTREAM_OML_NAME_KEEP=true
+```
+
+The flag is read from the process environment just like `WP_INS_ID` / `WP_GLOBAL_TAGS` (a `.env` loaded at startup counts too). It accepts `1/true/yes/on` and `0/false/no/off`; anything else falls back to the default `false`. When enabled, a record that already carries `wp_oml_name` is passed through untouched.
 
 Only **canonical decimal** is accepted for the upstream `wp_event_id` (all digits, no leading zero, non-zero). `0042`, `+42`, `-5`, `0` and the empty string are all treated as unusable: the **field is kept unchanged**, a fresh internal id is issued, and a single WARN asks you to check the rule that extracts it. That keeps the internal handle textually identical to the field, not merely numerically equal. Fields modelled as `digit` / `u64` are adopted too.
 

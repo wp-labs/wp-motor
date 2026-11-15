@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 此前上游 `wp_event_id` 会保留在字段里，但 `Record.id` 是本地新号，两者不一致；现在统一使用上游值。
   - 此前规则产出的 `wp_src_key` / `wp_event_md5` 会被再追加一个同名字段（一条记录两个同名 meta），现在只有一个。
   - 保留语义：`wp_src_key` / `wp_src_ip` 沿用上游值，即“最初入口”的信息；本实例自己的入口请用 `WP_GLOBAL_TAGS`
+- **`wp_oml_name` 改为可配**（升级 `wp-connector-utils 0.5.2`）：`tcp` / `syslog` / `kafka` / `file` 四类 sink 在输出前注入 `wp_oml_name` 时，以前会无条件追加，接力场景下会出现**两个同名字段**。现在按 `UPSTREAM_OML_NAME_KEEP` 处理：
+  - `false`（默认）：用本实例的 OML 名**覆盖**上游值（先移除再追加，保证只有一个）
+  - `true`：保留上游（最初阶段）的 OML 名，不追加
 
 ## [1.39.2] - 2026-11-14
 
