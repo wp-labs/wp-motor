@@ -224,12 +224,18 @@ fn stamp_event_meta(record: &mut DataRecord, event: &SourceEvent, setting: &Pars
 fn scan_upstream_meta(record: &DataRecord) -> UpstreamMeta {
     let mut found = UpstreamMeta::default();
     for item in record.items.iter() {
-        match item.get_name() {
+        let name = item.get_name();
+        // 绝大多数业务字段在这里就退出（长度检查 + 3 字节比较），
+        // 避免对每个字段做 4 次完整字符串比较。
+        if !name.starts_with("wp_") {
+            continue;
+        }
+        match name {
             META_EVENT_ID => found.event_id = true,
             META_SRC_KEY => found.src_key = true,
             META_SRC_IP => found.src_ip = true,
             META_EVENT_MD5 => found.event_md5 = true,
-            _ => {}
+            _ => continue,
         }
         if found.is_complete() {
             break;
@@ -240,7 +246,7 @@ fn scan_upstream_meta(record: &DataRecord) -> UpstreamMeta {
 
 /// 决定 `record.id`：上游已带合法 `wp_event_id` 就沿用，否则发新号。
 ///
-/// 上游字段存在但不是十进制正整数时，保留原值不动（尊重上游内容），
+/// 上游字段存在但取值不可用时，保留原值不动（尊重上游内容），
 /// 内部句柄仍然发新号，保证路由/日志侧的唯一性。
 fn apply_event_id(record: &mut DataRecord, has_upstream: bool, generated: u64) {
     if !has_upstream {
@@ -248,13 +254,7 @@ fn apply_event_id(record: &mut DataRecord, has_upstream: bool, generated: u64) {
         return;
     }
 
-    let upstream = record
-        .field(META_EVENT_ID)
-        .and_then(|field| field.get_value().as_str())
-        .and_then(|raw| raw.trim().parse::<u64>().ok())
-        .filter(|id| *id != 0);
-
-    match upstream {
+    match upstream_event_id(record) {
         Some(id) => {
             // 字段已存在，`set_id` 不会重复追加；这里只需同步内部句柄。
             record.id = id;
@@ -265,6 +265,32 @@ fn apply_event_id(record: &mut DataRecord, has_upstream: bool, generated: u64) {
             note_unusable_upstream_id();
         }
     }
+}
+
+/// 读上游 `wp_event_id` 的数值。
+///
+/// 同时支持按 `chars` 与按整数（`digit` / `u64`）建模的上游字段：
+/// 后者 `Value::as_str()` 返回 `None`，此时用 `Display` 取十进制文本。
+fn upstream_event_id(record: &DataRecord) -> Option<u64> {
+    let value = record.field(META_EVENT_ID)?.get_value();
+    match value.as_str() {
+        Some(raw) => parse_canonical_event_id(raw),
+        None => parse_canonical_event_id(&value.to_string()),
+    }
+}
+
+/// 只接受**规范十进制**：全为 ASCII 数字、无前导零、非 0。
+///
+/// 这样内部句柄与字段文本严格一致（而非仅数值相等），
+/// `" 42 "` / `"+42"` / `"0042"` 这类写法一律不采纳。
+fn parse_canonical_event_id(raw: &str) -> Option<u64> {
+    if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    if raw.len() > 1 && raw.starts_with('0') {
+        return None;
+    }
+    raw.parse::<u64>().ok().filter(|id| *id != 0)
 }
 
 static ADOPT_NOTICE: std::sync::Once = std::sync::Once::new();
@@ -728,10 +754,12 @@ mod tests {
         }
     }
 
-    /// 上游值不可解析时：字段原样保留，内部句柄仍发新号。
+    /// 上游值不可采纳时：字段原样保留，内部句柄仍发新号。
     #[test]
     fn unusable_upstream_event_id_keeps_field_and_issues_new_id() {
-        for payload in ["not-a-number", "0", "-5"] {
+        // 非数字、0、负数、前导零、带正号：均不算规范十进制。
+        // （纯空白会被 WPL 的 `chars` 自行 trim，不属于本层行为）
+        for payload in ["not-a-number", "0", "-5", "0042", "+42"] {
             let pipelines = vec![pipeline_with(
                 0,
                 "rule relay { (chars:wp_event_id) }",
@@ -748,9 +776,76 @@ mod tests {
                         "上游值必须保留（payload={payload:?}）"
                     );
                     assert_eq!(record.id, 1, "内部句柄仍取事件号（payload={payload:?}）");
+                    assert_eq!(
+                        record
+                            .items
+                            .iter()
+                            .filter(|f| f.get_name() == "wp_event_id")
+                            .count(),
+                        1,
+                        "不得重复追加（payload={payload:?}）"
+                    );
                 }
                 other => panic!("expected success, got {:?}", other),
             }
+        }
+    }
+
+    /// 上游按整数建模（`digit:wp_event_id`）时同样能采纳。
+    #[test]
+    fn numeric_upstream_event_id_is_adopted() {
+        let pipelines = vec![pipeline_with(
+            0,
+            "rule relay { (digit:wp_event_id) }",
+            false,
+        )];
+        let mut parser = MultiParser::new(pipelines);
+        let setting = ParseOption::new(true, false, Vec::new());
+
+        match parser.parse_event(&event("12345"), &setting) {
+            ProcessResult::Success { record, .. } => {
+                assert_eq!(record.id, 12345, "整数型字段也要能取到值");
+                assert_eq!(
+                    record
+                        .items
+                        .iter()
+                        .filter(|f| f.get_name() == "wp_event_id")
+                        .count(),
+                    1
+                );
+            }
+            other => panic!("expected success, got {:?}", other),
+        }
+    }
+
+    /// 上游的 `wp_src_ip` 不被本连接的客户端 IP 覆盖，也不重复追加。
+    #[test]
+    fn upstream_src_ip_is_not_overwritten() {
+        let pipelines = vec![pipeline_with(0, "rule relay { (chars:wp_src_ip) }", false)];
+        let mut parser = MultiParser::new(pipelines);
+        let setting = ParseOption::new(true, false, Vec::new());
+
+        let mut source = event("10.9.9.9");
+        source.ups_ip = Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(172, 16, 0, 1)));
+
+        match parser.parse_event(&source, &setting) {
+            ProcessResult::Success { record, .. } => {
+                assert_eq!(
+                    record
+                        .items
+                        .iter()
+                        .filter(|f| f.get_name() == "wp_src_ip")
+                        .count(),
+                    1,
+                    "不得重复追加 wp_src_ip"
+                );
+                assert_eq!(
+                    record.field("wp_src_ip").unwrap().get_value().as_str(),
+                    Some("10.9.9.9"),
+                    "上游值优先于本连接的对端 IP"
+                );
+            }
+            other => panic!("expected success, got {:?}", other),
         }
     }
 

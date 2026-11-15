@@ -46,7 +46,7 @@ When two instances relay data (A parses, then B parses A's output) and B's rule 
 | `wp_src_key` / `wp_src_ip` | kept as-is (the original entry point is preserved instead of this instance's source) |
 | `wp_event_md5` | kept as-is, not replaced by a locally recomputed digest |
 
-If the upstream `wp_event_id` is not a positive decimal integer (empty, `0`, prefixed, …) the **field is kept unchanged**, a fresh internal id is issued, and a single WARN asks you to check the rule that extracts it.
+Only **canonical decimal** is accepted for the upstream `wp_event_id` (all digits, no leading zero, non-zero). `0042`, `+42`, `-5`, `0` and the empty string are all treated as unusable: the **field is kept unchanged**, a fresh internal id is issued, and a single WARN asks you to check the rule that extracts it. That keeps the internal handle textually identical to the field, not merely numerically equal. Fields modelled as `digit` / `u64` are adopted too.
 
 > To also record this instance's own entry point, use `WP_GLOBAL_TAGS` (e.g. `stage=b`) or an explicit rule field — `wp_src_key` will not carry it.
 
