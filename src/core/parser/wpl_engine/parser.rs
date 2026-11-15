@@ -1249,6 +1249,135 @@ mod tests {
         assert_eq!(info.best_wpl, "rule-0");
         assert_eq!(info.depth, 0);
     }
+    // ---------------- 性能探针（默认 ignore） ----------------
+
+    /// `cargo test --release --lib perf_probe_meta_stamp -- --ignored --nocapture`
+    #[test]
+    #[ignore = "perf probe"]
+    fn perf_probe_meta_stamp() {
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        const N: usize = 1_000_000;
+        const FIELDS: usize = 28;
+
+        fn plain_record() -> DataRecord {
+            let mut fields = Vec::with_capacity(FIELDS);
+            for i in 0..FIELDS {
+                fields.push(Field::from_chars(format!("f{i}"), "value"));
+            }
+            DataRecord::from(fields)
+        }
+
+        fn relay_record() -> DataRecord {
+            let mut fields = Vec::with_capacity(FIELDS + 3);
+            fields.push(Field::from_chars(META_EVENT_ID, "7708000000000000001"));
+            fields.push(Field::from_chars(META_SRC_KEY, "file_1"));
+            fields.push(Field::from_chars(
+                META_EVENT_MD5,
+                "ef4e89f986d38fb1df8b224fc04f2fc6",
+            ));
+            for i in 0..FIELDS {
+                fields.push(Field::from_chars(format!("f{i}"), "value"));
+            }
+            DataRecord::from(fields)
+        }
+
+        let time = |label: &str, mut f: Box<dyn FnMut()>| {
+            let start = Instant::now();
+            for _ in 0..N {
+                f();
+            }
+            let ns = start.elapsed().as_nanos() as f64 / N as f64;
+            println!("{label:<46} {ns:>8.1} ns/record");
+            ns
+        };
+
+        let plain = plain_record();
+        let relay = relay_record();
+
+        let payload = vec![b'x'; 300];
+        let _md5_cost = time(
+            "md5(payload 300B)（接力保留时省掉）",
+            Box::new(|| {
+                black_box(format!("{:x}", md5::compute(black_box(&payload))));
+            }),
+        );
+
+        println!("记录字段数 = {FIELDS}（不含 meta），迭代 {N} 次");
+
+        let set_id = time(
+            "set_id（改动前就有的一次扫描）",
+            Box::new(|| {
+                let mut r = black_box(DataRecord::clone(&plain));
+                r.set_id(black_box(42));
+                black_box(&r);
+            }),
+        );
+
+        let scan = time(
+            "scan_upstream_meta（本次新增）",
+            Box::new(|| {
+                black_box(scan_upstream_meta(black_box(&plain)));
+            }),
+        );
+
+        let scan_relay = time(
+            "scan_upstream_meta（有 wp_ 字段，提前 break）",
+            Box::new(|| {
+                black_box(scan_upstream_meta(black_box(&relay)));
+            }),
+        );
+
+        let setting = ParseOption::new(true, true, Vec::new());
+        let ev = event("payload-xyz");
+
+        let common = time(
+            "stamp_event_meta 常见路径（无上游 meta）",
+            Box::new(|| {
+                let mut r = black_box(DataRecord::clone(&plain));
+                stamp_event_meta(&mut r, &ev, &setting);
+                black_box(&r);
+            }),
+        );
+
+        let keep = time(
+            "stamp_event_meta 接力保留（有上游 meta）",
+            Box::new(|| {
+                let mut r = black_box(DataRecord::clone(&relay));
+                stamp_event_meta(&mut r, &ev, &setting);
+                black_box(&r);
+            }),
+        );
+
+        let override_case = time(
+            "stamp_event_meta 接力覆盖（移除 3 个 + 重新发号）",
+            Box::new(|| {
+                let mut r = black_box(DataRecord::clone(&relay));
+                while r.remove_field(META_EVENT_ID) {}
+                while r.remove_field(META_SRC_KEY) {}
+                while r.remove_field(META_EVENT_MD5) {}
+                r.set_id(black_box(42));
+                black_box(&r);
+            }),
+        );
+
+        println!();
+        println!(
+            "新增扫描占 stamp_event_meta 常见路径的比例: {:.1}%",
+            scan / common * 100.0
+        );
+        println!("新增扫描相对 set_id 单次扫描: {:.2}x", scan / set_id);
+        println!(
+            "有上游 meta 时保留 vs 常见路径: {:.2}x（{keep:.1} vs {common:.1} ns）",
+            keep / common
+        );
+        println!("有上游 meta 时提前 break 的扫描: {scan_relay:.1} ns");
+        println!(
+            "接力覆盖 vs 接力保留: {:.2}x（{override_case:.1} vs {keep:.1} ns）",
+            override_case / keep
+        );
+    }
 }
 
 // 重新导出主要类型
