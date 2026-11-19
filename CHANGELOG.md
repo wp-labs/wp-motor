@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.0] - 2026-11-20
+
+### Added
+
+- **离线配置校验 API `facade::check`**：按与 daemon 相同的加载链路（路由 + WPL/OML + sink 索引）检查配置，不建 socket、不抢锁、不写文件，可直接用于部署前与 CI 门禁。检查项包括：重复 `sink_group` 名称、同一 `oml`/`rule` matcher 被多个组绑定、规则与模型索引分叉（运行期会静默退化为 passthrough）、匹配不到模型/规则的惰性绑定。
+- **启动期重复绑定告警**：加载路由时发现重复 matcher 或重复组名会打 `ERROR` 日志，日志包含相关组名与来源文件，便于定位需要删除的旧配置。
+- **`[validate].deny_duplicate_oml` 开关**（默认关闭）：开启后重复 `oml` 绑定会让引擎启动失败，而不是继续以静默 passthrough 运行。
+
+### Changed
+
+- 路由加载新增保留来源文件的入口 `load_business_route_confs_with_origins`；原 `load_business_route_confs_with` 行为不变。
+- `SinkModelIndex` 新增只读遍历，供离线检查读取“组实际收到的模型”。
+
 ## [1.39.4] - 2026-11-15
 
 ### Added

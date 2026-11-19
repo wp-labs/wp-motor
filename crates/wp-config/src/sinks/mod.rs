@@ -7,10 +7,12 @@ pub mod resolved;
 //mod scaffold;
 pub mod types;
 
+pub use build::LoadedRouteConf;
 pub use build::SinkFactoryLookup;
 pub use build::build_route_conf_from;
 pub use build::load_business_route_confs;
 pub use build::load_business_route_confs_with;
+pub use build::load_business_route_confs_with_origins;
 pub use build::load_infra_route_confs;
 pub use constants::*;
 pub use io::load_connectors_for;

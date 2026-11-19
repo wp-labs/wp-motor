@@ -29,6 +29,14 @@ impl SinkModelIndex {
     pub fn get(&self, sink_name: &SinkID) -> Option<&ModelNameSet> {
         self.0.get(sink_name)
     }
+
+    /// Iterate over `(sink, models)` pairs.
+    ///
+    /// This is the index `alloc_sink_res` reads, so offline config checks use
+    /// it to know which models a sink group actually receives.
+    pub fn iter(&self) -> impl Iterator<Item = (&SinkID, &ModelNameSet)> {
+        self.0.iter()
+    }
 }
 impl Display for SinkModelIndex {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

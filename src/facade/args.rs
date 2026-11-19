@@ -111,6 +111,13 @@ pub struct ParseArgs {
     /// 覆盖引擎状态目录（pid/锁/规则映射/权威库）；优先于 [runtime].state_dir
     #[clap(long = "state-dir")]
     pub state_dir: Option<String>,
+
+    /// Site-local fail-closed override for duplicate `oml` bindings.
+    ///
+    /// Filled by the application from `wparse.local.toml`; `None` keeps the
+    /// `[validate].deny_duplicate_oml` value from `conf/wparse.toml`.
+    #[clap(skip)]
+    pub deny_duplicate_oml: Option<bool>,
 }
 
 impl ParseArgs {

@@ -3,6 +3,7 @@
 //! - 暴露少量稳定 API，便于 apps/wparse 与 apps/wprescue 直接调用
 
 pub mod args;
+pub mod check;
 pub mod cli;
 pub mod config;
 pub mod diagnostics;
@@ -17,6 +18,7 @@ pub mod usecases;
 
 // 常用导出，便于应用端按需使用
 pub use crate::core::parser::global_tags::{GLOBAL_TAGS_ENV, GlobalTags};
+pub use check::{CheckIssue, CheckKind, CheckReport, CheckSeverity, run_check};
 pub use engine::WpApp;
 pub use rescue::WpRescueApp;
 pub use runtime_ctrl::{

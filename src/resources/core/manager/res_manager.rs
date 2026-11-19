@@ -82,7 +82,7 @@ impl ResManager {
             .load_all_wpl_code(main_conf, infra_sinks.agent().error())
             .await?;
         res_center.load_all_ldm(main_conf.oml_root()).await?;
-        res_center.load_all_sink(main_conf.sinks_root(), dict)?;
+        res_center.load_all_sink(main_conf.sinks_root(), dict, main_conf.deny_duplicate_oml())?;
         Ok(res_center)
     }
 

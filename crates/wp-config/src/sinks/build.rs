@@ -8,7 +8,7 @@ use orion_conf::error::{ConfIOReason, OrionConfResult};
 use orion_error::conversion::ToStructError;
 use orion_variate::EnvDict;
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use wp_connector_api::ParamMap;
 use wp_model_core::model::fmt_def::TextFmt;
@@ -486,6 +486,16 @@ fn plugin_validate_with(
     Ok(())
 }
 
+/// A business route together with the file it was declared in.
+///
+/// `SinkRouteConf` drops the origin path, but offline config checks need it to
+/// point operators at the file that declares a duplicate or conflicting route.
+#[derive(Debug, Clone)]
+pub struct LoadedRouteConf {
+    pub conf: crate::structure::SinkRouteConf,
+    pub origin: Option<PathBuf>,
+}
+
 /// 加载 business.d 下所有路由文件并构建 SinkRouteConf 列表
 pub fn load_business_route_confs(
     sink_root: &str,
@@ -494,20 +504,37 @@ pub fn load_business_route_confs(
     load_business_route_confs_with(sink_root, &NULL_FACTORY_LOOKUP, dict)
 }
 
-pub fn load_business_route_confs_with(
+/// 与 [`load_business_route_confs_with`] 完全同源，但保留每个路由文件的原始路径。
+pub fn load_business_route_confs_with_origins(
     sink_root: &str,
     reg: &dyn SinkFactoryLookup,
     dict: &EnvDict,
-) -> OrionConfResult<Vec<SinkRouteConf>> {
+) -> OrionConfResult<Vec<LoadedRouteConf>> {
     let conn_map = load_connectors_for(sink_root, dict)?;
     let routes = load_route_files_from(&business_dir(sink_root), dict)?;
     let defaults = load_sink_defaults(sink_root, dict)?;
     let mut out = Vec::new();
     for rf in routes.iter() {
         let conf = build_route_conf_from_with(rf, defaults.as_ref(), &conn_map, reg)?;
-        out.push(conf);
+        out.push(LoadedRouteConf {
+            conf,
+            origin: rf.origin.clone(),
+        });
     }
     Ok(out)
+}
+
+pub fn load_business_route_confs_with(
+    sink_root: &str,
+    reg: &dyn SinkFactoryLookup,
+    dict: &EnvDict,
+) -> OrionConfResult<Vec<SinkRouteConf>> {
+    Ok(
+        load_business_route_confs_with_origins(sink_root, reg, dict)?
+            .into_iter()
+            .map(|loaded| loaded.conf)
+            .collect(),
+    )
 }
 
 /// 加载 infra.d 下所有路由文件并构建 SinkRouteConf 列表

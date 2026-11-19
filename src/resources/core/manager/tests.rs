@@ -42,7 +42,7 @@ async fn test_res() -> RunResult<()> {
     res_center.load_all_ldm(main_conf.oml_root()).await?;
 
     res_center
-        .load_all_sink(main_conf.sinks_root(), &env_dict)
+        .load_all_sink(main_conf.sinks_root(), &env_dict, false)
         .owe(RunReason::core_conf())?;
 
     let res_path = "res.dat";

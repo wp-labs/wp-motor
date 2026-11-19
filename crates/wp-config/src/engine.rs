@@ -256,6 +256,28 @@ pub struct SemanticConf {
     pub enabled: bool,
 }
 
+/// Startup/offline validation policy.
+///
+/// These switches are read by the engine on every start, so a broken binding
+/// can fail closed even when an external config sync bypasses a pre-flight
+/// `wparse check`. The default block is omitted from serialized configs.
+#[derive(Debug, Default, PartialEq, Deserialize, Serialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct ValidateConf {
+    /// Fail startup when the same `oml` matcher is bound by two `sink_group`s.
+    ///
+    /// A duplicate binding makes the rule index and the model index diverge on
+    /// ties, which silently disables the OML stage for the receiving group.
+    /// `None` means "not configured" (effective false); the site-local overlay
+    /// uses `Some(false)` for an explicit override.
+    #[serde(default)]
+    pub deny_duplicate_oml: Option<bool>,
+}
+
+fn validate_is_default(conf: &ValidateConf) -> bool {
+    conf.deny_duplicate_oml.is_none()
+}
+
 #[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct EngineConfig {
@@ -300,6 +322,10 @@ pub struct EngineConfig {
     /// cannot reset the control port.
     #[serde(default, skip_serializing_if = "admin_api_is_default")]
     admin_api: AdminApiConf,
+    /// Startup validation policy; the default block is omitted so existing
+    /// generated configs stay unchanged.
+    #[serde(default, skip_serializing_if = "validate_is_default")]
+    validate: ValidateConf,
     /// Legacy sections accepted for compatibility with older project files.
     /// They are intentionally ignored by the current runtime schema.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -434,6 +460,7 @@ impl Default for EngineConfig {
             project_remote: ProjectRemoteConf::default(),
             runtime: RuntimeConf::default(),
             admin_api: AdminApiConf::default(),
+            validate: ValidateConf::default(),
             general: None,
             log: None,
             rule: None,
@@ -472,6 +499,7 @@ impl EngineConfig {
             project_remote: ProjectRemoteConf::default(),
             runtime: RuntimeConf::default(),
             admin_api: AdminApiConf::default(),
+            validate: ValidateConf::default(),
             general: None,
             log: None,
             rule: None,
@@ -575,6 +603,20 @@ impl EngineConfig {
 
     pub fn admin_api(&self) -> &AdminApiConf {
         &self.admin_api
+    }
+
+    pub fn validate_conf(&self) -> &ValidateConf {
+        &self.validate
+    }
+
+    /// Effective fail-closed switch (`false` when unset).
+    pub fn deny_duplicate_oml(&self) -> bool {
+        self.validate.deny_duplicate_oml.unwrap_or(false)
+    }
+
+    /// Override the startup fail-closed switch (used by the site-local overlay).
+    pub fn set_deny_duplicate_oml(&mut self, deny: bool) {
+        self.validate.deny_duplicate_oml = Some(deny);
     }
 
     pub fn src_conf_of(&self, file_name: &str) -> String {
@@ -1115,6 +1157,39 @@ mod tests {
                 .display()
                 .to_string()
         );
+    }
+
+    #[test]
+    fn validate_section_defaults_and_roundtrips() {
+        let conf: EngineConfig = toml::from_str("version = \"1.0\"\n").expect("parse");
+        assert_eq!(conf.validate_conf().deny_duplicate_oml, None);
+        assert!(!conf.deny_duplicate_oml());
+
+        let conf: EngineConfig =
+            toml::from_str("version = \"1.0\"\n[validate]\ndeny_duplicate_oml = true\n")
+                .expect("parse [validate]");
+        assert_eq!(conf.validate_conf().deny_duplicate_oml, Some(true));
+        assert!(conf.deny_duplicate_oml());
+
+        let out = toml::to_string(&conf).expect("serialize");
+        assert!(out.contains("[validate]"), "{out}");
+
+        let default_out = toml::to_string(&EngineConfig::default()).expect("serialize default");
+        assert!(!default_out.contains("[validate]"), "{default_out}");
+
+        let mut overridden = EngineConfig::default();
+        overridden.set_deny_duplicate_oml(true);
+        assert!(overridden.deny_duplicate_oml());
+    }
+
+    #[test]
+    fn validate_section_rejects_unknown_fields() {
+        let err = toml::from_str::<EngineConfig>(
+            "version = \"1.0\"\n[validate]\ndeny_duplicate_oml = true\ntypo = 1\n",
+        )
+        .expect_err("unknown [validate] field must fail")
+        .to_string();
+        assert!(err.contains("typo"), "{err}");
     }
 
     #[test]

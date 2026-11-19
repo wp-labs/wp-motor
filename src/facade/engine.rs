@@ -95,6 +95,11 @@ impl WpApp {
             &env_dict,
             args.state_dir.as_deref(),
         )?;
+        // Site-local `[validate]` wins over `conf/wparse.toml`, which a remote
+        // config sync may replace wholesale.
+        if let Some(deny) = args.deny_duplicate_oml {
+            main_conf.set_deny_duplicate_oml(deny);
+        }
 
         // Make `SEC_XXX` values available to OML privacy operators under their
         // fixed default names (`pii_salt` / `pii_key`). No `[privacy]` config is
