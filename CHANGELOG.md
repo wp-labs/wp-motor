@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.41.0] - 2026-11-25
+
+### Added
+
+- **OML 新增 `hex_decode` 管道**：把十六进制字符串还原成 UTF-8 文本，例如 `68656c6c6f` → `hello`，可直接写成 `pipe take(raw) | hex_decode`（无需参数）。非法十六进制或解码结果不是合法 UTF-8 时保留原值，不中断解析。适合「JSON 里的载荷被转成 hex」这类厂商日志。
+
 ## [1.40.0] - 2026-11-20
 
 ### Added
