@@ -623,7 +623,7 @@ fn pipe_fun_simple_core_a(data: &mut &str) -> WResult<PipeFun> {
 
 fn pipe_fun_simple_core_b(data: &mut &str) -> WResult<PipeFun> {
     alt((
-        PIPE_HEX_DECODE.map(|_| PipeFun::HexDecode(HexDecode::default())),
+        PIPE_HEX_DECODE.map(|_| PipeFun::HexDecode(HexDecode)),
         PIPE_BASE64_ENCODE.map(|_| PipeFun::Base64Encode(Base64Encode::default())),
         PIPE_TIME_TO_TS_MS.map(|_| PipeFun::TimeToTsMs(TimeToTsMs::default())),
         PIPE_TIME_TO_TS_US.map(|_| PipeFun::TimeToTsUs(TimeToTsUs::default())),
