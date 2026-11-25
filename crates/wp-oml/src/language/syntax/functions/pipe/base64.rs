@@ -10,6 +10,11 @@ pub const PIPE_BASE64_DECODE: &str = "base64_decode";
 pub struct Base64Decode {
     pub encode: EncodeType,
 }
+
+/// 将十六进制字符串解码为 UTF-8 文本；解码失败时保留原始文本。
+pub const PIPE_HEX_DECODE: &str = "hex_decode";
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct HexDecode;
 #[derive(Default, Debug, Clone, Serialize, Deserialize, EnumString, strum_macros::Display)]
 pub enum EncodeType {
     #[default]

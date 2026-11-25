@@ -1,5 +1,5 @@
 use crate::core::prelude::*;
-use crate::language::{Base64Decode, Base64Encode, EncodeType};
+use crate::language::{Base64Decode, Base64Encode, EncodeType, HexDecode};
 use base64::Engine;
 use base64::engine::general_purpose;
 use encoding_rs::{
@@ -12,6 +12,21 @@ use encoding_rs::{
 use imap_types::utils::escape_byte_string;
 use wp_model_core::model::{DataField, Value};
 
+impl ValueProcessor for HexDecode {
+    fn value_cacu(&self, in_val: DataField) -> DataField {
+        let decoded = match in_val.get_value() {
+            Value::Chars(value) => hex::decode(value)
+                .ok()
+                .and_then(|decoded| String::from_utf8(decoded).ok()),
+            _ => None,
+        };
+
+        match decoded {
+            Some(text) => DataField::from_chars(in_val.get_name().to_string(), text),
+            None => in_val,
+        }
+    }
+}
 impl ValueProcessor for Base64Encode {
     fn value_cacu(&self, in_val: DataField) -> DataField {
         match in_val.get_value() {

@@ -24,6 +24,7 @@ impl ValueProcessor for PipeFun {
         match self {
             PipeFun::Base64Encode(o) => o.value_cacu(in_val),
             PipeFun::Base64Decode(o) => o.value_cacu(in_val),
+            PipeFun::HexDecode(o) => o.value_cacu(in_val),
             PipeFun::HtmlEscape(o) => o.value_cacu(in_val),
             PipeFun::HtmlUnescape(o) => o.value_cacu(in_val),
             PipeFun::StrEscape(o) => o.value_cacu(in_val),

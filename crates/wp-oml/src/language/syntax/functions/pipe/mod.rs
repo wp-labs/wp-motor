@@ -20,6 +20,7 @@ pub use time::*;
 pub enum PipeFun {
     Base64Encode(Base64Encode),
     Base64Decode(Base64Decode),
+    HexDecode(HexDecode),
     HtmlEscape(HtmlEscape),
     HtmlUnescape(HtmlUnescape),
     StrEscape(StrEscape),
@@ -60,6 +61,7 @@ impl Display for PipeFun {
         match self {
             PipeFun::Base64Encode(_) => write!(f, "{}", PIPE_BASE64_ENCODE),
             PipeFun::Base64Decode(v) => write!(f, "{}", v),
+            PipeFun::HexDecode(_) => write!(f, "{}", PIPE_HEX_DECODE),
             PipeFun::HtmlEscape(_) => write!(f, "{}", PIPE_HTML_ESCAPE),
             PipeFun::StrEscape(_) => write!(f, "{}", PIPE_STR_ESCAPE),
             PipeFun::JsonEscape(_) => write!(f, "{}", PIPE_JSON_ESCAPE),

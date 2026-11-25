@@ -2,16 +2,16 @@ use std::net::IpAddr;
 use std::str::FromStr;
 
 use crate::language::{
-    Base64Decode, BatchEvaluation, EncodeType, Get, HtmlEscape, HtmlUnescape, IntranetReplace,
-    Ip4ToInt, IpToBigUint, JsonEscape, JsonUnescape, MapTo, MapValue, Nth, PIPE_BASE64_DECODE,
-    PIPE_GET, PIPE_HTML_ESCAPE, PIPE_HTML_UNESCAPE, PIPE_INTRANET_REPLACE, PIPE_IP_TO_BIGUINT,
-    PIPE_IP4_TO_INT, PIPE_JSON_ESCAPE, PIPE_JSON_UNESCAPE, PIPE_MAP_TO, PIPE_NTH, PIPE_PATH,
-    PIPE_SKIP_EMPTY, PIPE_STARTS_WITH, PIPE_STR_ESCAPE, PIPE_TIME_FROM_TS, PIPE_TIME_FROM_TS_MS,
-    PIPE_TIME_FROM_TS_US, PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US,
-    PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON, PIPE_URL, PathGet, PathType, PiPeOperation, PipeFun,
-    PipeSource, PreciseEvaluator, SkipEmpty, StartsWith, StrEscape, TimeFromTs, TimeFromTsMs,
-    TimeFromTsUs, TimeStampUnit, TimeToTs, TimeToTsMs, TimeToTsUs, TimeToTsZone, ToJson, UrlGet,
-    UrlType,
+    Base64Decode, BatchEvaluation, EncodeType, Get, HexDecode, HtmlEscape, HtmlUnescape,
+    IntranetReplace, Ip4ToInt, IpToBigUint, JsonEscape, JsonUnescape, MapTo, MapValue, Nth,
+    PIPE_BASE64_DECODE, PIPE_GET, PIPE_HEX_DECODE, PIPE_HTML_ESCAPE, PIPE_HTML_UNESCAPE,
+    PIPE_INTRANET_REPLACE, PIPE_IP_TO_BIGUINT, PIPE_IP4_TO_INT, PIPE_JSON_ESCAPE,
+    PIPE_JSON_UNESCAPE, PIPE_MAP_TO, PIPE_NTH, PIPE_PATH, PIPE_SKIP_EMPTY, PIPE_STARTS_WITH,
+    PIPE_STR_ESCAPE, PIPE_TIME_FROM_TS, PIPE_TIME_FROM_TS_MS, PIPE_TIME_FROM_TS_US,
+    PIPE_TIME_TO_TS, PIPE_TIME_TO_TS_MS, PIPE_TIME_TO_TS_US, PIPE_TIME_TO_TS_ZONE, PIPE_TO_JSON,
+    PIPE_URL, PathGet, PathType, PiPeOperation, PipeFun, PipeSource, PreciseEvaluator, SkipEmpty,
+    StartsWith, StrEscape, TimeFromTs, TimeFromTsMs, TimeFromTsUs, TimeStampUnit, TimeToTs,
+    TimeToTsMs, TimeToTsUs, TimeToTsZone, ToJson, UrlGet, UrlType,
 };
 use crate::language::{
     Base64Encode, ExtractMainWord, ExtractSubjectObject, IntranetIp, OnFail, PIPE_BASE64_ENCODE,
@@ -623,6 +623,7 @@ fn pipe_fun_simple_core_a(data: &mut &str) -> WResult<PipeFun> {
 
 fn pipe_fun_simple_core_b(data: &mut &str) -> WResult<PipeFun> {
     alt((
+        PIPE_HEX_DECODE.map(|_| PipeFun::HexDecode(HexDecode::default())),
         PIPE_BASE64_ENCODE.map(|_| PipeFun::Base64Encode(Base64Encode::default())),
         PIPE_TIME_TO_TS_MS.map(|_| PipeFun::TimeToTsMs(TimeToTsMs::default())),
         PIPE_TIME_TO_TS_US.map(|_| PipeFun::TimeToTsUs(TimeToTsUs::default())),
