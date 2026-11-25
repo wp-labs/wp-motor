@@ -262,4 +262,35 @@ mod tests {
         let expect = DataField::from_chars("Z".to_string(), "SSH-2.0-mod_sftp\\r\\n\\x00\\x00\\x03T\\x07\\x14R\\x14\\x9dXAT\\xbd\\x81D\\xba\\x02{\\xc4\\x0e\\xbc:\\x00\\x00\\x01=curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp521,ecdh-sha2-nistp384,ecdh-sha2-nistp256,diffie-hellman-group18-sha512,diffie-hellman-group16-sha512,diffie-hellman-group14-sha256,diffie-hellman-group-exchange-sha256,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,rsa1024-sha1,ext-info-s\\x00\\x00\\x00)rsa-sha2-512,rsa-sha2-256,ssh-rsa,ssh-dss\\x00\\x00\\x00_aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,cast128-cbc,3des-ctr,3des-cbc\\x00\\x00\\x00_aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,cast128-cbc,3des-ctr,3des-cbc\\x00\\x00\\x00[hmac-sha2-256,hmac-sha2-512,hmac-sha1,hmac-sha1-96,umac-64@openssh.com,umac-128@openssh.com\\x00\\x00\\x00[hmac-sha2-256,hmac-sha2-512,hmac-sha1,hmac-sha1-96,umac-64@openssh.com,umac-128@openssh.com\\x00\\x00\\x00\\x1azlib@openssh.com,zlib,none\\x00\\x00\\x00\\x1azlib@openssh.com,zlib,none\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00^\\xe47%a\\xba\\xdfProtocol mismatch.\\n".to_string());
         assert_eq!(target.field("Z").map(|s| s.as_field()), Some(&expect));
     }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_pipe_hex_decode() {
+        let cache = &mut FieldQueryCache::default();
+        let data = vec![
+            FieldStorage::from_owned(DataField::from_chars("HEX", "68656c6c6f")),
+            FieldStorage::from_owned(DataField::from_chars("PLAIN", "sh")),
+            FieldStorage::from_owned(DataField::from_chars("INVALID_UTF8", "ff")),
+        ];
+        let src = DataRecord::from(data);
+
+        let mut conf = r#"
+        name : test
+        ---
+        X : chars = pipe take(HEX) | hex_decode ;
+        Y : chars = pipe take(PLAIN) | hex_decode ;
+        Z : chars = pipe take(INVALID_UTF8) | hex_decode ;
+        "#;
+        let model = oml_parse_raw(&mut conf).await.unwrap();
+
+        let target = model.transform_async(src, cache).await;
+
+        let expect = DataField::from_chars("X", "hello");
+        assert_eq!(target.field("X").map(|s| s.as_field()), Some(&expect));
+
+        let expect = DataField::from_chars("Y", "sh");
+        assert_eq!(target.field("Y").map(|s| s.as_field()), Some(&expect));
+
+        let expect = DataField::from_chars("Z", "ff");
+        assert_eq!(target.field("Z").map(|s| s.as_field()), Some(&expect));
+    }
 }
