@@ -1,6 +1,7 @@
 use crate::language::{
-    Encoding, Hash, HashAlgo, Mask, MaskKind, NameStyle, OnError, PIPE_HASH, PIPE_MASK,
-    PIPE_REMOVE, PIPE_TOKENIZE, PipeFun, Remove, TokenAlgo, Tokenize,
+    Encoding, Hash, HashAlgo, Mask, MaskKind, MaskText, MaskTextKind, NameStyle, OnError,
+    PIPE_HASH, PIPE_MASK, PIPE_MASK_TEXT, PIPE_REMOVE, PIPE_TOKENIZE, PipeFun, Remove, TokenAlgo,
+    Tokenize,
 };
 use ipnet::IpNet;
 use winnow::ascii::{digit1, multispace0};
@@ -162,6 +163,37 @@ fn apply_mask_arg(mask: &mut Mask, key: &str, value: ArgValue) -> Result<(), &'s
     Ok(())
 }
 
+fn apply_mask_text_arg(
+    mask_text: &mut MaskText,
+    key: &str,
+    value: ArgValue,
+) -> Result<(), &'static str> {
+    let allowed = match mask_text.kind {
+        MaskTextKind::Pii => matches!(key, "char" | "placeholder"),
+        MaskTextKind::Mobile => matches!(key, "keep_last" | "char" | "placeholder"),
+        MaskTextKind::IdCard => matches!(key, "keep_first" | "keep_last" | "char" | "placeholder"),
+        MaskTextKind::Mail => matches!(key, "keep_first" | "keep_domain" | "char" | "placeholder"),
+        MaskTextKind::Domain => matches!(key, "keep_levels" | "char" | "placeholder"),
+        MaskTextKind::Ip => matches!(key, "pool" | "allow_unsalted" | "placeholder"),
+        MaskTextKind::HttpAuth => matches!(key, "placeholder"),
+    };
+    if !allowed {
+        return Err("parameter is not valid for this mask_text kind");
+    }
+    match key {
+        "keep_first" => mask_text.keep_first = Some(expect_num(value)?),
+        "keep_last" => mask_text.keep_last = Some(expect_num(value)?),
+        "keep_levels" => mask_text.keep_levels = Some(expect_num(value)?),
+        "keep_domain" => mask_text.keep_domain = Some(expect_bool(value)?),
+        "char" => mask_text.char = Some(expect_char(value)?),
+        "placeholder" => mask_text.placeholder = Some(expect_str(value)?),
+        "pool" => mask_text.pool = Some(expect_cidr(value)?),
+        "allow_unsalted" => mask_text.allow_unsalted = expect_bool(value)?,
+        _ => return Err("unknown mask_text parameter"),
+    }
+    Ok(())
+}
+
 fn apply_hash_arg(hash: &mut Hash, key: &str, value: ArgValue) -> Result<(), &'static str> {
     match key {
         "algo" => hash.algo = expect_hash_algo(value)?,
@@ -276,6 +308,19 @@ fn parse_mask_kind(data: &mut &str) -> WResult<MaskKind> {
     })
 }
 
+fn parse_mask_text_kind(data: &mut &str) -> WResult<MaskTextKind> {
+    multispace0.parse_next(data)?;
+    let name = take_var_name.parse_next(data)?;
+    MaskTextKind::from_name(name).ok_or_else(|| {
+        let mut err = ContextError::new();
+        err.push(StrContext::Label("mask_text kind"));
+        err.push(StrContext::Expected(StrContextValue::Description(
+            MaskTextKind::DESCRIPTION,
+        )));
+        ErrMode::Cut(err)
+    })
+}
+
 /// `mask(kind, [params])`
 pub fn oml_mask(data: &mut &str) -> WResult<PipeFun> {
     let cp = data.checkpoint();
@@ -299,6 +344,31 @@ pub fn oml_mask(data: &mut &str) -> WResult<PipeFun> {
     }
     symbol_bracket_end.parse_next(data)?;
     Ok(PipeFun::Mask(mask))
+}
+
+/// `mask_text(kind, [params])`
+pub fn oml_mask_text(data: &mut &str) -> WResult<PipeFun> {
+    let cp = data.checkpoint();
+    if expect_fun(data, PIPE_MASK_TEXT).is_err() {
+        data.reset(&cp);
+        return backtrack();
+    }
+    symbol_bracket_beg.parse_next(data)?;
+    let kind = parse_mask_text_kind(data)?;
+    let mut mask_text = MaskText::new(kind);
+    loop {
+        multispace0.parse_next(data)?;
+        if peek(symbol_bracket_end).parse_next(data).is_ok() {
+            break;
+        }
+        symbol_comma.parse_next(data)?;
+        let (key, value) = named_arg(data)?;
+        if let Err(msg) = apply_mask_text_arg(&mut mask_text, &key, value) {
+            return cut_err("mask_text parameter", msg);
+        }
+    }
+    symbol_bracket_end.parse_next(data)?;
+    Ok(PipeFun::MaskText(mask_text))
 }
 
 /// `hash([algo], [params])`

@@ -6,6 +6,7 @@ mod array_obj;
 mod base64;
 mod escape;
 mod extract_word;
+mod mask_text;
 mod net;
 mod other;
 mod path_url;
@@ -55,6 +56,7 @@ impl ValueProcessor for PipeFun {
             PipeFun::ExtractMainWord(o) => o.value_cacu(in_val),
             PipeFun::ExtractSubjectObject(o) => o.value_cacu(in_val),
             PipeFun::Mask(o) => o.value_cacu(in_val),
+            PipeFun::MaskText(o) => o.value_cacu(in_val),
             PipeFun::Hash(o) => o.value_cacu(in_val),
             PipeFun::Tokenize(o) => o.value_cacu(in_val),
             PipeFun::Remove(o) => o.value_cacu(in_val),

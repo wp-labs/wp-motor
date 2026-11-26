@@ -21,7 +21,7 @@ static UNSALTED_WARNED: Once = Once::new();
 static V4_POOL_MISMATCH_WARNED: Once = Once::new();
 static V6_POOL_MISMATCH_WARNED: Once = Once::new();
 
-fn value_text(value: &Value) -> Option<String> {
+pub(super) fn value_text(value: &Value) -> Option<String> {
     match value {
         Value::Chars(v) => Some(v.to_string()),
         Value::Symbol(v) => Some(v.to_string()),
@@ -42,11 +42,11 @@ fn value_text(value: &Value) -> Option<String> {
     }
 }
 
-fn is_missing(value: &Value) -> bool {
+pub(super) fn is_missing(value: &Value) -> bool {
     matches!(value, Value::Null | Value::Ignore(_))
 }
 
-fn mask_keep(
+pub(super) fn mask_keep(
     text: &str,
     keep_first: usize,
     keep_last: usize,
@@ -95,7 +95,7 @@ fn mask_name(text: &str, style: NameStyle, ch: char) -> String {
     }
 }
 
-fn mask_mail(
+pub(super) fn mask_mail(
     text: &str,
     keep_first: usize,
     keep_domain: bool,
@@ -118,7 +118,7 @@ fn mask_mail(
     out
 }
 
-fn mask_domain(text: &str, keep_levels: usize, ch: char, placeholder: &str) -> String {
+pub(super) fn mask_domain(text: &str, keep_levels: usize, ch: char, placeholder: &str) -> String {
     let levels: Vec<&str> = text.split('.').filter(|part| !part.is_empty()).collect();
     if levels.len() < keep_levels || keep_levels == 0 {
         return placeholder.to_string();
@@ -151,7 +151,7 @@ fn default_pool_v6() -> Ipv6Net {
     })
 }
 
-fn map_ipv4(ip: Ipv4Addr, salt: &[u8], pool: Ipv4Net) -> Ipv4Addr {
+pub(super) fn map_ipv4(ip: Ipv4Addr, salt: &[u8], pool: Ipv4Net) -> Ipv4Addr {
     let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(salt).expect("HMAC accepts any key");
     mac.update(&[4u8]);
     mac.update(&ip.octets());
@@ -166,7 +166,7 @@ fn map_ipv4(ip: Ipv4Addr, salt: &[u8], pool: Ipv4Net) -> Ipv4Addr {
     Ipv4Addr::from(u32::from(pool.network()) | host)
 }
 
-fn map_ipv6(ip: Ipv6Addr, salt: &[u8], pool: Ipv6Net) -> Ipv6Addr {
+pub(super) fn map_ipv6(ip: Ipv6Addr, salt: &[u8], pool: Ipv6Net) -> Ipv6Addr {
     let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(salt).expect("HMAC accepts any key");
     mac.update(&[6u8]);
     mac.update(&ip.octets());
@@ -183,7 +183,7 @@ fn map_ipv6(ip: Ipv6Addr, salt: &[u8], pool: Ipv6Net) -> Ipv6Addr {
     Ipv6Addr::from(u128::from(pool.network()) | host)
 }
 
-fn select_pool_v4(pool: Option<IpNet>) -> Ipv4Net {
+pub(super) fn select_pool_v4(pool: Option<IpNet>) -> Ipv4Net {
     match pool {
         Some(IpNet::V4(v4)) => v4,
         Some(IpNet::V6(_)) => {
@@ -196,7 +196,7 @@ fn select_pool_v4(pool: Option<IpNet>) -> Ipv4Net {
     }
 }
 
-fn select_pool_v6(pool: Option<IpNet>) -> Ipv6Net {
+pub(super) fn select_pool_v6(pool: Option<IpNet>) -> Ipv6Net {
     match pool {
         Some(IpNet::V6(v6)) => v6,
         Some(IpNet::V4(_)) => {

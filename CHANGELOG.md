@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.0] - 2026-11-26
+
+### Added
+
+- **OML 新增 `mask_text(kind, [params])` 文本扫描脱敏**：在日志行、HTTP 报文这类混合文本中只替换识别到的片段（`pii`/`mobile`/`id_card`/`mail`/`ip`/`domain`/`http_auth`），其余内容原样保留；没有匹配时字段不变。它是独立的**最佳努力**契约，`mask(kind)` 保持原有「整字段视为一个值 + fail-closed」语义，现有模型行为不变。
+- **聚合/专用 kind**：`mask_text(pii)` 一次处理手机号、邮箱、身份证、凭据型 `key=value`（password/token/api_key 等，含 `db_password`/`client_secret` 这类前缀写法）与 HTTP 凭据头（刻意不处理 IP）；`mask_text(http_auth)` 逐行识别 `Authorization`、`Proxy-Authorization`、`X-Auth-Token` / `X-*-Auth-Token`、`Cookie`、`Set-Cookie`，只替换值，保留头名、`Basic`/`Bearer` 等 scheme、请求行、其它 header 与 body；嵌在单行文本中的 auth header 也能识别，且不会吞掉行内其它字段。
+- **识别边界**：手机号/身份证/IP/域名使用 ASCII 边界，中文紧邻数字时也能命中；身份证做 GB 11643 校验；IPv6 按 token 解析并跳过 `std::vector` 这类符号。
+
 ## [1.41.0] - 2026-11-25
 
 ### Added

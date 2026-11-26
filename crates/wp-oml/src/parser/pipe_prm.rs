@@ -566,6 +566,7 @@ pub fn oml_pipe(data: &mut &str) -> WResult<PipeFun> {
 fn pipe_fun_privacy(data: &mut &str) -> WResult<PipeFun> {
     alt((
         crate::parser::privacy_prm::oml_mask,
+        crate::parser::privacy_prm::oml_mask_text,
         crate::parser::privacy_prm::oml_hash,
         crate::parser::privacy_prm::oml_tokenize,
         crate::parser::privacy_prm::oml_remove,

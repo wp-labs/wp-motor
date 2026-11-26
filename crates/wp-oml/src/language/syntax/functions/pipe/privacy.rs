@@ -2,6 +2,7 @@ use crate::language::prelude::*;
 use ipnet::IpNet;
 
 pub const PIPE_MASK: &str = "mask";
+pub const PIPE_MASK_TEXT: &str = "mask_text";
 pub const PIPE_HASH: &str = "hash";
 pub const PIPE_TOKENIZE: &str = "tokenize";
 pub const PIPE_REMOVE: &str = "remove";
@@ -200,6 +201,145 @@ impl Display for Mask {
     }
 }
 
+/// Kinds supported by the text-scanning operator `mask_text(kind, [params])`.
+///
+/// This is a separate closed set from [`MaskKind`]: `mask_text` only works on
+/// values that can be located inside mixed text, so field-only kinds such as
+/// `name` / `address` / `company` are intentionally absent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MaskTextKind {
+    /// Aggregate preset: mobile, e-mail, ID card, credential key/value pairs
+    /// and HTTP credential headers. IP is intentionally left alone.
+    Pii,
+    Mobile,
+    IdCard,
+    Mail,
+    Ip,
+    Domain,
+    /// HTTP credential headers: `Authorization`, `Proxy-Authorization`,
+    /// `*-Auth-Token`, `Cookie`, `Set-Cookie`.
+    HttpAuth,
+}
+
+impl MaskTextKind {
+    pub const ALL: [&'static str; 7] = [
+        "pii",
+        "mobile",
+        "id_card",
+        "mail",
+        "ip",
+        "domain",
+        "http_auth",
+    ];
+
+    /// Human-readable candidate list used in parser error messages.
+    pub const DESCRIPTION: &'static str = "pii | mobile | id_card | mail | ip | domain | http_auth";
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "pii" => Some(Self::Pii),
+            "mobile" => Some(Self::Mobile),
+            "id_card" => Some(Self::IdCard),
+            "mail" => Some(Self::Mail),
+            "ip" => Some(Self::Ip),
+            "domain" => Some(Self::Domain),
+            "http_auth" => Some(Self::HttpAuth),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Pii => "pii",
+            Self::Mobile => "mobile",
+            Self::IdCard => "id_card",
+            Self::Mail => "mail",
+            Self::Ip => "ip",
+            Self::Domain => "domain",
+            Self::HttpAuth => "http_auth",
+        }
+    }
+}
+
+impl Display for MaskTextKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
+/// Inline text-scanning operator: `mask_text(kind, [params])`.
+///
+/// Contract: mask every recognized occurrence of `kind` inside the text and
+/// leave the rest untouched. This is *pattern-based masking* (best effort),
+/// not the fail-closed whole-value contract of `mask`.
+#[derive(Clone, Debug)]
+pub struct MaskText {
+    pub kind: MaskTextKind,
+    pub keep_first: Option<usize>,
+    pub keep_last: Option<usize>,
+    pub keep_levels: Option<usize>,
+    pub keep_domain: Option<bool>,
+    pub char: Option<char>,
+    pub placeholder: Option<String>,
+    pub pool: Option<IpNet>,
+    pub allow_unsalted: bool,
+}
+
+impl MaskText {
+    pub fn new(kind: MaskTextKind) -> Self {
+        Self {
+            kind,
+            keep_first: None,
+            keep_last: None,
+            keep_levels: None,
+            keep_domain: None,
+            char: None,
+            placeholder: None,
+            pool: None,
+            allow_unsalted: false,
+        }
+    }
+
+    pub fn mask_char(&self) -> char {
+        self.char.unwrap_or(DEFAULT_MASK_CHAR)
+    }
+
+    pub fn placeholder(&self) -> &str {
+        self.placeholder.as_deref().unwrap_or(DEFAULT_PLACEHOLDER)
+    }
+}
+
+impl Display for MaskText {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}({}", PIPE_MASK_TEXT, self.kind)?;
+        if let Some(v) = self.keep_first {
+            write!(f, ", keep_first:{v}")?;
+        }
+        if let Some(v) = self.keep_last {
+            write!(f, ", keep_last:{v}")?;
+        }
+        if let Some(v) = self.keep_levels {
+            write!(f, ", keep_levels:{v}")?;
+        }
+        if let Some(v) = self.keep_domain {
+            write!(f, ", keep_domain:{v}")?;
+        }
+        if let Some(v) = self.char {
+            write!(f, ", char:'{v}'")?;
+        }
+        if let Some(v) = &self.placeholder {
+            write!(f, ", placeholder:'{v}'")?;
+        }
+        if let Some(v) = &self.pool {
+            write!(f, ", pool:{v}")?;
+        }
+        if self.allow_unsalted {
+            write!(f, ", allow_unsalted:true")?;
+        }
+        write!(f, ")")
+    }
+}
+
 /// Hash algorithms supported by `hash`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum HashAlgo {
@@ -349,5 +489,23 @@ pub struct Remove;
 impl Display for Remove {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{PIPE_REMOVE}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MaskTextKind;
+
+    #[test]
+    fn mask_text_description_matches_all() {
+        assert_eq!(MaskTextKind::ALL.join(" | "), MaskTextKind::DESCRIPTION);
+    }
+
+    #[test]
+    fn mask_text_kind_names_round_trip() {
+        for name in MaskTextKind::ALL {
+            let kind = MaskTextKind::from_name(name).expect("known kind");
+            assert_eq!(kind.name(), name);
+        }
     }
 }
