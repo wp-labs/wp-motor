@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.0] - 2026-11-26
+
+### Added
+
+- **TCP sink 新增 `max_connection_age_secs`**（升级 wp-core-connectors 0.12.0）：连接存活超过指定秒数后，在下一次写入前先重建连接再写；重连会重新读取 `tls.cert` / `tls.key` / `tls.ca`，因此客户端证书轮换无需重启进程。TLS sink 不写时默认 24 小时，纯文本默认关闭，显式 `0` 关闭；内置 `tcp_sink` 的 `allow_override` 已包含该参数，支持按 sink 覆盖。超龄重连带按寿命 10%、最多 5 分钟的随机抖动，重连前优雅关闭有 2s 超时。
+
 ## [1.42.0] - 2026-11-26
 
 ### Added

@@ -5,6 +5,8 @@ allow_override = [
   "addr", "port", "framing",
   # send-queue aware backoff (optional)
   "max_backoff",
+  # reconnect before the next write once the connection is older than N seconds
+  "max_connection_age_secs",
   "tls",
   "compression", "encryption"
 ]
@@ -13,5 +15,9 @@ allow_override = [
 addr = "127.0.0.1"
 port = 9000
 framing = "line"   # line|len
+# Reconnect before the next write once the connection is older than N seconds.
+# Default: 86400 (24h) for TLS sinks; plaintext stays off. 0 disables both.
+# A jitter of up to min(300s, 10% of the age) is added to avoid synchronized reconnects.
+# max_connection_age_secs = 86400
 # Optional: kernel send-queue aware backoff (no tuning knobs; enabled/disabled only)
 # max_backoff = true
